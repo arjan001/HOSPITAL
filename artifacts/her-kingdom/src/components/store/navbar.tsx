@@ -269,7 +269,7 @@ export function Navbar() {
             {/* Right action chips */}
             <div className="flex items-center gap-2 lg:gap-4 shrink-0">
               <Link
-                href="/track-order"
+                href="/delivery"
                 className="hidden md:inline-flex items-center gap-2 h-10 px-4 rounded-full text-sm font-semibold transition-shadow hover:shadow-md"
                 style={{ background: PILL_BG, border: `1px solid ${PILL_BORDER}`, color: TEXT_WINE }}
               >
