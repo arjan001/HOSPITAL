@@ -1,11 +1,11 @@
 {
-  "name": "RX Pharmacy",
-  "short_name": "RX Pharmacy",
+  "name": "Shaniid RX",
+  "short_name": "Shaniid RX",
   "description": "Kenya's trusted online pharmacy. Shop authentic medications, vitamins, baby care and medical devices with same-day Nairobi delivery.",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#ffffff",
-  "theme_color": "#172B4D",
+  "background_color": "#FFFBF5",
+  "theme_color": "#3D0814",
   "orientation": "portrait-primary",
   "categories": ["shopping", "medical", "health", "lifestyle"],
   "lang": "en",
@@ -26,25 +26,13 @@
       "src": "/favicon-192.png",
       "sizes": "192x192",
       "type": "image/png",
-      "purpose": "any"
+      "purpose": "any maskable"
     },
     {
       "src": "/favicon.png",
       "sizes": "512x512",
       "type": "image/png",
-      "purpose": "any"
-    },
-    {
-      "src": "/favicon-192.png",
-      "sizes": "192x192",
-      "type": "image/png",
-      "purpose": "maskable"
-    },
-    {
-      "src": "/favicon.png",
-      "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "maskable"
+      "purpose": "any maskable"
     }
   ]
 }

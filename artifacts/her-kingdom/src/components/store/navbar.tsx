@@ -214,9 +214,9 @@ export function Navbar() {
               <img
                 src="/logo-rx.png"
                 alt="Shaniid RX"
-                width={160}
-                height={80}
-                className="h-20 lg:h-24 w-auto object-contain"
+                width={180}
+                height={90}
+                className="h-24 lg:h-28 w-auto object-contain"
               />
             </Link>
 

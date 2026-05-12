@@ -97,7 +97,6 @@ export default function RegisterPage() {
       }
     } catch (err) {
       console.error("[v0] Admin record creation failed:", err)
-      // Continue even if admin record fails - auth signup succeeded
     }
 
     setSuccess(true)
@@ -106,8 +105,8 @@ export default function RegisterPage() {
 
   if (checking) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      <div className="min-h-screen flex items-center justify-center bg-[#FFFBF5]">
+        <Loader2 className="h-6 w-6 animate-spin text-neutral-400" />
       </div>
     )
   }
@@ -115,22 +114,22 @@ export default function RegisterPage() {
   // Registration locked -- admin already exists
   if (hasAdmin) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background px-4">
-        <div className="w-full max-w-sm text-center">
-          <div className="w-16 h-16 rounded-full bg-secondary flex items-center justify-center mx-auto mb-5">
-            <Lock className="h-7 w-7 text-muted-foreground" />
+      <div className="min-h-screen flex items-center justify-center bg-[#FFFBF5] px-4">
+        <div className="w-full max-w-md text-center bg-white rounded-2xl shadow-sm border border-[#F2DCC8] px-10 py-12">
+          <div className="w-16 h-16 rounded-full bg-neutral-100 flex items-center justify-center mx-auto mb-5">
+            <Lock className="h-7 w-7 text-neutral-400" />
           </div>
-          <h1 className="text-2xl font-serif font-bold">Registration Closed</h1>
-          <p className="text-sm text-muted-foreground mt-3 leading-relaxed">
+          <h1 className="text-2xl font-bold" style={{ color: "#3D0814" }}>Registration Closed</h1>
+          <p className="text-sm text-neutral-500 mt-3 leading-relaxed">
             Admin setup is complete. New team members can only be added through the admin dashboard by existing admins.
           </p>
-          <div className="mt-6 flex flex-col gap-3">
+          <div className="mt-8 flex flex-col gap-3">
             <Link href="/auth/login">
-              <Button className="w-full bg-foreground text-background hover:bg-foreground/90 font-medium">
+              <Button className="w-full h-11 font-semibold text-white" style={{ background: "#3D0814" }}>
                 Sign In
               </Button>
             </Link>
-            <Link href="/" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
+            <Link href="/" className="text-xs text-neutral-400 hover:text-neutral-600 transition-colors">
               Back to store
             </Link>
           </div>
@@ -141,15 +140,15 @@ export default function RegisterPage() {
 
   if (success) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background px-4">
-        <div className="w-full max-w-sm text-center">
-          <CheckCircle className="h-12 w-12 mx-auto text-foreground mb-4" />
-          <h1 className="text-2xl font-serif font-bold">Account Created</h1>
-          <p className="text-sm text-muted-foreground mt-3 leading-relaxed">
-            Check your email <span className="font-medium text-foreground">{form.email}</span> to confirm your account, then sign in.
+      <div className="min-h-screen flex items-center justify-center bg-[#FFFBF5] px-4">
+        <div className="w-full max-w-md text-center bg-white rounded-2xl shadow-sm border border-[#F2DCC8] px-10 py-12">
+          <CheckCircle className="h-14 w-14 mx-auto mb-4" style={{ color: "#3D0814" }} />
+          <h1 className="text-2xl font-bold" style={{ color: "#3D0814" }}>Account Created</h1>
+          <p className="text-sm text-neutral-500 mt-3 leading-relaxed">
+            Check your email <span className="font-medium text-neutral-700">{form.email}</span> to confirm your account, then sign in.
           </p>
           <Link href="/auth/login">
-            <Button className="mt-6 bg-foreground text-background hover:bg-foreground/90 font-medium">
+            <Button className="mt-8 w-full h-11 font-semibold text-white" style={{ background: "#3D0814" }}>
               Go to Sign In
             </Button>
           </Link>
@@ -159,32 +158,58 @@ export default function RegisterPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background px-4 py-12">
-      <div className="w-full max-w-sm">
+    <div className="min-h-screen flex items-center justify-center bg-[#FFFBF5] px-4 py-12">
+      <div className="w-full max-w-lg">
+
+        {/* Logo */}
         <div className="text-center mb-8">
-            <Link href="/" className="font-serif text-3xl font-bold tracking-tight">
-              Shaniid RX
-            </Link>
-          <p className="text-sm text-muted-foreground mt-2">Create the Super Admin account</p>
-          <p className="text-xs text-muted-foreground mt-1">This is a one-time setup. You can add more team members later from the admin panel.</p>
+          <Link href="/" className="inline-block">
+            <img src="/logo-rx.png" alt="Shaniid RX" className="h-20 w-auto object-contain mx-auto" />
+          </Link>
+          <h1 className="mt-4 text-xl font-bold tracking-tight" style={{ color: "#3D0814" }}>
+            Create Super Admin Account
+          </h1>
+          <p className="text-sm text-neutral-500 mt-1">One-time setup — you can add more team members later from the admin panel.</p>
         </div>
 
-        <form onSubmit={handleRegister} className="space-y-4">
-          {error && (
-            <div className="flex items-center gap-2 bg-destructive/10 text-destructive text-sm p-3 rounded-sm">
-              <AlertCircle className="h-4 w-4 flex-shrink-0" />
-              {error}
+        {/* Card */}
+        <div className="bg-white rounded-2xl shadow-sm border border-[#F2DCC8] px-8 py-8">
+          <form onSubmit={handleRegister} className="space-y-5">
+            {error && (
+              <div className="flex items-center gap-2 bg-red-50 text-red-700 border border-red-200 text-sm p-3 rounded-lg">
+                <AlertCircle className="h-4 w-4 flex-shrink-0" />
+                {error}
+              </div>
+            )}
+
+            <div>
+              <Label htmlFor="displayName" className="text-sm font-medium mb-1.5 block text-neutral-700">
+                Your Name
+              </Label>
+              <Input
+                id="displayName"
+                value={form.displayName}
+                onChange={(e) => setForm({ ...form, displayName: e.target.value })}
+                placeholder="Jane Doe"
+                className="h-11"
+                required
+                autoFocus
+              />
             </div>
-          )}
 
-          <div>
-            <Label htmlFor="displayName" className="text-sm font-medium mb-1.5 block">Your Name</Label>
-            <Input id="displayName" value={form.displayName} onChange={(e) => setForm({ ...form, displayName: e.target.value })} placeholder="Jane Doe" className="h-11" required autoFocus />
-          </div>
-
-          <div>
-            <Label htmlFor="email" className="text-sm font-medium mb-1.5 block">Email</Label>
-            <Input id="email" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="admin@herkingdom.co.ke" className="h-11" required />
+            <div>
+              <Label htmlFor="email" className="text-sm font-medium mb-1.5 block text-neutral-700">
+                Email address
+              </Label>
+              <Input
+                id="email"
+                type="email"
+                value={form.email}
+                onChange={(e) => setForm({ ...form, email: e.target.value })}
+                placeholder="admin@shaniid.co.ke"
+                className="h-11"
+                required
+              />
             </div>
 
             {/* Role selector - hidden on first registration */}
@@ -201,42 +226,79 @@ export default function RegisterPage() {
               </Select>
             </div>
 
-            <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 p-3 rounded-sm">
-              <p className="text-xs text-blue-700 dark:text-blue-400 leading-relaxed">
-                <span className="font-semibold">First user setup:</span> You'll be assigned as Super Admin with full system access and ability to add team members.
+            <div className="bg-blue-50 border border-blue-200 p-4 rounded-lg">
+              <p className="text-xs text-blue-700 leading-relaxed">
+                <span className="font-semibold">First user setup:</span> You will be assigned as Super Admin with full system access and the ability to add team members.
               </p>
             </div>
 
-
-          <div>
-            <Label htmlFor="password" className="text-sm font-medium mb-1.5 block">Password</Label>
-            <div className="relative">
-              <Input id="password" type={showPassword ? "text" : "password"} value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} placeholder="Min 8 chars, letters + numbers + symbol/mixed case" className="h-11 pr-10" required />
-              <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
-                {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-              </button>
+            <div>
+              <Label htmlFor="password" className="text-sm font-medium mb-1.5 block text-neutral-700">
+                Password
+              </Label>
+              <div className="relative">
+                <Input
+                  id="password"
+                  type={showPassword ? "text" : "password"}
+                  value={form.password}
+                  onChange={(e) => setForm({ ...form, password: e.target.value })}
+                  placeholder="Min 8 chars, letters + numbers + symbol"
+                  className="h-11 pr-10"
+                  required
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-600"
+                >
+                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
             </div>
-          </div>
 
-          <div>
-            <Label htmlFor="confirmPassword" className="text-sm font-medium mb-1.5 block">Confirm Password</Label>
-            <Input id="confirmPassword" type="password" value={form.confirmPassword} onChange={(e) => setForm({ ...form, confirmPassword: e.target.value })} placeholder="Re-enter password" className="h-11" required />
-          </div>
+            <div>
+              <Label htmlFor="confirmPassword" className="text-sm font-medium mb-1.5 block text-neutral-700">
+                Confirm Password
+              </Label>
+              <Input
+                id="confirmPassword"
+                type="password"
+                value={form.confirmPassword}
+                onChange={(e) => setForm({ ...form, confirmPassword: e.target.value })}
+                placeholder="Re-enter your password"
+                className="h-11"
+                required
+              />
+            </div>
 
-          <Button type="submit" disabled={loading || !form.email || !form.password || !form.displayName} className="w-full h-11 bg-foreground text-background hover:bg-foreground/90 font-medium">
-            {loading ? (<><Loader2 className="h-4 w-4 mr-2 animate-spin" />Creating Account...</>) : "Create Super Admin Account"}
-          </Button>
-        </form>
-
-        <div className="mt-6 text-center">
-          <p className="text-sm text-muted-foreground">
-            Already registered?{" "}
-            <Link href="/auth/login" className="text-foreground font-medium underline underline-offset-4 hover:text-foreground/80">Sign In</Link>
-          </p>
+            <Button
+              type="submit"
+              disabled={loading || !form.email || !form.password || !form.displayName}
+              className="w-full h-11 font-semibold text-white"
+              style={{ background: "#3D0814" }}
+            >
+              {loading ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Creating Account...
+                </>
+              ) : (
+                "Create Super Admin Account"
+              )}
+            </Button>
+          </form>
         </div>
 
-        <div className="mt-8 text-center">
-          <Link href="/" className="text-xs text-muted-foreground hover:text-foreground transition-colors">Back to store</Link>
+        <div className="mt-6 text-center space-y-2">
+          <p className="text-sm text-neutral-500">
+            Already registered?{" "}
+            <Link href="/auth/login" className="font-medium underline underline-offset-4 hover:opacity-80" style={{ color: "#3D0814" }}>
+              Sign In
+            </Link>
+          </p>
+          <Link href="/" className="text-xs text-neutral-400 hover:text-neutral-600 transition-colors block">
+            Back to store
+          </Link>
         </div>
       </div>
     </div>
