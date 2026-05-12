@@ -330,12 +330,6 @@ function CarePacksInner() {
           {/* Content */}
           <div className="relative z-10 mx-auto max-w-7xl px-6 lg:px-8 flex items-center" style={{ minHeight: 280 }}>
             <div>
-              <span
-                className="inline-block text-xs font-bold uppercase tracking-widest mb-3 px-3 py-1 rounded-full"
-                style={{ background: "rgba(249,115,22,0.25)", color: "#f97316", border: "1px solid rgba(249,115,22,0.4)" }}
-              >
-                Shaniid RX
-              </span>
               <h1
                 className="text-4xl lg:text-6xl font-black text-white leading-tight"
                 style={{ textShadow: "0 2px 20px rgba(0,0,0,0.3)" }}
