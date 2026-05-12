@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { Link } from "wouter"
+import { Link, useLocation } from "wouter"
 import { TopBar } from "@/components/store/top-bar"
 import { Navbar } from "@/components/store/navbar"
 import { Footer } from "@/components/store/footer"
@@ -84,6 +84,8 @@ export default function AccountRegisterPage() {
     return e
   }
 
+  const [, navigate] = useLocation()
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     const errs = validate()
@@ -92,7 +94,9 @@ export default function AccountRegisterPage() {
     setLoading(true)
     await new Promise((r) => setTimeout(r, 1100))
     setLoading(false)
-    setSuccess(true)
+    // Mask the phone number and redirect to phone verification
+    const masked = "****" + form.phone.replace(/\D/g, "").slice(-4)
+    navigate(`/account/verify-phone?phone=${encodeURIComponent(masked)}`)
   }
 
   if (success) {

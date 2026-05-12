@@ -48,6 +48,8 @@ import RegisterPage from "@/pages/auth/register";
 // Account pages (customer-facing)
 import AccountLoginPage from "@/pages/account/login";
 import AccountRegisterPage from "@/pages/account/register";
+import VerifyPhonePage from "@/pages/account/verify-phone";
+import EmailVerifiedPage from "@/pages/account/email-verified";
 
 // Policy pages
 import PolicyPage from "@/pages/policy";
@@ -154,6 +156,8 @@ function Router() {
       {/* Account (customer-facing) */}
       <Route path="/account/login" component={AccountLoginPage} />
       <Route path="/account/register" component={AccountRegisterPage} />
+      <Route path="/account/verify-phone" component={VerifyPhonePage} />
+      <Route path="/account/email-verified" component={EmailVerifiedPage} />
       {/* Admin */}
       <Route path="/admin" component={AdminDashboard} />
       <Route path="/admin/analytics" component={AdminAnalytics} />

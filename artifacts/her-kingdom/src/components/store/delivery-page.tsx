@@ -97,55 +97,18 @@ export function DeliveryPage() {
                 </Link>
               </div>
 
-              {/* Illustration — stylised delivery rider using SVG */}
-              <div className="hidden lg:flex items-end justify-end h-full relative">
-                {/* Decorative circle */}
+              {/* Delivery rider photo */}
+              <div className="hidden lg:flex items-end justify-end h-full relative min-h-[260px]">
                 <div
-                  className="absolute right-0 bottom-0 w-64 h-64 rounded-full opacity-20"
+                  className="absolute right-4 bottom-0 w-72 h-72 rounded-full opacity-25 pointer-events-none"
                   style={{ background: `radial-gradient(circle, ${MAUVE_CARD} 0%, transparent 70%)` }}
                 />
-                {/* SVG Rider illustration */}
-                <svg
-                  viewBox="0 0 340 260"
-                  fill="none"
-                  xmlns="http://www.w3.org/2000/svg"
-                  className="w-80 h-64 relative z-10 drop-shadow-xl"
-                >
-                  {/* Motorcycle body */}
-                  <ellipse cx="200" cy="200" rx="44" ry="18" fill="#C0392B" opacity="0.15" />
-                  <ellipse cx="100" cy="210" rx="30" ry="12" fill="#C0392B" opacity="0.1" />
-                  {/* Wheels */}
-                  <circle cx="100" cy="200" r="32" stroke={WINE} strokeWidth="7" fill="none" />
-                  <circle cx="100" cy="200" r="10" fill={WINE} />
-                  <circle cx="240" cy="200" r="32" stroke={WINE} strokeWidth="7" fill="none" />
-                  <circle cx="240" cy="200" r="10" fill={WINE} />
-                  {/* Frame */}
-                  <path d="M100 200 L160 145 L220 145 L240 200" stroke={WINE} strokeWidth="7" strokeLinejoin="round" fill="none" />
-                  <path d="M160 145 L175 200" stroke={WINE} strokeWidth="5" strokeLinejoin="round" />
-                  <path d="M220 145 L195 115 L170 115" stroke={WINE} strokeWidth="5" strokeLinejoin="round" />
-                  {/* Handlebar */}
-                  <path d="M220 145 L235 130" stroke={WINE} strokeWidth="5" strokeLinecap="round" />
-                  <path d="M232 128 L245 133" stroke={WINE} strokeWidth="4" strokeLinecap="round" />
-                  {/* Seat / rider body */}
-                  <rect x="155" y="100" width="50" height="45" rx="6" fill="#E11D48" />
-                  {/* Helmet */}
-                  <circle cx="182" cy="82" r="24" fill="#E11D48" />
-                  <path d="M162 88 Q182 105 202 88" fill="#C0392B" />
-                  {/* Visor */}
-                  <path d="M167 78 Q182 68 197 78 L195 88 Q182 96 169 88 Z" fill="#1a1a2e" opacity="0.85" />
-                  {/* Box on back */}
-                  <rect x="125" y="120" width="45" height="45" rx="5" fill="#D4924A" />
-                  <rect x="125" y="120" width="45" height="45" rx="5" stroke={WINE} strokeWidth="2" />
-                  {/* Box straps */}
-                  <line x1="147" y1="120" x2="147" y2="165" stroke={WINE} strokeWidth="1.5" />
-                  <line x1="125" y1="142" x2="170" y2="142" stroke={WINE} strokeWidth="1.5" />
-                  {/* Arms */}
-                  <path d="M195 120 Q220 130 235 130" stroke="#E11D48" strokeWidth="8" strokeLinecap="round" fill="none" />
-                  {/* Speed lines */}
-                  <line x1="10" y1="175" x2="55" y2="175" stroke={WINE} strokeWidth="2.5" strokeLinecap="round" opacity="0.25" />
-                  <line x1="20" y1="190" x2="60" y2="190" stroke={WINE} strokeWidth="2" strokeLinecap="round" opacity="0.18" />
-                  <line x1="5" y1="205" x2="40" y2="205" stroke={WINE} strokeWidth="1.5" strokeLinecap="round" opacity="0.13" />
-                </svg>
+                <img
+                  src="/delivery-rider.png"
+                  alt="Delivery rider on scooter"
+                  className="relative z-10 w-[340px] object-contain drop-shadow-2xl"
+                  style={{ maxHeight: 300 }}
+                />
               </div>
             </div>
           </div>
