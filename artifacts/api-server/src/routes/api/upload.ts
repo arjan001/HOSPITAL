@@ -1,6 +1,7 @@
 import { Router } from "express"
 import { createClient } from "../../lib/supabase.js"
 import { rateLimit, rateLimitResponse } from "../../lib/security.js"
+import { requireAdmin } from "../../middlewares/admin-auth.js"
 import multer from "multer"
 
 const router = Router()
@@ -9,20 +10,14 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 
 const IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif", "image/svg+xml"])
 const VIDEO_TYPES = new Set(["video/mp4", "video/webm", "video/ogg", "video/quicktime"])
 
-router.post("/", upload.single("file"), async (req, res, next) => {
+// Uploads are admin-only: the `requireAdmin` middleware enforces a valid
+// Supabase session AND an admin/super_admin/editor role row in admin_users.
+router.post("/", requireAdmin, upload.single("file"), async (req, res, next) => {
   const rl = rateLimit(req, { limit: 10, windowSeconds: 60 })
   if (!rl.success) return rateLimitResponse(res)
 
   try {
     const supabase = createClient()
-
-    const authHeader = req.headers.authorization
-    if (!authHeader?.startsWith("Bearer ")) {
-      return res.status(401).json({ error: "Unauthorized" })
-    }
-    const token = authHeader.slice(7)
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token)
-    if (authError || !user) return res.status(401).json({ error: "Unauthorized" })
 
     const file = req.file
     if (!file) return res.status(400).json({ error: "No file provided" })
