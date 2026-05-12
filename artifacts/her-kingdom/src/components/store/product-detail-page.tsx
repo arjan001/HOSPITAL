@@ -17,8 +17,6 @@ import {
   Share2,
   Check,
   Clock,
-  Stethoscope,
-  Upload,
   ZoomIn,
   X,
   ChevronLeft,
@@ -234,8 +232,12 @@ function ProductDetailPageInner({ slug }: { slug: string }) {
   const [quantity, setQuantity] = useState(1)
   const [selectedVariations, setSelectedVariations] = useState<Record<string, string>>({})
   const [added, setAdded] = useState(false)
-  const [activeTab, setActiveTab] = useState<"overview" | "precautions" | "reviews">("overview")
+  const [activeTab, setActiveTab] = useState<"overview" | "spec" | "howto" | "precautions" | "reviews">("overview")
   const [reviewSort, setReviewSort] = useState("latest")
+  // Hover zoom state for main product image
+  const [imgHovered, setImgHovered] = useState(false)
+  const [zoomOrigin, setZoomOrigin] = useState({ x: 50, y: 50 })
+  const mainImgRef = useRef<HTMLDivElement>(null)
   const recentlyViewed = useRecentlyViewed(product?.id)
 
   // Persist this product to recently-viewed
@@ -406,19 +408,31 @@ function ProductDetailPageInner({ slug }: { slug: string }) {
                 </div>
 
                 <div
-                  className="relative flex-1 aspect-square overflow-hidden rounded-2xl group"
+                  ref={mainImgRef}
+                  className="relative flex-1 aspect-square overflow-hidden rounded-2xl"
                   style={{
-                    background:
-                      "linear-gradient(155deg, #FFF6EB 0%, #FFE9D4 100%)",
+                    background: "linear-gradient(155deg, #FFF6EB 0%, #FFE9D4 100%)",
                     border: `1px solid ${PEACH_BORDER}`,
-                    boxShadow:
-                      "0 1px 0 rgba(255,255,255,0.7) inset, 0 24px 60px -30px rgba(61,8,20,0.35)",
+                    boxShadow: "0 1px 0 rgba(255,255,255,0.7) inset, 0 24px 60px -30px rgba(61,8,20,0.35)",
+                    cursor: imgHovered ? "zoom-out" : "zoom-in",
                   }}
+                  onMouseEnter={() => !isVideoUrl(product.images[selectedImage]) && setImgHovered(true)}
+                  onMouseLeave={() => { setImgHovered(false); setZoomOrigin({ x: 50, y: 50 }) }}
+                  onMouseMove={(e) => {
+                    if (!mainImgRef.current || isVideoUrl(product.images[selectedImage])) return
+                    const rect = mainImgRef.current.getBoundingClientRect()
+                    setZoomOrigin({
+                      x: ((e.clientX - rect.left) / rect.width) * 100,
+                      y: ((e.clientY - rect.top) / rect.height) * 100,
+                    })
+                  }}
+                  onClick={() => !isVideoUrl(product.images[selectedImage]) && setLightboxOpen(true)}
                 >
-                  {/* share button */}
+                  {/* Share button */}
                   <button
                     type="button"
-                    onClick={() => {
+                    onClick={(e) => {
+                      e.stopPropagation()
                       if (navigator.share) {
                         navigator.share({ title: product.name, url: productUrl }).catch(() => {})
                       } else if (navigator.clipboard) {
@@ -427,30 +441,19 @@ function ProductDetailPageInner({ slug }: { slug: string }) {
                     }}
                     aria-label="Share product"
                     className="absolute top-3 left-3 z-10 grid place-items-center h-9 w-9 rounded-full transition-transform hover:scale-105"
-                    style={{
-                      background: "rgba(255,255,255,0.85)",
-                      backdropFilter: "blur(6px)",
-                      border: `1px solid ${PEACH_BORDER}`,
-                    }}
+                    style={{ background: "rgba(255,255,255,0.85)", backdropFilter: "blur(6px)", border: `1px solid ${PEACH_BORDER}` }}
                   >
                     <Share2 className="h-4 w-4" style={{ color: WINE }} />
                   </button>
 
-                  {/* zoom icon – visible on hover */}
+                  {/* Fullscreen hint */}
                   {!isVideoUrl(product.images[selectedImage]) && (
-                    <button
-                      type="button"
-                      aria-label="Zoom image"
-                      onClick={() => setLightboxOpen(true)}
-                      className="absolute bottom-3 right-3 z-10 grid place-items-center h-9 w-9 rounded-full opacity-0 group-hover:opacity-100 transition-all hover:scale-110"
-                      style={{
-                        background: "rgba(255,255,255,0.88)",
-                        backdropFilter: "blur(6px)",
-                        border: `1px solid ${PEACH_BORDER}`,
-                      }}
+                    <div
+                      className="absolute bottom-3 right-3 z-10 flex items-center gap-1 text-[10px] font-medium px-2.5 py-1.5 rounded-full pointer-events-none transition-opacity"
+                      style={{ background: "rgba(255,255,255,0.85)", color: WINE, opacity: imgHovered ? 0 : 1 }}
                     >
-                      <ZoomIn className="h-4 w-4" style={{ color: WINE }} />
-                    </button>
+                      <ZoomIn className="h-3 w-3" /> Hover to zoom
+                    </div>
                   )}
 
                   {isVideoUrl(product.images[selectedImage]) ? (
@@ -462,25 +465,25 @@ function ProductDetailPageInner({ slug }: { slug: string }) {
                       className="absolute inset-0 w-full h-full object-contain bg-black"
                     />
                   ) : (
-                    <button
-                      type="button"
-                      aria-label="Open full image"
-                      onClick={() => setLightboxOpen(true)}
-                      className="absolute inset-0 w-full h-full"
-                      style={{ cursor: "zoom-in" }}
-                    >
-                      <ProductImage
+                    <div className="absolute inset-0 overflow-hidden p-6">
+                      <img
                         key={selectedImage}
                         src={product.images[selectedImage] || "/placeholder.svg"}
                         alt={product.name}
-                        className="object-contain p-6 transition-transform duration-300 group-hover:scale-[1.04]"
+                        draggable={false}
+                        className="w-full h-full object-contain select-none"
+                        style={{
+                          transform: imgHovered ? "scale(2.2)" : "scale(1)",
+                          transformOrigin: `${zoomOrigin.x}% ${zoomOrigin.y}%`,
+                          transition: imgHovered ? "transform 0.08s ease-out" : "transform 0.25s ease-out",
+                        }}
                       />
-                    </button>
+                    </div>
                   )}
 
                   {product.isOnOffer && product.offerPercentage && (
                     <span
-                      className="absolute top-3 right-3 text-[11px] font-semibold tracking-wide uppercase px-2.5 py-1 rounded-full text-white"
+                      className="absolute top-3 right-3 z-10 text-[11px] font-semibold tracking-wide uppercase px-2.5 py-1 rounded-full text-white"
                       style={{ background: ACCENT_ORANGE }}
                     >
                       -{product.offerPercentage}%
@@ -822,45 +825,6 @@ function ProductDetailPageInner({ slug }: { slug: string }) {
             </aside>
           </div>
 
-          {/* Sub-nav strip */}
-          <div className="mt-10">
-            <div
-              className="flex items-center gap-3 lg:gap-6 overflow-x-auto rounded-2xl px-4 lg:px-6 py-3"
-              style={{
-                background: "white",
-                border: `1px solid ${PEACH_BORDER}`,
-                boxShadow: "0 14px 30px -22px rgba(61,8,20,0.18)",
-              }}
-            >
-              <SubNavLink href={`/shop?category=${product.categorySlug}`} label="Shop by Category" />
-              <SubNavLink href="/shop" label="Shop by Condition" />
-              <SubNavLink href="/shop" label="Shop by Brand" />
-              <SubNavLink href="/services" label="Services" />
-              <SubNavLink href="/services" label="My Health Center" />
-              <div className="ml-auto hidden md:flex items-center gap-2">
-                <Link
-                  href="/talk-to-doctor"
-                  className="inline-flex items-center gap-1.5 px-4 h-9 rounded-full text-[12.5px] font-semibold whitespace-nowrap text-white transition-transform hover:scale-[1.02]"
-                  style={{
-                    background: `linear-gradient(135deg, ${WINE} 0%, ${WINE_SOFT} 100%)`,
-                    boxShadow: "0 10px 20px -10px rgba(61,8,20,0.4)",
-                  }}
-                >
-                  <Stethoscope className="h-3.5 w-3.5" /> Speak to a Doctor
-                </Link>
-                <Link
-                  href="/prescription"
-                  className="inline-flex items-center gap-1.5 px-4 h-9 rounded-full text-[12.5px] font-semibold whitespace-nowrap text-white transition-transform hover:scale-[1.02]"
-                  style={{
-                    background: `linear-gradient(135deg, ${ACCENT_ORANGE} 0%, #E04E10 100%)`,
-                    boxShadow: "0 10px 20px -10px rgba(249,115,22,0.45)",
-                  }}
-                >
-                  <Upload className="h-3.5 w-3.5" /> Upload a Prescription
-                </Link>
-              </div>
-            </div>
-          </div>
 
           {/* ── Product Content Tabs ── */}
           {(() => {
@@ -903,16 +867,18 @@ function ProductDetailPageInner({ slug }: { slug: string }) {
 
             const TABS = [
               { id: "overview",     label: "Overview" },
+              { id: "spec",         label: "Product specification" },
+              { id: "howto",        label: "How to use" },
               { id: "precautions",  label: "Precautions & Disclaimer" },
               { id: "reviews",      label: "Reviews" },
             ] as const
 
             return (
               <section className="mt-8">
-                {/* Tab bar */}
+                {/* Tab bar — clean underline style matching reference */}
                 <div
-                  className="flex items-center gap-0 border-b"
-                  style={{ borderColor: PEACH_BORDER }}
+                  className="flex items-center gap-0 overflow-x-auto border-b"
+                  style={{ borderColor: "#e5e7eb" }}
                 >
                   {TABS.map((tab) => {
                     const isActive = activeTab === tab.id
@@ -920,21 +886,20 @@ function ProductDetailPageInner({ slug }: { slug: string }) {
                       <button
                         key={tab.id}
                         type="button"
-                        onClick={() => setActiveTab(tab.id)}
-                        className="relative px-5 py-3 text-sm font-semibold transition-colors whitespace-nowrap"
+                        onClick={() => setActiveTab(tab.id as typeof activeTab)}
+                        className="relative px-4 py-3 text-sm whitespace-nowrap transition-colors"
                         style={{
-                          color: isActive ? WINE : "#9ca3af",
-                          borderBottom: isActive ? `2.5px solid ${WINE}` : "2.5px solid transparent",
+                          color: isActive ? "#111827" : "#6b7280",
+                          fontWeight: isActive ? 600 : 400,
+                          borderBottom: isActive ? "2px solid #111827" : "2px solid transparent",
                           marginBottom: -1,
+                          background: "transparent",
                         }}
                       >
                         {tab.label}
                         {tab.id === "reviews" && (
-                          <span
-                            className="ml-1.5 text-[11px] px-1.5 py-0.5 rounded-full font-bold"
-                            style={{ background: "#FFF1E2", color: WINE_SOFT }}
-                          >
-                            {reviewsCount}
+                          <span className="ml-1.5 text-[11px] text-neutral-400">
+                            ({reviewsCount})
                           </span>
                         )}
                       </button>
@@ -942,16 +907,8 @@ function ProductDetailPageInner({ slug }: { slug: string }) {
                   })}
                 </div>
 
-                {/* Tab content */}
-                <div
-                  className="rounded-b-2xl p-6 lg:p-8"
-                  style={{
-                    background: "white",
-                    border: `1px solid ${PEACH_BORDER}`,
-                    borderTop: "none",
-                    boxShadow: "0 14px 30px -22px rgba(61,8,20,0.18)",
-                  }}
-                >
+                {/* Tab content — white, no card styling */}
+                <div className="pt-6 pb-8"  style={{ background: "white" }}>
                   {/* ── Overview ── */}
                   {activeTab === "overview" && (
                     <div>
@@ -979,55 +936,116 @@ function ProductDetailPageInner({ slug }: { slug: string }) {
                     </div>
                   )}
 
+                  {/* ── Product specification ── */}
+                  {activeTab === "spec" && (
+                    <div className="max-w-3xl">
+                      <table className="w-full text-sm border-collapse">
+                        <tbody>
+                          {[
+                            ["Category",      product.category],
+                            ["Brand",         product.tags[0] ?? "Shaniid RX"],
+                            ["Price",         formatPrice(product.price)],
+                            ["Availability",  product.inStock ? "In Stock" : "Out of Stock"],
+                            ["SKU",           product.id.slice(0, 8).toUpperCase()],
+                            ["Tags",          product.tags.join(", ") || "—"],
+                          ].map(([label, value], i) => (
+                            <tr key={label} className="border-b last:border-b-0" style={{ borderColor: "#f3f4f6" }}>
+                              <td className="py-3 pr-6 text-neutral-500 font-medium w-44" style={{ background: i % 2 === 0 ? "#fafafa" : "white" }}>
+                                {label}
+                              </td>
+                              <td className="py-3 text-neutral-800" style={{ background: i % 2 === 0 ? "#fafafa" : "white" }}>
+                                {value}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+
+                  {/* ── How to use ── */}
+                  {activeTab === "howto" && (
+                    <div className="max-w-3xl space-y-5">
+                      <div>
+                        <h3 className="text-sm font-semibold text-neutral-800 mb-3">Directions for Use</h3>
+                        <ol className="space-y-3 text-sm text-neutral-600 leading-relaxed list-none">
+                          {[
+                            "Read the full product label carefully before use.",
+                            "Follow the dosage instructions as indicated on the packaging or as directed by your pharmacist.",
+                            "Take with a full glass of water unless otherwise specified.",
+                            "Do not crush, chew, or break tablets unless instructed to do so.",
+                            "If a dose is missed, take it as soon as you remember — do not double up.",
+                            "Complete the full course of treatment even if symptoms improve.",
+                          ].map((step, i) => (
+                            <li key={i} className="flex items-start gap-3">
+                              <span className="flex-shrink-0 w-5 h-5 rounded-full text-[11px] font-bold flex items-center justify-center text-white mt-0.5" style={{ background: WINE }}>
+                                {i + 1}
+                              </span>
+                              {step}
+                            </li>
+                          ))}
+                        </ol>
+                      </div>
+                      <div>
+                        <h3 className="text-sm font-semibold text-neutral-800 mb-2">Storage</h3>
+                        <p className="text-sm text-neutral-600 leading-relaxed">
+                          Store in a cool, dry place below 25&deg;C. Keep away from direct sunlight, heat, and moisture. Keep out of reach of children.
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
                   {/* ── Precautions & Disclaimer ── */}
                   {activeTab === "precautions" && (
-                    <div className="space-y-5 max-w-3xl">
-                      {[
-                        {
-                          icon: "⚠️",
-                          title: "Warnings & Precautions",
-                          items: [
+                    <div className="max-w-3xl space-y-7">
+                      <div>
+                        <h3 className="text-sm font-semibold text-neutral-800 mb-3">Warnings &amp; Precautions</h3>
+                        <ul className="space-y-2.5 text-sm text-neutral-600 leading-relaxed">
+                          {[
                             "Keep out of reach of children.",
                             "Do not exceed the recommended dose unless advised by a healthcare professional.",
                             "Stop use and consult a pharmacist or doctor if symptoms persist or worsen.",
                             "If you are pregnant, planning to become pregnant, or breastfeeding, seek medical advice before use.",
                             "Do not use if you have a known allergy to any of the listed ingredients.",
                             "Store in a cool, dry place away from direct sunlight and moisture.",
-                          ],
-                        },
-                        {
-                          icon: "💊",
-                          title: "Drug Interactions",
-                          items: [
+                          ].map((item, i) => (
+                            <li key={i} className="flex items-start gap-2.5">
+                              <span className="mt-2 w-1.5 h-1.5 rounded-full flex-shrink-0 bg-neutral-400" />
+                              {item}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                      <div>
+                        <h3 className="text-sm font-semibold text-neutral-800 mb-3">Drug Interactions</h3>
+                        <ul className="space-y-2.5 text-sm text-neutral-600 leading-relaxed">
+                          {[
                             "Inform your doctor or pharmacist of all medications you are currently taking.",
                             "This product may interact with certain prescription drugs, supplements, or herbal remedies.",
                             "Always disclose your full medication list before starting any new treatment.",
-                          ],
-                        },
-                        {
-                          icon: "📋",
-                          title: "Disclaimer",
-                          items: [
+                          ].map((item, i) => (
+                            <li key={i} className="flex items-start gap-2.5">
+                              <span className="mt-2 w-1.5 h-1.5 rounded-full flex-shrink-0 bg-neutral-400" />
+                              {item}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                      <div>
+                        <h3 className="text-sm font-semibold text-neutral-800 mb-3">Disclaimer</h3>
+                        <ul className="space-y-2.5 text-sm text-neutral-600 leading-relaxed">
+                          {[
                             "This product is intended to supplement, not replace, professional medical advice, diagnosis, or treatment.",
                             "Shaniid RX sources all products directly from licensed manufacturers and distributors verified by the Pharmacy and Poisons Board of Kenya.",
                             "Product information is for general informational purposes. Always consult a qualified healthcare provider for personal medical guidance.",
-                          ],
-                        },
-                      ].map((section) => (
-                        <div key={section.title} className="rounded-xl p-4" style={{ background: "#FFF6EE", border: `1px solid ${PEACH_BORDER}` }}>
-                          <p className="font-bold text-sm mb-3" style={{ color: WINE }}>
-                            {section.icon} {section.title}
-                          </p>
-                          <ul className="space-y-2">
-                            {section.items.map((item, i) => (
-                              <li key={i} className="flex items-start gap-2 text-sm text-neutral-600">
-                                <span className="mt-1.5 w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: ACCENT_ORANGE }} />
-                                {item}
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-                      ))}
+                          ].map((item, i) => (
+                            <li key={i} className="flex items-start gap-2.5">
+                              <span className="mt-2 w-1.5 h-1.5 rounded-full flex-shrink-0 bg-neutral-400" />
+                              {item}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
                     </div>
                   )}
 
@@ -1254,14 +1272,3 @@ function TrustChip({
   )
 }
 
-function SubNavLink({ href, label }: { href: string; label: string }) {
-  return (
-    <Link
-      href={href}
-      className="text-[13px] font-medium whitespace-nowrap hover:opacity-80 transition-opacity"
-      style={{ color: WINE }}
-    >
-      {label}
-    </Link>
-  )
-}
