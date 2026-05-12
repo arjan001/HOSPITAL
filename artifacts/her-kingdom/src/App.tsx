@@ -41,9 +41,13 @@ import { AdminProducts } from "@/components/admin/products";
 import { AdminSettings } from "@/components/admin/settings";
 import { UsersManagement } from "@/components/admin/users";
 
-// Auth pages
+// Auth pages (admin)
 import LoginPage from "@/pages/auth/login";
 import RegisterPage from "@/pages/auth/register";
+
+// Account pages (customer-facing)
+import AccountLoginPage from "@/pages/account/login";
+import AccountRegisterPage from "@/pages/account/register";
 
 // Policy pages
 import PolicyPage from "@/pages/policy";
@@ -144,9 +148,12 @@ function Router() {
       <Route path="/policies/:slug">
         {(params) => <PolicyPage slug={params.slug} />}
       </Route>
-      {/* Auth */}
+      {/* Auth (admin) */}
       <Route path="/auth/login" component={LoginPage} />
       <Route path="/auth/register" component={RegisterPage} />
+      {/* Account (customer-facing) */}
+      <Route path="/account/login" component={AccountLoginPage} />
+      <Route path="/account/register" component={AccountRegisterPage} />
       {/* Admin */}
       <Route path="/admin" component={AdminDashboard} />
       <Route path="/admin/analytics" component={AdminAnalytics} />

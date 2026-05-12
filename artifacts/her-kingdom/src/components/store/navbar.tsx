@@ -5,7 +5,7 @@ import { Link } from "wouter"
 
 import { useState, useRef, useEffect } from "react"
 import { useLocation } from "wouter"
-import { Search, ShoppingBag, Menu, ChevronDown, PhoneCall, User, Package, Camera, Heart } from "lucide-react"
+import { Search, ShoppingBag, Menu, ChevronDown, PhoneCall, User, Package, Camera, Heart, Settings, PackageCheck } from "lucide-react"
 import { useCart } from "@/lib/cart-context"
 import { useWishlist } from "@/lib/wishlist-context"
 import type { Product, Category } from "@/lib/types"
@@ -83,7 +83,9 @@ export function Navbar() {
   const [suggestions, setSuggestions] = useState<Product[]>([])
   const [showSuggestions, setShowSuggestions] = useState(false)
   const [shopOpen, setShopOpen] = useState(false)
+  const [accountOpen, setAccountOpen] = useState(false)
   const searchRef = useRef<HTMLDivElement>(null)
+  const accountRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     if (searchQuery.trim().length >= 2 && allProducts.length > 0) {
@@ -277,14 +279,129 @@ export function Navbar() {
                 <span>Delivery</span>
               </Link>
 
-              <Link
-                href="/auth/login"
-                className="hidden lg:inline-flex items-center gap-2 text-sm font-semibold transition-opacity hover:opacity-80"
-                style={{ color: TEXT_WINE }}
+              {/* Account dropdown */}
+              <div
+                ref={accountRef}
+                className="hidden lg:block relative"
+                onMouseEnter={() => setAccountOpen(true)}
+                onMouseLeave={() => setAccountOpen(false)}
               >
-                <User className="h-5 w-5" style={{ color: ACCENT_RED }} />
-                <span>Login/ Register</span>
-              </Link>
+                <button
+                  type="button"
+                  className="inline-flex items-center gap-1.5 text-sm font-semibold transition-opacity hover:opacity-80"
+                  style={{ color: TEXT_WINE }}
+                >
+                  <User className="h-5 w-5" style={{ color: ACCENT_RED }} />
+                  <span>Account</span>
+                </button>
+
+                {/* Glassmorphism dropdown */}
+                {accountOpen && (
+                  <div className="absolute top-full right-0 pt-3 w-72 z-50">
+                    <div
+                      className="rounded-2xl overflow-hidden"
+                      style={{
+                        background: "rgba(255,251,245,0.88)",
+                        backdropFilter: "blur(24px)",
+                        WebkitBackdropFilter: "blur(24px)",
+                        border: "1px solid rgba(242,220,200,0.8)",
+                        boxShadow: "0 28px 60px -16px rgba(61,8,20,0.25), 0 8px 20px -8px rgba(61,8,20,0.1), inset 0 1px 0 rgba(255,255,255,0.85)",
+                      }}
+                    >
+                      {/* Header */}
+                      <div
+                        className="px-5 py-4 border-b"
+                        style={{
+                          background: "linear-gradient(135deg, rgba(255,228,200,0.75) 0%, rgba(255,205,170,0.5) 100%)",
+                          borderColor: "rgba(242,220,200,0.7)",
+                        }}
+                      >
+                        <p className="font-extrabold text-sm" style={{ color: TEXT_WINE }}>My Account</p>
+                        <p className="text-xs mt-0.5" style={{ color: TEXT_WINE_SOFT }}>
+                          Sign in for a more personalized experience
+                        </p>
+                      </div>
+
+                      {/* CTA buttons */}
+                      <div className="px-5 py-4 flex gap-3 border-b" style={{ borderColor: "rgba(242,220,200,0.6)" }}>
+                        <Link
+                          href="/account/login"
+                          className="flex-1 h-10 rounded-xl font-bold text-sm flex items-center justify-center text-white transition-transform hover:scale-[1.02]"
+                          style={{
+                            background: `linear-gradient(135deg, ${ACCENT_ORANGE} 0%, ${ACCENT_RED} 100%)`,
+                            boxShadow: "0 8px 20px -8px rgba(185,28,28,0.45)",
+                          }}
+                          onClick={() => setAccountOpen(false)}
+                        >
+                          Log In
+                        </Link>
+                        <Link
+                          href="/account/register"
+                          className="flex-1 h-10 rounded-xl font-bold text-sm flex items-center justify-center transition-colors hover:bg-[#FFF1E2]"
+                          style={{
+                            border: `1.5px solid ${PILL_BORDER}`,
+                            color: TEXT_WINE,
+                            background: "rgba(255,255,255,0.7)",
+                          }}
+                          onClick={() => setAccountOpen(false)}
+                        >
+                          Create Account
+                        </Link>
+                      </div>
+
+                      {/* Quick links */}
+                      <div className="py-2">
+                        {[
+                          {
+                            icon: <PackageCheck className="h-5 w-5" />,
+                            label: "Orders",
+                            desc: "View and track online orders",
+                            href: "/track-order",
+                          },
+                          {
+                            icon: <Heart className="h-5 w-5" />,
+                            label: "Favourites",
+                            desc: "View saved products",
+                            href: "/wishlist",
+                            iconColor: ACCENT_RED,
+                          },
+                          {
+                            icon: <Settings className="h-5 w-5" />,
+                            label: "Account Settings",
+                            desc: "Contact info, addresses, password",
+                            href: "/account/login",
+                          },
+                        ].map((item) => (
+                          <Link
+                            key={item.label}
+                            href={item.href}
+                            className="flex items-center gap-3 px-5 py-3 transition-colors hover:bg-[#FFF6EE]"
+                            onClick={() => setAccountOpen(false)}
+                          >
+                            <span
+                              className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
+                              style={{
+                                background: "rgba(242,220,200,0.5)",
+                                color: item.iconColor || TEXT_WINE_SOFT,
+                              }}
+                            >
+                              {item.icon}
+                            </span>
+                            <div>
+                              <p className="text-sm font-semibold leading-tight" style={{ color: TEXT_WINE }}>
+                                {item.label}
+                              </p>
+                              <p className="text-xs mt-0.5" style={{ color: TEXT_WINE_SOFT }}>
+                                {item.desc}
+                              </p>
+                            </div>
+                          </Link>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
 
               <Link
                 href="/wishlist"
