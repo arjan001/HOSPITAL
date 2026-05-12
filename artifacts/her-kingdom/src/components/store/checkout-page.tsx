@@ -557,42 +557,119 @@ export function CheckoutPage() {
   if (orderResult) {
     const isWhatsApp = orderResult.orderNumber === "WhatsApp"
     const isMpesa    = orderResult.paymentMethod === "mpesa"
+    const isCard     = orderResult.paymentMethod === "card"
     const trackUrl   = isWhatsApp ? "/track-order" : `/track-order/${orderResult.orderNumber}`
+
     return (
-      <div className="min-h-screen flex flex-col bg-white">
+      <div className="min-h-screen flex flex-col" style={{ background: CREAM }}>
         <TopBar /><Navbar />
-        <main className="flex-1 flex items-center justify-center py-16">
-          <div className="max-w-lg w-full mx-auto px-4 text-center">
-            <div className="relative w-24 h-24 mx-auto mb-6">
-              <div className="absolute inset-0 rounded-full animate-ping" style={{ background: "rgba(61,8,20,0.1)", animationDuration: "2s" }} />
-              <div className="relative w-24 h-24 rounded-full flex items-center justify-center" style={{ background: "rgba(61,8,20,0.1)" }}>
-                <CheckCircle className="h-12 w-12" style={{ color: WINE_CARD }} />
+
+        <main className="flex-1 flex flex-col items-center justify-center py-12 px-4">
+
+          {/* Hero gradient card */}
+          <div
+            className="w-full max-w-md rounded-3xl overflow-hidden shadow-2xl"
+            style={{ background: `linear-gradient(160deg, ${WINE} 0%, ${WINE_CARD} 55%, #9B3A4A 100%)` }}
+          >
+            {/* Top glow band */}
+            <div className="h-1 w-full" style={{ background: `linear-gradient(90deg, ${ORANGE}, ${PEACH_MED}, ${ORANGE})` }} />
+
+            <div className="px-8 py-10 text-center">
+              {/* Pulsing check icon */}
+              <div className="relative w-24 h-24 mx-auto mb-6">
+                <div
+                  className="absolute inset-0 rounded-full animate-ping opacity-30"
+                  style={{ background: PEACH_LIGHT, animationDuration: "2s" }}
+                />
+                <div
+                  className="relative w-24 h-24 rounded-full flex items-center justify-center"
+                  style={{ background: "rgba(255,251,245,0.15)", border: "2px solid rgba(255,251,245,0.3)" }}
+                >
+                  <CheckCircle className="h-12 w-12" style={{ color: PEACH_LIGHT }} />
+                </div>
               </div>
-            </div>
-            <h1 className="text-3xl font-bold mb-2" style={{ color: WINE }}>Order Placed!</h1>
-            {!isWhatsApp && (
-              <div className="inline-flex items-center gap-2 px-4 py-2 rounded-xl mb-6" style={{ background: PEACH_LIGHT }}>
-                <span className="text-xs" style={{ color: WINE_CARD }}>Order No:</span>
-                <span className="text-sm font-bold" style={{ color: WINE }}>{orderResult.orderNumber}</span>
+
+              <h1 className="text-3xl font-bold text-white mb-1">Order Confirmed!</h1>
+              <p className="text-sm mb-5" style={{ color: "rgba(255,251,245,0.7)" }}>
+                Thank you for shopping with Shaniid RX
+              </p>
+
+              {/* Order number pill */}
+              {!isWhatsApp && (
+                <div
+                  className="inline-flex items-center gap-2 px-5 py-2 rounded-full mb-5"
+                  style={{ background: "rgba(255,251,245,0.15)", border: "1px solid rgba(255,251,245,0.25)" }}
+                >
+                  <span className="text-xs" style={{ color: "rgba(255,251,245,0.6)" }}>Order No</span>
+                  <span className="text-sm font-bold text-white tracking-wide">{orderResult.orderNumber}</span>
+                </div>
+              )}
+
+              {/* Payment status row */}
+              <div
+                className="flex items-center justify-center gap-2 px-4 py-3 rounded-2xl mb-6"
+                style={{ background: "rgba(255,251,245,0.1)" }}
+              >
+                {isMpesa && (
+                  <>
+                    <div className="w-5 h-5 rounded-full bg-green-400 flex items-center justify-center flex-shrink-0">
+                      <CheckCircle className="h-3 w-3 text-white" />
+                    </div>
+                    <p className="text-sm text-white font-medium">M-PESA payment received</p>
+                  </>
+                )}
+                {isCard && (
+                  <>
+                    <div className="w-5 h-5 rounded-full bg-blue-400 flex items-center justify-center flex-shrink-0">
+                      <CheckCircle className="h-3 w-3 text-white" />
+                    </div>
+                    <p className="text-sm text-white font-medium">Card payment processed</p>
+                  </>
+                )}
+                {isWhatsApp && (
+                  <>
+                    <div className="w-5 h-5 rounded-full bg-green-400 flex items-center justify-center flex-shrink-0">
+                      <CheckCircle className="h-3 w-3 text-white" />
+                    </div>
+                    <p className="text-sm text-white font-medium">Complete on WhatsApp</p>
+                  </>
+                )}
+                {!isMpesa && !isCard && !isWhatsApp && (
+                  <p className="text-sm text-white font-medium">We'll contact you to confirm delivery</p>
+                )}
               </div>
-            )}
-            <p className="text-sm mb-8" style={{ color: "#6b7280" }}>
-              {isMpesa ? "M-PESA payment received. Await confirmation." : isWhatsApp ? "Complete your order on WhatsApp." : "We'll contact you to confirm delivery."}
-            </p>
-            <div className="flex flex-col gap-3">
-              <button onClick={() => navigate(trackUrl)}
-                className="w-full h-12 rounded-2xl font-bold text-white flex items-center justify-center gap-2"
-                style={{ background: `linear-gradient(135deg, ${WINE_CARD}, ${WINE})` }}>
-                <Truck className="h-4 w-4" /> Track My Order
-              </button>
-              <Link href="/shop" className="w-full">
-                <button className="w-full h-12 rounded-2xl font-semibold border" style={{ borderColor: PEACH_MED, color: WINE }}>
-                  Continue Shopping
+
+              {/* Action buttons */}
+              <div className="flex flex-col gap-3">
+                <button
+                  onClick={() => navigate(trackUrl)}
+                  className="w-full h-12 rounded-2xl font-bold flex items-center justify-center gap-2 transition-opacity hover:opacity-90"
+                  style={{ background: `linear-gradient(135deg, ${ORANGE} 0%, #ea580c 100%)`, color: "#fff" }}
+                >
+                  <Truck className="h-4 w-4" />
+                  Track My Order
                 </button>
-              </Link>
+                <Link href="/shop" className="w-full">
+                  <button
+                    className="w-full h-12 rounded-2xl font-semibold transition-colors hover:opacity-80"
+                    style={{ background: "rgba(255,251,245,0.15)", border: "1px solid rgba(255,251,245,0.3)", color: CREAM }}
+                  >
+                    Continue Shopping
+                  </button>
+                </Link>
+              </div>
             </div>
+
+            {/* Bottom peach gradient band */}
+            <div className="h-1.5 w-full" style={{ background: `linear-gradient(90deg, ${WINE}, ${ORANGE}, ${WINE})` }} />
           </div>
+
+          {/* Below-card note */}
+          <p className="mt-6 text-xs text-center max-w-xs" style={{ color: "#9ca3af" }}>
+            A receipt will be sent to your phone via SMS &amp; WhatsApp after confirmation by our team.
+          </p>
         </main>
+
         <Footer />
       </div>
     )
