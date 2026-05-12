@@ -1,15 +1,28 @@
 "use client"
 
 import { useState, useMemo, useEffect, type ReactNode } from "react"
+import { Link } from "wouter"
 
-import { SlidersHorizontal, Grid3X3, LayoutList, X, Search } from "lucide-react"
+import {
+  SlidersHorizontal,
+  X,
+  Search,
+  ChevronDown,
+  ChevronUp,
+  Pill,
+  Stethoscope,
+  Activity,
+  HeartPulse,
+  Dumbbell,
+  Baby,
+  User as UserIcon,
+} from "lucide-react"
 import { usePagination } from "@/hooks/use-pagination"
 import { PaginationControls } from "@/components/pagination-controls"
 import { TopBar } from "./top-bar"
 import { Navbar } from "./navbar"
 import { Footer } from "./footer"
 import { ProductCard } from "./product-card"
-import { CategoryBreadcrumb } from "./category-breadcrumb"
 import type { Product, Category } from "@/lib/types"
 import { Slider } from "@/components/ui/slider"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -22,12 +35,74 @@ function formatPrice(price: number): string {
   return `KSh ${price.toLocaleString()}`
 }
 
+const TEXT_WINE = "#3D0814"
+const TEXT_WINE_SOFT = "#6B0F1A"
+const ACCENT_RED = "#B91C1C"
+const ACCENT_ORANGE = "#F97316"
+const PEACH_BORDER = "#F2DCC8"
+const PEACH_GRADIENT =
+  "linear-gradient(115deg, #FCE3CB 0%, #F8CDB1 50%, #F1B59A 100%)"
+const PEACH_TAB_GRADIENT =
+  "linear-gradient(135deg, #FFE7D1 0%, #F8CFB3 100%)"
+
 const sortOptions = [
-  { value: "random", label: "Random" },
+  { value: "random", label: "Recommended" },
   { value: "newest", label: "Newest" },
   { value: "price-low", label: "Price: Low to High" },
   { value: "price-high", label: "Price: High to Low" },
   { value: "name", label: "Name A-Z" },
+]
+
+// Top tab strip categories — visual grouping that filters by collection.
+type TopTab = {
+  key: string
+  label: string
+  match: (p: Product) => boolean
+}
+
+const topTabs: TopTab[] = [
+  { key: "all", label: "All", match: () => true },
+  {
+    key: "otc",
+    label: "OTC",
+    match: (p) =>
+      p.categorySlug === "medications" ||
+      p.tags.some((t) => /otc|over.the.counter|pain|cold|flu|fever/i.test(t)),
+  },
+  {
+    key: "care-packs",
+    label: "Care packs",
+    match: (p) =>
+      p.collection === "care-packs" ||
+      p.tags.some((t) => /care.?pack/i.test(t)),
+  },
+  {
+    key: "devices",
+    label: "Devices",
+    match: (p) =>
+      p.categorySlug === "devices" ||
+      p.tags.some((t) => /device|monitor|thermometer|meter/i.test(t)),
+  },
+  {
+    key: "supplements",
+    label: "Supplements",
+    match: (p) =>
+      p.categorySlug === "supplements" ||
+      p.tags.some((t) => /supplement|vitamin|protein/i.test(t)),
+  },
+  {
+    key: "gym",
+    label: "GYM",
+    match: (p) =>
+      p.tags.some((t) => /gym|fitness|protein|sport|workout/i.test(t)),
+  },
+]
+
+const carePackOptions = [
+  { id: "diabetes", label: "Diabetes Care Packs", match: /diabet/i },
+  { id: "bp", label: "Blood Pressure Care Packs", match: /blood.?pressure|hypertension/i },
+  { id: "asthma", label: "Asthma & Respiratory Packs", match: /asthma|respirat|inhal/i },
+  { id: "cold-flu", label: "Cold & Flu Pack", match: /cold|flu/i },
 ]
 
 function mulberry32(seed: number) {
@@ -50,41 +125,209 @@ function shuffleWithSeed<T>(items: T[], seed: number): T[] {
   return arr
 }
 
-function FilterSidebar({
-  categories, selectedCategory, setSelectedCategory, priceRange, setPriceRange, showNew, setShowNew, showOffers, setShowOffers, maxPrice,
-}: {
-  categories: Category[]; selectedCategory: string; setSelectedCategory: (cat: string) => void; priceRange: number[]; setPriceRange: (range: number[]) => void; showNew: boolean; setShowNew: (show: boolean) => void; showOffers: boolean; setShowOffers: (show: boolean) => void; maxPrice: number
-}) {
+// ---- Sidebar accordion ---------------------------------------------------
+
+type SidebarGroupProps = {
+  id: string
+  title: string
+  icon: React.ComponentType<React.SVGProps<SVGSVGElement>>
+  open: boolean
+  onToggle: () => void
+  children: ReactNode
+}
+
+function SidebarGroup({ id, title, icon: Icon, open, onToggle, children }: SidebarGroupProps) {
   return (
-    <div className="space-y-8">
-      <div className="border border-pink-200 rounded-sm overflow-hidden">
-        <h3 className="text-sm font-semibold bg-pink-200 text-foreground px-4 py-3">Product Range</h3>
-        <div className="flex flex-col">
-          <button type="button" onClick={() => setSelectedCategory("")} className={`text-left text-sm px-4 py-3 border-t border-pink-200 transition-colors ${selectedCategory === "" ? "bg-pink-200 font-semibold text-foreground" : "text-foreground hover:bg-pink-50"}`}>All Categories</button>
+    <div
+      className="rounded-2xl overflow-hidden"
+      style={{
+        background: "#FFFFFF",
+        border: `1px solid ${PEACH_BORDER}`,
+        boxShadow: "0 8px 22px -18px rgba(184,60,30,0.35)",
+      }}
+    >
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={open}
+        aria-controls={`sidebar-group-${id}`}
+        className="w-full flex items-center justify-between gap-3 px-4 py-3.5 text-left transition-colors hover:bg-[#FFF6EE]"
+        style={{ color: TEXT_WINE }}
+      >
+        <span className="flex items-center gap-2.5">
+          <span
+            className="inline-flex items-center justify-center w-7 h-7 rounded-full"
+            style={{ background: PEACH_TAB_GRADIENT, color: ACCENT_RED }}
+          >
+            <Icon className="h-3.5 w-3.5" />
+          </span>
+          <span className="text-sm font-semibold">{title}</span>
+        </span>
+        {open ? (
+          <ChevronUp className="h-4 w-4 opacity-70" />
+        ) : (
+          <ChevronDown className="h-4 w-4 opacity-70" />
+        )}
+      </button>
+      {open && (
+        <div id={`sidebar-group-${id}`} className="px-4 pb-4 pt-1">
+          {children}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function FilterSidebar({
+  categories,
+  selectedCategory,
+  setSelectedCategory,
+  priceRange,
+  setPriceRange,
+  showNew,
+  setShowNew,
+  showOffers,
+  setShowOffers,
+  carePacks,
+  setCarePacks,
+  maxPrice,
+}: {
+  categories: Category[]
+  selectedCategory: string
+  setSelectedCategory: (cat: string) => void
+  priceRange: number[]
+  setPriceRange: (range: number[]) => void
+  showNew: boolean
+  setShowNew: (show: boolean) => void
+  showOffers: boolean
+  setShowOffers: (show: boolean) => void
+  carePacks: string[]
+  setCarePacks: (vals: string[]) => void
+  maxPrice: number
+}) {
+  const [open, setOpen] = useState<Record<string, boolean>>({
+    categories: true,
+    carepacks: true,
+    price: true,
+    filters: false,
+  })
+  const toggle = (k: string) => setOpen((s) => ({ ...s, [k]: !s[k] }))
+
+  const toggleCarePack = (id: string) => {
+    if (carePacks.includes(id)) setCarePacks(carePacks.filter((x) => x !== id))
+    else setCarePacks([...carePacks, id])
+  }
+
+  return (
+    <div className="space-y-3">
+      <SidebarGroup id="categories" title="Categories" icon={Pill} open={open.categories} onToggle={() => toggle("categories")}>
+        <div className="flex flex-col gap-1">
+          <button
+            type="button"
+            onClick={() => setSelectedCategory("")}
+            className="text-left text-sm px-3 py-2 rounded-lg transition-colors"
+            style={{
+              background: selectedCategory === "" ? PEACH_TAB_GRADIENT : "transparent",
+              color: TEXT_WINE,
+              fontWeight: selectedCategory === "" ? 600 : 500,
+            }}
+          >
+            All Categories
+          </button>
           {categories.map((cat) => (
-            <button key={cat.id} type="button" onClick={() => setSelectedCategory(cat.slug)} className={`text-left text-sm px-4 py-3 border-t border-pink-200 flex items-center justify-between transition-colors ${selectedCategory === cat.slug ? "bg-pink-200 font-semibold text-foreground" : "text-foreground hover:bg-pink-50"}`}>
+            <button
+              key={cat.id}
+              type="button"
+              onClick={() => setSelectedCategory(cat.slug)}
+              className="text-left text-sm px-3 py-2 rounded-lg transition-colors hover:bg-[#FFF6EE]"
+              style={{
+                background: selectedCategory === cat.slug ? PEACH_TAB_GRADIENT : "transparent",
+                color: TEXT_WINE,
+                fontWeight: selectedCategory === cat.slug ? 600 : 500,
+              }}
+            >
               {cat.name}
             </button>
           ))}
         </div>
-      </div>
-      <div>
-        <h3 className="text-sm font-semibold uppercase tracking-wider mb-4">Price Range</h3>
-        <Slider min={0} max={maxPrice} step={100} value={priceRange} onValueChange={setPriceRange} className="mb-3" />
-        <div className="flex items-center justify-between text-sm text-muted-foreground">
-          <span>{formatPrice(priceRange[0])}</span><span>{formatPrice(priceRange[1])}</span>
+      </SidebarGroup>
+
+      <SidebarGroup id="carepacks" title="Care Packs" icon={HeartPulse} open={open.carepacks} onToggle={() => toggle("carepacks")}>
+        <div className="flex flex-col gap-2.5">
+          {carePackOptions.map((opt) => (
+            <label key={opt.id} className="flex items-center gap-2.5 cursor-pointer text-sm" style={{ color: TEXT_WINE }}>
+              <Checkbox
+                checked={carePacks.includes(opt.id)}
+                onCheckedChange={() => toggleCarePack(opt.id)}
+              />
+              <span>{opt.label}</span>
+            </label>
+          ))}
         </div>
-      </div>
-      <div>
-        <h3 className="text-sm font-semibold uppercase tracking-wider mb-4">Filter By</h3>
+      </SidebarGroup>
+
+      <SidebarGroup id="otc" title="OTC" icon={Stethoscope} open={!!open.otc} onToggle={() => toggle("otc")}>
+        <p className="text-xs leading-relaxed" style={{ color: TEXT_WINE_SOFT }}>
+          Pain & fever, cold & flu, allergy and digestive aids. Use the top "OTC" tab for the full list.
+        </p>
+      </SidebarGroup>
+
+      <SidebarGroup id="supplements" title="Supplements" icon={Activity} open={!!open.supplements} onToggle={() => toggle("supplements")}>
+        <p className="text-xs leading-relaxed" style={{ color: TEXT_WINE_SOFT }}>
+          Vitamins, minerals and daily wellness picks.
+        </p>
+      </SidebarGroup>
+
+      <SidebarGroup id="gym" title="GYM" icon={Dumbbell} open={!!open.gym} onToggle={() => toggle("gym")}>
+        <p className="text-xs leading-relaxed" style={{ color: TEXT_WINE_SOFT }}>
+          Protein, recovery and performance products.
+        </p>
+      </SidebarGroup>
+
+      <SidebarGroup id="mens" title="Men's Health" icon={UserIcon} open={!!open.mens} onToggle={() => toggle("mens")}>
+        <p className="text-xs leading-relaxed" style={{ color: TEXT_WINE_SOFT }}>
+          Wellness, hair and lifestyle support for men.
+        </p>
+      </SidebarGroup>
+
+      <SidebarGroup id="baby" title="Baby Care" icon={Baby} open={!!open.baby} onToggle={() => toggle("baby")}>
+        <p className="text-xs leading-relaxed" style={{ color: TEXT_WINE_SOFT }}>
+          Infant nutrition, hygiene and care essentials.
+        </p>
+      </SidebarGroup>
+
+      <SidebarGroup id="price" title="Price Range" icon={Activity} open={open.price} onToggle={() => toggle("price")}>
+        <Slider
+          min={0}
+          max={maxPrice}
+          step={100}
+          value={priceRange}
+          onValueChange={setPriceRange}
+          className="my-2"
+        />
+        <div className="flex items-center justify-between text-xs" style={{ color: TEXT_WINE_SOFT }}>
+          <span>{formatPrice(priceRange[0])}</span>
+          <span>{formatPrice(priceRange[1])}</span>
+        </div>
+      </SidebarGroup>
+
+      <SidebarGroup id="filters" title="Quick Filters" icon={SlidersHorizontal} open={open.filters} onToggle={() => toggle("filters")}>
         <div className="flex flex-col gap-3">
-          <label className="flex items-center gap-3 cursor-pointer"><Checkbox checked={showNew} onCheckedChange={(checked) => setShowNew(checked === true)} /><span className="text-sm">New Arrivals</span></label>
-          <label className="flex items-center gap-3 cursor-pointer"><Checkbox checked={showOffers} onCheckedChange={(checked) => setShowOffers(checked === true)} /><span className="text-sm">On Offer</span></label>
+          <label className="flex items-center gap-3 cursor-pointer text-sm" style={{ color: TEXT_WINE }}>
+            <Checkbox checked={showNew} onCheckedChange={(c) => setShowNew(c === true)} />
+            <span>New Arrivals</span>
+          </label>
+          <label className="flex items-center gap-3 cursor-pointer text-sm" style={{ color: TEXT_WINE }}>
+            <Checkbox checked={showOffers} onCheckedChange={(c) => setShowOffers(c === true)} />
+            <span>On Offer</span>
+          </label>
         </div>
-      </div>
+      </SidebarGroup>
     </div>
   )
 }
+
+// --------------------------------------------------------------------------
 
 export function ShopPage({ seoIntro }: { seoIntro?: ReactNode } = {}) {
   const searchParams = new URLSearchParams(window.location.search)
@@ -101,15 +344,17 @@ export function ShopPage({ seoIntro }: { seoIntro?: ReactNode } = {}) {
   const isShopAll = !categoryParam && !filterParam && !queryParam
 
   const [selectedCategory, setSelectedCategory] = useState(categoryParam)
+  const [activeTab, setActiveTab] = useState<string>(filterParam === "offers" ? "care-packs" : "all")
+  const [carePacks, setCarePacks] = useState<string[]>([])
   const [sortBy, setSortBy] = useState(isShopAll ? "random" : "newest")
   const [showNew, setShowNew] = useState(filterParam === "new")
   const [showOffers, setShowOffers] = useState(filterParam === "offers")
   const minProductPrice = products.length > 0 ? Math.min(...products.map((p) => p.price)) : 0
   const maxProductPrice = products.length > 0 ? Math.max(...products.map((p) => p.price)) : 10000
+  void minProductPrice
   const maxPrice = Math.ceil(maxProductPrice / 100) * 100
   const [priceRange, setPriceRange] = useState([0, maxPrice])
   const [priceInitialized, setPriceInitialized] = useState(false)
-  const [gridView, setGridView] = useState<"grid" | "list">("grid")
   const [localSearch, setLocalSearch] = useState(queryParam)
   const [randomSeed, setRandomSeed] = useState(1)
 
@@ -117,9 +362,6 @@ export function ShopPage({ seoIntro }: { seoIntro?: ReactNode } = {}) {
     setRandomSeed(Math.floor(Math.random() * 2 ** 31) || 1)
   }, [])
 
-  // Track direct-to-search URLs (e.g. clicking a search suggestion, pasting
-  // a shared link) so admin analytics captures the search term even when the
-  // navbar wasn't used.
   useEffect(() => {
     if (!queryParam) return
     if (typeof window === "undefined") return
@@ -143,7 +385,6 @@ export function ShopPage({ seoIntro }: { seoIntro?: ReactNode } = {}) {
     }).catch(() => {})
   }, [queryParam])
 
-  // Set price range dynamically once products load
   useEffect(() => {
     if (products.length > 0 && !priceInitialized) {
       setPriceRange([0, maxPrice])
@@ -154,14 +395,27 @@ export function ShopPage({ seoIntro }: { seoIntro?: ReactNode } = {}) {
   const filtered = useMemo(() => {
     let result = [...products]
 
+    // Top tab filter
+    const tab = topTabs.find((t) => t.key === activeTab)
+    if (tab && activeTab !== "all") result = result.filter(tab.match)
+
     if (queryParam) {
       const q = queryParam.toLowerCase()
-      result = result.filter((p) => p.name.toLowerCase().includes(q) || p.category.toLowerCase().includes(q) || p.description.toLowerCase().includes(q) || p.tags.some((t) => t.toLowerCase().includes(q)))
+      result = result.filter((p) =>
+        p.name.toLowerCase().includes(q) ||
+        p.category.toLowerCase().includes(q) ||
+        p.description.toLowerCase().includes(q) ||
+        p.tags.some((t) => t.toLowerCase().includes(q)),
+      )
     }
 
     if (localSearch && !queryParam) {
       const q = localSearch.toLowerCase()
-      result = result.filter((p) => p.name.toLowerCase().includes(q) || p.category.toLowerCase().includes(q) || p.tags.some((t) => t.toLowerCase().includes(q)))
+      result = result.filter((p) =>
+        p.name.toLowerCase().includes(q) ||
+        p.category.toLowerCase().includes(q) ||
+        p.tags.some((t) => t.toLowerCase().includes(q)),
+      )
     }
 
     if (tagParam) {
@@ -170,14 +424,27 @@ export function ShopPage({ seoIntro }: { seoIntro?: ReactNode } = {}) {
         p.tags.some((pt) => {
           const norm = pt.toLowerCase()
           return norm === t || norm.replace(/-/g, " ") === t || norm.includes(t)
-        })
+        }),
       )
     }
 
     if (selectedCategory) result = result.filter((p) => p.categorySlug === selectedCategory)
     if (showNew) result = result.filter((p) => p.isNew)
     if (showOffers) result = result.filter((p) => p.isOnOffer)
-    if (priceRange[0] > 0 || priceRange[1] < maxPrice) result = result.filter((p) => p.price >= priceRange[0] && p.price <= priceRange[1])
+
+    if (carePacks.length > 0) {
+      result = result.filter((p) => {
+        const blob = `${p.name} ${p.description} ${p.tags.join(" ")}`
+        return carePacks.some((id) => {
+          const opt = carePackOptions.find((o) => o.id === id)
+          return opt ? opt.match.test(blob) : false
+        })
+      })
+    }
+
+    if (priceRange[0] > 0 || priceRange[1] < maxPrice) {
+      result = result.filter((p) => p.price >= priceRange[0] && p.price <= priceRange[1])
+    }
 
     switch (sortBy) {
       case "price-low": result.sort((a, b) => a.price - b.price); break
@@ -185,149 +452,475 @@ export function ShopPage({ seoIntro }: { seoIntro?: ReactNode } = {}) {
       case "name": result.sort((a, b) => a.name.localeCompare(b.name)); break
       case "random": result = shuffleWithSeed(result, randomSeed); break
       case "newest":
-      default: result.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+      default:
+        result.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
     }
     return result
-  }, [products, selectedCategory, showNew, showOffers, priceRange, sortBy, queryParam, localSearch, tagParam, randomSeed])
+  }, [products, activeTab, selectedCategory, showNew, showOffers, carePacks, priceRange, sortBy, queryParam, localSearch, tagParam, randomSeed, maxPrice])
 
-  const { paginatedItems, currentPage, totalPages, totalItems, itemsPerPage, goToPage, changePerPage, resetPage } = usePagination(filtered, { defaultPerPage: 12 })
+  const topPopular = useMemo(
+    () => [...products].sort((a, b) => (b.isOnOffer ? 1 : 0) - (a.isOnOffer ? 1 : 0)).slice(0, 8),
+    [products],
+  )
+  const featuredSupplements = useMemo(
+    () =>
+      products
+        .filter((p) =>
+          p.categorySlug === "supplements" ||
+          p.tags.some((t) => /supplement|vitamin/i.test(t)),
+        )
+        .slice(0, 8),
+    [products],
+  )
 
-  // Reset page when filters change
-  useEffect(() => { resetPage() }, [selectedCategory, showNew, showOffers, sortBy, queryParam, localSearch])
+  const { paginatedItems, currentPage, totalPages, totalItems, itemsPerPage, goToPage, changePerPage, resetPage } =
+    usePagination(filtered, { defaultPerPage: 12 })
+
+  useEffect(() => {
+    resetPage()
+  }, [activeTab, selectedCategory, showNew, showOffers, sortBy, queryParam, localSearch, carePacks.join(","), resetPage])
 
   const activeFilters = [
     queryParam && `Search: "${queryParam}"`,
     selectedCategory && categories.find((c) => c.slug === selectedCategory)?.name,
     showNew && "New Arrivals",
     showOffers && "On Offer",
+    ...carePacks.map((id) => carePackOptions.find((o) => o.id === id)?.label || id),
     (priceRange[0] > 0 || priceRange[1] < maxPrice) && `${formatPrice(priceRange[0])} - ${formatPrice(priceRange[1])}`,
-  ].filter(Boolean)
-
-  const activeCategory = categories.find((c) => c.slug === selectedCategory)
-  const heroImage =
-    activeCategory?.image ||
-    categories[0]?.image ||
-    "/banners/hero-pharmacy-main.png"
-  const heroTitle = queryParam
-    ? `Results for "${queryParam}"`
-    : activeCategory
-    ? activeCategory.name
-    : "Shop All"
-  const heroSubtitle = queryParam
-    ? `Explore ${filtered.length} matching item${filtered.length !== 1 ? "s" : ""} across our catalog.`
-    : activeCategory
-    ? `Quality ${activeCategory.name.toLowerCase()} from Shaniid RX.`
-    : "Discover our full catalog of medications, vitamins, baby care, devices & wellness essentials."
-  const eyebrow = queryParam ? "Search Results" : activeCategory ? "Category" : "Boutique Collection"
-
-  const breadcrumbItems = [
-    { label: "Home", href: "/" },
-    { label: "Shop", href: activeCategory || queryParam ? "/shop" : undefined },
-    ...(queryParam
-      ? [{ label: `Search: "${queryParam}"` }]
-      : activeCategory
-      ? [{ label: activeCategory.name }]
-      : []),
-  ]
+  ].filter(Boolean) as string[]
 
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className="min-h-screen flex flex-col" style={{ background: "#FFFFFF" }}>
       <TopBar />
       <Navbar />
       <main className="flex-1">
         {seoIntro}
-        <div className="mx-auto max-w-7xl px-4 py-6">
-          <CategoryBreadcrumb
-            items={breadcrumbItems}
-            title={heroTitle}
-            subtitle={heroSubtitle}
-            imageUrl={heroImage}
-            imageAlt={`${heroTitle} background`}
-            eyebrow={eyebrow}
-            productCount={filtered.length}
-          />
-
-          <div className="flex items-end justify-between mt-2 mb-6">
-            <div>
-              <h2 className="text-xl md:text-2xl font-serif font-bold">{heroTitle}</h2>
-              <p className="text-sm text-muted-foreground mt-1">{filtered.length} product{filtered.length !== 1 ? "s" : ""}</p>
+        <div className="mx-auto max-w-7xl px-4 lg:px-6 py-6 lg:py-8">
+          {/* === Peach gradient hero banner ============================== */}
+          <section
+            className="relative overflow-hidden rounded-[28px] flex items-center"
+            style={{
+              background: PEACH_GRADIENT,
+              minHeight: 200,
+              boxShadow: "0 24px 60px -36px rgba(184,60,30,0.35)",
+            }}
+          >
+            <div className="relative z-10 px-8 lg:px-14 py-10 flex-1">
+              <h1
+                className="font-serif text-4xl lg:text-6xl font-extrabold leading-none"
+                style={{ color: TEXT_WINE, textShadow: "0 2px 0 rgba(255,255,255,0.35)" }}
+              >
+                Shop
+              </h1>
+              <p className="mt-3 text-sm lg:text-base max-w-md" style={{ color: TEXT_WINE_SOFT }}>
+                Browse medications, supplements, devices and care packs — delivered fast across Kenya.
+              </p>
             </div>
-            <div className="hidden md:flex items-center border border-border rounded-sm max-w-xs">
-              <input type="text" placeholder="Filter products..." value={localSearch} onChange={(e) => setLocalSearch(e.target.value)} className="flex-1 h-9 px-3 bg-background text-sm outline-none" />
-              {localSearch && <button type="button" onClick={() => setLocalSearch("")} className="px-2"><X className="h-3.5 w-3.5 text-muted-foreground" /></button>}
-              <div className="px-2 border-l border-border"><Search className="h-3.5 w-3.5 text-muted-foreground" /></div>
+            {/* Bottle illustration */}
+            <div className="hidden md:block relative h-full pr-10 lg:pr-14">
+              <div
+                className="relative flex items-center justify-center"
+                style={{
+                  width: 200,
+                  height: 200,
+                  background: "radial-gradient(circle at 50% 55%, rgba(244,168,123,0.55) 0%, rgba(244,168,123,0) 70%)",
+                }}
+              >
+                <img
+                  src="/hero-pills-transparent.png"
+                  alt=""
+                  className="object-contain max-h-44 drop-shadow-xl"
+                />
+              </div>
+            </div>
+          </section>
+
+          {/* === Top tab strip ======================================== */}
+          <div
+            className="mt-6 rounded-[22px] overflow-x-auto"
+            style={{
+              background: PEACH_TAB_GRADIENT,
+              boxShadow: "0 14px 30px -22px rgba(184,60,30,0.3)",
+            }}
+          >
+            <div className="flex items-center gap-1 px-3 py-2 min-w-max">
+              {topTabs.map((tab) => {
+                const isActive = activeTab === tab.key
+                return (
+                  <button
+                    key={tab.key}
+                    type="button"
+                    onClick={() => setActiveTab(tab.key)}
+                    className="inline-flex items-center gap-1.5 px-5 lg:px-7 py-2.5 rounded-full text-sm font-bold transition-all"
+                    style={{
+                      background: isActive ? "#FFFFFF" : "transparent",
+                      color: isActive ? ACCENT_RED : TEXT_WINE,
+                      boxShadow: isActive ? "0 6px 16px -10px rgba(184,60,30,0.45)" : undefined,
+                    }}
+                  >
+                    {tab.label}
+                    <ChevronDown className="h-3.5 w-3.5 opacity-70" />
+                  </button>
+                )
+              })}
             </div>
           </div>
 
+          {/* === Active filter chips ================================== */}
           {activeFilters.length > 0 && (
-            <div className="flex flex-wrap items-center gap-2 mb-6">
+            <div className="flex flex-wrap items-center gap-2 mt-5">
               {activeFilters.map((filter) => (
-                <span key={String(filter)} className="flex items-center gap-1.5 bg-secondary text-foreground text-xs px-3 py-1.5 rounded-sm">
-                  {String(filter)}
-                  <button type="button" onClick={() => {
-                    if (String(filter).startsWith("Search:")) window.location.href = "/shop"
-                    if (filter === categories.find((c) => c.slug === selectedCategory)?.name) setSelectedCategory("")
-                    if (filter === "New Arrivals") setShowNew(false)
-                    if (filter === "On Offer") setShowOffers(false)
-                    if (String(filter).includes("KSh")) setPriceRange([0, maxPrice])
-                  }}><X className="h-3 w-3" /></button>
+                <span
+                  key={filter}
+                  className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full"
+                  style={{ background: "#FFF1E6", color: TEXT_WINE, border: `1px solid ${PEACH_BORDER}` }}
+                >
+                  {filter}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (filter.startsWith("Search:")) window.location.href = "/shop"
+                      if (filter === categories.find((c) => c.slug === selectedCategory)?.name) setSelectedCategory("")
+                      if (filter === "New Arrivals") setShowNew(false)
+                      if (filter === "On Offer") setShowOffers(false)
+                      const cp = carePackOptions.find((o) => o.label === filter)
+                      if (cp) setCarePacks(carePacks.filter((x) => x !== cp.id))
+                      if (filter.includes("KSh")) setPriceRange([0, maxPrice])
+                    }}
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
                 </span>
               ))}
-              <button type="button" onClick={() => { setSelectedCategory(""); setShowNew(false); setShowOffers(false); setPriceRange([0, maxPrice]); setLocalSearch(""); if (queryParam) window.location.href = "/shop" }} className="text-xs text-muted-foreground hover:text-foreground underline">Clear All</button>
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedCategory("")
+                  setShowNew(false)
+                  setShowOffers(false)
+                  setPriceRange([0, maxPrice])
+                  setLocalSearch("")
+                  setCarePacks([])
+                  if (queryParam) window.location.href = "/shop"
+                }}
+                className="text-xs underline"
+                style={{ color: TEXT_WINE_SOFT }}
+              >
+                Clear All
+              </button>
             </div>
           )}
 
-          <div className="flex gap-8">
-            <aside className="hidden lg:block w-60 flex-shrink-0">
-              <FilterSidebar categories={categories} selectedCategory={selectedCategory} setSelectedCategory={setSelectedCategory} priceRange={priceRange} setPriceRange={setPriceRange} showNew={showNew} setShowNew={setShowNew} showOffers={showOffers} setShowOffers={setShowOffers} maxPrice={maxPrice} />
+          {/* === Sidebar + content ==================================== */}
+          <div className="mt-6 flex gap-6 lg:gap-8">
+            <aside className="hidden lg:block w-72 flex-shrink-0">
+              <FilterSidebar
+                categories={categories}
+                selectedCategory={selectedCategory}
+                setSelectedCategory={setSelectedCategory}
+                priceRange={priceRange}
+                setPriceRange={setPriceRange}
+                showNew={showNew}
+                setShowNew={setShowNew}
+                showOffers={showOffers}
+                setShowOffers={setShowOffers}
+                carePacks={carePacks}
+                setCarePacks={setCarePacks}
+                maxPrice={maxPrice}
+              />
             </aside>
 
-            <div className="flex-1">
-              <div className="flex items-center justify-between mb-6">
-                <div className="flex items-center gap-2">
-                  <Sheet>
-                    <SheetTrigger asChild><Button variant="outline" size="sm" className="lg:hidden bg-transparent"><SlidersHorizontal className="h-4 w-4 mr-2" />Filters</Button></SheetTrigger>
-                    <SheetContent side="left" className="w-80 bg-background text-foreground p-6">
-                      <h2 className="text-lg font-serif font-semibold mb-6">Filters</h2>
-                      <FilterSidebar categories={categories} selectedCategory={selectedCategory} setSelectedCategory={setSelectedCategory} priceRange={priceRange} setPriceRange={setPriceRange} showNew={showNew} setShowNew={setShowNew} showOffers={showOffers} setShowOffers={setShowOffers} maxPrice={maxPrice} />
-                    </SheetContent>
-                  </Sheet>
-                  <div className="hidden sm:flex items-center border border-border rounded-sm">
-                    <button type="button" onClick={() => setGridView("grid")} className={`p-2 ${gridView === "grid" ? "bg-foreground text-background" : ""}`}><Grid3X3 className="h-4 w-4" /></button>
-                    <button type="button" onClick={() => setGridView("list")} className={`p-2 ${gridView === "list" ? "bg-foreground text-background" : ""}`}><LayoutList className="h-4 w-4" /></button>
+            <div className="flex-1 min-w-0">
+              {/* Top Popular Medicines */}
+              {topPopular.length > 0 && (
+                <section className="mb-10">
+                  <div className="flex items-end justify-between mb-4">
+                    <h2 className="font-serif text-2xl lg:text-3xl font-bold" style={{ color: TEXT_WINE }}>
+                      Top Popular Medicines
+                    </h2>
                   </div>
-                </div>
-                <select value={sortBy} onChange={(e) => setSortBy(e.target.value)} className="text-sm bg-background border border-border px-3 py-2 rounded-sm outline-none">
-                  {sortOptions.map((opt) => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
-                </select>
-              </div>
-
-              {filtered.length === 0 ? (
-                <div className="text-center py-20">
-                  <p className="text-muted-foreground">No products found matching your filters.</p>
-                  <button type="button" onClick={() => { setSelectedCategory(""); setShowNew(false); setShowOffers(false); setPriceRange([0, maxPrice]); setLocalSearch("") }} className="mt-3 text-sm underline hover:text-muted-foreground">Clear all filters</button>
-                </div>
-              ) : (
-                <>
-                  <div className={gridView === "grid" ? "grid grid-cols-2 md:grid-cols-3 gap-4 lg:gap-6" : "grid grid-cols-1 sm:grid-cols-2 gap-4 lg:gap-6"}>
-                    {paginatedItems.map((product) => <ProductCard key={product.id} product={product} />)}
+                  <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-4 lg:gap-5">
+                    {topPopular.slice(0, 4).map((p) => (
+                      <PeachProductCard key={p.id} product={p} />
+                    ))}
                   </div>
-                  <PaginationControls
-                    currentPage={currentPage}
-                    totalPages={totalPages}
-                    totalItems={totalItems}
-                    itemsPerPage={itemsPerPage}
-                    onPageChange={(p) => { goToPage(p); window.scrollTo({ top: 0, behavior: "smooth" }) }}
-                    onItemsPerPageChange={changePerPage}
-                    perPageOptions={[12, 24, 48, 96]}
-                  />
-                </>
+                </section>
               )}
+
+              {/* Shop By Category strip */}
+              {categories.length > 0 && (
+                <section className="mb-10">
+                  <div className="flex items-end justify-between mb-4">
+                    <h2 className="font-serif text-2xl lg:text-3xl font-bold" style={{ color: TEXT_WINE }}>
+                      Shop By Category
+                    </h2>
+                    <Link
+                      href="/shop"
+                      className="text-xs font-semibold underline"
+                      style={{ color: ACCENT_RED }}
+                    >
+                      View all
+                    </Link>
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-4 lg:gap-5">
+                    {categories.slice(0, 4).map((cat) => {
+                      const sample = products.find((p) => p.categorySlug === cat.slug)
+                      return (
+                        <CategoryPeachCard
+                          key={cat.id}
+                          name={cat.name}
+                          imageUrl={cat.image || sample?.images?.[0] || "/placeholder.svg"}
+                          href={`/shop?category=${cat.slug}`}
+                        />
+                      )
+                    })}
+                  </div>
+                </section>
+              )}
+
+              {/* Featured Supplements */}
+              {featuredSupplements.length > 0 && (
+                <section className="mb-10">
+                  <div className="flex items-end justify-between mb-4">
+                    <h2 className="font-serif text-2xl lg:text-3xl font-bold" style={{ color: TEXT_WINE }}>
+                      Featured Supplements
+                    </h2>
+                    <Link
+                      href="/shop?category=supplements"
+                      className="text-xs font-semibold underline"
+                      style={{ color: ACCENT_RED }}
+                    >
+                      View all
+                    </Link>
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-4 lg:gap-5">
+                    {featuredSupplements.slice(0, 4).map((p) => (
+                      <PeachProductCard key={p.id} product={p} />
+                    ))}
+                  </div>
+                </section>
+              )}
+
+              {/* Main filtered grid */}
+              <section>
+                <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
+                  <div>
+                    <h2 className="font-serif text-2xl lg:text-3xl font-bold" style={{ color: TEXT_WINE }}>
+                      {activeTab === "all" ? "All Products" : topTabs.find((t) => t.key === activeTab)?.label}
+                    </h2>
+                    <p className="text-sm mt-1" style={{ color: TEXT_WINE_SOFT }}>
+                      {filtered.length} product{filtered.length !== 1 ? "s" : ""}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Sheet>
+                      <SheetTrigger asChild>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="lg:hidden"
+                          style={{ borderColor: PEACH_BORDER, color: TEXT_WINE }}
+                        >
+                          <SlidersHorizontal className="h-4 w-4 mr-2" />
+                          Filters
+                        </Button>
+                      </SheetTrigger>
+                      <SheetContent side="left" className="w-80 p-6 overflow-y-auto" style={{ background: "#FFFBF5" }}>
+                        <h3 className="text-base font-serif font-semibold mb-4" style={{ color: TEXT_WINE }}>
+                          Filters
+                        </h3>
+                        <FilterSidebar
+                          categories={categories}
+                          selectedCategory={selectedCategory}
+                          setSelectedCategory={setSelectedCategory}
+                          priceRange={priceRange}
+                          setPriceRange={setPriceRange}
+                          showNew={showNew}
+                          setShowNew={setShowNew}
+                          showOffers={showOffers}
+                          setShowOffers={setShowOffers}
+                          carePacks={carePacks}
+                          setCarePacks={setCarePacks}
+                          maxPrice={maxPrice}
+                        />
+                      </SheetContent>
+                    </Sheet>
+                    <div
+                      className="hidden md:flex items-center rounded-full overflow-hidden"
+                      style={{ background: "#FFF1E6", border: `1px solid ${PEACH_BORDER}` }}
+                    >
+                      <input
+                        type="text"
+                        placeholder="Filter products..."
+                        value={localSearch}
+                        onChange={(e) => setLocalSearch(e.target.value)}
+                        className="w-44 lg:w-56 h-9 px-4 bg-transparent text-sm outline-none"
+                        style={{ color: TEXT_WINE }}
+                      />
+                      {localSearch && (
+                        <button type="button" onClick={() => setLocalSearch("")} className="px-2">
+                          <X className="h-3.5 w-3.5" style={{ color: TEXT_WINE_SOFT }} />
+                        </button>
+                      )}
+                      <span className="px-3" style={{ color: ACCENT_RED }}>
+                        <Search className="h-4 w-4" />
+                      </span>
+                    </div>
+                    <select
+                      value={sortBy}
+                      onChange={(e) => setSortBy(e.target.value)}
+                      className="text-sm h-9 px-3 rounded-full outline-none"
+                      style={{
+                        background: "#FFF1E6",
+                        border: `1px solid ${PEACH_BORDER}`,
+                        color: TEXT_WINE,
+                      }}
+                    >
+                      {sortOptions.map((opt) => (
+                        <option key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                {filtered.length === 0 ? (
+                  <div
+                    className="text-center py-20 rounded-2xl"
+                    style={{ background: "#FFF6EE", border: `1px solid ${PEACH_BORDER}` }}
+                  >
+                    <p className="text-sm" style={{ color: TEXT_WINE_SOFT }}>
+                      No products found matching your filters.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedCategory("")
+                        setShowNew(false)
+                        setShowOffers(false)
+                        setPriceRange([0, maxPrice])
+                        setLocalSearch("")
+                        setCarePacks([])
+                        setActiveTab("all")
+                      }}
+                      className="mt-3 text-sm underline"
+                      style={{ color: ACCENT_RED }}
+                    >
+                      Clear all filters
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-4 lg:gap-5">
+                      {paginatedItems.map((product) => (
+                        <ProductCard key={product.id} product={product} />
+                      ))}
+                    </div>
+                    <PaginationControls
+                      currentPage={currentPage}
+                      totalPages={totalPages}
+                      totalItems={totalItems}
+                      itemsPerPage={itemsPerPage}
+                      onPageChange={(p) => {
+                        goToPage(p)
+                        window.scrollTo({ top: 0, behavior: "smooth" })
+                      }}
+                      onItemsPerPageChange={changePerPage}
+                      perPageOptions={[12, 24, 48, 96]}
+                    />
+                  </>
+                )}
+              </section>
             </div>
           </div>
         </div>
       </main>
       <Footer />
     </div>
+  )
+}
+
+// -------------------------------------------------------------------------
+// Reference-style "peach" cards (used for the curated sections at the top)
+// -------------------------------------------------------------------------
+
+function PeachProductCard({ product }: { product: Product }) {
+  return (
+    <Link href={`/product/${product.slug}`} className="block group">
+      <div
+        className="relative rounded-2xl p-4 lg:p-5 h-full flex flex-col items-center text-center transition-transform group-hover:-translate-y-1"
+        style={{
+          background: "linear-gradient(160deg, #FCE3CB 0%, #F9CEB1 100%)",
+          border: `1px solid ${PEACH_BORDER}`,
+          boxShadow: "0 14px 30px -22px rgba(184,60,30,0.35)",
+        }}
+      >
+        <div
+          className="w-full aspect-square rounded-xl flex items-center justify-center overflow-hidden mb-3"
+          style={{ background: "#FFFFFF" }}
+        >
+          <img
+            src={product.images[0] || "/placeholder.svg"}
+            alt={product.name}
+            className="object-contain max-h-[78%] max-w-[78%] group-hover:scale-105 transition-transform"
+          />
+        </div>
+        <h3 className="text-sm lg:text-base font-bold" style={{ color: TEXT_WINE }}>
+          {product.name.length > 28 ? `${product.name.slice(0, 28)}…` : product.name}
+        </h3>
+        <p className="text-xs mt-1.5 leading-snug line-clamp-2" style={{ color: TEXT_WINE_SOFT }}>
+          {product.description || "A trusted pick from Shaniid RX."}
+        </p>
+        <span
+          className="mt-3 inline-flex items-center justify-center text-xs font-semibold px-5 h-8 rounded-full text-white transition-transform group-hover:scale-[1.03]"
+          style={{
+            background: `linear-gradient(135deg, ${ACCENT_ORANGE} 0%, ${ACCENT_RED} 100%)`,
+          }}
+        >
+          Seen More
+        </span>
+      </div>
+    </Link>
+  )
+}
+
+function CategoryPeachCard({ name, imageUrl, href }: { name: string; imageUrl: string; href: string }) {
+  return (
+    <Link href={href} className="block group">
+      <div
+        className="relative rounded-2xl p-4 lg:p-5 h-full flex flex-col items-center text-center transition-transform group-hover:-translate-y-1"
+        style={{
+          background: "linear-gradient(160deg, #FCE3CB 0%, #F9CEB1 100%)",
+          border: `1px solid ${PEACH_BORDER}`,
+          boxShadow: "0 14px 30px -22px rgba(184,60,30,0.35)",
+        }}
+      >
+        <div
+          className="w-full aspect-square rounded-xl flex items-center justify-center overflow-hidden mb-3"
+          style={{ background: "#FFFFFF" }}
+        >
+          <img
+            src={imageUrl}
+            alt={name}
+            className="object-contain max-h-[78%] max-w-[78%] group-hover:scale-105 transition-transform"
+          />
+        </div>
+        <h3 className="text-sm lg:text-base font-bold" style={{ color: TEXT_WINE }}>
+          {name}
+        </h3>
+        <p className="text-xs mt-1.5 leading-snug" style={{ color: TEXT_WINE_SOFT }}>
+          Shop trusted picks in {name.toLowerCase()}.
+        </p>
+        <span
+          className="mt-3 inline-flex items-center justify-center text-xs font-semibold px-5 h-8 rounded-full text-white transition-transform group-hover:scale-[1.03]"
+          style={{
+            background: `linear-gradient(135deg, ${ACCENT_ORANGE} 0%, ${ACCENT_RED} 100%)`,
+          }}
+        >
+          Seen More
+        </span>
+      </div>
+    </Link>
   )
 }

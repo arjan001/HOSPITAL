@@ -5,7 +5,7 @@ import { Link } from "wouter"
 
 import { useState, useRef, useEffect } from "react"
 import { useLocation } from "wouter"
-import { Search, ShoppingBag, Menu, ChevronDown, PhoneCall, User, Package, Camera } from "lucide-react"
+import { Search, ShoppingBag, Menu, ChevronDown, PhoneCall, User, Package, Camera, Heart } from "lucide-react"
 import { useCart } from "@/lib/cart-context"
 import { useWishlist } from "@/lib/wishlist-context"
 import type { Product, Category } from "@/lib/types"
@@ -290,6 +290,26 @@ export function Navbar() {
                 <span>Login/ Register</span>
               </Link>
 
+              <Link
+                href="/wishlist"
+                className="hidden md:inline-flex items-center gap-2 text-sm font-semibold transition-opacity hover:opacity-80"
+                style={{ color: TEXT_WINE }}
+                aria-label={`Wishlist with ${wishlistCount} items`}
+              >
+                <span className="relative">
+                  <Heart className="h-5 w-5" style={{ color: ACCENT_RED }} fill={wishlistCount > 0 ? ACCENT_RED : "none"} />
+                  {wishlistCount > 0 && (
+                    <span
+                      className="absolute -top-1.5 -right-1.5 flex items-center justify-center rounded-full text-white text-[10px] font-bold min-w-[18px] h-[18px]"
+                      style={{ background: ACCENT_RED }}
+                    >
+                      {wishlistCount}
+                    </span>
+                  )}
+                </span>
+                <span>My wishlist</span>
+              </Link>
+
               <button
                 type="button"
                 onClick={() => setIsCartOpen(true)}
@@ -308,10 +328,25 @@ export function Navbar() {
                     </span>
                   )}
                 </span>
-                <span>My wishlist</span>
+                <span>Cart</span>
               </button>
 
-              {/* Mobile cart icon (icon-only) */}
+              {/* Mobile wishlist + cart icons */}
+              <Link
+                href="/wishlist"
+                className="md:hidden relative p-2"
+                aria-label={`Wishlist with ${wishlistCount} items`}
+              >
+                <Heart className="h-5 w-5" style={{ color: ACCENT_RED }} fill={wishlistCount > 0 ? ACCENT_RED : "none"} />
+                {wishlistCount > 0 && (
+                  <span
+                    className="absolute top-0 right-0 flex items-center justify-center rounded-full text-white text-[10px] font-bold min-w-[18px] h-[18px]"
+                    style={{ background: ACCENT_RED }}
+                  >
+                    {wishlistCount}
+                  </span>
+                )}
+              </Link>
               <button
                 type="button"
                 onClick={() => setIsCartOpen(true)}
@@ -424,14 +459,6 @@ export function Navbar() {
               </Link>
             </div>
 
-            {/* Wishlist heart hint (kept for users who like quick wishlist access) */}
-            {wishlistCount > 0 && (
-              <div className="mt-2 text-xs lg:text-right" style={{ color: TEXT_WINE_SOFT }}>
-                <Link href="/wishlist" className="font-semibold underline" style={{ color: ACCENT_RED }}>
-                  {wishlistCount} item{wishlistCount === 1 ? "" : "s"} on your wishlist
-                </Link>
-              </div>
-            )}
           </div>
         </div>
       </div>

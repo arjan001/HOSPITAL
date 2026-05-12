@@ -28,8 +28,13 @@ export function QuickViewProvider({ children }: { children: ReactNode }) {
   )
 }
 
+const NOOP_QUICK_VIEW: QuickViewContextValue = {
+  openSlug: null,
+  openQuickView: () => {},
+  closeQuickView: () => {},
+}
+
 export function useQuickView() {
   const ctx = useContext(QuickViewContext)
-  if (!ctx) throw new Error("useQuickView must be used within a QuickViewProvider")
-  return ctx
+  return ctx ?? NOOP_QUICK_VIEW
 }
