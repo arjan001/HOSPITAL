@@ -488,3 +488,33 @@
   50% { transform: translateY(-14px) rotate(-1.2deg); }
 }
 .rx-pill-float { animation: rx-pill-float 6s ease-in-out infinite; will-change: transform; }
+
+@keyframes rx-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.animate-rx-fade-in { animation: rx-fade-in 0.25s ease-out both; }
+
+@keyframes rx-modal-in {
+  0% { opacity: 0; transform: translateY(20px) scale(0.96); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+.animate-rx-modal-in { animation: rx-modal-in 0.35s cubic-bezier(0.22, 1, 0.36, 1) both; }
+
+@keyframes rx-loader-ring {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+.animate-rx-loader-ring { animation: rx-loader-ring 1.4s linear infinite; }
+
+@keyframes rx-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+.animate-rx-shimmer { animation: rx-shimmer 1.6s ease-in-out infinite; }
+
+@keyframes rx-loader-pulse-anim {
+  0%, 100% { transform: scale(0.9); opacity: 0.85; }
+  50% { transform: scale(1.08); opacity: 1; }
+}
+.animate-rx-loader-pulse { animation: rx-loader-pulse-anim 1.4s ease-in-out infinite; }

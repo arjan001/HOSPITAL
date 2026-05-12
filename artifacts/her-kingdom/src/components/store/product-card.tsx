@@ -1,6 +1,6 @@
 "use client"
 
-import { Link, useLocation } from "wouter"
+import { Link } from "wouter"
 
 import { Heart, ShoppingBag, Eye, Play, Check } from "lucide-react"
 import { useState } from "react"
@@ -8,6 +8,7 @@ import type { Product } from "@/lib/types"
 import { formatPrice } from "@/lib/format"
 import { useCart } from "@/lib/cart-context"
 import { useWishlist } from "@/lib/wishlist-context"
+import { useQuickView } from "@/lib/quick-view-context"
 import { isVideoUrl } from "@/lib/media-utils"
 import { ProductImage } from "./product-image"
 
@@ -21,7 +22,7 @@ const CARD_BG = "rgba(255, 251, 245, 0.7)"
 export function ProductCard({ product }: { product: Product }) {
   const { addItem } = useCart()
   const { toggleItem, isInWishlist } = useWishlist()
-  const [, navigate] = useLocation()
+  const { openQuickView } = useQuickView()
   const [justAdded, setJustAdded] = useState(false)
   const wishlisted = isInWishlist(product.id)
   const primaryMedia = product.images[0] || ""
@@ -104,7 +105,7 @@ export function ProductCard({ product }: { product: Product }) {
             </button>
             <button
               type="button"
-              onClick={(e) => { e.preventDefault(); navigate(`/product/${product.slug}`) }}
+              onClick={(e) => { e.preventDefault(); e.stopPropagation(); openQuickView(product.slug) }}
               className="w-8 h-8 flex items-center justify-center rounded-full shadow-md hover:scale-110 transition-transform text-white"
               style={{ background: ACCENT_RED }}
               aria-label="Quick view"

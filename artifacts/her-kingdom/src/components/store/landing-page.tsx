@@ -14,6 +14,8 @@ import type { Faq } from "./faq-section"
 
 import { Footer } from "./footer"
 import { OfferModal } from "./offer-modal"
+import { QuickViewProvider } from "@/lib/quick-view-context"
+import { QuickViewModal } from "./quick-view-modal"
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
@@ -49,20 +51,23 @@ export function LandingPage({ faqs = DEFAULT_FAQS }: { faqs?: Faq[] }) {
   const showNewsletter = data?.settings?.show_newsletter ?? true
 
   return (
-    <div className="min-h-screen flex flex-col">
-      <TopBar />
-      <Navbar />
-      <main className="flex-1">
-        <CtaCarousel />
-        <ExploreCategories />
-        <HealthCategories />
-        <FeaturedProducts />
-        <OfferBanner />
-        <OnOfferProducts />
-        {showNewsletter && <Newsletter />}
-      </main>
-      <Footer />
-      <OfferModal />
-    </div>
+    <QuickViewProvider>
+      <div className="min-h-screen flex flex-col">
+        <TopBar />
+        <Navbar />
+        <main className="flex-1">
+          <CtaCarousel />
+          <ExploreCategories />
+          <HealthCategories />
+          <FeaturedProducts />
+          <OfferBanner />
+          <OnOfferProducts />
+          {showNewsletter && <Newsletter />}
+        </main>
+        <Footer />
+        <OfferModal />
+        <QuickViewModal />
+      </div>
+    </QuickViewProvider>
   )
 }
