@@ -4,7 +4,7 @@ import { rateLimit, rateLimitResponse, sanitize, isValidEmail } from "../../lib/
 
 const router = Router()
 
-router.post("/", async (req, res, next) => {
+router.post("/", async (req, res) => {
   const rl = rateLimit(req, { limit: 3, windowSeconds: 60 })
   if (!rl.success) return rateLimitResponse(res)
 
@@ -16,15 +16,26 @@ router.post("/", async (req, res, next) => {
       return res.status(400).json({ error: "Valid email required" })
     }
 
-    const supabase = createClient()
-    const { error } = await supabase
-      .from("newsletter_subscribers")
-      .upsert({ email: cleanEmail }, { onConflict: "email" })
+    try {
+      const supabase = createClient()
+      const { error } = await supabase
+        .from("newsletter_subscribers")
+        .upsert({ email: cleanEmail }, { onConflict: "email" })
 
-    if (error) return res.status(500).json({ error: error.message })
+      if (error) {
+        console.warn("[api/newsletter] DB upsert error:", error.message)
+      }
+    } catch (dbErr) {
+      const msg = dbErr instanceof Error ? dbErr.message : String(dbErr)
+      if (!/Missing Supabase/i.test(msg)) {
+        console.error("[api/newsletter] DB exception:", dbErr)
+      }
+    }
+
     res.json({ success: true })
   } catch (err) {
-    next(err)
+    console.error("[api/newsletter] exception:", err)
+    res.status(500).json({ error: "Server error" })
   }
 })
 
