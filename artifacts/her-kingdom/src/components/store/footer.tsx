@@ -2,7 +2,6 @@
 
 import { Link } from "wouter"
 import useSWR from "swr"
-import { FloatingWhatsApp } from "./floating-whatsapp"
 import { SeoLinkCloud } from "./seo-link-cloud"
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json())
@@ -159,7 +158,6 @@ export function Footer() {
       </div>
 
       <SeoLinkCloud />
-      <FloatingWhatsApp />
     </footer>
   )
 }

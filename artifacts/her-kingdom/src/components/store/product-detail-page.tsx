@@ -32,7 +32,7 @@ import { useWishlist } from "@/lib/wishlist-context"
 import { isVideoUrl } from "@/lib/media-utils"
 import { ProductImage } from "./product-image"
 import useSWR from "swr"
-import { useStoreContact } from "@/hooks/use-store-contact"
+
 import { rememberProduct, useRecentlyViewed } from "@/lib/recently-viewed"
 import { QuickViewProvider } from "@/lib/quick-view-context"
 import { QuickViewModal } from "./quick-view-modal"
@@ -225,7 +225,6 @@ function ProductDetailPageInner({ slug }: { slug: string }) {
   const related = data?.related || []
   const { addItem } = useCart()
   const { toggleItem, isInWishlist } = useWishlist()
-  const { whatsappNumber } = useStoreContact()
   const wishlisted = product ? isInWishlist(product.id) : false
   const [selectedImage, setSelectedImage] = useState(0)
   const [lightboxOpen, setLightboxOpen] = useState(false)
@@ -310,14 +309,6 @@ function ProductDetailPageInner({ slug }: { slug: string }) {
 
   const productUrl =
     typeof window !== "undefined" ? `${window.location.origin}/product/${product.slug}` : ""
-  const productImage = product.images[0] || ""
-  const whatsappMessage = encodeURIComponent(
-    `Hi! I'd like to order:\n\n*${product.name}*\nPrice: ${formatPrice(product.price)}\nQuantity: ${quantity}${
-      Object.entries(selectedVariations).length > 0
-        ? `\n${Object.entries(selectedVariations).map(([k, v]) => `${k}: ${v}`).join("\n")}`
-        : ""
-    }\n\nProduct: ${productUrl}\nImage: ${productImage}\n\nPlease confirm availability.`,
-  )
 
   // Pseudo-stable rating + sold count derived from id so it's consistent.
   const seed = Array.from(product.id).reduce((s, c) => s + c.charCodeAt(0), 0)
@@ -801,19 +792,6 @@ function ProductDetailPageInner({ slug }: { slug: string }) {
                     {wishlisted ? "Added To Wish List" : "Add To Wish List"}
                   </button>
 
-                  <a
-                    href={`https://wa.me/${whatsappNumber}?text=${whatsappMessage}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="mt-3 w-full h-11 rounded-full text-[13px] font-semibold transition-colors inline-flex items-center justify-center gap-2 text-white"
-                    style={{ background: "#25D366" }}
-                  >
-                    <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 24 24" aria-hidden>
-                      <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347" />
-                    </svg>
-                    Order via WhatsApp
-                  </a>
-
                   {/* Trust */}
                   <div className="grid grid-cols-3 gap-2 mt-5 pt-4 border-t" style={{ borderColor: PEACH_BORDER }}>
                     <TrustChip icon={Truck} label="Fast Delivery" />
@@ -1227,21 +1205,6 @@ function ProductDetailPageInner({ slug }: { slug: string }) {
         {/* Compact newsletter banner */}
         <CompactNewsletter />
       </main>
-
-      {/* Sticky mobile CTA */}
-      <a
-        href={`https://wa.me/${whatsappNumber}?text=${whatsappMessage}`}
-        target="_blank"
-        rel="noopener noreferrer"
-        aria-label={`Order ${product.name} via WhatsApp`}
-        className="lg:hidden fixed bottom-5 left-5 z-40 inline-flex items-center gap-2 rounded-full px-4 py-2.5 shadow-lg text-white text-xs"
-        style={{ background: "#25D366" }}
-      >
-        <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 24 24" aria-hidden>
-          <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347" />
-        </svg>
-        <span className="font-medium whitespace-nowrap">Order via WhatsApp</span>
-      </a>
 
       <Footer />
 
