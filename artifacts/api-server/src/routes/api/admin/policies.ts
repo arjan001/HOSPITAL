@@ -1,0 +1,42 @@
+import { Router } from "express"
+import { createAdminClient } from "../../../lib/supabase.js"
+
+const router = Router()
+
+router.get("/", async (_req, res) => {
+  try {
+    const supabase = createAdminClient()
+    const { data, error } = await supabase.from("policies").select("*").order("title")
+    if (error) return res.status(500).json({ error: error.message })
+    res.json(data || [])
+  } catch { res.status(500).json({ error: "Failed to fetch policies" }) }
+})
+
+router.post("/", async (req, res) => {
+  try {
+    const supabase = createAdminClient()
+    const body = req.body
+    const slug = body.slug || body.title.toLowerCase().replace(/[^a-z0-9]+/g, "-")
+    const { data, error } = await supabase
+      .from("policies")
+      .insert({ title: body.title, slug, content: body.content || "" })
+      .select().single()
+    if (error) return res.status(500).json({ error: error.message })
+    res.json(data)
+  } catch { res.status(500).json({ error: "Failed to create policy" }) }
+})
+
+router.put("/", async (req, res) => {
+  try {
+    const supabase = createAdminClient()
+    const body = req.body
+    const { error } = await supabase
+      .from("policies")
+      .update({ title: body.title, content: body.content || "", updated_at: new Date().toISOString() })
+      .eq("id", body.id)
+    if (error) return res.status(500).json({ error: error.message })
+    res.json({ success: true })
+  } catch { res.status(500).json({ error: "Failed to update policy" }) }
+})
+
+export default router
