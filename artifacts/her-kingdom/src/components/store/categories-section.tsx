@@ -8,14 +8,14 @@ import useSWR from "swr"
 import { safeFetcher, asArray } from "@/lib/fetcher"
 
 const COLLECTIONS = [
-  { name: "Women", slug: "women", image: "/images/products/necklace-sets/crystal-cluster-drop-necklace-set.jpeg", href: "/shop/women" },
-  { name: "New In", slug: "new", image: "/images/products/earrings/amara-gemstone-drops.jpeg", href: "/shop?filter=new" },
+  { name: "Women", slug: "women", image: "/images/products/medications/pill-bottle-white.png", href: "/shop/women" },
+  { name: "New In", slug: "new", image: "/images/products/vitamins/vitamin-c-bottle.png", href: "/shop?filter=new" },
 ]
 
 const CATEGORY_IMAGES: Record<string, string> = {
-  "women-watches": "/categories/women-watches.jpeg",
-  "men-sunglasses": "/categories/men-sunglasses.jpeg",
-  "men-watches": "/categories/men-watches.jpeg",
+  "women-watches": "/images/categories/medical-devices.png",
+  "men-sunglasses": "/images/categories/personal-care.png",
+  "men-watches": "/images/categories/medical-devices.png",
 }
 
 export function CategoriesSection() {

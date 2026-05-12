@@ -25,17 +25,17 @@ const COLLECTION_INFO: Record<string, { label: string; tagline: string; fallback
   men: {
     label: "Men's Collection",
     tagline: "Stylish watches, necklaces & accessories for the modern man",
-    fallbackImage: "/banners/men-page-banner.jpg",
+    fallbackImage: "/banners/hero-medical-devices.png",
   },
   women: {
     label: "Women's Collection",
     tagline: "Curated necklaces, bracelets, earrings & accessories for every occasion",
-    fallbackImage: "/banners/women-page-banner.jpg",
+    fallbackImage: "/banners/hero-personal-care.png",
   },
   babyshop: {
     label: "Kali-ttos Little Wardrobe",
     tagline: "Playful gifts, flowers & wardrobe staples for little ones",
-    fallbackImage: "/banners/women-collection.jpg",
+    fallbackImage: "/banners/hero-vitamins-supplements.png",
   },
 }
 

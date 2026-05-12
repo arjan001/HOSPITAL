@@ -228,7 +228,7 @@ export function SearchPage() {
             items={breadcrumbItems}
             title={heroTitle}
             subtitle={heroSubtitle}
-            imageUrl={categories[0]?.image || "/banners/hero-dress-floral-white.jpg"}
+            imageUrl={categories[0]?.image || "/banners/hero-pharmacy-main.png"}
             imageAlt="Search jewelry"
             eyebrow="Search"
             productCount={totalResults}

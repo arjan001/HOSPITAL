@@ -479,7 +479,7 @@ export async function getHeroBanners(): Promise<HeroBanner[]> {
       title: b.title || "Women's Collection",
       subtitle: b.subtitle || "Discover premium women's fashion",
       collection: "women-collection",
-      bannerImage: b.image_url || "/images/products/necklace-sets/crystal-cluster-drop-necklace-set.jpeg",
+      bannerImage: b.image_url || "/images/products/medications/pill-bottle-white.png",
       linkUrl: b.button_link || "/shop",
       buttonText: b.button_text || "Shop Now",
       sortOrder: b.sort_order || 0,

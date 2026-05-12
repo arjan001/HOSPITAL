@@ -4,8 +4,8 @@
 //
 // Keys are category slugs (as stored in public.categories.slug).
 const CATEGORY_IMAGE_FALLBACKS: Record<string, string> = {
-  "necklace-sets": "/images/products/necklaces/necklace-sets-category.jpeg",
-  "men-necklaces": "/images/products/men-necklaces/men-necklaces-category.jpeg",
+  "necklace-sets": "/images/categories/medications.png",
+  "men-necklaces": "/images/categories/medical-devices.png",
 }
 
 const PLACEHOLDER_PREFIX = "/placeholder"

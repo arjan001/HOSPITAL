@@ -382,8 +382,8 @@ export function AdminBanners() {
             <div><Label className="text-sm font-medium mb-1.5 block">Subtitle</Label><Input value={heroForm.subtitle} onChange={(e) => setHeroForm({ ...heroForm, subtitle: e.target.value })} placeholder="Discover stylish women's fashion" /></div>
             <div>
               <Label className="text-sm font-medium mb-1.5 block">Banner Image</Label>
-              <Input value={heroForm.imageUrl} onChange={(e) => setHeroForm({ ...heroForm, imageUrl: e.target.value })} placeholder="/images/products/necklace-sets/crystal-cluster-drop-necklace-set.jpeg" />
-              <p className="text-[11px] text-muted-foreground mt-1">Use any image from /images/products/** (e.g. /images/products/earrings/amara-gemstone-drops.jpeg, /images/products/women-watches/gold-flower-bracelet-watch.jpeg, /images/products/bracelets/celestia-graduated-cz-bracelet.jpeg).</p>
+              <Input value={heroForm.imageUrl} onChange={(e) => setHeroForm({ ...heroForm, imageUrl: e.target.value })} placeholder="/images/products/medications/pill-bottle-white.png" />
+              <p className="text-[11px] text-muted-foreground mt-1">Use any image from /images/products/** (e.g. /images/products/vitamins/vitamin-c-bottle.png, /images/products/medical-devices/digital-thermometer.png, /images/products/medications/blister-pack-tablets.png).</p>
               {heroForm.imageUrl && (
                 <div className="relative w-full h-28 mt-2 rounded-sm overflow-hidden bg-secondary">
                   <img src={heroForm.imageUrl} alt="Preview" className="object-cover" />

@@ -207,7 +207,7 @@ export function ShopPage({ seoIntro }: { seoIntro?: ReactNode } = {}) {
   const heroImage =
     activeCategory?.image ||
     categories[0]?.image ||
-    "/banners/hero-dress-floral-white.jpg"
+    "/banners/hero-pharmacy-main.png"
   const heroTitle = queryParam
     ? `Results for "${queryParam}"`
     : activeCategory

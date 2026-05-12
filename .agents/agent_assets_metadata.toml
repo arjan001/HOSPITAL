@@ -1,0 +1,122 @@
+uploads = []
+outputs = []
+
+[[generated]]
+id = "W4j-roauaWggYjNmf4T3V"
+uri = "file://artifacts/her-kingdom/public/banners/hero-pharmacy-main.png"
+type = "image"
+title = "generated_image"
+
+[[generated]]
+id = "jX4EQV4n2mbbIeIStY0hV"
+uri = "file://artifacts/her-kingdom/public/banners/hero-medical-devices.png"
+type = "image"
+title = "generated_image"
+
+[[generated]]
+id = "0gjJONnU3iYhvz_BikEwv"
+uri = "file://artifacts/her-kingdom/public/banners/hero-vitamins-supplements.png"
+type = "image"
+title = "generated_image"
+
+[[generated]]
+id = "Pv9cNKKqWhBGiVAOrwxlc"
+uri = "file://artifacts/her-kingdom/public/banners/hero-baby-care.png"
+type = "image"
+title = "generated_image"
+
+[[generated]]
+id = "o-UQkgggSrxFV5dexpADo"
+uri = "file://artifacts/her-kingdom/public/banners/hero-personal-care.png"
+type = "image"
+title = "generated_image"
+
+[[generated]]
+id = "pfkcTqRCuGUB7_9rPq9lU"
+uri = "file://artifacts/her-kingdom/public/images/categories/medications.png"
+type = "image"
+title = "generated_image"
+
+[[generated]]
+id = "_7NpGGJqajhUPJOEy85Co"
+uri = "file://artifacts/her-kingdom/public/banners/hero-first-aid.png"
+type = "image"
+title = "generated_image"
+
+[[generated]]
+id = "0nU8EaB_7Nkr8JnmT0r_I"
+uri = "file://artifacts/her-kingdom/public/images/categories/vitamins-supplements.png"
+type = "image"
+title = "generated_image"
+
+[[generated]]
+id = "4-H-kN5v5GK3gAseG-zpl"
+uri = "file://artifacts/her-kingdom/public/banners/promo-flash-sale.png"
+type = "image"
+title = "generated_image"
+
+[[generated]]
+id = "62ijaIkt_UV1f7hSaNIVQ"
+uri = "file://artifacts/her-kingdom/public/images/categories/medical-devices.png"
+type = "image"
+title = "generated_image"
+
+[[generated]]
+id = "oxIZb2rLD4Zq4Ma3x7_S8"
+uri = "file://artifacts/her-kingdom/public/banners/promo-free-delivery.png"
+type = "image"
+title = "generated_image"
+
+[[generated]]
+id = "CYFTDIhpn3OYeNkZVl_b8"
+uri = "file://artifacts/her-kingdom/public/images/categories/baby-mother.png"
+type = "image"
+title = "generated_image"
+
+[[generated]]
+id = "i1Sswd3yefsSE9oNW5wMe"
+uri = "file://artifacts/her-kingdom/public/banners/promo-new-arrivals.png"
+type = "image"
+title = "generated_image"
+
+[[generated]]
+id = "FVdzdnVew39fWn-3FGuQA"
+uri = "file://artifacts/her-kingdom/public/images/categories/personal-care.png"
+type = "image"
+title = "generated_image"
+
+[[generated]]
+id = "JmWvLdc1AsyoRhYA2GwX7"
+uri = "file://artifacts/her-kingdom/public/banners/promo-prescription-refill.png"
+type = "image"
+title = "generated_image"
+
+[[generated]]
+id = "IJ3Ovonb6Za4HU_a02JbU"
+uri = "file://artifacts/her-kingdom/public/images/categories/first-aid.png"
+type = "image"
+title = "generated_image"
+
+[[generated]]
+id = "8wUbpcec740gasrX8vxDc"
+uri = "file://artifacts/her-kingdom/public/images/products/medications/pill-bottle-white.png"
+type = "image"
+title = "generated_image"
+
+[[generated]]
+id = "n2-9-bMK_ghXF-a_YVkGe"
+uri = "file://artifacts/her-kingdom/public/images/products/medications/blister-pack-tablets.png"
+type = "image"
+title = "generated_image"
+
+[[generated]]
+id = "NKE2MQ_AYZ5jWKlzsxJVS"
+uri = "file://artifacts/her-kingdom/public/images/products/vitamins/vitamin-c-bottle.png"
+type = "image"
+title = "generated_image"
+
+[[generated]]
+id = "lpMuWpfGg391-goZb0lz4"
+uri = "file://artifacts/her-kingdom/public/images/products/medical-devices/digital-thermometer.png"
+type = "image"
+title = "generated_image"

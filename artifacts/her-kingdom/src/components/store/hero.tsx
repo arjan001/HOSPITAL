@@ -10,33 +10,33 @@ import { safeFetcher, asArray } from "@/lib/fetcher"
 
 const FALLBACK_BANNERS: HeroBanner[] = [
   {
-    id: "signature-jewelry",
-    title: "The Signature Jewelry Edit",
-    subtitle: "Hand-picked crystal sets, drop earrings and statement pieces — curated in Nairobi, made to be worn.",
-    collection: "jewelry-sets",
-    bannerImage: "/images/products/necklace-sets/crystal-cluster-drop-necklace-set.jpeg",
-    linkUrl: "/shop?category=jewelry-sets",
-    buttonText: "Shop The Edit",
+    id: "pharmacy-essentials",
+    title: "Your Trusted Online Pharmacy",
+    subtitle: "Authentic medications, vitamins and medical devices — sourced from licensed suppliers, delivered quickly across Kenya.",
+    collection: "medications",
+    bannerImage: "/banners/hero-pharmacy-main.png",
+    linkUrl: "/shop?category=medications",
+    buttonText: "Shop Medications",
     sortOrder: 0,
   },
   {
-    id: "timepieces",
-    title: "Timeless Timepieces",
-    subtitle: "Rose-gold chain watches and floral bracelet dials — quietly luxurious, priced to be worn.",
-    collection: "women-watches",
-    bannerImage: "/images/products/women-watches/gold-flower-bracelet-watch.jpeg",
-    linkUrl: "/shop?category=women-watches",
-    buttonText: "Browse Watches",
+    id: "medical-devices",
+    title: "Smart Medical Devices",
+    subtitle: "Thermometers, blood pressure monitors, pulse oximeters and more — keep track of your health at home.",
+    collection: "medical-devices",
+    bannerImage: "/banners/hero-medical-devices.png",
+    linkUrl: "/shop?category=medical-devices",
+    buttonText: "Browse Devices",
     sortOrder: 1,
   },
   {
-    id: "everyday-sparkle",
-    title: "Everyday Sparkle",
-    subtitle: "Featherlight earrings, dainty studs and drop crystals designed for every hour of the day.",
-    collection: "earrings",
-    bannerImage: "/images/products/earrings/amara-gemstone-drops.jpeg",
-    linkUrl: "/shop?category=earrings",
-    buttonText: "Shop Earrings",
+    id: "vitamins-supplements",
+    title: "Vitamins & Wellness",
+    subtitle: "Daily multivitamins, immunity boosters and supplements to support your everyday wellbeing.",
+    collection: "vitamins",
+    bannerImage: "/banners/hero-vitamins-supplements.png",
+    linkUrl: "/shop?category=vitamins",
+    buttonText: "Shop Wellness",
     sortOrder: 2,
   },
 ]
@@ -78,7 +78,7 @@ function HeroCarousel({ banners }: { banners: HeroBanner[] }) {
         <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/10 to-transparent" />
       </div>
       <div className="relative z-10 p-8 lg:p-12 w-full">
-        <p className="text-white/80 text-xs tracking-[0.3em] uppercase mb-2">Women&apos;s Fashion</p>
+        <p className="text-white/80 text-xs tracking-[0.3em] uppercase mb-2">Online Pharmacy</p>
         <h1 className="text-white text-4xl lg:text-5xl font-serif font-bold leading-tight text-balance">
           {mainBanner.title}
         </h1>
@@ -106,7 +106,7 @@ function BannerImage({ src, alt, priority = false }: { src: string; alt: string;
   if (hasError) {
     return (
       <img
-        src="/images/products/necklace-sets/crystal-cluster-drop-necklace-set.jpeg"
+        src="/images/products/medications/pill-bottle-white.png"
         alt={alt}
         className="object-cover"
        
@@ -122,7 +122,7 @@ function BannerImage({ src, alt, priority = false }: { src: string; alt: string;
      
       onError={() => {
         setHasError(true)
-        setImgSrc("/images/products/necklace-sets/crystal-cluster-drop-necklace-set.jpeg")
+        setImgSrc("/images/products/medications/pill-bottle-white.png")
       }}
     />
   )
@@ -138,7 +138,7 @@ export function Hero() {
 
     return banners.slice(0, 3).map((b) => ({
       ...b,
-      bannerImage: b.bannerImage || "/images/products/necklace-sets/crystal-cluster-drop-necklace-set.jpeg",
+      bannerImage: b.bannerImage || "/images/products/medications/pill-bottle-white.png",
       linkUrl: b.linkUrl || "/shop",
       buttonText: b.buttonText || "Shop Now",
     }))
