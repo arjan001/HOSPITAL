@@ -66,12 +66,19 @@ export function DeliveryPage() {
           style={{
             background: "linear-gradient(120deg, #FFF6EB 0%, #FAE0C8 60%, #F5CDB8 100%)",
             borderBottom: `1px solid ${PEACH_BORDER}`,
+            minHeight: 360,
           }}
         >
-          <div className="mx-auto max-w-7xl px-4 py-10 lg:py-14">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-center min-h-[220px]">
-              {/* Text */}
-              <div>
+          {/* Soft glow behind rider */}
+          <div
+            className="absolute right-0 bottom-0 w-[600px] h-[600px] pointer-events-none"
+            style={{ background: `radial-gradient(ellipse at 80% 100%, rgba(197,136,100,0.22) 0%, transparent 68%)` }}
+          />
+
+          <div className="mx-auto max-w-7xl px-4 relative z-10" style={{ minHeight: 360 }}>
+            <div className="flex items-center" style={{ minHeight: 360 }}>
+              {/* Text — left half */}
+              <div className="w-full lg:w-1/2 py-12">
                 <h1
                   className="text-3xl sm:text-4xl lg:text-5xl font-extrabold leading-tight tracking-tight"
                   style={{ color: WINE, fontFamily: "var(--font-serif, ui-serif, Georgia, serif)" }}
@@ -84,7 +91,7 @@ export function DeliveryPage() {
                 <Link href="/shop">
                   <button
                     type="button"
-                    className="mt-6 px-7 h-12 rounded-full text-sm font-bold text-white inline-flex items-center gap-2 transition-transform hover:scale-105"
+                    className="mt-6 px-7 h-12 rounded-full text-sm font-bold inline-flex items-center gap-2 transition-transform hover:scale-105"
                     style={{
                       background: `linear-gradient(135deg, ${AMBER_CARD} 0%, #D4924A 100%)`,
                       color: WINE,
@@ -96,22 +103,21 @@ export function DeliveryPage() {
                   </button>
                 </Link>
               </div>
-
-              {/* Delivery rider photo */}
-              <div className="hidden lg:flex items-end justify-end h-full relative min-h-[260px]">
-                <div
-                  className="absolute right-4 bottom-0 w-72 h-72 rounded-full opacity-25 pointer-events-none"
-                  style={{ background: `radial-gradient(circle, ${MAUVE_CARD} 0%, transparent 70%)` }}
-                />
-                <img
-                  src="/delivery-rider.png"
-                  alt="Delivery rider on scooter"
-                  className="relative z-10 w-[340px] object-contain drop-shadow-2xl"
-                  style={{ maxHeight: 300 }}
-                />
-              </div>
             </div>
           </div>
+
+          {/* Rider — absolute right, bottom-anchored, fills banner height */}
+          <img
+            src="/delivery-rider.png"
+            alt="Delivery rider on scooter"
+            className="hidden lg:block absolute bottom-0 right-0 object-contain drop-shadow-2xl pointer-events-none"
+            style={{
+              height: "110%",
+              maxHeight: 420,
+              width: "auto",
+              right: "4%",
+            }}
+          />
         </section>
 
         <div className="mx-auto max-w-7xl px-4 py-12 space-y-14">
