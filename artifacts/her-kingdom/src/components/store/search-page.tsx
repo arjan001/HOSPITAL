@@ -211,7 +211,7 @@ export function SearchPage() {
     ...(query ? [{ label: `"${query}"` }] : []),
   ]
 
-  const heroTitle = query ? `Results for "${query}"` : "Search RX Pharmacy"
+  const heroTitle = query ? `Results for "${query}"` : "Search Shaniid RX"
   const heroSubtitle = query
     ? totalResults === 0
       ? "No matching products in stock. Browse popular medications & wellness picks below."
@@ -229,7 +229,7 @@ export function SearchPage() {
             title={heroTitle}
             subtitle={heroSubtitle}
             imageUrl={categories[0]?.image || "/banners/hero-pharmacy-main.png"}
-            imageAlt="Search RX Pharmacy"
+            imageAlt="Search Shaniid RX"
             eyebrow="Search"
             productCount={totalResults}
           />

@@ -5,7 +5,7 @@ import useSWR from "swr"
 import { X } from "lucide-react"
 
 const FALLBACK_WHATSAPP_NUMBER = "254780406059"
-const DEFAULT_MESSAGE = "Hi RX Pharmacy! I'd like to chat about an order."
+const DEFAULT_MESSAGE = "Hi Shaniid RX! I'd like to chat about an order."
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
@@ -52,7 +52,7 @@ export function FloatingWhatsApp() {
                 </svg>
               </div>
               <div>
-                <p className="text-sm font-semibold leading-tight">RX Pharmacy</p>
+                <p className="text-sm font-semibold leading-tight">Shaniid RX</p>
                 <p className="text-[11px] text-white/80">Typically replies within an hour</p>
               </div>
             </div>
@@ -67,7 +67,7 @@ export function FloatingWhatsApp() {
           </div>
           <div className="px-4 py-4 bg-[#ece5dd]">
             <div className="bg-white rounded-lg shadow-sm p-3 text-sm leading-relaxed max-w-[85%]">
-              Karibu RX Pharmacy! Chat with us about an order, prescription, delivery, or product details.
+              Karibu Shaniid RX! Chat with us about an order, prescription, delivery, or product details.
             </div>
           </div>
           <a

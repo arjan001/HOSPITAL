@@ -199,7 +199,7 @@ export function BlogsPage() {
           <div className="relative max-w-6xl mx-auto px-4 py-20 lg:py-28 text-center">
             <span className="inline-flex items-center gap-2 bg-white/80 backdrop-blur border border-pink-100 px-4 py-1.5 rounded-full text-[11px] font-semibold uppercase tracking-[0.2em] text-pink-600 mb-6">
               <Sparkles className="h-3.5 w-3.5" />
-              The RX Pharmacy Journal
+              The Shaniid RX Journal
             </span>
             <h1 className="font-serif text-5xl md:text-6xl lg:text-7xl font-semibold leading-[1.05] text-foreground text-balance">
               Stories, style notes &amp;<br />

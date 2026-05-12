@@ -43,7 +43,7 @@ const fallbackPosts: SocialPost[] = [
     id: "tt-fallback-2",
     platform: "tiktok",
     thumbnailUrl: "",
-    caption: "Wellness essentials from RX Pharmacy",
+    caption: "Wellness essentials from Shaniid RX",
     url: "https://www.tiktok.com/@herkingdom_pharmacy",
     authorName: "@rxpharmacy_ke",
   },

@@ -216,7 +216,7 @@ export function ShopPage({ seoIntro }: { seoIntro?: ReactNode } = {}) {
   const heroSubtitle = queryParam
     ? `Explore ${filtered.length} matching item${filtered.length !== 1 ? "s" : ""} across our catalog.`
     : activeCategory
-    ? `Quality ${activeCategory.name.toLowerCase()} from RX Pharmacy.`
+    ? `Quality ${activeCategory.name.toLowerCase()} from Shaniid RX.`
     : "Discover our full catalog of medications, vitamins, baby care, devices & wellness essentials."
   const eyebrow = queryParam ? "Search Results" : activeCategory ? "Category" : "Boutique Collection"
 

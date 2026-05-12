@@ -5,6 +5,7 @@ import { TopBar } from "./top-bar"
 import { Navbar } from "./navbar"
 import { CtaCarousel } from "./cta-carousel"
 import { ExploreCategories } from "./explore-categories"
+import { HealthCategories } from "./health-categories"
 import { FeaturedProducts } from "./featured-products"
 import { OfferBanner } from "./offer-banner"
 import { NewArrivals } from "./new-arrivals"
@@ -28,7 +29,7 @@ const DEFAULT_FAQS: Faq[] = [
   },
   {
     q: "Are your products authentic?",
-    a: "Yes. Every product on RX Pharmacy is sourced directly from licensed manufacturers and approved local distributors. Storage and cold-chain handling follow Pharmacy and Poisons Board guidelines.",
+    a: "Yes. Every product on Shaniid RX is sourced directly from licensed manufacturers and approved local distributors. Storage and cold-chain handling follow Pharmacy and Poisons Board guidelines.",
   },
   {
     q: "What payment methods do you accept?",
@@ -55,6 +56,7 @@ export function LandingPage({ faqs = DEFAULT_FAQS }: { faqs?: Faq[] }) {
       <main className="flex-1">
         <CtaCarousel />
         <ExploreCategories />
+        <HealthCategories />
         <FeaturedProducts />
         <OfferBanner />
         <NewArrivals />

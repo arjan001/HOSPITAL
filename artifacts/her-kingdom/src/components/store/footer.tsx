@@ -115,13 +115,13 @@ export function Footer() {
             <Link href="/" className="inline-flex items-center gap-2">
               <img
                 src="/logo-rx.png"
-                alt="RX Pharmacy"
+                alt="Shaniid RX"
                 width={64}
                 height={64}
                 className="h-14 w-14 object-contain"
               />
               <span className="text-lg font-bold tracking-wide" style={{ color: TEXT_WINE }}>
-                RX Pharmacy
+                Shaniid RX
               </span>
             </Link>
             <p className="mt-4 text-sm leading-relaxed" style={{ color: TEXT_WINE_SOFT }}>

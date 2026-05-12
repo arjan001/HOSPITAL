@@ -610,7 +610,7 @@ export function BlogDetailPage({ slug }: { slug: string }) {
               <TrendingUp className="h-5 w-5 text-pink-300 mb-3" />
               <p className="font-serif text-xl font-semibold leading-tight mb-2">Shop the story</p>
               <p className="text-xs text-background/70 mb-4 leading-relaxed">
-                Every article in the RX Pharmacy journal links to products you can shop today. Browse our pharmacist-picked essentials.
+                Every article in the Shaniid RX journal links to products you can shop today. Browse our pharmacist-picked essentials.
               </p>
               <Link href="/shop">
                 <Button
