@@ -120,9 +120,6 @@ export function Footer() {
                 height={64}
                 className="h-14 w-14 object-contain"
               />
-              <span className="text-lg font-bold tracking-wide" style={{ color: TEXT_WINE }}>
-                Shaniid RX
-              </span>
             </Link>
             <p className="mt-4 text-sm leading-relaxed" style={{ color: TEXT_WINE_SOFT }}>
               Kenya's trusted online pharmacy delivering quality medications, supplements and healthcare

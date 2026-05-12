@@ -81,7 +81,7 @@ function Shell({ children }: { children: React.ReactNode }) {
 export default function SpeakToADoctorPage() {
   const [screen,     setScreen]     = useState<Screen>("select")
   const [consType,   setConsType]   = useState<"chat" | "call">("chat")
-  const [categories, setCategories] = useState<string[]>([])
+  const [category,   setCategory]   = useState("")
   const [symptoms,   setSymptoms]   = useState("")
   const [payMethod,  setPayMethod]  = useState("mpesa")
   const [connectPct, setConnectPct] = useState(0)
@@ -105,7 +105,7 @@ export default function SpeakToADoctorPage() {
       if (consType === "chat") {
         setMessages([{
           from: "doctor",
-          text: `Hello! I'm Dr. Salad Khalif. I understand you're experiencing: "${categories.join(", ") || "General concern"}". I'm here to help. Can you tell me more about when these symptoms started?`,
+          text: `Hello! I'm Dr. Salad Khalif. I understand you're experiencing: "${category || "General concern"}". I'm here to help. Can you tell me more about when these symptoms started?`,
           time: "Just now",
         }])
         setScreen("chat")
@@ -127,8 +127,8 @@ export default function SpeakToADoctorPage() {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" })
   }, [messages, typing])
 
-  const toggleCategory = (label: string) =>
-    setCategories(p => p.includes(label) ? p.filter(c => c !== label) : [...p, label])
+  const selectCategory = (label: string) =>
+    setCategory(p => p === label ? "" : label)
 
   const sendMessage = () => {
     const text = input.trim()
@@ -277,12 +277,12 @@ export default function SpeakToADoctorPage() {
                 { key: "mental",    label: "Mental Health",         emoji: "🧠" },
                 { key: "other",     label: "Others",                emoji: "💊" },
               ].map(c => {
-                const selected = categories.includes(c.label)
+                const selected = category === c.label
                 return (
                   <button
                     key={c.key}
                     type="button"
-                    onClick={() => toggleCategory(c.label)}
+                    onClick={() => selectCategory(c.label)}
                     className="flex flex-col items-center gap-3 py-6 px-4 rounded-2xl transition-all text-center"
                     style={{
                       border: `2px solid ${selected ? ACCENT : "#e5e7eb"}`,
@@ -423,14 +423,10 @@ export default function SpeakToADoctorPage() {
                 <p className="text-xs" style={{ color: WINE_CARD }}>Estimated Duration</p>
                 <p className="font-bold" style={{ color: WINE }}>{consType === "chat" ? "5 minutes" : "10 minutes"}</p>
               </div>
-              {categories.length > 0 && (
+              {category && (
                 <div>
                   <p className="text-xs mb-1" style={{ color: WINE_CARD }}>Your Concern</p>
-                  <div className="flex flex-wrap gap-2">
-                    {categories.map(c => (
-                      <span key={c} className="inline-block px-3 py-1 rounded-full text-xs font-bold text-white" style={{ background: WINE_CARD }}>{c}</span>
-                    ))}
-                  </div>
+                  <span className="inline-block px-3 py-1 rounded-full text-xs font-bold text-white" style={{ background: WINE_CARD }}>{category}</span>
                 </div>
               )}
             </div>

@@ -149,7 +149,7 @@ export function Navbar() {
       {/* Main bar — warm cream with logo, centered nav, action chips */}
       <div style={{ background: BG_CREAM, color: TEXT_WINE, borderBottom: "1px solid #F2DCC8" }}>
         <div className="mx-auto max-w-7xl px-4">
-          <div className="flex items-center justify-between gap-4 h-20 lg:h-24">
+          <div className="flex items-center justify-between gap-4 h-16 lg:h-18">
             {/* Mobile menu trigger */}
             <Sheet>
               <SheetTrigger asChild>
@@ -216,7 +216,7 @@ export function Navbar() {
                 alt="Shaniid RX"
                 width={160}
                 height={80}
-                className="h-16 lg:h-20 w-auto object-contain"
+                className="h-20 lg:h-24 w-auto object-contain"
               />
             </Link>
 
