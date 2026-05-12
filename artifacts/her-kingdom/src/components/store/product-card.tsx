@@ -11,6 +11,13 @@ import { useWishlist } from "@/lib/wishlist-context"
 import { isVideoUrl } from "@/lib/media-utils"
 import { ProductImage } from "./product-image"
 
+const TEXT_WINE = "#3D0814"
+const TEXT_WINE_SOFT = "#6B0F1A"
+const ACCENT_ORANGE = "#F97316"
+const ACCENT_RED = "#B91C1C"
+const BORDER_PEACH = "#F2DCC8"
+const CARD_BG = "rgba(255, 251, 245, 0.7)"
+
 export function ProductCard({ product }: { product: Product }) {
   const { addItem } = useCart()
   const { toggleItem, isInWishlist } = useWishlist()
@@ -21,9 +28,22 @@ export function ProductCard({ product }: { product: Product }) {
   const isPrimaryVideo = isVideoUrl(primaryMedia)
 
   return (
-    <div className="group">
+    <div
+      className="group relative rounded-2xl p-3 transition-transform hover:-translate-y-1"
+      style={{
+        background: CARD_BG,
+        backdropFilter: "blur(12px)",
+        WebkitBackdropFilter: "blur(12px)",
+        border: `1px solid ${BORDER_PEACH}`,
+        boxShadow:
+          "inset 0 1px 0 rgba(255,255,255,0.65), 0 14px 30px -18px rgba(184,60,30,0.4)",
+      }}
+    >
       <Link href={`/product/${product.slug}`}>
-        <div className="relative aspect-[3/4] overflow-hidden rounded-sm bg-secondary">
+        <div
+          className="relative aspect-square overflow-hidden rounded-xl"
+          style={{ background: "#FFF1E6" }}
+        >
           {isPrimaryVideo ? (
             <>
               <video
@@ -34,8 +54,8 @@ export function ProductCard({ product }: { product: Product }) {
                 className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
               />
               <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                <div className="w-10 h-10 bg-background/80 rounded-full flex items-center justify-center">
-                  <Play className="h-5 w-5 text-foreground ml-0.5" />
+                <div className="w-10 h-10 bg-white/85 rounded-full flex items-center justify-center">
+                  <Play className="h-5 w-5 ml-0.5" style={{ color: TEXT_WINE }} />
                 </div>
               </div>
             </>
@@ -48,77 +68,110 @@ export function ProductCard({ product }: { product: Product }) {
           )}
 
           {/* Badges */}
-          <div className="absolute top-3 left-3 flex flex-col gap-1.5">
+          <div className="absolute top-2 left-2 flex flex-col gap-1.5">
             {product.isNew && (
-              <span className="bg-foreground text-background text-[10px] font-semibold tracking-wider uppercase px-2.5 py-1">
+              <span
+                className="text-[10px] font-bold tracking-wider uppercase px-2.5 py-1 rounded-full text-white"
+                style={{ background: TEXT_WINE }}
+              >
                 New
               </span>
             )}
             {product.isOnOffer && product.offerPercentage && (
-              <span className="bg-foreground text-background text-[10px] font-semibold tracking-wider uppercase px-2.5 py-1">
+              <span
+                className="text-[10px] font-bold tracking-wider uppercase px-2.5 py-1 rounded-full text-white"
+                style={{ background: ACCENT_RED }}
+              >
                 -{product.offerPercentage}%
               </span>
             )}
           </div>
 
           {/* Quick Actions */}
-          <div className="absolute top-3 right-3 flex flex-col gap-2 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+          <div className="absolute top-2 right-2 flex flex-col gap-2 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
             <button
               type="button"
               onClick={(e) => { e.preventDefault(); toggleItem(product) }}
-              className="w-9 h-9 flex items-center justify-center bg-background rounded-full shadow-sm hover:bg-secondary transition-colors"
+              className="w-8 h-8 flex items-center justify-center rounded-full shadow-md hover:scale-110 transition-transform"
+              style={{ background: "rgba(255,255,255,0.9)", backdropFilter: "blur(8px)" }}
               aria-label={wishlisted ? "Remove from wishlist" : "Add to wishlist"}
             >
-              <Heart className={`h-4 w-4 transition-colors ${wishlisted ? "fill-pink-500 text-pink-500" : "text-pink-500"}`} />
+              <Heart
+                className="h-4 w-4"
+                fill={wishlisted ? ACCENT_RED : "none"}
+                style={{ color: ACCENT_RED }}
+              />
             </button>
             <button
               type="button"
               onClick={(e) => { e.preventDefault(); navigate(`/product/${product.slug}`) }}
-              className="w-9 h-9 flex items-center justify-center bg-background rounded-full shadow-sm hover:bg-secondary transition-colors"
+              className="w-8 h-8 flex items-center justify-center rounded-full shadow-md hover:scale-110 transition-transform text-white"
+              style={{ background: ACCENT_RED }}
               aria-label="Quick view"
               title="Quick view"
             >
               <Eye className="h-4 w-4" />
             </button>
           </div>
-
-          {/* Add to Cart */}
-          <div className="absolute bottom-0 left-0 right-0 p-3 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-            <button
-              type="button"
-              onClick={(e) => {
-                e.preventDefault()
-                addItem(product)
-                setJustAdded(true)
-                window.setTimeout(() => setJustAdded(false), 1400)
-              }}
-              className={`w-full flex items-center justify-center gap-2 py-2.5 text-xs font-medium uppercase tracking-wider transition-colors ${justAdded ? "bg-[#1BBFB8] text-white" : "bg-[#172B4D] text-white hover:bg-[#11233F]"}`}
-            >
-              {justAdded ? <Check className="h-3.5 w-3.5" /> : <ShoppingBag className="h-3.5 w-3.5" />}
-              {justAdded ? "Added to Cart" : "Add to Cart"}
-            </button>
-          </div>
         </div>
       </Link>
 
-      <div className="mt-3">
-        <p className="text-xs text-muted-foreground uppercase tracking-wider">
+      <div className="mt-3 px-1">
+        <p
+          className="text-[10px] uppercase tracking-[0.18em]"
+          style={{ color: TEXT_WINE_SOFT, opacity: 0.75 }}
+        >
           {product.category}
         </p>
         <Link href={`/product/${product.slug}`}>
-          <h3 className="text-sm font-medium mt-1 group-hover:underline line-clamp-1">
+          <h3
+            className="text-sm font-bold mt-1 line-clamp-1 group-hover:underline"
+            style={{ color: TEXT_WINE }}
+          >
             {product.name}
           </h3>
         </Link>
-        <div className="flex items-center gap-2 mt-1.5">
-          <span className="text-sm font-semibold">{formatPrice(product.price)}</span>
+        <div className="flex items-center gap-2 mt-1">
+          <span className="text-sm font-bold" style={{ color: TEXT_WINE }}>
+            {formatPrice(product.price)}
+          </span>
           {product.originalPrice && (
-            <span className="text-xs text-muted-foreground line-through">
+            <span
+              className="text-xs line-through"
+              style={{ color: TEXT_WINE_SOFT, opacity: 0.6 }}
+            >
               {formatPrice(product.originalPrice)}
             </span>
           )}
         </div>
       </div>
+
+      {/* Add to Cart */}
+      <button
+        type="button"
+        aria-live="polite"
+        onClick={(e) => {
+          e.preventDefault()
+          addItem(product)
+          setJustAdded(true)
+          window.setTimeout(() => setJustAdded(false), 1400)
+        }}
+        className="mt-3 w-full flex items-center justify-center gap-1.5 h-10 rounded-full font-semibold text-sm transition-transform hover:scale-[1.02] text-white"
+        style={
+          justAdded
+            ? {
+                background: "#15803D",
+                boxShadow: "0 10px 22px -10px rgba(21,128,61,0.55)",
+              }
+            : {
+                background: `linear-gradient(135deg, ${ACCENT_ORANGE} 0%, ${ACCENT_RED} 100%)`,
+                boxShadow: "0 10px 22px -10px rgba(185,28,28,0.55)",
+              }
+        }
+      >
+        {justAdded ? <Check className="h-4 w-4" /> : <ShoppingBag className="h-4 w-4" />}
+        {justAdded ? "Added" : "Add To Cart"}
+      </button>
     </div>
   )
 }

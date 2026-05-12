@@ -8,6 +8,11 @@ import type { Product } from "@/lib/types"
 import useSWR from "swr"
 import { safeFetcher, asArray } from "@/lib/fetcher"
 
+const TEXT_WINE = "#3D0814"
+const TEXT_WINE_SOFT = "#6B0F1A"
+const ACCENT_ORANGE = "#F97316"
+const ACCENT_RED = "#B91C1C"
+
 function shuffle<T>(arr: T[]): T[] {
   const a = [...arr]
   for (let i = a.length - 1; i > 0; i--) {
@@ -25,7 +30,6 @@ function getMixedRandom(products: Product[], count: number): Product[] {
     byCategory[cat].push(p)
   }
 
-  // Shuffle each category bucket so picks differ per load
   for (const cat of Object.keys(byCategory)) {
     byCategory[cat] = shuffle(byCategory[cat])
   }
@@ -64,20 +68,33 @@ export function FeaturedProducts() {
   if (featured.length === 0) return null
 
   return (
-    <section className="py-14 lg:py-20 bg-secondary/50">
-      <div className="mx-auto max-w-7xl px-4">
-        <div className="flex items-end justify-between mb-8">
+    <section className="py-14 lg:py-20" style={{ background: "#FFFBF5" }}>
+      <div className="mx-auto max-w-7xl px-4 lg:px-8">
+        <div className="flex items-end justify-between mb-8 gap-4">
           <div>
-            <p className="text-xs tracking-[0.3em] uppercase text-muted-foreground mb-2">
+            <p
+              className="text-[10px] tracking-[0.3em] uppercase mb-2 font-semibold"
+              style={{ color: ACCENT_RED }}
+            >
               Curated For You
             </p>
-            <h2 className="text-2xl lg:text-3xl font-serif font-bold">
+            <h2
+              className="text-2xl lg:text-4xl font-bold tracking-tight"
+              style={{ color: TEXT_WINE }}
+            >
               Featured Products
             </h2>
+            <p className="mt-2 text-sm lg:text-base" style={{ color: TEXT_WINE_SOFT }}>
+              Pharmacist-picked essentials, ready to ship today.
+            </p>
           </div>
           <Link
             href="/shop"
-            className="hidden sm:flex items-center gap-1.5 text-sm font-medium hover:text-muted-foreground transition-colors"
+            className="hidden sm:inline-flex items-center gap-1.5 h-11 px-5 rounded-full font-semibold text-sm text-white transition-transform hover:scale-[1.03]"
+            style={{
+              background: `linear-gradient(135deg, ${ACCENT_ORANGE} 0%, ${ACCENT_RED} 100%)`,
+              boxShadow: "0 10px 22px -10px rgba(185,28,28,0.55)",
+            }}
           >
             View All
             <ArrowRight className="h-4 w-4" />

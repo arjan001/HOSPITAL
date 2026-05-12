@@ -3,7 +3,8 @@
 import useSWR from "swr"
 import { TopBar } from "./top-bar"
 import { Navbar } from "./navbar"
-import { Hero } from "./hero"
+import { CtaCarousel } from "./cta-carousel"
+import { ExploreCategories } from "./explore-categories"
 import { FeaturedProducts } from "./featured-products"
 import { OfferBanner } from "./offer-banner"
 import { NewArrivals } from "./new-arrivals"
@@ -53,7 +54,8 @@ export function LandingPage({ faqs = DEFAULT_FAQS }: { faqs?: Faq[] }) {
       <TopBar />
       <Navbar />
       <main className="flex-1">
-        <Hero />
+        <CtaCarousel />
+        <ExploreCategories />
         <FeaturedProducts />
         <OfferBanner />
         <NewArrivals />

@@ -1,0 +1,269 @@
+"use client"
+
+import React from "react"
+import { Link } from "wouter"
+import { Eye, Plus, Star } from "lucide-react"
+import { ProductImage } from "./product-image"
+
+const TEXT_WINE = "#3D0814"
+const TEXT_WINE_SOFT = "#6B0F1A"
+const ACCENT_ORANGE = "#F97316"
+const ACCENT_RED = "#B91C1C"
+const BORDER_PEACH = "#F2DCC8"
+const CARD_BG = "rgba(255, 251, 245, 0.65)"
+const SIDEBAR_GRAD = "linear-gradient(160deg, #FFE2D1 0%, #F8C1A6 100%)"
+
+type CarePack = {
+  title: string
+  description: string
+  price: string
+  href: string
+  image: string
+}
+
+const CARE_PACKS: CarePack[] = [
+  {
+    title: "Diabetes Care Pack",
+    description: "A complete pack for reliable diabetes management.",
+    price: "KSH 6,500",
+    href: "/shop?category=chronic-care",
+    image: "/newsletter-pills.png",
+  },
+  {
+    title: "Blood Pressure Care Packs",
+    description: "Daily essentials for healthy blood pressure control.",
+    price: "KSH 6,500",
+    href: "/shop?category=chronic-care",
+    image: "/newsletter-pills.png",
+  },
+  {
+    title: "Asthma & Respiratory Packs",
+    description: "Inhalers and rescue meds for breathing comfort.",
+    price: "KSH 6,500",
+    href: "/shop?category=chronic-care",
+    image: "/newsletter-pills.png",
+  },
+  {
+    title: "Kidney & Dialysis Support",
+    description: "Renal-friendly support pack curated by clinicians.",
+    price: "KSH 6,500",
+    href: "/shop?category=chronic-care",
+    image: "/newsletter-pills.png",
+  },
+  {
+    title: "Cold & Flu Pack",
+    description: "Everything to recover faster from seasonal flu.",
+    price: "KSH 6,500",
+    href: "/shop?category=acute-care",
+    image: "/newsletter-pills.png",
+  },
+  {
+    title: "Pain & Injury Pack",
+    description: "Relief, dressings and braces for everyday injuries.",
+    price: "KSH 6,500",
+    href: "/shop?category=acute-care",
+    image: "/newsletter-pills.png",
+  },
+  {
+    title: "Digestive Health Pack",
+    description: "Gut comfort essentials for the whole family.",
+    price: "KSH 6,500",
+    href: "/shop?category=wellness",
+    image: "/newsletter-pills.png",
+  },
+  {
+    title: "Infection Recovery Pack",
+    description: "Antibiotics and immune support, dispensed safely.",
+    price: "KSH 6,500",
+    href: "/shop?category=acute-care",
+    image: "/newsletter-pills.png",
+  },
+  {
+    title: "Family First Aid Pack",
+    description: "Stocked first-aid kit ready for any home or trip.",
+    price: "KSH 6,500",
+    href: "/shop?category=first-aid",
+    image: "/newsletter-pills.png",
+  },
+]
+
+type DeviceItem = {
+  name: string
+  price: string
+  href: string
+  image: string
+}
+
+const DEVICES: DeviceItem[] = [
+  { name: "Glucometers", price: "ksh 2000", href: "/shop?category=devices", image: "/newsletter-pills.png" },
+  { name: "BP Monitors", price: "ksh 2500", href: "/shop?category=devices", image: "/newsletter-pills.png" },
+  { name: "Thermometers", price: "ksh 1000", href: "/shop?category=devices", image: "/newsletter-pills.png" },
+  { name: "Test Strips & Lancets", price: "ksh 800", href: "/shop?category=devices", image: "/newsletter-pills.png" },
+]
+
+export function ExploreCategories() {
+  return (
+    <section className="py-14 lg:py-20" style={{ background: "#FFFBF5" }}>
+      <div className="mx-auto max-w-7xl px-4 lg:px-8">
+        <div className="text-center mb-10">
+          <h2
+            className="text-2xl lg:text-4xl font-bold tracking-tight"
+            style={{ color: TEXT_WINE }}
+          >
+            Explore Featured Categories
+          </h2>
+          <p className="mt-2 text-sm lg:text-base" style={{ color: TEXT_WINE_SOFT }}>
+            Hand-picked care packs curated by our pharmacists.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-8 lg:gap-10 items-start">
+          {/* Left: Care Packs */}
+          <div>
+            <h3
+              className="text-lg lg:text-xl font-bold mb-5"
+              style={{ color: TEXT_WINE }}
+            >
+              Care Packs
+            </h3>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-5 lg:gap-6">
+              {CARE_PACKS.map((p) => (
+                <CarePackCard key={p.title} pack={p} />
+              ))}
+            </div>
+          </div>
+
+          {/* Right: sticky sidebar */}
+          <aside className="lg:sticky lg:top-32">
+            <div
+              className="rounded-3xl p-5 lg:p-6"
+              style={{
+                background: SIDEBAR_GRAD,
+                border: "1px solid rgba(255,255,255,0.55)",
+                boxShadow:
+                  "inset 0 1px 0 rgba(255,255,255,0.65), 0 24px 50px -25px rgba(184,60,30,0.45)",
+              }}
+            >
+              <h3
+                className="text-lg font-bold text-center mb-5"
+                style={{ color: TEXT_WINE }}
+              >
+                Devices &amp; Monitoring
+              </h3>
+
+              <div className="flex flex-col gap-4">
+                {DEVICES.map((d) => (
+                  <DeviceRow key={d.name} item={d} />
+                ))}
+              </div>
+
+              <Link
+                href="/shop?category=devices"
+                className="mt-6 block text-center h-11 leading-[2.75rem] rounded-full font-semibold transition-shadow hover:shadow-md"
+                style={{
+                  background: "rgba(255,255,255,0.65)",
+                  backdropFilter: "blur(10px)",
+                  WebkitBackdropFilter: "blur(10px)",
+                  border: "1px solid rgba(255,255,255,0.85)",
+                  color: TEXT_WINE,
+                }}
+              >
+                View More
+              </Link>
+            </div>
+          </aside>
+        </div>
+      </div>
+    </section>
+  )
+}
+
+function CarePackCard({ pack }: { pack: CarePack }) {
+  return (
+    <div
+      className="group relative rounded-2xl p-4 transition-transform hover:-translate-y-1"
+      style={{
+        background: CARD_BG,
+        backdropFilter: "blur(12px)",
+        WebkitBackdropFilter: "blur(12px)",
+        border: `1px solid ${BORDER_PEACH}`,
+        boxShadow:
+          "inset 0 1px 0 rgba(255,255,255,0.65), 0 14px 30px -18px rgba(184,60,30,0.4)",
+      }}
+    >
+      {/* Image */}
+      <div
+        className="relative aspect-square rounded-xl overflow-hidden mb-3"
+        style={{ background: "#FFF1E6" }}
+      >
+        <ProductImage src={pack.image} alt={pack.title} fill loaderSize="md" />
+        <span
+          className="absolute top-2 right-2 w-8 h-8 rounded-full flex items-center justify-center text-white shadow-md"
+          style={{ background: ACCENT_RED }}
+        >
+          <Eye className="h-4 w-4" />
+        </span>
+      </div>
+
+      {/* Body */}
+      <h4 className="text-sm font-bold text-center" style={{ color: TEXT_WINE }}>
+        {pack.title}
+      </h4>
+      <p className="text-xs text-center mt-1.5 leading-snug" style={{ color: TEXT_WINE_SOFT }}>
+        {pack.description}
+      </p>
+      <p className="text-sm font-bold text-center mt-2" style={{ color: TEXT_WINE }}>
+        {pack.price}
+      </p>
+
+      {/* Add to cart */}
+      <Link
+        href={pack.href}
+        className="mt-3 flex items-center justify-center gap-1.5 h-10 rounded-full font-semibold text-sm transition-transform hover:scale-[1.02] text-white"
+        style={{
+          background: `linear-gradient(135deg, ${ACCENT_ORANGE} 0%, ${ACCENT_RED} 100%)`,
+          boxShadow: "0 10px 22px -10px rgba(185, 28, 28, 0.55)",
+        }}
+      >
+        <Plus className="h-4 w-4" />
+        Add To Cart
+      </Link>
+    </div>
+  )
+}
+
+function DeviceRow({ item }: { item: DeviceItem }) {
+  return (
+    <Link
+      href={item.href}
+      className="flex items-center gap-3 p-2.5 rounded-2xl transition-shadow hover:shadow-md"
+      style={{
+        background: "rgba(255,255,255,0.55)",
+        backdropFilter: "blur(10px)",
+        WebkitBackdropFilter: "blur(10px)",
+        border: "1px solid rgba(255,255,255,0.7)",
+      }}
+    >
+      <div
+        className="relative w-16 h-16 rounded-xl overflow-hidden shrink-0"
+        style={{ background: "#FFF1E6" }}
+      >
+        <ProductImage src={item.image} alt={item.name} fill loaderSize="sm" />
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-semibold leading-tight" style={{ color: TEXT_WINE }}>
+          {item.name}
+        </p>
+        <p className="text-sm font-bold mt-0.5" style={{ color: ACCENT_RED }}>
+          {item.price}
+        </p>
+        <div className="flex items-center gap-0.5 mt-1" aria-label="5 star rating">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <Star key={i} className="h-3 w-3" fill={ACCENT_ORANGE} stroke={ACCENT_ORANGE} />
+          ))}
+        </div>
+      </div>
+    </Link>
+  )
+}
