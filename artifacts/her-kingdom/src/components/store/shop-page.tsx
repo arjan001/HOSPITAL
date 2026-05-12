@@ -216,8 +216,8 @@ export function ShopPage({ seoIntro }: { seoIntro?: ReactNode } = {}) {
   const heroSubtitle = queryParam
     ? `Explore ${filtered.length} matching item${filtered.length !== 1 ? "s" : ""} across our catalog.`
     : activeCategory
-    ? `Hand-picked ${activeCategory.name.toLowerCase()} from Her Kingdom.`
-    : "Discover our full catalog of jewelry, accessories & gifts."
+    ? `Quality ${activeCategory.name.toLowerCase()} from RX Pharmacy.`
+    : "Discover our full catalog of medications, vitamins, baby care, devices & wellness essentials."
   const eyebrow = queryParam ? "Search Results" : activeCategory ? "Category" : "Boutique Collection"
 
   const breadcrumbItems = [

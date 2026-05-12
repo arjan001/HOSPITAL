@@ -139,7 +139,7 @@ export function ProductDetailPage({ slug }: { slug: string }) {
                         </div>
                       </>
                     ) : (
-                      <ProductImage src={img || "/placeholder.svg"} alt={`${product.name} view ${i + 1} - herkingdomjewelry.shop Gifting`} fill loaderSize="sm" className="object-cover" />
+                      <ProductImage src={img || "/placeholder.svg"} alt={`${product.name} view ${i + 1} - RX Pharmacy Gifting`} fill loaderSize="sm" className="object-cover" />
                     )}
                   </button>
                 ))}
@@ -159,7 +159,7 @@ export function ProductDetailPage({ slug }: { slug: string }) {
                   <ProductImage
                     key={selectedImage}
                     src={product.images[selectedImage] || "/placeholder.svg"}
-                    alt={`${product.name} - herkingdomjewelry.shop Gifting`}
+                    alt={`${product.name} - RX Pharmacy Gifting`}
                     className="object-cover"
                    
                   />

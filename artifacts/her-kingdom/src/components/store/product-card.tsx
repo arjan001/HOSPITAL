@@ -1,8 +1,9 @@
 "use client"
 
-import { Link } from "wouter"
+import { Link, useLocation } from "wouter"
 
-import { Heart, ShoppingBag, Eye, Play } from "lucide-react"
+import { Heart, ShoppingBag, Eye, Play, Check } from "lucide-react"
+import { useState } from "react"
 import type { Product } from "@/lib/types"
 import { formatPrice } from "@/lib/format"
 import { useCart } from "@/lib/cart-context"
@@ -13,6 +14,8 @@ import { ProductImage } from "./product-image"
 export function ProductCard({ product }: { product: Product }) {
   const { addItem } = useCart()
   const { toggleItem, isInWishlist } = useWishlist()
+  const [, navigate] = useLocation()
+  const [justAdded, setJustAdded] = useState(false)
   const wishlisted = isInWishlist(product.id)
   const primaryMedia = product.images[0] || ""
   const isPrimaryVideo = isVideoUrl(primaryMedia)
@@ -70,8 +73,10 @@ export function ProductCard({ product }: { product: Product }) {
             </button>
             <button
               type="button"
+              onClick={(e) => { e.preventDefault(); navigate(`/product/${product.slug}`) }}
               className="w-9 h-9 flex items-center justify-center bg-background rounded-full shadow-sm hover:bg-secondary transition-colors"
               aria-label="Quick view"
+              title="Quick view"
             >
               <Eye className="h-4 w-4" />
             </button>
@@ -84,11 +89,13 @@ export function ProductCard({ product }: { product: Product }) {
               onClick={(e) => {
                 e.preventDefault()
                 addItem(product)
+                setJustAdded(true)
+                window.setTimeout(() => setJustAdded(false), 1400)
               }}
-              className="w-full flex items-center justify-center gap-2 bg-pink-200 text-foreground py-2.5 text-xs font-medium uppercase tracking-wider hover:bg-pink-300 transition-colors"
+              className={`w-full flex items-center justify-center gap-2 py-2.5 text-xs font-medium uppercase tracking-wider transition-colors ${justAdded ? "bg-[#1BBFB8] text-white" : "bg-[#172B4D] text-white hover:bg-[#11233F]"}`}
             >
-              <ShoppingBag className="h-3.5 w-3.5" />
-              Add to Cart
+              {justAdded ? <Check className="h-3.5 w-3.5" /> : <ShoppingBag className="h-3.5 w-3.5" />}
+              {justAdded ? "Added to Cart" : "Add to Cart"}
             </button>
           </div>
         </div>

@@ -1,13 +1,13 @@
 {
-  "name": "Her Kingdom",
-  "short_name": "Her Kingdom",
-  "description": "Curated jewelry & accessories in Nairobi, Kenya. Shop necklaces, bracelets, earrings, watches & more at Her Kingdom.",
+  "name": "RX Pharmacy",
+  "short_name": "RX Pharmacy",
+  "description": "Kenya's trusted online pharmacy. Shop authentic medications, vitamins, baby care and medical devices with same-day Nairobi delivery.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#ffffff",
-  "theme_color": "#f4a4c0",
+  "theme_color": "#172B4D",
   "orientation": "portrait-primary",
-  "categories": ["shopping", "jewelry", "accessories", "lifestyle"],
+  "categories": ["shopping", "medical", "health", "lifestyle"],
   "lang": "en",
   "icons": [
     {

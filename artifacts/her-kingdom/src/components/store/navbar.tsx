@@ -182,7 +182,7 @@ export function Navbar() {
       {/* Main bar */}
       <div style={{ background: NAV_DARK }} className="text-white">
         <div className="mx-auto max-w-7xl px-4">
-          <div className="flex items-center justify-between gap-4 h-16 lg:h-20">
+          <div className="flex items-center justify-between gap-4 h-14 lg:h-16">
             {/* Mobile menu trigger */}
             <Sheet>
               <SheetTrigger asChild>
@@ -194,7 +194,7 @@ export function Navbar() {
               <SheetContent side="left" className="w-80 bg-background text-foreground p-0">
                 <div className="p-6">
                   <Link href="/" className="inline-flex items-center">
-                    <img src="/logo-herkingdom.png" alt="Her Kingdom" width={200} height={80} className="h-12 w-auto object-contain" />
+                    <img src="/logo-herkingdom.png" alt="RX Pharmacy" width={200} height={80} className="h-10 w-auto object-contain" />
                   </Link>
                 </div>
                 <nav className="flex flex-col px-6 gap-1">
@@ -218,30 +218,30 @@ export function Navbar() {
             </Sheet>
 
             {/* Logo */}
-            <Link href="/" className="flex items-center shrink-0" aria-label="Her Kingdom - Home">
+            <Link href="/" className="flex items-center shrink-0" aria-label="RX Pharmacy - Home">
               <img
                 src="/logo-herkingdom.png"
-                alt="Her Kingdom"
+                alt="RX Pharmacy"
                 width={220}
                 height={80}
-                className="h-10 lg:h-12 w-auto object-contain brightness-0 invert"
+                className="h-8 lg:h-9 w-auto object-contain brightness-0 invert"
               />
             </Link>
 
             {/* Search pill */}
             <div className="hidden lg:flex items-center flex-1 max-w-2xl" ref={searchRef}>
               <form onSubmit={handleSearch} className="relative w-full">
-                <div className="flex items-center bg-white rounded-full shadow-sm overflow-hidden h-12 pl-6 pr-1">
+                <div className="flex items-center bg-white rounded-full shadow-sm overflow-hidden h-10 pl-5 pr-1">
                   <input
                     type="text"
-                    placeholder="Search..."
+                    placeholder="Search medications, vitamins, devices..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     className="flex-1 h-full bg-transparent text-sm text-foreground placeholder:text-muted-foreground outline-none"
                   />
                   <button
                     type="submit"
-                    className="h-10 w-12 flex items-center justify-center rounded-full text-white transition-opacity hover:opacity-90"
+                    className="h-8 w-10 flex items-center justify-center rounded-full text-white transition-opacity hover:opacity-90"
                     style={{ background: TEAL }}
                     aria-label="Search"
                   >
@@ -359,8 +359,8 @@ export function Navbar() {
         {/* Sub-nav row */}
         <div className="hidden lg:block border-t border-white/10">
           <div className="mx-auto max-w-7xl px-4">
-            <div className="flex items-center h-12">
-              <nav className="flex items-center gap-8 ml-[260px]">
+            <div className="flex items-center justify-center h-10">
+              <nav className="flex items-center gap-8">
                 {navItems.map((item) => {
                   const isActive = (item.href === "/" && isHomeActive) || (item.href !== "/" && location.startsWith(item.href.split("?")[0]))
                   const isShop = item.label === "Shop" || item.label === "Categories"

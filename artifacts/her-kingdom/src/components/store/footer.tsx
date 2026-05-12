@@ -37,7 +37,7 @@ const DEFAULTS: Required<FooterSettings> = {
   store_address: "Kenyatta Avenue, Nairobi CBD, Kenya",
   whatsapp_number: "254780406059",
   footer_description:
-    "Her Kingdom Pharmacy is proud of being one of the most trusted online pharmacies in Kenya, delivering quality medications, supplements and healthcare essentials.",
+    "RX Pharmacy is proud to be one of Kenya's most trusted online pharmacies, delivering quality medications, supplements and healthcare essentials right to your door.",
   footer_instagram: "https://www.instagram.com/herkingdom_pharmacy/",
   footer_tiktok: "https://www.tiktok.com/@herkingdom_pharmacy",
   footer_twitter: "#",
@@ -47,7 +47,7 @@ const DEFAULTS: Required<FooterSettings> = {
   footer_phone: "+254 780 406 059",
   footer_email: "herkingdomlive@gmail.com",
   footer_whatsapp: "254780406059",
-  copyright_text: "Copyright © 2026 Her Kingdom. All Rights Reserved.",
+  copyright_text: "Copyright © 2026 RX Pharmacy. All Rights Reserved.",
 }
 
 function whatsappHref(number: string): string {
@@ -59,7 +59,7 @@ const INFORMATION = [
   { label: "Newsroom", href: "/blogs" },
   { label: "Affiliate Program", href: "/affiliate" },
   { label: "Careers", href: "/careers" },
-  { label: "Sell on Her Kingdom", href: "/sell" },
+  { label: "Sell on RX Pharmacy", href: "/sell" },
   { label: "Investor Relations", href: "/investors" },
 ]
 
@@ -167,7 +167,7 @@ export function Footer() {
           <Link href="/" className="inline-flex items-center">
             <img
               src="/logo-herkingdom.png"
-              alt="Her Kingdom"
+              alt="RX Pharmacy"
               width={200}
               height={80}
               className="h-12 w-auto object-contain"

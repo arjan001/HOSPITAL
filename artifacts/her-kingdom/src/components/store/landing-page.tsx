@@ -28,7 +28,7 @@ const DEFAULT_FAQS: Faq[] = [
   },
   {
     q: "Are your products authentic?",
-    a: "Yes. Every product on Her Kingdom Pharmacy is sourced directly from licensed manufacturers and approved local distributors. Storage and cold-chain handling follow Pharmacy and Poisons Board guidelines.",
+    a: "Yes. Every product on RX Pharmacy is sourced directly from licensed manufacturers and approved local distributors. Storage and cold-chain handling follow Pharmacy and Poisons Board guidelines.",
   },
   {
     q: "What payment methods do you accept?",

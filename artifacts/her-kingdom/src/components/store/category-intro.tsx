@@ -26,7 +26,7 @@ export function CategoryIntro({
   const topProducts = products.slice(0, 24)
   const description =
     category.description ||
-    `Shop ${category.name.toLowerCase()} at Her Kingdom Nairobi. Hypoallergenic, long-lasting ${category.name.toLowerCase()} delivered across Kenya. Same-day Nairobi delivery, nationwide courier and WhatsApp ordering.`
+    `Shop ${category.name.toLowerCase()} at RX Pharmacy Nairobi. Authentic, quality-checked ${category.name.toLowerCase()} delivered across Kenya. Same-day Nairobi delivery, nationwide courier and WhatsApp ordering.`
   const phoneDisplay = contactPhone && contactPhone.trim() ? contactPhone : "+254 780 406 059"
 
   return (
@@ -58,7 +58,7 @@ export function CategoryIntro({
         <p className="mt-2 text-xs text-muted-foreground">
           {products.length > 0
             ? `${products.length} ${category.name.toLowerCase()} available · Delivered across Kenya · WhatsApp ${phoneDisplay}`
-            : `New ${category.name.toLowerCase()} arriving soon. Browse the full Her Kingdom catalog or message us on WhatsApp ${phoneDisplay} for personal recommendations.`}
+            : `New ${category.name.toLowerCase()} arriving soon. Browse the full RX Pharmacy catalog or message us on WhatsApp ${phoneDisplay} for personal recommendations.`}
         </p>
 
         {topProducts.length > 0 && (
@@ -72,7 +72,6 @@ export function CategoryIntro({
                   <Link
                     href={`/product/${p.slug}`}
                     className="block group"
-                    prefetch={false}
                   >
                     <span className="block font-medium text-foreground group-hover:underline line-clamp-2">
                       {p.name}
@@ -96,7 +95,7 @@ export function CategoryIntro({
               href="/shop"
               className="inline-flex items-center gap-2 text-sm font-medium underline underline-offset-4"
             >
-              Browse the full Her Kingdom catalog
+              Browse the full RX Pharmacy catalog
             </Link>
           </div>
         )}
@@ -109,7 +108,7 @@ export function CategoryIntro({
             __html: JSON.stringify({
               "@context": "https://schema.org",
               "@type": "ItemList",
-              name: `${category.name} at Her Kingdom`,
+              name: `${category.name} at RX Pharmacy`,
               numberOfItems: topProducts.length,
               itemListElement: topProducts.map((p, i) => ({
                 "@type": "ListItem",

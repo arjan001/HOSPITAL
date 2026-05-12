@@ -211,12 +211,12 @@ export function SearchPage() {
     ...(query ? [{ label: `"${query}"` }] : []),
   ]
 
-  const heroTitle = query ? `Results for "${query}"` : "Search Her Kingdom"
+  const heroTitle = query ? `Results for "${query}"` : "Search RX Pharmacy"
   const heroSubtitle = query
     ? totalResults === 0
-      ? "We couldn't find an exact match. Try browsing similar pieces below."
-      : `Found ${totalResults} item${totalResults === 1 ? "" : "s"} matching your search.`
-    : "Search thousands of curated jewelry & accessories."
+      ? "No matching products in stock. Browse popular medications & wellness picks below."
+      : `Found ${totalResults} product${totalResults === 1 ? "" : "s"} matching your search.`
+    : "Search medications, vitamins, baby care, medical devices and more."
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -229,7 +229,7 @@ export function SearchPage() {
             title={heroTitle}
             subtitle={heroSubtitle}
             imageUrl={categories[0]?.image || "/banners/hero-pharmacy-main.png"}
-            imageAlt="Search jewelry"
+            imageAlt="Search RX Pharmacy"
             eyebrow="Search"
             productCount={totalResults}
           />
@@ -243,7 +243,7 @@ export function SearchPage() {
                 type="text"
                 value={inputValue}
                 onChange={(e) => setInputValue(e.target.value)}
-                placeholder="Search necklaces, earrings, bracelets, watches..."
+                placeholder="Search medications, vitamins, baby care, medical devices..."
                 className="flex-1 h-11 px-2 bg-background text-sm outline-none"
                 autoFocus={!query}
               />
@@ -320,7 +320,7 @@ export function SearchPage() {
               {!query ? (
                 <div className="text-center py-20 border border-dashed border-border rounded-sm">
                   <Search className="h-10 w-10 mx-auto text-muted-foreground mb-3" />
-                  <p className="text-sm text-muted-foreground">Enter a search term above to discover jewelry, accessories and more.</p>
+                  <p className="text-sm text-muted-foreground">Enter a search term above to find medications, vitamins, baby care, devices and more.</p>
                   <div className="mt-6 flex flex-wrap items-center justify-center gap-2">
                     {categories.slice(0, 6).map((cat) => (
                       <Link
@@ -367,7 +367,7 @@ export function SearchPage() {
                       <p className="text-sm text-muted-foreground">
                         No exact matches for <span className="font-medium text-foreground">&ldquo;{query}&rdquo;</span>.
                       </p>
-                      <p className="text-xs text-muted-foreground mt-2">Have a look at these similar pieces.</p>
+                      <p className="text-xs text-muted-foreground mt-2">Have a look at these similar products.</p>
                     </div>
                   )}
 
@@ -375,9 +375,9 @@ export function SearchPage() {
                     <section className="mt-12">
                       <div className="flex items-end justify-between mb-4">
                         <div>
-                          <h2 className="text-lg md:text-xl font-serif font-semibold">Similar items</h2>
+                          <h2 className="text-lg md:text-xl font-serif font-semibold">Similar products</h2>
                           <p className="text-xs text-muted-foreground mt-1">
-                            Pieces related to your search by tag, category, or description.
+                            Products related to your search by tag, category, or description.
                           </p>
                         </div>
                         <p className="text-xs text-muted-foreground">
