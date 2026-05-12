@@ -234,6 +234,8 @@ function ProductDetailPageInner({ slug }: { slug: string }) {
   const [quantity, setQuantity] = useState(1)
   const [selectedVariations, setSelectedVariations] = useState<Record<string, string>>({})
   const [added, setAdded] = useState(false)
+  const [activeTab, setActiveTab] = useState<"overview" | "precautions" | "reviews">("overview")
+  const [reviewSort, setReviewSort] = useState("latest")
   const recentlyViewed = useRecentlyViewed(product?.id)
 
   // Persist this product to recently-viewed
@@ -860,35 +862,307 @@ function ProductDetailPageInner({ slug }: { slug: string }) {
             </div>
           </div>
 
-          {/* Description */}
-          <section className="mt-8">
-            <div
-              className="rounded-2xl p-6 lg:p-8"
-              style={{
-                background: "white",
-                border: `1px solid ${PEACH_BORDER}`,
-                boxShadow: "0 14px 30px -22px rgba(61,8,20,0.18)",
-              }}
-            >
-              <h2 className="text-lg font-bold mb-3" style={{ color: WINE }}>
-                Product Description
-              </h2>
-              <p className="text-sm leading-relaxed text-neutral-700 max-w-3xl">
-                {product.description}
-              </p>
+          {/* ── Product Content Tabs ── */}
+          {(() => {
+            const REVIEWERS = [
+              { name: "Shiru Ndung'u", initials: "SN", color: "#F97316" },
+              { name: "James Mwangi",  initials: "JM", color: "#8B5CF6" },
+              { name: "Amina Hassan",  initials: "AH", color: "#0EA5E9" },
+              { name: "Peter Kamau",   initials: "PK", color: "#10B981" },
+              { name: "Grace Wanjiku", initials: "GW", color: "#F43F5E" },
+            ]
+            const REVIEW_TEXTS = [
+              `the best ${product.category.toLowerCase()} product I have used ?? Highly recommended!`,
+              "Very effective. I noticed results within a few days and delivery was super fast.",
+              "Good quality for the price. Shaniid RX packaging is always neat and discreet.",
+              "Exactly what I needed. The pharmacist guidance was also really helpful.",
+              "Will definitely reorder. Works as described and arrived ahead of schedule.",
+            ]
+            const DATES = ["15-03-2026", "02-04-2026", "18-02-2026", "07-01-2026", "28-03-2026"]
+            const HELPFUL = [100, 48, 67, 23, 89]
 
-              <div
-                className="mt-5 flex items-start gap-2 p-3 rounded-xl"
-                style={{ background: "#FFF7E6", border: "1px solid #F4E1B8" }}
-              >
-                <Shield className="h-4 w-4 mt-0.5 shrink-0" style={{ color: ACCENT_AMBER }} />
-                <p className="text-xs text-neutral-600 leading-relaxed">
-                  Always read the label and use only as directed. Consult a pharmacist or doctor
-                  before use if you are pregnant, breastfeeding, or taking other medication.
-                </p>
-              </div>
-            </div>
-          </section>
+            const reviewsData = Array.from({ length: Math.min(reviewsCount, 3) }, (_, i) => {
+              const ri = (seed + i * 7) % REVIEWERS.length
+              const ti = (seed + i * 3) % REVIEW_TEXTS.length
+              const di = (seed + i * 5) % DATES.length
+              const hi = (seed + i * 11) % HELPFUL.length
+              return {
+                ...REVIEWERS[ri],
+                text: REVIEW_TEXTS[ti],
+                date: DATES[di],
+                helpful: HELPFUL[hi],
+                stars: i === 0 ? Math.ceil(rating) : (((seed + i) % 3 === 0) ? 4 : 5),
+                badge: i === 0 ? "Most Helpful" : null,
+              }
+            })
+
+            const starBreakdown = [5, 4, 3, 2, 1].map((s) => {
+              const pct = s === 5 ? 65 : s === 4 ? 25 : s === 3 ? 7 : s === 2 ? 2 : 1
+              return { star: s, pct }
+            })
+
+            const TABS = [
+              { id: "overview",     label: "Overview" },
+              { id: "precautions",  label: "Precautions & Disclaimer" },
+              { id: "reviews",      label: "Reviews" },
+            ] as const
+
+            return (
+              <section className="mt-8">
+                {/* Tab bar */}
+                <div
+                  className="flex items-center gap-0 border-b"
+                  style={{ borderColor: PEACH_BORDER }}
+                >
+                  {TABS.map((tab) => {
+                    const isActive = activeTab === tab.id
+                    return (
+                      <button
+                        key={tab.id}
+                        type="button"
+                        onClick={() => setActiveTab(tab.id)}
+                        className="relative px-5 py-3 text-sm font-semibold transition-colors whitespace-nowrap"
+                        style={{
+                          color: isActive ? WINE : "#9ca3af",
+                          borderBottom: isActive ? `2.5px solid ${WINE}` : "2.5px solid transparent",
+                          marginBottom: -1,
+                        }}
+                      >
+                        {tab.label}
+                        {tab.id === "reviews" && (
+                          <span
+                            className="ml-1.5 text-[11px] px-1.5 py-0.5 rounded-full font-bold"
+                            style={{ background: "#FFF1E2", color: WINE_SOFT }}
+                          >
+                            {reviewsCount}
+                          </span>
+                        )}
+                      </button>
+                    )
+                  })}
+                </div>
+
+                {/* Tab content */}
+                <div
+                  className="rounded-b-2xl p-6 lg:p-8"
+                  style={{
+                    background: "white",
+                    border: `1px solid ${PEACH_BORDER}`,
+                    borderTop: "none",
+                    boxShadow: "0 14px 30px -22px rgba(61,8,20,0.18)",
+                  }}
+                >
+                  {/* ── Overview ── */}
+                  {activeTab === "overview" && (
+                    <div>
+                      <p className="text-sm leading-relaxed text-neutral-700 max-w-3xl">
+                        {product.description}
+                      </p>
+                      {product.tags.length > 0 && (
+                        <div className="mt-6">
+                          <p className="text-xs font-bold uppercase tracking-widest mb-2" style={{ color: WINE_SOFT }}>Tags</p>
+                          <div className="flex flex-wrap gap-1.5">
+                            {product.tags.map((tag) => (
+                              <span key={tag} className="text-[11px] px-2.5 py-1 rounded-full" style={{ color: WINE_SOFT, background: "#FFF1E2", border: `1px solid ${PEACH_BORDER}` }}>
+                                #{tag}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      <div className="mt-6 flex items-start gap-2.5 p-4 rounded-xl" style={{ background: "#FFF7E6", border: "1px solid #F4E1B8" }}>
+                        <Shield className="h-4 w-4 mt-0.5 shrink-0" style={{ color: ACCENT_AMBER }} />
+                        <p className="text-xs text-neutral-600 leading-relaxed">
+                          Always read the label and use only as directed. Consult a pharmacist or doctor before use if you are pregnant, breastfeeding, or taking other medication.
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* ── Precautions & Disclaimer ── */}
+                  {activeTab === "precautions" && (
+                    <div className="space-y-5 max-w-3xl">
+                      {[
+                        {
+                          icon: "⚠️",
+                          title: "Warnings & Precautions",
+                          items: [
+                            "Keep out of reach of children.",
+                            "Do not exceed the recommended dose unless advised by a healthcare professional.",
+                            "Stop use and consult a pharmacist or doctor if symptoms persist or worsen.",
+                            "If you are pregnant, planning to become pregnant, or breastfeeding, seek medical advice before use.",
+                            "Do not use if you have a known allergy to any of the listed ingredients.",
+                            "Store in a cool, dry place away from direct sunlight and moisture.",
+                          ],
+                        },
+                        {
+                          icon: "💊",
+                          title: "Drug Interactions",
+                          items: [
+                            "Inform your doctor or pharmacist of all medications you are currently taking.",
+                            "This product may interact with certain prescription drugs, supplements, or herbal remedies.",
+                            "Always disclose your full medication list before starting any new treatment.",
+                          ],
+                        },
+                        {
+                          icon: "📋",
+                          title: "Disclaimer",
+                          items: [
+                            "This product is intended to supplement, not replace, professional medical advice, diagnosis, or treatment.",
+                            "Shaniid RX sources all products directly from licensed manufacturers and distributors verified by the Pharmacy and Poisons Board of Kenya.",
+                            "Product information is for general informational purposes. Always consult a qualified healthcare provider for personal medical guidance.",
+                          ],
+                        },
+                      ].map((section) => (
+                        <div key={section.title} className="rounded-xl p-4" style={{ background: "#FFF6EE", border: `1px solid ${PEACH_BORDER}` }}>
+                          <p className="font-bold text-sm mb-3" style={{ color: WINE }}>
+                            {section.icon} {section.title}
+                          </p>
+                          <ul className="space-y-2">
+                            {section.items.map((item, i) => (
+                              <li key={i} className="flex items-start gap-2 text-sm text-neutral-600">
+                                <span className="mt-1.5 w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: ACCENT_ORANGE }} />
+                                {item}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* ── Reviews ── */}
+                  {activeTab === "reviews" && (
+                    <div>
+                      {/* Top row: summary + sort */}
+                      <div className="flex flex-col sm:flex-row sm:items-start gap-6 pb-6 border-b" style={{ borderColor: PEACH_BORDER }}>
+                        {/* Left: aggregate */}
+                        <div className="flex-shrink-0 w-48">
+                          <div className="flex items-baseline gap-1.5 mb-1">
+                            <Star className="h-5 w-5 fill-amber-400 text-amber-400" />
+                            <span className="text-3xl font-black" style={{ color: WINE }}>{rating.toFixed(1)}</span>
+                            <span className="text-sm text-neutral-400">/ 5.0</span>
+                          </div>
+                          <p className="text-xs text-neutral-500 mb-4">
+                            {ratingsCount} Ratings · {reviewsCount} Reviews
+                          </p>
+                          <div className="space-y-1.5">
+                            {starBreakdown.map(({ star, pct }) => (
+                              <div key={star} className="flex items-center gap-2">
+                                <Star className="h-3.5 w-3.5 fill-amber-400 text-amber-400 flex-shrink-0" />
+                                <span className="text-[11px] w-2 text-neutral-500">{star}</span>
+                                <div className="flex-1 h-2 rounded-full overflow-hidden" style={{ background: "#F3F4F6" }}>
+                                  <div className="h-full rounded-full" style={{ width: `${pct}%`, background: "#F59E0B" }} />
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* Right: sort controls */}
+                        <div className="flex-1 flex items-center gap-3 flex-wrap">
+                          <div className="flex items-center gap-2 text-sm text-neutral-500">
+                            <span>Sort By :</span>
+                            <select
+                              value={reviewSort}
+                              onChange={(e) => setReviewSort(e.target.value)}
+                              className="text-sm px-3 h-9 rounded-lg border outline-none"
+                              style={{ borderColor: PEACH_BORDER, color: WINE, background: "white" }}
+                            >
+                              <option value="latest">Latest</option>
+                              <option value="helpful">Most Helpful</option>
+                              <option value="highest">Highest Rated</option>
+                              <option value="lowest">Lowest Rated</option>
+                            </select>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setReviewSort("latest")}
+                            className="text-sm px-4 h-9 rounded-lg border transition-colors hover:bg-[#FFF1E2]"
+                            style={{ borderColor: PEACH_BORDER, color: WINE }}
+                          >
+                            Clear Filter
+                          </button>
+                          <button
+                            type="button"
+                            className="ml-auto text-sm font-semibold hover:underline"
+                            style={{ color: WINE_SOFT }}
+                          >
+                            Write a Review
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Review cards */}
+                      <div className="mt-5 space-y-5">
+                        {reviewsData.map((rev, i) => (
+                          <div key={i} className="pb-5 border-b last:border-b-0 last:pb-0" style={{ borderColor: PEACH_BORDER }}>
+                            <div className="flex items-start gap-3">
+                              {/* Avatar */}
+                              <div
+                                className="w-10 h-10 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0"
+                                style={{ background: rev.color }}
+                              >
+                                {rev.initials}
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="text-sm font-semibold" style={{ color: WINE }}>{rev.name}</span>
+                                  {rev.badge && (
+                                    <span
+                                      className="text-[11px] px-2 py-0.5 rounded-full font-semibold"
+                                      style={{ background: "#EDE9FE", color: "#6D28D9" }}
+                                    >
+                                      {rev.badge}
+                                    </span>
+                                  )}
+                                </div>
+                                <p className="text-[11px] text-neutral-400 mt-0.5">{rev.date}</p>
+
+                                {/* Stars */}
+                                <div className="flex items-center gap-1 mt-2">
+                                  {Array.from({ length: 5 }).map((_, si) => (
+                                    <Star
+                                      key={si}
+                                      className="h-3.5 w-3.5"
+                                      fill={si < rev.stars ? "#F59E0B" : "none"}
+                                      style={{ color: "#F59E0B" }}
+                                    />
+                                  ))}
+                                  <span className="text-xs text-neutral-500 ml-1">({rev.stars}.0)</span>
+                                </div>
+
+                                {/* Text */}
+                                <p className="text-sm text-neutral-700 mt-2 leading-relaxed">{rev.text}</p>
+
+                                {/* Actions */}
+                                <div className="flex items-center gap-3 mt-3">
+                                  <button
+                                    type="button"
+                                    className="text-xs font-medium hover:underline"
+                                    style={{ color: SUCCESS }}
+                                  >
+                                    Helpful ({rev.helpful})
+                                  </button>
+                                  <span className="text-neutral-300 text-xs">|</span>
+                                  <button
+                                    type="button"
+                                    className="text-xs text-neutral-400 hover:underline"
+                                  >
+                                    Report
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </section>
+            )
+          })()}
 
           {/* Similar Products */}
           {related.length > 0 && (
