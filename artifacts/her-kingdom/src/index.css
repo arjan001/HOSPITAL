@@ -456,3 +456,35 @@
   50% { transform: scale(1.05) rotate(8deg); opacity: 1; filter: drop-shadow(0 0 14px rgba(249,115,22,0.55)); }
 }
 .rx-loader-pulse { animation: rx-loader-pulse 1.6s ease-in-out infinite; will-change: transform, opacity; }
+
+@keyframes rx-blob-drift-a {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+  33% { transform: translate3d(40px, 30px, 0) scale(1.08); }
+  66% { transform: translate3d(-20px, 50px, 0) scale(0.95); }
+}
+.rx-blob-drift-a { animation: rx-blob-drift-a 18s ease-in-out infinite; will-change: transform; }
+
+@keyframes rx-blob-drift-b {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+  33% { transform: translate3d(-50px, 40px, 0) scale(0.92); }
+  66% { transform: translate3d(30px, -30px, 0) scale(1.1); }
+}
+.rx-blob-drift-b { animation: rx-blob-drift-b 22s ease-in-out infinite; will-change: transform; }
+
+@keyframes rx-blob-drift-c {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+  50% { transform: translate3d(-40px, -50px, 0) scale(1.12); }
+}
+.rx-blob-drift-c { animation: rx-blob-drift-c 26s ease-in-out infinite; will-change: transform; }
+
+@keyframes rx-particle-float {
+  0%, 100% { transform: translate3d(0, 0, 0); opacity: 0.4; }
+  50% { transform: translate3d(0, -30px, 0); opacity: 0.95; }
+}
+.rx-particle-float { animation: rx-particle-float ease-in-out infinite; will-change: transform, opacity; }
+
+@keyframes rx-pill-float {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  50% { transform: translateY(-14px) rotate(-1.2deg); }
+}
+.rx-pill-float { animation: rx-pill-float 6s ease-in-out infinite; will-change: transform; }

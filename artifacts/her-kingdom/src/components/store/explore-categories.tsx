@@ -2,7 +2,7 @@
 
 import React from "react"
 import { Link } from "wouter"
-import { Eye, Plus, Star } from "lucide-react"
+import { Eye, Plus, Star, ArrowRight } from "lucide-react"
 import { ProductImage } from "./product-image"
 
 const TEXT_WINE = "#3D0814"
@@ -11,7 +11,10 @@ const ACCENT_ORANGE = "#F97316"
 const ACCENT_RED = "#B91C1C"
 const BORDER_PEACH = "#F2DCC8"
 const CARD_BG = "rgba(255, 251, 245, 0.65)"
-const SIDEBAR_GRAD = "linear-gradient(160deg, #FFE2D1 0%, #F8C1A6 100%)"
+
+// Lighter pink-peach gradient matching the figma reference for the sidebar
+const SIDEBAR_GRAD =
+  "linear-gradient(180deg, #FCE3DA 0%, #FBD5C5 45%, #F8C6B2 100%)"
 
 type CarePack = {
   title: string
@@ -95,10 +98,10 @@ type DeviceItem = {
 }
 
 const DEVICES: DeviceItem[] = [
-  { name: "Glucometers", price: "ksh 2000", href: "/shop?category=devices", image: "/newsletter-pills.png" },
-  { name: "BP Monitors", price: "ksh 2500", href: "/shop?category=devices", image: "/newsletter-pills.png" },
-  { name: "Thermometers", price: "ksh 1000", href: "/shop?category=devices", image: "/newsletter-pills.png" },
-  { name: "Test Strips & Lancets", price: "ksh 800", href: "/shop?category=devices", image: "/newsletter-pills.png" },
+  { name: "Glucometers", price: "KSH 2,000", href: "/shop?category=devices", image: "/devices-hero-transparent.png" },
+  { name: "BP Monitors", price: "KSH 2,500", href: "/shop?category=devices", image: "/devices-hero-transparent.png" },
+  { name: "Thermometers", price: "KSH 1,000", href: "/shop?category=devices", image: "/devices-hero-transparent.png" },
+  { name: "Test Strips & Lancets", price: "KSH 800", href: "/shop?category=devices", image: "/devices-hero-transparent.png" },
 ]
 
 export function ExploreCategories() {
@@ -134,25 +137,25 @@ export function ExploreCategories() {
             </div>
           </div>
 
-          {/* Right: sticky sidebar */}
+          {/* Right: Devices & Monitoring sidebar — matches figma reference */}
           <aside className="lg:sticky lg:top-32">
             <div
-              className="rounded-3xl p-5 lg:p-6"
+              className="rounded-[28px] p-6 lg:p-7"
               style={{
                 background: SIDEBAR_GRAD,
-                border: "1px solid rgba(255,255,255,0.55)",
+                border: "1px solid rgba(255,255,255,0.6)",
                 boxShadow:
-                  "inset 0 1px 0 rgba(255,255,255,0.65), 0 24px 50px -25px rgba(184,60,30,0.45)",
+                  "inset 0 1px 0 rgba(255,255,255,0.7), 0 24px 50px -25px rgba(184,60,30,0.35)",
               }}
             >
               <h3
-                className="text-lg font-bold text-center mb-5"
+                className="text-lg font-bold text-center mb-6"
                 style={{ color: TEXT_WINE }}
               >
                 Devices &amp; Monitoring
               </h3>
 
-              <div className="flex flex-col gap-4">
+              <div className="flex flex-col gap-5">
                 {DEVICES.map((d) => (
                   <DeviceRow key={d.name} item={d} />
                 ))}
@@ -160,16 +163,17 @@ export function ExploreCategories() {
 
               <Link
                 href="/shop?category=devices"
-                className="mt-6 block text-center h-11 leading-[2.75rem] rounded-full font-semibold transition-shadow hover:shadow-md"
+                className="mt-7 flex items-center justify-center gap-2 h-11 rounded-full font-semibold text-sm transition-shadow hover:shadow-md"
                 style={{
-                  background: "rgba(255,255,255,0.65)",
+                  background: "rgba(255,255,255,0.85)",
                   backdropFilter: "blur(10px)",
                   WebkitBackdropFilter: "blur(10px)",
-                  border: "1px solid rgba(255,255,255,0.85)",
+                  border: "1px solid rgba(255,255,255,0.95)",
                   color: TEXT_WINE,
                 }}
               >
                 View More
+                <ArrowRight className="h-4 w-4" />
               </Link>
             </div>
           </aside>
@@ -192,7 +196,6 @@ function CarePackCard({ pack }: { pack: CarePack }) {
           "inset 0 1px 0 rgba(255,255,255,0.65), 0 14px 30px -18px rgba(184,60,30,0.4)",
       }}
     >
-      {/* Image */}
       <div
         className="relative aspect-square rounded-xl overflow-hidden mb-3"
         style={{ background: "#FFF1E6" }}
@@ -206,7 +209,6 @@ function CarePackCard({ pack }: { pack: CarePack }) {
         </span>
       </div>
 
-      {/* Body */}
       <h4 className="text-sm font-bold text-center" style={{ color: TEXT_WINE }}>
         {pack.title}
       </h4>
@@ -217,7 +219,6 @@ function CarePackCard({ pack }: { pack: CarePack }) {
         {pack.price}
       </p>
 
-      {/* Add to cart */}
       <Link
         href={pack.href}
         className="mt-3 flex items-center justify-center gap-1.5 h-10 rounded-full font-semibold text-sm transition-transform hover:scale-[1.02] text-white"
@@ -237,30 +238,31 @@ function DeviceRow({ item }: { item: DeviceItem }) {
   return (
     <Link
       href={item.href}
-      className="flex items-center gap-3 p-2.5 rounded-2xl transition-shadow hover:shadow-md"
-      style={{
-        background: "rgba(255,255,255,0.55)",
-        backdropFilter: "blur(10px)",
-        WebkitBackdropFilter: "blur(10px)",
-        border: "1px solid rgba(255,255,255,0.7)",
-      }}
+      className="flex items-center gap-4 group"
     >
+      {/* White rounded image card matching figma reference */}
       <div
-        className="relative w-16 h-16 rounded-xl overflow-hidden shrink-0"
-        style={{ background: "#FFF1E6" }}
+        className="relative w-[88px] h-[88px] rounded-2xl overflow-hidden shrink-0 flex items-center justify-center transition-transform group-hover:scale-[1.04]"
+        style={{
+          background: "#FFFFFF",
+          boxShadow:
+            "0 10px 22px -12px rgba(184,60,30,0.35), inset 0 1px 0 rgba(255,255,255,0.95)",
+        }}
       >
-        <ProductImage src={item.image} alt={item.name} fill loaderSize="sm" />
+        <div className="relative w-[78%] h-[78%]">
+          <ProductImage src={item.image} alt={item.name} fill loaderSize="sm" />
+        </div>
       </div>
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-semibold leading-tight" style={{ color: TEXT_WINE }}>
+        <p className="text-base font-bold leading-tight" style={{ color: TEXT_WINE }}>
           {item.name}
         </p>
-        <p className="text-sm font-bold mt-0.5" style={{ color: ACCENT_RED }}>
+        <p className="text-base font-bold mt-0.5" style={{ color: TEXT_WINE }}>
           {item.price}
         </p>
-        <div className="flex items-center gap-0.5 mt-1" aria-label="5 star rating">
+        <div className="flex items-center gap-0.5 mt-1.5" aria-label="5 star rating">
           {Array.from({ length: 5 }).map((_, i) => (
-            <Star key={i} className="h-3 w-3" fill={ACCENT_ORANGE} stroke={ACCENT_ORANGE} />
+            <Star key={i} className="h-3.5 w-3.5" fill={ACCENT_ORANGE} stroke={ACCENT_ORANGE} />
           ))}
         </div>
       </div>

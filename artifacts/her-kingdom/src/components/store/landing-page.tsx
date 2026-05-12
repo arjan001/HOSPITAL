@@ -14,7 +14,6 @@ import { FaqSection, type Faq } from "./faq-section"
 
 import { Footer } from "./footer"
 import { OfferModal } from "./offer-modal"
-import { RecentPurchase } from "./recent-purchase"
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
@@ -65,7 +64,6 @@ export function LandingPage({ faqs = DEFAULT_FAQS }: { faqs?: Faq[] }) {
       </main>
       <Footer />
       <OfferModal />
-      <RecentPurchase />
     </div>
   )
 }
