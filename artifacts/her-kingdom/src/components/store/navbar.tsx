@@ -138,7 +138,7 @@ export function Navbar() {
     { label: "Home", href: "/" },
     { label: "Shop", href: "/shop", hasMenu: true },
     { label: "Care Packs", href: "/shop?filter=offers" },
-    { label: "Services", href: "/contact" },
+    { label: "Services", href: "/services" },
   ]
 
   const isHomeActive = location === "/"

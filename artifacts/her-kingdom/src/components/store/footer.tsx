@@ -49,7 +49,7 @@ const ABOUT_LINKS = [
   { label: "Our clinical stuff", href: "/about#team" },
   { label: "Careers", href: "/careers" },
   { label: "Press & Media", href: "/press" },
-  { label: "Services", href: "/contact" },
+  { label: "Services", href: "/services" },
   { label: "Contact Us", href: "/contact" },
 ]
 

@@ -18,6 +18,7 @@ import { BlogsPage } from "@/components/store/blogs-page";
 import { BlogDetailPage } from "@/components/store/blog-detail-page";
 import { SearchPage } from "@/components/store/search-page";
 import { DeliveryPage } from "@/components/store/delivery-page";
+import { ServicesPage } from "@/components/store/services-page";
 import { TrackOrderForm } from "@/components/store/track-order-form";
 
 // Admin pages
@@ -117,6 +118,7 @@ function Router() {
         }}
       </Route>
       <Route path="/delivery" component={DeliveryPage} />
+      <Route path="/services" component={ServicesPage} />
       <Route path="/track-order" component={TrackOrderPage} />
       <Route path="/track-order/:orderNumber">
         {(params) => <TrackOrderByCodePage orderNumber={params.orderNumber} />}

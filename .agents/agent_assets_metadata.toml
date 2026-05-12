@@ -246,3 +246,9 @@ id = "z_5R4DLAsGdb_eLlutGkN"
 uri = "file://artifacts/her-kingdom/public/banner-skincare.png"
 type = "image"
 title = "generated_image"
+
+[[generated]]
+id = "l5bWuX524M1S_yR0kRCRi"
+uri = "file://artifacts/her-kingdom/public/doctor-banner.png"
+type = "image"
+title = "generated_image"
