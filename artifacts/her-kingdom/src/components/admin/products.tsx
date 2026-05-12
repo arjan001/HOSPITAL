@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useRef } from "react"
+import { apiFetch, authedFetcher as fetcher } from "@/lib/api-client"
 
 import { toast } from "sonner"
 import { Plus, Pencil, Trash2, X, Upload, Search, Download, FileUp, ImagePlus, Loader2, Eye } from "lucide-react"
@@ -19,7 +20,6 @@ import useSWR from "swr"
 import { usePagination } from "@/hooks/use-pagination"
 import { PaginationControls } from "@/components/pagination-controls"
 
-const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
 interface CategoryOption {
   id: string
@@ -144,7 +144,7 @@ export function AdminProducts() {
     }
 
     try {
-      const res = await fetch("/api/admin/products", {
+      const res = await apiFetch("/api/admin/products", {
         method: editingId ? "PUT" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
@@ -163,7 +163,7 @@ export function AdminProducts() {
   const handleDelete = async (id: string) => {
     if (!confirm("Delete this product?")) return
     try {
-      const res = await fetch(`/api/admin/products?id=${id}`, { method: "DELETE" })
+      const res = await apiFetch(`/api/admin/products?id=${id}`, { method: "DELETE" })
       mutateProducts()
       if (res.ok) toast.success("Product deleted")
       else toast.error("Failed to delete product")
@@ -188,7 +188,7 @@ export function AdminProducts() {
       formData.append("productSlug", slug)
 
       try {
-        const res = await fetch("/api/upload", { method: "POST", body: formData })
+        const res = await apiFetch("/api/upload", { method: "POST", body: formData })
         const data = await res.json()
         if (data.url) {
           setForm((prev) => ({ ...prev, images: [...prev.images, data.url] }))
@@ -358,7 +358,7 @@ export function AdminProducts() {
       }
 
       try {
-        const res = await fetch("/api/admin/products", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
+        const res = await apiFetch("/api/admin/products", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
         if (res.ok) successCount++
       } catch { /* continue */ }
       setImportProgress(prev => ({ ...prev, done: prev.done + 1 }))
@@ -408,7 +408,7 @@ export function AdminProducts() {
 
   const handleBulkDelete = async () => {
     for (const id of selectedIds) {
-      await fetch(`/api/admin/products?id=${id}`, { method: "DELETE" })
+      await apiFetch(`/api/admin/products?id=${id}`, { method: "DELETE" })
     }
     setSelectedIds(new Set())
     mutateProducts()

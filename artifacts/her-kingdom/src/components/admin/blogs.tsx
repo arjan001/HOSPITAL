@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useRef, useCallback, useMemo } from "react"
+import { apiFetch, authedFetcher as fetcher } from "@/lib/api-client"
 
 import { Link } from "wouter"
 import useSWR from "swr"
@@ -71,7 +72,6 @@ interface BlogPost {
   updated_at: string
 }
 
-const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
 type FormState = {
   slug: string
@@ -456,7 +456,7 @@ function ImageUploadDialog({
       const fd = new FormData()
       fd.append("file", file)
       fd.append("productSlug", "blogs")
-      const res = await fetch("/api/upload", { method: "POST", body: fd })
+      const res = await apiFetch("/api/upload", { method: "POST", body: fd })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || "Upload failed")
       onInsert(data.url)
@@ -770,7 +770,7 @@ export function AdminBlogs() {
       const fd = new FormData()
       fd.append("file", file)
       fd.append("productSlug", "blogs")
-      const res = await fetch("/api/upload", { method: "POST", body: fd })
+      const res = await apiFetch("/api/upload", { method: "POST", body: fd })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || "Upload failed")
       setForm((f) => ({ ...f, cover_image: data.url }))
@@ -802,7 +802,7 @@ export function AdminBlogs() {
     }
 
     try {
-      const res = await fetch("/api/admin/blogs", {
+      const res = await apiFetch("/api/admin/blogs", {
         method: selected ? "PUT" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -829,7 +829,7 @@ export function AdminBlogs() {
   const handleDelete = async (id: string) => {
     if (!confirm("Delete this blog post permanently? This cannot be undone.")) return
     try {
-      const res = await fetch(`/api/admin/blogs?id=${id}`, { method: "DELETE" })
+      const res = await apiFetch(`/api/admin/blogs?id=${id}`, { method: "DELETE" })
       if (!res.ok) {
         const data = await res.json()
         throw new Error(data.error || "Delete failed")
@@ -844,7 +844,7 @@ export function AdminBlogs() {
 
   const togglePublish = async (b: BlogPost) => {
     try {
-      const res = await fetch("/api/admin/blogs", {
+      const res = await apiFetch("/api/admin/blogs", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

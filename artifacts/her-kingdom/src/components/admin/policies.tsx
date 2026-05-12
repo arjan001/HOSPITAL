@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useRef, useCallback } from "react"
+import { apiFetch, authedFetcher as fetcher } from "@/lib/api-client"
 import { Save, Loader2, Eye, FileText, Bold, Italic, Underline, List, ListOrdered, Link2, Heading2, Undo2, Redo2, Code, Plus, Trash2, AlertCircle, CheckCircle2 } from "lucide-react"
 import { AdminShell } from "./admin-shell"
 import { Button } from "@/components/ui/button"
@@ -24,7 +25,6 @@ interface Policy {
   updated_at: string
 }
 
-const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
 const TOOLBAR_ACTIONS = [
   { cmd: "bold", icon: Bold, label: "Bold" },
@@ -130,7 +130,7 @@ export function AdminPolicies() {
     setSaving(true); setError("")
     try {
       const payload = selected ? { id: selected.id, ...form } : form
-      const res = await fetch("/api/admin/policies", { method: selected ? "PUT" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) })
+      const res = await apiFetch("/api/admin/policies", { method: selected ? "PUT" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) })
       if (!res.ok) { const err = await res.json(); throw new Error(err.error || "Failed to save") }
       await mutate()
       setSuccess("Policy saved successfully")
@@ -143,7 +143,7 @@ export function AdminPolicies() {
     if (!confirm("Delete this policy permanently?")) return
     setError("")
     try {
-      const res = await fetch(`/api/admin/policies?id=${id}`, { method: "DELETE" })
+      const res = await apiFetch(`/api/admin/policies?id=${id}`, { method: "DELETE" })
       if (!res.ok) { const err = await res.json(); throw new Error(err.error || "Failed to delete") }
       if (selected?.id === id) { setSelected(null); setForm(emptyForm) }
       await mutate()
@@ -157,7 +157,7 @@ export function AdminPolicies() {
     if (!newForm.title || !newForm.slug) return
     setError("")
     try {
-      const res = await fetch("/api/admin/policies", {
+      const res = await apiFetch("/api/admin/policies", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ...newForm, content: `<h2>${newForm.title}</h2><p>Write your policy content here...</p>`, meta_title: newForm.title, meta_description: "", meta_keywords: "", is_published: false }),

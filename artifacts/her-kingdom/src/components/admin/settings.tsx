@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useMemo } from "react"
+import { apiFetch, authedFetcher as fetcher } from "@/lib/api-client"
 import { Save, Globe, FileText, Search, Plus, Pencil, Trash2, X, Check, ExternalLink, Eye, EyeOff, TrendingUp, BarChart3, Shield, AlertTriangle, CheckCircle2, XCircle, ArrowUpRight, Clock, Users, MousePointerClick, Activity } from "lucide-react"
 import { AdminShell } from "./admin-shell"
 import { Button } from "@/components/ui/button"
@@ -12,7 +13,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
 import useSWR from "swr"
 
-const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
 export function AdminSettings() {
   const { data: settings, mutate } = useSWR("/api/admin/settings", fetcher)
@@ -61,7 +61,7 @@ export function AdminSettings() {
     setError(null)
     try {
       const threshold = form.freeShippingThreshold.trim()
-      const res = await fetch("/api/admin/settings", {
+      const res = await apiFetch("/api/admin/settings", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -271,7 +271,7 @@ function SeoManager() {
   const handleSave = async () => {
     if (!editing) return
     setSaving(true)
-    await fetch("/api/admin/seo", {
+    await apiFetch("/api/admin/seo", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(editing),
@@ -284,7 +284,7 @@ function SeoManager() {
 
   const handleDelete = async (id: string) => {
     if (!confirm("Delete this SEO entry?")) return
-    await fetch("/api/admin/seo", {
+    await apiFetch("/api/admin/seo", {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id }),

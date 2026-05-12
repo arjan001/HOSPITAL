@@ -174,8 +174,8 @@ export function Navbar() {
                 <Link href="/track-order" className="py-3 text-sm font-medium border-b border-border">Track My Order</Link>
               </nav>
               <div className="px-6 py-4 mt-4 space-y-3">
-                <a href="https://www.instagram.com/herkingdom_jewelry/" target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground">Instagram</a>
-                <a href="https://www.tiktok.com/@herkingdom_jewelry" target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground">TikTok</a>
+                <a href="https://www.instagram.com/herkingdom_pharmacy/" target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground">Instagram</a>
+                <a href="https://www.tiktok.com/@herkingdom_pharmacy" target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground">TikTok</a>
                 <a href={phoneHref} className="flex items-center gap-2 text-sm font-medium"><Phone className="h-4 w-4" />{phoneDisplay}</a>
               </div>
             </SheetContent>
@@ -282,7 +282,7 @@ export function Navbar() {
           <div className="lg:hidden pb-3 animate-fade-in-up" ref={mobileSearchRef}>
             <form onSubmit={handleSearch} className="relative">
               <div className="flex items-center border border-border rounded-sm">
-                <input type="text" placeholder="Search jewelry, watches..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="flex-1 h-10 px-4 bg-background text-sm outline-none" autoFocus />
+                <input type="text" placeholder="Search medications, supplements..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="flex-1 h-10 px-4 bg-background text-sm outline-none" autoFocus />
                 <button type="submit" className="px-3"><Search className="h-4 w-4" /></button>
               </div>
               {showSuggestions && (

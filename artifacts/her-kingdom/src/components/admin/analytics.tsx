@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { apiFetch, authedFetcher as fetcher } from "@/lib/api-client"
 import { AdminShell } from "./admin-shell"
 import { formatPrice } from "@/lib/format"
 import {
@@ -15,7 +16,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Button } from "@/components/ui/button"
 import useSWR from "swr"
 
-const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
 interface Order {
   id: string; total: number; status: string; date: string; customer: string; orderNo: string
@@ -122,7 +122,7 @@ export function AdminAnalytics() {
 
   useEffect(() => {
     const fetchRealtime = () => {
-      fetch("/api/admin/analytics/realtime")
+      apiFetch("/api/admin/analytics/realtime")
         .then((r) => r.json())
         .then((data) => setRealTimeUsers(data.activeUsers || 0))
         .catch(() => setRealTimeUsers(0))

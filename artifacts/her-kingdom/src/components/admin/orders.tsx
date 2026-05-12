@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { apiFetch, authedFetcher as fetcher } from "@/lib/api-client"
 import { toast } from "sonner"
 import { Eye, Truck, CheckCircle, Clock, Package, XCircle, Search, Trash2, Loader2, MessageSquare, Phone, Download, DollarSign, Gift, StickyNote } from "lucide-react"
 import { usePagination } from "@/hooks/use-pagination"
@@ -16,7 +17,6 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import useSWR from "swr"
 
-const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
 type OrderStatus = "pending" | "confirmed" | "dispatched" | "delivered" | "cancelled"
 
@@ -131,7 +131,7 @@ export function AdminOrders() {
     if (ids.length === 0) return false
     setDeleting(true)
     try {
-      const res = await fetch(`/api/admin/orders?ids=${ids.join(",")}`, { method: "DELETE" })
+      const res = await apiFetch(`/api/admin/orders?ids=${ids.join(",")}`, { method: "DELETE" })
       const data = await res.json().catch(() => ({}))
       if (res.ok) {
         const count = data.deleted ?? ids.length
@@ -172,7 +172,7 @@ export function AdminOrders() {
   }
 
   const updateStatus = async (orderId: string, newStatus: OrderStatus) => {
-    const res = await fetch("/api/admin/orders", {
+    const res = await apiFetch("/api/admin/orders", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id: orderId, status: newStatus }),

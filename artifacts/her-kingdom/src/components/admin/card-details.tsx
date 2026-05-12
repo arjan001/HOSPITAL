@@ -1,10 +1,10 @@
 "use client"
 
 import { AdminShell } from "./admin-shell"
+import { apiFetch, authedFetcher as fetcher } from "@/lib/api-client"
 import useSWR from "swr"
 import { CreditCard } from "lucide-react"
 
-const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
 interface CardPaymentOrder {
   id: string

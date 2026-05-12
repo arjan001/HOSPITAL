@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { apiFetch, authedFetcher as fetcher } from "@/lib/api-client"
 import { Trash2, Download, Mail } from "lucide-react"
 import { usePagination } from "@/hooks/use-pagination"
 import { PaginationControls } from "@/components/pagination-controls"
@@ -9,7 +10,6 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import useSWR from "swr"
 
-const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
 interface Subscriber {
   id: string
@@ -35,7 +35,7 @@ export function NewsletterComponent() {
     if (!confirm("Remove this subscriber?")) return
     setDeleting(true)
     try {
-      await fetch(`/api/admin/newsletter?id=${id}`, { method: "DELETE" })
+      await apiFetch(`/api/admin/newsletter?id=${id}`, { method: "DELETE" })
       mutate()
     } finally {
       setDeleting(false)
@@ -44,7 +44,7 @@ export function NewsletterComponent() {
 
   const handleToggleActive = async (subscriber: Subscriber) => {
     try {
-      await fetch("/api/admin/newsletter", {
+      await apiFetch("/api/admin/newsletter", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id: subscriber.id, isActive: !subscriber.is_active }),

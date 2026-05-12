@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useRef } from "react"
+import { apiFetch, authedFetcher as fetcher } from "@/lib/api-client"
 
 import { toast } from "sonner"
 import { Plus, Pencil, Trash2, Search, ImagePlus, Loader2, X } from "lucide-react"
@@ -13,7 +14,6 @@ import { Label } from "@/components/ui/label"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import useSWR from "swr"
 
-const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
 interface AdminCategory {
   id: string
@@ -61,7 +61,7 @@ export function AdminCategories() {
 
   const handleSave = async () => {
     const body = { id: editId, name: form.name, slug: form.slug, image: form.image }
-    const res = await fetch("/api/admin/categories", {
+    const res = await apiFetch("/api/admin/categories", {
       method: editId ? "PUT" : "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
@@ -74,7 +74,7 @@ export function AdminCategories() {
 
   const handleDelete = async (id: string) => {
     if (!confirm("Delete this category?")) return
-    const res = await fetch(`/api/admin/categories?id=${id}`, { method: "DELETE" })
+    const res = await apiFetch(`/api/admin/categories?id=${id}`, { method: "DELETE" })
     mutate()
     if (res.ok) toast.success("Category deleted")
     else toast.error("Failed to delete category")
@@ -86,7 +86,7 @@ export function AdminCategories() {
     fd.append("file", file)
     fd.append("productSlug", `categories-${slug}`)
     try {
-      const res = await fetch("/api/upload", { method: "POST", body: fd })
+      const res = await apiFetch("/api/upload", { method: "POST", body: fd })
       const data = await res.json()
       if (!res.ok || !data.url) {
         toast.error(data?.error || "Upload failed")
@@ -120,7 +120,7 @@ export function AdminCategories() {
     setUploadingCatId(cat.id)
     const url = await uploadCategoryImage(file, cat.slug || cat.name)
     if (url) {
-      const res = await fetch("/api/admin/categories", {
+      const res = await apiFetch("/api/admin/categories", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id: cat.id, name: cat.name, slug: cat.slug, image: url, isActive: cat.isActive }),
@@ -148,7 +148,7 @@ export function AdminCategories() {
     setUploadingCatId(cat.id)
     const url = await uploadCategoryImage(file, cat.slug || cat.name)
     if (url) {
-      const res = await fetch("/api/admin/categories", {
+      const res = await apiFetch("/api/admin/categories", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id: cat.id, name: cat.name, slug: cat.slug, image: url, isActive: cat.isActive }),

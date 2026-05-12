@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import { apiFetch, authedFetcher as fetcher } from "@/lib/api-client"
 import { AdminShell } from "./admin-shell"
 import useSWR, { mutate } from "swr"
 import { toast } from "sonner"
@@ -17,7 +18,6 @@ import {
 } from "lucide-react"
 
 
-const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
 interface Transaction {
   id: string
@@ -118,7 +118,7 @@ function StkPushForm() {
 
     setLoading(true)
     try {
-      const res = await fetch("/api/admin/payments", {
+      const res = await apiFetch("/api/admin/payments", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

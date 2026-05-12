@@ -29,9 +29,9 @@ const DEFAULTS: Required<FooterSettings> = {
   store_phone: "+254780406059",
   whatsapp_number: "254780406059",
   footer_description:
-    "Curated jewelry & accessories that complement your personal style and embody individuality. Hypoallergenic, long-lasting pieces delivered across Kenya.",
-  footer_instagram: "https://www.instagram.com/herkingdom_jewelry/",
-  footer_tiktok: "https://www.tiktok.com/@herkingdom_jewelry",
+    "Trusted online pharmacy delivering quality medications, supplements, and wellness essentials across Nairobi and beyond.",
+  footer_instagram: "https://www.instagram.com/herkingdom_pharmacy/",
+  footer_tiktok: "https://www.tiktok.com/@herkingdom_pharmacy",
   footer_twitter: "",
   footer_phone: "0780 406 059",
   footer_email: "herkingdomlive@gmail.com",
@@ -69,8 +69,8 @@ export function Footer() {
   const waHref = whatsappHref(whatsappNumber)
   const phoneHref = `tel:${phone.replace(/\s+/g, "")}`
   const emailHref = `mailto:${email}`
-  const instagramHandle = extractHandle(instagram, "@herkingdom_jewelry")
-  const tiktokHandle = extractHandle(tiktok, "@herkingdom_jewelry")
+  const instagramHandle = extractHandle(instagram, "@herkingdom_pharmacy")
+  const tiktokHandle = extractHandle(tiktok, "@herkingdom_pharmacy")
 
   return (
     <footer className="bg-foreground text-background">
@@ -194,14 +194,20 @@ export function Footer() {
               <Link href="/delivery" className="text-background/60 text-sm hover:text-background transition-colors">
                 Delivery Locations
               </Link>
-              <Link href="/shop?category=necklaces" className="text-background/60 text-sm hover:text-background transition-colors">
-                Necklaces
+              <Link href="/shop?category=medications" className="text-background/60 text-sm hover:text-background transition-colors">
+                Medications
               </Link>
-              <Link href="/shop?category=bracelets" className="text-background/60 text-sm hover:text-background transition-colors">
-                Bracelets
+              <Link href="/shop?category=supplements" className="text-background/60 text-sm hover:text-background transition-colors">
+                Vitamins &amp; Supplements
               </Link>
-              <Link href="/shop?category=earrings" className="text-background/60 text-sm hover:text-background transition-colors">
-                Earrings
+              <Link href="/shop?category=devices" className="text-background/60 text-sm hover:text-background transition-colors">
+                Health Devices
+              </Link>
+              <Link href="/shop?category=baby-care" className="text-background/60 text-sm hover:text-background transition-colors">
+                Baby &amp; Mother Care
+              </Link>
+              <Link href="/shop?category=first-aid" className="text-background/60 text-sm hover:text-background transition-colors">
+                First Aid
               </Link>
             </nav>
           </div>
@@ -317,7 +323,7 @@ export function Footer() {
           </div>
           <div className="mt-4 text-center">
             <p className="text-background/30 text-[11px]">
-              Her Kingdom - Curated Jewelry &amp; Accessories | #HerkingdomBabe
+              Her Kingdom Pharmacy - Trusted Medications &amp; Wellness | Nairobi
             </p>
             <p className="text-background/40 text-[11px] mt-2">
               Made with <span aria-label="love" className="text-pink-400">♥</span> by{" "}

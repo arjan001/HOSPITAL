@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import { apiFetch, authedFetcher as fetcher } from "@/lib/api-client"
 import { Package, Tag, Percent, ShoppingBag, Eye, ShoppingCart, ChevronLeft, ChevronRight, Wallet } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { AdminShell } from "./admin-shell"
@@ -8,7 +9,6 @@ import { formatPrice } from "@/lib/format"
 import { Link } from "wouter"
 import useSWR from "swr"
 
-const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
 interface DashboardData {
   stats: { totalProducts: number; totalCategories: number; activeOffers: number; totalOrders: number; totalRevenue: number }

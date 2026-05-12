@@ -1,6 +1,7 @@
 "use client"
 
 import React from "react"
+import { apiFetch, authedFetcher as fetcher } from "@/lib/api-client"
 import { useState } from "react"
 import { toast } from "sonner"
 import { Shield, ShieldCheck, Eye, Pencil, UserX, MoreHorizontal, UserCircle, UserPlus, Loader2, AlertCircle, Mail, Trash2 } from "lucide-react"
@@ -17,7 +18,6 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSepara
 import { Switch } from "@/components/ui/switch"
 import useSWR from "swr"
 
-const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
 interface AdminUser {
   id: string
@@ -57,7 +57,7 @@ export function UsersManagement() {
 
   // Fetch current user's role
   React.useEffect(() => {
-    fetch("/api/auth/me")
+    apiFetch("/api/auth/me")
       .then((r) => r.json())
       .then((data) => setCurrentUserRole(data.role || null))
       .catch(() => setCurrentUserRole(null))
@@ -71,7 +71,7 @@ export function UsersManagement() {
   const handleSave = async () => {
     if (!editUser) return
     setSaving(true)
-    const res = await fetch("/api/admin/users", {
+    const res = await apiFetch("/api/admin/users", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id: editUser.id, ...editForm }),
@@ -91,7 +91,7 @@ export function UsersManagement() {
 
   const handleDelete = async (id: string) => {
     if (!confirm("Are you sure you want to permanently remove this user?")) return
-    const res = await fetch(`/api/admin/users?id=${id}`, { method: "DELETE" })
+    const res = await apiFetch(`/api/admin/users?id=${id}`, { method: "DELETE" })
     mutate()
     if (res.ok) toast.success("User removed successfully")
     else toast.error("Failed to remove user")
@@ -106,7 +106,7 @@ export function UsersManagement() {
     }
     setInviting(true)
     try {
-      const res = await fetch("/api/admin/users/invite", {
+      const res = await apiFetch("/api/admin/users/invite", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(inviteForm),

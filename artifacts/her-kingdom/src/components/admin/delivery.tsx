@@ -1,6 +1,7 @@
 "use client"
 
 import { useMemo, useState } from "react"
+import { apiFetch, authedFetcher as fetcher } from "@/lib/api-client"
 import { Plus, Pencil, Trash2, MapPin, Package, Truck } from "lucide-react"
 import { usePagination } from "@/hooks/use-pagination"
 import { PaginationControls } from "@/components/pagination-controls"
@@ -14,7 +15,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import useSWR from "swr"
 
-const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
 type LocationType = "delivery" | "pickup"
 type LocationRegion = "nairobi" | "outside_nairobi"
@@ -100,7 +100,7 @@ export function AdminDelivery() {
   }
 
   const handleSave = async () => {
-    await fetch("/api/admin/delivery", {
+    await apiFetch("/api/admin/delivery", {
       method: editId ? "PUT" : "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -122,12 +122,12 @@ export function AdminDelivery() {
 
   const handleDelete = async (id: string) => {
     if (!confirm("Delete this location? This cannot be undone.")) return
-    await fetch(`/api/admin/delivery?id=${id}`, { method: "DELETE" })
+    await apiFetch(`/api/admin/delivery?id=${id}`, { method: "DELETE" })
     mutate()
   }
 
   const toggleActive = async (loc: AdminDelivery) => {
-    await fetch("/api/admin/delivery", {
+    await apiFetch("/api/admin/delivery", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ...loc, isActive: !loc.isActive }),

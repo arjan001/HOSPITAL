@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import { apiFetch, authedFetcher as fetcher } from "@/lib/api-client"
 
 import { Plus, Pencil, Trash2, Megaphone } from "lucide-react"
 import { AdminShell } from "./admin-shell"
@@ -13,7 +14,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import useSWR from "swr"
 
-const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
 interface HeroBannerData {
   id: string
@@ -70,7 +70,7 @@ export function AdminBanners() {
   const openHeroEdit = (h: HeroBannerData) => { setEditHero(h); setHeroForm({ title: h.title, subtitle: h.subtitle || "", imageUrl: h.image_url || "", buttonLink: h.button_link || "/shop", buttonText: h.button_text || "Shop Now" }); setHeroModal(true) }
   const saveHero = async () => {
     try {
-      const response = await fetch("/api/admin/hero-banners", {
+      const response = await apiFetch("/api/admin/hero-banners", {
         method: editHero ? "PUT" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id: editHero?.id, ...heroForm, isActive: editHero?.is_active ?? true, sortOrder: editHero?.sort_order ?? heroBanners.length }),
@@ -84,7 +84,7 @@ export function AdminBanners() {
   }
   const deleteHero = async (id: string) => {
     try {
-      const response = await fetch(`/api/admin/hero-banners?id=${id}`, { method: "DELETE" })
+      const response = await apiFetch(`/api/admin/hero-banners?id=${id}`, { method: "DELETE" })
       if (!response.ok) throw new Error("Failed to delete hero banner")
       await mutateHero()
     } catch (error) {
@@ -92,7 +92,7 @@ export function AdminBanners() {
     }
   }
   const toggleHero = async (h: HeroBannerData) => {
-    await fetch("/api/admin/hero-banners", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: h.id, title: h.title, subtitle: h.subtitle, imageUrl: h.image_url, buttonLink: h.button_link, buttonText: h.button_text, isActive: !h.is_active, sortOrder: h.sort_order }) })
+    await apiFetch("/api/admin/hero-banners", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: h.id, title: h.title, subtitle: h.subtitle, imageUrl: h.image_url, buttonLink: h.button_link, buttonText: h.button_text, isActive: !h.is_active, sortOrder: h.sort_order }) })
     mutateHero()
   }
 
@@ -116,7 +116,7 @@ export function AdminBanners() {
   const openBannerEdit = (b: BannerData) => { setEditBanner(b); setBannerForm({ title: b.title, subtitle: b.subtitle || "", image: b.image_url || "", link: b.link_url, position: b.position }); setBannerModal(true) }
   const saveBanner = async () => {
     try {
-      const response = await fetch("/api/admin/banners", {
+      const response = await apiFetch("/api/admin/banners", {
         method: editBanner ? "PUT" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ type: "banner", id: editBanner?.id, title: bannerForm.title, subtitle: bannerForm.subtitle, image: bannerForm.image, link: bannerForm.link, position: bannerForm.position, isActive: editBanner?.is_active ?? true }),
@@ -130,7 +130,7 @@ export function AdminBanners() {
   }
   const deleteBanner = async (id: string) => {
     try {
-      const response = await fetch(`/api/admin/banners?id=${id}&type=banner`, { method: "DELETE" })
+      const response = await apiFetch(`/api/admin/banners?id=${id}&type=banner`, { method: "DELETE" })
       if (!response.ok) throw new Error("Failed to delete banner")
       await mutate()
     } catch (error) {
@@ -139,7 +139,7 @@ export function AdminBanners() {
   }
   const toggleBanner = async (b: BannerData) => {
     try {
-      const response = await fetch("/api/admin/banners", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type: "banner", id: b.id, title: b.title, subtitle: b.subtitle, image: b.image_url, link: b.link_url, position: b.position, isActive: !b.is_active }) })
+      const response = await apiFetch("/api/admin/banners", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type: "banner", id: b.id, title: b.title, subtitle: b.subtitle, image: b.image_url, link: b.link_url, position: b.position, isActive: !b.is_active }) })
       if (!response.ok) throw new Error("Failed to toggle banner")
       await mutate()
     } catch (error) {
@@ -152,7 +152,7 @@ export function AdminBanners() {
   const openNavEdit = (n: NavOfferData) => { setEditNav(n); setNavText(n.text); setNavModal(true) }
   const saveNav = async () => {
     try {
-      const response = await fetch("/api/admin/banners", { method: editNav ? "PUT" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type: "navbar_offer", id: editNav?.id, text: navText, isActive: editNav?.is_active ?? true }) })
+      const response = await apiFetch("/api/admin/banners", { method: editNav ? "PUT" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type: "navbar_offer", id: editNav?.id, text: navText, isActive: editNav?.is_active ?? true }) })
       if (!response.ok) throw new Error("Failed to save navbar offer")
       await mutate()
       setNavModal(false)
@@ -162,7 +162,7 @@ export function AdminBanners() {
   }
   const deleteNav = async (id: string) => {
     try {
-      const response = await fetch(`/api/admin/banners?id=${id}&type=navbar_offer`, { method: "DELETE" })
+      const response = await apiFetch(`/api/admin/banners?id=${id}&type=navbar_offer`, { method: "DELETE" })
       if (!response.ok) throw new Error("Failed to delete navbar offer")
       await mutate()
     } catch (error) {
@@ -171,7 +171,7 @@ export function AdminBanners() {
   }
   const toggleNav = async (n: NavOfferData) => {
     try {
-      const response = await fetch("/api/admin/banners", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type: "navbar_offer", id: n.id, text: n.text, isActive: !n.is_active }) })
+      const response = await apiFetch("/api/admin/banners", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type: "navbar_offer", id: n.id, text: n.text, isActive: !n.is_active }) })
       if (!response.ok) throw new Error("Failed to toggle navbar offer")
       await mutate()
     } catch (error) {
@@ -184,7 +184,7 @@ export function AdminBanners() {
   const openPopupEdit = (p: PopupData) => { setEditPopup(p); setPopupForm({ title: p.title, description: p.description || "", discountPercentage: p.discount_percentage?.toString() || "", discountLabel: p.discount_label || "", image: p.image_url || "", link: p.link || "/shop", validUntil: p.valid_until || "" }); setPopupModal(true) }
   const savePopup = async () => {
     try {
-      const response = await fetch("/api/admin/banners", { method: editPopup ? "PUT" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type: "popup_offer", id: editPopup?.id, title: popupForm.title, description: popupForm.description, discountPercentage: popupForm.discountPercentage ? Number(popupForm.discountPercentage) : null, discountLabel: popupForm.discountLabel, image: popupForm.image, link: popupForm.link, validUntil: popupForm.validUntil, isActive: editPopup?.is_active ?? true }) })
+      const response = await apiFetch("/api/admin/banners", { method: editPopup ? "PUT" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type: "popup_offer", id: editPopup?.id, title: popupForm.title, description: popupForm.description, discountPercentage: popupForm.discountPercentage ? Number(popupForm.discountPercentage) : null, discountLabel: popupForm.discountLabel, image: popupForm.image, link: popupForm.link, validUntil: popupForm.validUntil, isActive: editPopup?.is_active ?? true }) })
       if (!response.ok) throw new Error("Failed to save popup offer")
       await mutate()
       setPopupModal(false)
@@ -194,7 +194,7 @@ export function AdminBanners() {
   }
   const deletePopup = async (id: string) => {
     try {
-      const response = await fetch(`/api/admin/banners?id=${id}&type=popup_offer`, { method: "DELETE" })
+      const response = await apiFetch(`/api/admin/banners?id=${id}&type=popup_offer`, { method: "DELETE" })
       if (!response.ok) throw new Error("Failed to delete popup offer")
       await mutate()
     } catch (error) {
@@ -203,7 +203,7 @@ export function AdminBanners() {
   }
   const togglePopup = async (p: PopupData) => {
     try {
-      const response = await fetch("/api/admin/banners", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type: "popup_offer", id: p.id, title: p.title, description: p.description, discountPercentage: p.discount_percentage, discountLabel: p.discount_label, image: p.image_url, link: p.link, validUntil: p.valid_until, isActive: !p.is_active }) })
+      const response = await apiFetch("/api/admin/banners", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type: "popup_offer", id: p.id, title: p.title, description: p.description, discountPercentage: p.discount_percentage, discountLabel: p.discount_label, image: p.image_url, link: p.link, validUntil: p.valid_until, isActive: !p.is_active }) })
       if (!response.ok) throw new Error("Failed to toggle popup offer")
       await mutate()
     } catch (error) {

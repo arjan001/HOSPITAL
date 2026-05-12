@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useRef } from "react"
+import { apiFetch, authedFetcher as fetcher } from "@/lib/api-client"
 
 import { Plus, Pencil, Trash2, Gift, Upload, Loader2, ImageIcon } from "lucide-react"
 import { AdminShell } from "./admin-shell"
@@ -16,7 +17,6 @@ import { toast } from "sonner"
 import useSWR from "swr"
 import type { GiftItem, GiftItemCategory } from "@/lib/types"
 
-const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
 const CATEGORY_TABS: { key: GiftItemCategory; label: string }[] = [
   { key: "addon", label: "Add Ons" },
@@ -70,7 +70,7 @@ export function AdminGifts() {
     fd.append("file", file)
     fd.append("productSlug", `gift-items-${activeCategory}`)
     try {
-      const res = await fetch("/api/upload", { method: "POST", body: fd })
+      const res = await apiFetch("/api/upload", { method: "POST", body: fd })
       const data = await res.json()
       if (!res.ok || !data.url) {
         toast.error(data?.error || "Upload failed")
@@ -93,7 +93,7 @@ export function AdminGifts() {
     }
     setSaving(true)
     try {
-      const res = await fetch("/api/admin/gift-items", {
+      const res = await apiFetch("/api/admin/gift-items", {
         method: editId ? "PUT" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -122,7 +122,7 @@ export function AdminGifts() {
 
   const handleDelete = async (id: string) => {
     if (!confirm("Delete this gift item?")) return
-    const res = await fetch(`/api/admin/gift-items?id=${id}`, { method: "DELETE" })
+    const res = await apiFetch(`/api/admin/gift-items?id=${id}`, { method: "DELETE" })
     if (res.ok) {
       toast.success("Gift item deleted")
       mutate()
@@ -132,7 +132,7 @@ export function AdminGifts() {
   }
 
   const toggleActive = async (it: GiftItem) => {
-    const res = await fetch("/api/admin/gift-items", {
+    const res = await apiFetch("/api/admin/gift-items", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ...it, isActive: !it.isActive }),
