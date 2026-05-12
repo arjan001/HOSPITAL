@@ -2,7 +2,6 @@
 
 import { Link } from "wouter"
 import useSWR from "swr"
-import { Facebook, Instagram, Linkedin, Twitter, Youtube, MessageCircle } from "lucide-react"
 import { FloatingWhatsApp } from "./floating-whatsapp"
 import { SeoLinkCloud } from "./seo-link-cloud"
 
@@ -12,7 +11,6 @@ const fetcher = (url: string) => fetch(url).then((r) => r.json())
 const BG_CREAM = "#FFFBF5"
 const TEXT_WINE = "#3D0814"
 const TEXT_WINE_SOFT = "#6B0F1A"
-const ACCENT_RED = "#B91C1C"
 const BORDER_PEACH = "#F2DCC8"
 
 type FooterSettings = {
@@ -86,23 +84,11 @@ const LEGAL_LINKS = [
   { label: "Recall & Safety Notices", href: "/policies/recalls" },
 ]
 
-function whatsappHref(number: string): string {
-  const digits = (number || "").replace(/[^\d]/g, "")
-  return digits ? `https://wa.me/${digits}` : "#"
-}
 
 export function Footer() {
   const { data } = useSWR<{ settings?: FooterSettings }>("/api/site-data", fetcher)
   const s = data?.settings || {}
 
-  const facebook = s.footer_facebook || DEFAULTS.footer_facebook
-  const instagram = s.footer_instagram || DEFAULTS.footer_instagram
-  const linkedin = s.footer_linkedin || DEFAULTS.footer_linkedin
-  const twitter = s.footer_twitter || DEFAULTS.footer_twitter
-  const youtube = s.footer_youtube || DEFAULTS.footer_youtube
-  const tiktok = s.footer_tiktok || DEFAULTS.footer_tiktok
-  const whatsappNumber = s.whatsapp_number || DEFAULTS.whatsapp_number
-  const waHref = whatsappHref(whatsappNumber)
   const copyright = s.copyright_text || DEFAULTS.copyright_text
 
   return (
@@ -155,17 +141,6 @@ export function Footer() {
             <PaymentLogo src="/payments/amex.png" alt="American Express" />
           </div>
 
-          <div className="flex items-center gap-3">
-            <SocialIcon href={facebook} label="Facebook" bg="#1877F2"><Facebook className="h-3.5 w-3.5" fill="currentColor" /></SocialIcon>
-            <SocialIcon href={instagram} label="Instagram" bg="linear-gradient(45deg,#F58529,#DD2A7B,#8134AF)"><Instagram className="h-3.5 w-3.5" /></SocialIcon>
-            <SocialIcon href={linkedin} label="LinkedIn" bg="#0A66C2"><Linkedin className="h-3.5 w-3.5" fill="currentColor" /></SocialIcon>
-            <SocialIcon href={twitter} label="X" bg="#000"><Twitter className="h-3.5 w-3.5" fill="currentColor" /></SocialIcon>
-            <SocialIcon href={waHref} label="WhatsApp" bg="#25D366"><MessageCircle className="h-3.5 w-3.5" fill="currentColor" /></SocialIcon>
-            <SocialIcon href={youtube} label="YouTube" bg="#FF0000"><Youtube className="h-3.5 w-3.5" fill="currentColor" /></SocialIcon>
-            <SocialIcon href={tiktok} label="TikTok" bg="#000">
-              <svg className="h-3 w-3" fill="currentColor" viewBox="0 0 24 24"><path d="M19.59 6.69a4.83 4.83 0 01-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 01-2.88 2.5 2.89 2.89 0 01-2.89-2.89 2.89 2.89 0 012.89-2.89c.28 0 .54.04.79.1v-3.5a6.37 6.37 0 00-.79-.05A6.34 6.34 0 003.15 15.2a6.34 6.34 0 006.34 6.34 6.34 6.34 0 006.34-6.34V8.87a8.16 8.16 0 004.77 1.52V6.94a4.85 4.85 0 01-1.01-.25z"/></svg>
-            </SocialIcon>
-          </div>
         </div>
       </div>
 
@@ -179,20 +154,6 @@ export function Footer() {
           </p>
           <p className="text-xs leading-relaxed md:text-right" style={{ color: TEXT_WINE_SOFT }}>
             {copyright}
-          </p>
-        </div>
-        <div style={{ borderTop: `1px solid ${BORDER_PEACH}` }}>
-          <p className="text-center text-[11px] py-2.5" style={{ color: TEXT_WINE_SOFT }}>
-            Made with <span aria-label="love" style={{ color: ACCENT_RED }}>♥</span> by{" "}
-            <a
-              href="https://oneplusafrica.com"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="font-semibold hover:underline underline-offset-2"
-              style={{ color: TEXT_WINE }}
-            >
-              OnePlus Africa
-            </a>
           </p>
         </div>
       </div>
@@ -239,27 +200,3 @@ function PaymentLogo({ src, alt, wide = false }: { src: string; alt: string; wid
   )
 }
 
-function SocialIcon({
-  href,
-  label,
-  bg,
-  children,
-}: {
-  href: string
-  label: string
-  bg: string
-  children: React.ReactNode
-}) {
-  return (
-    <a
-      href={href}
-      target="_blank"
-      rel="noopener noreferrer"
-      aria-label={label}
-      className="w-8 h-8 rounded-full flex items-center justify-center text-white shrink-0 transition-transform hover:scale-110"
-      style={{ background: bg }}
-    >
-      {children}
-    </a>
-  )
-}
