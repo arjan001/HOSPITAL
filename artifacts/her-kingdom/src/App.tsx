@@ -50,6 +50,7 @@ import AccountLoginPage from "@/pages/account/login";
 import AccountRegisterPage from "@/pages/account/register";
 import VerifyPhonePage from "@/pages/account/verify-phone";
 import EmailVerifiedPage from "@/pages/account/email-verified";
+import UploadPrescriptionPage from "@/pages/upload-prescription";
 
 // Policy pages
 import PolicyPage from "@/pages/policy";
@@ -158,6 +159,7 @@ function Router() {
       <Route path="/account/register" component={AccountRegisterPage} />
       <Route path="/account/verify-phone" component={VerifyPhonePage} />
       <Route path="/account/email-verified" component={EmailVerifiedPage} />
+      <Route path="/upload-prescription" component={UploadPrescriptionPage} />
       {/* Admin */}
       <Route path="/admin" component={AdminDashboard} />
       <Route path="/admin/analytics" component={AdminAnalytics} />

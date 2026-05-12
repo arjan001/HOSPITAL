@@ -5,7 +5,7 @@ import { Link } from "wouter"
 
 import { useState, useRef, useEffect } from "react"
 import { useLocation } from "wouter"
-import { Search, ShoppingBag, Menu, ChevronDown, PhoneCall, User, Package, Camera, Heart, Settings, PackageCheck } from "lucide-react"
+import { Search, ShoppingBag, Menu, PhoneCall, User, Package, Camera, Heart, Settings, PackageCheck } from "lucide-react"
 import { useCart } from "@/lib/cart-context"
 import { useWishlist } from "@/lib/wishlist-context"
 import type { Product, Category } from "@/lib/types"
@@ -82,7 +82,6 @@ export function Navbar() {
   const [searchQuery, setSearchQuery] = useState("")
   const [suggestions, setSuggestions] = useState<Product[]>([])
   const [showSuggestions, setShowSuggestions] = useState(false)
-  const [shopOpen, setShopOpen] = useState(false)
   const [accountOpen, setAccountOpen] = useState(false)
   const searchRef = useRef<HTMLDivElement>(null)
   const accountRef = useRef<HTMLDivElement>(null)
@@ -136,9 +135,9 @@ export function Navbar() {
     navigate(`/product/${slug}`)
   }
 
-  const navItems: { label: string; href: string; hasMenu?: boolean }[] = [
+  const navItems: { label: string; href: string }[] = [
     { label: "Home", href: "/" },
-    { label: "Shop", href: "/shop", hasMenu: true },
+    { label: "Shop", href: "/shop" },
     { label: "Care Packs", href: "/care-packs" },
     { label: "Services", href: "/services" },
   ]
@@ -227,43 +226,15 @@ export function Navbar() {
                 const isActive =
                   (item.href === "/" && isHomeActive) ||
                   (item.href !== "/" && location.startsWith(item.href.split("?")[0]))
-                const isShop = item.label === "Shop"
                 return (
-                  <div
+                  <Link
                     key={item.label}
-                    className="relative"
-                    onMouseEnter={() => isShop && setShopOpen(true)}
-                    onMouseLeave={() => isShop && setShopOpen(false)}
+                    href={item.href}
+                    className="text-[15px] font-semibold transition-colors hover:text-[#B91C1C]"
+                    style={{ color: isActive ? ACCENT_RED : TEXT_WINE }}
                   >
-                    <Link
-                      href={item.href}
-                      className="inline-flex items-center gap-1 text-[15px] font-semibold transition-colors hover:text-[#B91C1C]"
-                      style={{ color: isActive ? ACCENT_RED : TEXT_WINE }}
-                    >
-                      {item.label}
-                      {item.hasMenu && <ChevronDown className="h-3.5 w-3.5 opacity-70" />}
-                    </Link>
-                    {isShop && shopOpen && categories.length > 0 && (
-                      <div className="absolute top-full left-1/2 -translate-x-1/2 pt-3 w-60 z-50">
-                        <div
-                          className="rounded-xl shadow-xl py-2"
-                          style={{ background: "#fff", border: `1px solid ${PILL_BORDER}` }}
-                        >
-                          {categories.map((cat) => (
-                            <Link
-                              key={cat.id}
-                              href={`/shop?category=${cat.slug}`}
-                              className="block px-4 py-2 text-sm hover:bg-[#FFF1E6] transition-colors"
-                              style={{ color: TEXT_WINE }}
-                              onClick={() => setShopOpen(false)}
-                            >
-                              {cat.name}
-                            </Link>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
+                    {item.label}
+                  </Link>
                 )
               })}
             </nav>
@@ -295,41 +266,34 @@ export function Navbar() {
                   <span>Account</span>
                 </button>
 
-                {/* Glassmorphism dropdown */}
+                {/* Account dropdown — broad white card matching reference */}
                 {accountOpen && (
-                  <div className="absolute top-full right-0 pt-3 w-72 z-50">
+                  <div className="absolute top-full right-0 pt-3 w-[400px] z-50">
                     <div
                       className="rounded-2xl overflow-hidden"
                       style={{
-                        background: "rgba(255,251,245,0.88)",
-                        backdropFilter: "blur(24px)",
-                        WebkitBackdropFilter: "blur(24px)",
-                        border: "1px solid rgba(242,220,200,0.8)",
-                        boxShadow: "0 28px 60px -16px rgba(61,8,20,0.25), 0 8px 20px -8px rgba(61,8,20,0.1), inset 0 1px 0 rgba(255,255,255,0.85)",
+                        background: "#ffffff",
+                        border: `1px solid ${PILL_BORDER}`,
+                        boxShadow: "0 20px 60px -12px rgba(61,8,20,0.22), 0 6px 16px -6px rgba(61,8,20,0.10)",
                       }}
                     >
                       {/* Header */}
-                      <div
-                        className="px-5 py-4 border-b"
-                        style={{
-                          background: "linear-gradient(135deg, rgba(255,228,200,0.75) 0%, rgba(255,205,170,0.5) 100%)",
-                          borderColor: "rgba(242,220,200,0.7)",
-                        }}
-                      >
-                        <p className="font-extrabold text-sm" style={{ color: TEXT_WINE }}>My Account</p>
-                        <p className="text-xs mt-0.5" style={{ color: TEXT_WINE_SOFT }}>
+                      <div className="px-6 pt-5 pb-4 border-b" style={{ borderColor: "#F2DCC8" }}>
+                        <p className="font-extrabold text-lg leading-tight" style={{ color: TEXT_WINE }}>My Account</p>
+                        <div className="mt-2 h-px" style={{ background: "#F2DCC8" }} />
+                        <p className="text-sm mt-3 text-center" style={{ color: "#888" }}>
                           Sign in for a more personalized experience
                         </p>
                       </div>
 
                       {/* CTA buttons */}
-                      <div className="px-5 py-4 flex gap-3 border-b" style={{ borderColor: "rgba(242,220,200,0.6)" }}>
+                      <div className="px-6 py-4 flex gap-3 border-b" style={{ borderColor: "#F2DCC8" }}>
                         <Link
                           href="/account/login"
-                          className="flex-1 h-10 rounded-xl font-bold text-sm flex items-center justify-center text-white transition-transform hover:scale-[1.02]"
+                          className="flex-1 h-12 rounded-lg font-bold text-sm flex items-center justify-center text-white transition-opacity hover:opacity-90"
                           style={{
                             background: `linear-gradient(135deg, ${ACCENT_ORANGE} 0%, ${ACCENT_RED} 100%)`,
-                            boxShadow: "0 8px 20px -8px rgba(185,28,28,0.45)",
+                            boxShadow: "0 6px 18px -6px rgba(185,28,28,0.45)",
                           }}
                           onClick={() => setAccountOpen(false)}
                         >
@@ -337,11 +301,11 @@ export function Navbar() {
                         </Link>
                         <Link
                           href="/account/register"
-                          className="flex-1 h-10 rounded-xl font-bold text-sm flex items-center justify-center transition-colors hover:bg-[#FFF1E2]"
+                          className="flex-1 h-12 rounded-lg font-bold text-sm flex items-center justify-center transition-colors hover:bg-[#FFF6EE]"
                           style={{
                             border: `1.5px solid ${PILL_BORDER}`,
                             color: TEXT_WINE,
-                            background: "rgba(255,255,255,0.7)",
+                            background: "#fff",
                           }}
                           onClick={() => setAccountOpen(false)}
                         >
@@ -349,13 +313,13 @@ export function Navbar() {
                         </Link>
                       </div>
 
-                      {/* Quick links */}
-                      <div className="py-2">
+                      {/* Quick links — with dividers like the reference */}
+                      <div>
                         {[
                           {
                             icon: <PackageCheck className="h-5 w-5" />,
                             label: "Orders",
-                            desc: "View and track online orders",
+                            desc: "View and track online or pickup orders",
                             href: "/track-order",
                           },
                           {
@@ -368,30 +332,31 @@ export function Navbar() {
                           {
                             icon: <Settings className="h-5 w-5" />,
                             label: "Account Settings",
-                            desc: "Contact info, addresses, password",
+                            desc: "Payment, contact info, addresses, password",
                             href: "/account/login",
                           },
-                        ].map((item) => (
+                        ].map((item, idx, arr) => (
                           <Link
                             key={item.label}
                             href={item.href}
-                            className="flex items-center gap-3 px-5 py-3 transition-colors hover:bg-[#FFF6EE]"
+                            className="flex items-center gap-4 px-6 py-4 transition-colors hover:bg-[#FFF9F5]"
+                            style={{ borderBottom: idx < arr.length - 1 ? `1px solid #F2DCC8` : "none" }}
                             onClick={() => setAccountOpen(false)}
                           >
                             <span
-                              className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
+                              className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0"
                               style={{
-                                background: "rgba(242,220,200,0.5)",
+                                background: "#FFF1E6",
                                 color: item.iconColor || TEXT_WINE_SOFT,
                               }}
                             >
                               {item.icon}
                             </span>
                             <div>
-                              <p className="text-sm font-semibold leading-tight" style={{ color: TEXT_WINE }}>
+                              <p className="text-sm font-bold leading-tight" style={{ color: TEXT_WINE }}>
                                 {item.label}
                               </p>
-                              <p className="text-xs mt-0.5" style={{ color: TEXT_WINE_SOFT }}>
+                              <p className="text-xs mt-0.5 leading-relaxed" style={{ color: "#888" }}>
                                 {item.desc}
                               </p>
                             </div>
@@ -561,7 +526,7 @@ export function Navbar() {
 
               {/* Upload Prescription */}
               <Link
-                href="/contact"
+                href="/upload-prescription"
                 className="inline-flex items-center justify-center gap-2 h-12 px-5 rounded-full text-sm font-semibold whitespace-nowrap text-white shadow-sm hover:shadow-md transition-shadow"
                 style={{
                   background: `linear-gradient(135deg, ${ACCENT_ORANGE} 0%, ${ACCENT_RED} 100%)`,

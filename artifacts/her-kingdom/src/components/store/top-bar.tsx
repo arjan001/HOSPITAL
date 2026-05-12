@@ -9,15 +9,23 @@ export function TopBar() {
     ? data!.navbarOffers!.map((o) => o?.text).filter((t): t is string => Boolean(t))
     : []
   const displayOffers = offers.length > 0 ? offers : ["FREE SHIPPING on orders above KSh 5,000"]
-  // Repeat offers 4 times to fill viewport and create seamless loop
   const repeated = [...displayOffers, ...displayOffers, ...displayOffers, ...displayOffers]
 
   return (
-    <div className="bg-foreground text-background overflow-hidden">
+    <div
+      className="overflow-hidden"
+      style={{
+        background: "linear-gradient(90deg, #FFE0C8 0%, #F5C4A0 25%, #D4847A 65%, #A84C5A 100%)",
+      }}
+    >
       <div className="flex whitespace-nowrap py-2">
         <div className="animate-marquee flex gap-8">
           {repeated.map((offer, i) => (
-            <span key={i} className="text-xs tracking-widest uppercase font-medium flex-shrink-0">
+            <span
+              key={i}
+              className="text-xs tracking-widest uppercase font-semibold flex-shrink-0"
+              style={{ color: "#3D0814" }}
+            >
               {offer}
             </span>
           ))}
