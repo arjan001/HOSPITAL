@@ -1,290 +1,271 @@
-import { createClient } from "./supabase"
+// Dummy in-memory pharmacy catalog used while Supabase is not configured.
+// Once SUPABASE_URL/SUPABASE_SERVICE_ROLE_KEY are wired up, this file can be
+// reverted to its Supabase-backed implementation. The shape returned by every
+// exported function exactly matches what the frontend expects today.
 
-function resolveCategoryImage(slug: string | null | undefined, imageUrl: string | null | undefined): string {
-  const FALLBACKS: Record<string, string> = {
-    "necklace-sets": "/images/products/necklaces/necklace-sets-category.jpeg",
-    "men-necklaces": "/images/products/men-necklaces/men-necklaces-category.jpeg",
-  }
-  if (imageUrl && !imageUrl.startsWith("/placeholder")) return imageUrl
-  if (slug && FALLBACKS[slug]) return FALLBACKS[slug]
-  return "/placeholder.svg?height=500&width=400"
+type Product = {
+  id: string
+  name: string
+  slug: string
+  price: number
+  originalPrice?: number
+  images: string[]
+  category: string
+  categorySlug: string
+  description: string
+  tags: string[]
+  collection: string
+  isNew: boolean
+  isOnOffer: boolean
+  offerPercentage?: number
+  inStock: boolean
+  createdAt: string
 }
 
-function mapProduct(row: Record<string, unknown>, images: Record<string, unknown>[], variations: Record<string, unknown>[], productTags: Record<string, string[]> = {}) {
-  const productImages = images
-    .filter((img) => img.product_id === row.id)
-    .sort((a, b) => (a.sort_order as number) - (b.sort_order as number))
-    .map((img) => (img.image_url || img.url) as string)
+const CATEGORIES = [
+  { slug: "medications", name: "Medications" },
+  { slug: "vitamins", name: "Vitamins & Supplements" },
+  { slug: "medical-devices", name: "Medical Devices" },
+  { slug: "baby-care", name: "Baby & Mother" },
+  { slug: "personal-care", name: "Personal Care" },
+  { slug: "first-aid", name: "First Aid" },
+] as const
 
-  const finalImages = productImages.length > 0
-    ? productImages
-    : Array.isArray(row.gallery_images)
-      ? (row.gallery_images as string[])
-      : []
-
-  const variationsList = variations
-    .filter((v) => v.product_id === row.id)
-    .map((v) => ({
-      type: (v.type || v.label) as string,
-      options: Array.isArray(v.options) ? v.options as string[] : [v.value as string],
-    }))
-
-  const cats = (row as Record<string, unknown> & { categories?: { name: string; slug: string } }).categories
-
-  return {
-    id: row.id as string,
-    name: row.name as string,
-    slug: row.slug as string,
-    price: Number(row.price),
-    originalPrice: row.original_price ? Number(row.original_price) : undefined,
-    images: finalImages.length > 0 ? finalImages : ["/placeholder.svg?height=800&width=600"],
-    category: cats?.name || "",
-    categorySlug: cats?.slug || "",
-    description: (row.description as string) || "",
-    variations: variationsList.length > 0 ? variationsList : undefined,
-    tags: productTags[row.id as string] || [],
-    collection: (row.collection as string) || "unisex",
-    isNew: row.is_new as boolean,
-    isOnOffer: row.is_on_offer as boolean,
-    offerPercentage: row.offer_percentage ? Number(row.offer_percentage) : undefined,
-    inStock: row.in_stock as boolean,
-    createdAt: (row.created_at as string) || "",
-  }
+const CATEGORY_IMAGES: Record<string, string> = {
+  medications: "/images/categories/medications.png",
+  vitamins: "/images/categories/vitamins-supplements.png",
+  "medical-devices": "/images/categories/medical-devices.png",
+  "baby-care": "/images/categories/baby-mother.png",
+  "personal-care": "/images/categories/personal-care.png",
+  "first-aid": "/images/categories/first-aid.png",
 }
+
+type Seed = {
+  name: string
+  price: number
+  originalPrice?: number
+  image: string
+  categorySlug: typeof CATEGORIES[number]["slug"]
+  description: string
+  tags: string[]
+  isNew?: boolean
+  isOnOffer?: boolean
+  offerPercentage?: number
+}
+
+const SEEDS: Seed[] = [
+  // Medications
+  { name: "Paracetamol 500mg Tablets (24 pack)", price: 180, originalPrice: 250, image: "/images/products/medications/paracetamol-box.png", categorySlug: "medications", description: "Fast-acting paracetamol tablets for relief from headaches, fever and mild pain.", tags: ["pain relief", "fever"], isOnOffer: true, offerPercentage: 28 },
+  { name: "Ibuprofen 200mg Tablets (20 pack)", price: 240, image: "/images/products/medications/blister-pack-tablets.png", categorySlug: "medications", description: "Anti-inflammatory tablets for muscle pain, period pain and inflammation.", tags: ["anti-inflammatory"], isNew: true },
+  { name: "Cough Syrup 100ml", price: 320, image: "/images/products/medications/cough-syrup.png", categorySlug: "medications", description: "Soothing cough syrup for dry and chesty coughs. Suitable for adults and older children.", tags: ["cough", "cold"] },
+  { name: "Antibiotic Capsules (10 pack)", price: 540, originalPrice: 690, image: "/images/products/medications/antibiotic-capsules.png", categorySlug: "medications", description: "Broad-spectrum antibiotic capsules. Prescription required at checkout.", tags: ["prescription"], isOnOffer: true, offerPercentage: 22 },
+  { name: "Pain Relief Gel 50g", price: 410, image: "/images/products/medications/pain-relief-gel.png", categorySlug: "medications", description: "Topical gel for muscle aches, joint pain and sports injuries.", tags: ["topical", "pain relief"], isNew: true },
+  { name: "Allergy Relief Tablets (14 pack)", price: 360, originalPrice: 450, image: "/images/products/medications/pill-bottle-white.png", categorySlug: "medications", description: "Non-drowsy 24-hour antihistamine tablets for hayfever and allergic reactions.", tags: ["allergy"], isOnOffer: true, offerPercentage: 20 },
+
+  // Vitamins
+  { name: "Vitamin C 1000mg (60 tablets)", price: 480, image: "/images/products/vitamins/vitamin-c-bottle.png", categorySlug: "vitamins", description: "High-strength vitamin C to support your immune system.", tags: ["immunity"], isNew: true },
+  { name: "Daily Multivitamin (90 tablets)", price: 890, originalPrice: 1100, image: "/images/products/vitamins/multivitamin-bottle.png", categorySlug: "vitamins", description: "Complete daily multivitamin with 23 essential vitamins and minerals.", tags: ["wellness"], isOnOffer: true, offerPercentage: 19 },
+  { name: "Omega-3 Fish Oil Softgels (60)", price: 760, image: "/images/products/vitamins/omega-3.png", categorySlug: "vitamins", description: "Premium omega-3 softgels to support heart, brain and joint health.", tags: ["heart health"] },
+  { name: "Zinc Immunity Booster (30 caps)", price: 520, originalPrice: 650, image: "/images/products/vitamins/zinc-supplement.png", categorySlug: "vitamins", description: "Zinc supplement to support immunity and skin health.", tags: ["immunity"], isOnOffer: true, offerPercentage: 20 },
+
+  // Medical Devices
+  { name: "Digital Thermometer", price: 690, image: "/images/products/medical-devices/digital-thermometer.png", categorySlug: "medical-devices", description: "Fast and accurate digital thermometer with fever alarm. Reads in 10 seconds.", tags: ["thermometer"], isNew: true },
+  { name: "Arm Blood Pressure Monitor", price: 4900, originalPrice: 6200, image: "/images/products/medical-devices/bp-monitor.png", categorySlug: "medical-devices", description: "Clinically validated upper-arm blood pressure monitor with memory for two users.", tags: ["bp monitor"], isOnOffer: true, offerPercentage: 21 },
+  { name: "Fingertip Pulse Oximeter", price: 2400, image: "/images/products/medical-devices/pulse-oximeter.png", categorySlug: "medical-devices", description: "Compact fingertip pulse oximeter for SpO2 and pulse rate monitoring.", tags: ["spo2"], isNew: true },
+  { name: "Blood Glucose Meter Kit", price: 3600, originalPrice: 4500, image: "/images/products/medical-devices/glucose-meter.png", categorySlug: "medical-devices", description: "Complete glucose monitoring kit including 25 strips and lancets.", tags: ["diabetes"], isOnOffer: true, offerPercentage: 20 },
+
+  // Baby Care
+  { name: "Infant Formula Stage 1 (400g)", price: 1450, image: "/images/products/baby-care/baby-formula.png", categorySlug: "baby-care", description: "Stage 1 infant formula milk with DHA, suitable from birth.", tags: ["infant"], isNew: true },
+  { name: "Pediatric Forehead Thermometer", price: 1290, originalPrice: 1600, image: "/images/products/baby-care/baby-thermometer.png", categorySlug: "baby-care", description: "Non-contact infrared thermometer designed for babies and young children.", tags: ["thermometer", "baby"], isOnOffer: true, offerPercentage: 19 },
+  { name: "Gentle Baby Lotion 250ml", price: 590, image: "/images/products/baby-care/baby-lotion.png", categorySlug: "baby-care", description: "Hypoallergenic moisturising lotion for delicate baby skin.", tags: ["baby skin"] },
+
+  // Personal Care
+  { name: "Hand Sanitizer 500ml", price: 380, originalPrice: 480, image: "/images/products/personal-care/hand-sanitizer.png", categorySlug: "personal-care", description: "70% alcohol hand sanitizer with aloe vera. Kills 99.9% of germs.", tags: ["sanitizer"], isOnOffer: true, offerPercentage: 21 },
+  { name: "Antiseptic Mouthwash 500ml", price: 460, image: "/images/products/personal-care/mouthwash.png", categorySlug: "personal-care", description: "Daily antiseptic mouthwash for fresh breath and healthy gums.", tags: ["oral care"] },
+  { name: "Sensitive Toothpaste 100ml", price: 320, image: "/images/products/personal-care/toothpaste.png", categorySlug: "personal-care", description: "Toothpaste for sensitive teeth with daily enamel protection.", tags: ["oral care"], isNew: true },
+  { name: "Surgical Face Masks (50 pack)", price: 590, originalPrice: 790, image: "/images/products/personal-care/face-masks.png", categorySlug: "personal-care", description: "3-ply disposable surgical face masks. Box of 50.", tags: ["protection"], isOnOffer: true, offerPercentage: 25 },
+
+  // First Aid
+  { name: "Sterile Bandage Roll Pack", price: 280, image: "/images/products/first-aid/bandages-roll.png", categorySlug: "first-aid", description: "Assorted sterile bandages and adhesive plasters for everyday cuts and grazes.", tags: ["wound care"] },
+  { name: "Antiseptic Solution 250ml", price: 340, originalPrice: 420, image: "/images/products/first-aid/antiseptic-solution.png", categorySlug: "first-aid", description: "Antiseptic solution for cleansing wounds, cuts and grazes.", tags: ["wound care"], isOnOffer: true, offerPercentage: 19 },
+  { name: "Compact First Aid Kit", price: 1890, image: "/images/products/first-aid/first-aid-kit.png", categorySlug: "first-aid", description: "42-piece compact first aid kit for home, car or travel use.", tags: ["kit", "travel"], isNew: true },
+]
+
+function slugify(name: string) {
+  return name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "")
+}
+
+const PRODUCTS: Product[] = SEEDS.map((s, i) => {
+  const cat = CATEGORIES.find((c) => c.slug === s.categorySlug)!
+  const base: Product = {
+    id: `prod-${i + 1}`,
+    name: s.name,
+    slug: slugify(s.name),
+    price: s.price,
+    images: [s.image],
+    category: cat.name,
+    categorySlug: cat.slug,
+    description: s.description,
+    tags: s.tags,
+    collection: "pharmacy",
+    isNew: !!s.isNew,
+    isOnOffer: !!s.isOnOffer,
+    inStock: true,
+    createdAt: new Date(Date.now() - i * 86400000).toISOString(),
+  }
+  if (s.originalPrice !== undefined) base.originalPrice = s.originalPrice
+  if (s.offerPercentage !== undefined) base.offerPercentage = s.offerPercentage
+  return base
+})
+
+const HERO_BANNERS = [
+  {
+    id: "hero-pharmacy",
+    title: "Your Trusted Online Pharmacy",
+    subtitle: "Authentic medications, vitamins and medical devices — sourced from licensed suppliers, delivered quickly across Kenya.",
+    collection: "medications",
+    bannerImage: "/banners/hero-pharmacy-main.png",
+    linkUrl: "/shop?category=medications",
+    buttonText: "Shop Medications",
+    sortOrder: 0,
+  },
+  {
+    id: "hero-medical-devices",
+    title: "Smart Medical Devices",
+    subtitle: "Thermometers, BP monitors, oximeters and more — keep track of your health at home.",
+    collection: "medical-devices",
+    bannerImage: "/banners/hero-medical-devices.png",
+    linkUrl: "/shop?category=medical-devices",
+    buttonText: "Browse Devices",
+    sortOrder: 1,
+  },
+  {
+    id: "hero-vitamins",
+    title: "Vitamins & Wellness",
+    subtitle: "Daily multivitamins, immunity boosters and supplements to support your everyday wellbeing.",
+    collection: "vitamins",
+    bannerImage: "/banners/hero-vitamins-supplements.png",
+    linkUrl: "/shop?category=vitamins",
+    buttonText: "Shop Wellness",
+    sortOrder: 2,
+  },
+]
+
+const MID_PAGE_BANNERS = [
+  {
+    id: "mid-flash",
+    title: "Flash Sale — Up To 30% Off",
+    subtitle: "Stock up on everyday essentials before they're gone.",
+    image: "/banners/promo-flash-sale.png",
+    link: "/shop?filter=offers",
+    position: "mid-page",
+    sortOrder: 0,
+  },
+  {
+    id: "mid-delivery",
+    title: "Free Delivery Across Nairobi",
+    subtitle: "On every order above KSH 5,000. Same-day delivery available.",
+    image: "/banners/promo-free-delivery.png",
+    link: "/shop",
+    position: "mid-page",
+    sortOrder: 1,
+  },
+  {
+    id: "mid-new",
+    title: "New Arrivals This Week",
+    subtitle: "Fresh stock of vitamins, devices and baby care just landed.",
+    image: "/banners/promo-new-arrivals.png",
+    link: "/shop?filter=new",
+    position: "mid-page",
+    sortOrder: 2,
+  },
+  {
+    id: "mid-refill",
+    title: "Easy Prescription Refills",
+    subtitle: "Upload your script and we'll have it ready for collection or delivery.",
+    image: "/banners/promo-prescription-refill.png",
+    link: "/shop?category=medications",
+    position: "mid-page",
+    sortOrder: 3,
+  },
+]
+
+const NAVBAR_OFFERS = [
+  "FREE SHIPPING ON ORDERS ABOVE KSH 5,000",
+  "SAME-DAY DELIVERY ACROSS NAIROBI",
+  "LICENSED PHARMACY • AUTHENTIC PRODUCTS",
+]
+
+const SITE_SETTINGS = {
+  store_name: "Her Kingdom Pharmacy",
+  store_email: "care@herkingdom.shop",
+  store_phone: "+254 700 000 000",
+  whatsapp_number: "254700000000",
+  footer_whatsapp: "254700000000",
+  currency_symbol: "KSh",
+  site_title: "Her Kingdom Pharmacy",
+  site_description: "Your trusted online pharmacy in Kenya — medications, vitamins, baby care and medical devices delivered to your door.",
+  meta_keywords: "online pharmacy kenya, medications nairobi, vitamins, medical devices",
+  free_shipping_threshold: 5000,
+  enable_whatsapp_checkout: true,
+  show_newsletter: true,
+  maintenance_mode: false,
+}
+
+const DELIVERY_LOCATIONS = [
+  { id: "nbo-cbd", name: "Nairobi CBD", fee: 200, estimatedDays: "Same day", type: "delivery", region: "nairobi", city: "Nairobi", description: "Free for orders above KSH 5,000." },
+  { id: "nbo-westlands", name: "Westlands", fee: 250, estimatedDays: "Same day", type: "delivery", region: "nairobi", city: "Nairobi", description: "" },
+  { id: "nbo-karen", name: "Karen / Lang'ata", fee: 350, estimatedDays: "Same day", type: "delivery", region: "nairobi", city: "Nairobi", description: "" },
+  { id: "outside-mombasa", name: "Mombasa", fee: 600, estimatedDays: "1–2 days", type: "delivery", region: "outside_nairobi", city: "Mombasa", description: "Courier delivery." },
+  { id: "outside-kisumu", name: "Kisumu", fee: 600, estimatedDays: "1–2 days", type: "delivery", region: "outside_nairobi", city: "Kisumu", description: "Courier delivery." },
+  { id: "pickup-cbd", name: "Pickup — CBD Branch", fee: 0, estimatedDays: "Ready in 2 hrs", type: "pickup", region: "nairobi", city: "Nairobi", description: "Collect from our CBD pharmacy." },
+]
 
 export async function getProducts() {
-  const supabase = createClient()
-  const [productsRes, imagesRes, variationsRes, productTagsRes] = await Promise.all([
-    supabase.from("products").select("*, categories(name, slug)").order("sort_order", { ascending: true }).range(0, 9999),
-    supabase.from("product_images").select("*").order("sort_order", { ascending: true }).range(0, 49999),
-    supabase.from("product_variations").select("*").range(0, 49999),
-    supabase.from("product_tags").select("product_id, tags(name)").range(0, 49999),
-  ])
-
-  if (!productsRes.data) return []
-
-  const tagMap: Record<string, string[]> = {}
-  for (const pt of productTagsRes.data || []) {
-    const pid = pt.product_id as string
-    const tagName = (pt as Record<string, unknown> & { tags?: { name: string } }).tags?.name
-    if (tagName) {
-      if (!tagMap[pid]) tagMap[pid] = []
-      tagMap[pid].push(tagName)
-    }
-  }
-
-  return productsRes.data.map((row) => mapProduct(row, imagesRes.data || [], variationsRes.data || [], tagMap))
+  return PRODUCTS
 }
 
 export async function getProductBySlug(slug: string) {
-  const supabase = createClient()
-  const { data: row } = await supabase.from("products").select("*, categories(name, slug)").eq("slug", slug).single()
-  if (!row) return null
-
-  const [imagesRes, variationsRes, ptRes] = await Promise.all([
-    supabase.from("product_images").select("*").eq("product_id", row.id).order("sort_order", { ascending: true }),
-    supabase.from("product_variations").select("*").eq("product_id", row.id),
-    supabase.from("product_tags").select("product_id, tags(name)").eq("product_id", row.id),
-  ])
-
-  const tagMap: Record<string, string[]> = {}
-  for (const pt of ptRes.data || []) {
-    const pid = pt.product_id as string
-    const tagName = (pt as Record<string, unknown> & { tags?: { name: string } }).tags?.name
-    if (tagName) {
-      if (!tagMap[pid]) tagMap[pid] = []
-      tagMap[pid].push(tagName)
-    }
-  }
-
-  return mapProduct(row, imagesRes.data || [], variationsRes.data || [], tagMap)
+  return PRODUCTS.find((p) => p.slug === slug) || null
 }
 
 export async function getCategories() {
-  const supabase = createClient()
-  const { data: categories } = await supabase.from("categories").select("*").eq("is_active", true).order("sort_order", { ascending: true }).range(0, 9999)
-  if (!categories) return []
-
-  const { data: products } = await supabase.from("products").select("category_id").range(0, 9999)
-  const countMap: Record<string, number> = {}
-  for (const p of products || []) {
-    countMap[p.category_id] = (countMap[p.category_id] || 0) + 1
-  }
-
-  return categories.map((cat) => ({
-    id: cat.id,
-    name: cat.name,
-    slug: cat.slug,
-    image: resolveCategoryImage(cat.slug, cat.image_url),
-    productCount: countMap[cat.id] || 0,
+  const counts: Record<string, number> = {}
+  for (const p of PRODUCTS) counts[p.categorySlug] = (counts[p.categorySlug] || 0) + 1
+  return CATEGORIES.map((c, i) => ({
+    id: `cat-${i + 1}`,
+    name: c.name,
+    slug: c.slug,
+    image: CATEGORY_IMAGES[c.slug] || "/placeholder.svg",
+    productCount: counts[c.slug] || 0,
   }))
 }
 
 export async function getDeliveryLocations() {
-  const supabase = createClient()
-  const { data } = await supabase.from("delivery_locations").select("*").eq("is_active", true).order("sort_order", { ascending: true }).order("fee", { ascending: true })
-  if (!data) return []
-
-  return data.map((loc) => ({
-    id: loc.id,
-    name: loc.name,
-    fee: Number(loc.fee),
-    estimatedDays: loc.estimated_days || "",
-    type: (loc.type as string) || "delivery",
-    region: (loc.region as string) || "nairobi",
-    city: (loc.city as string) || "",
-    description: (loc.description as string) || "",
-  }))
+  return DELIVERY_LOCATIONS
 }
 
 export async function getNavbarOffers(): Promise<string[]> {
-  const supabase = createClient()
-  const { data } = await supabase.from("navbar_offers").select("text").eq("is_active", true).order("sort_order", { ascending: true })
-  return data?.map((o) => o.text) || []
+  return NAVBAR_OFFERS
 }
 
 export async function getPopupOffer() {
-  const supabase = createClient()
-  const { data } = await supabase.from("popup_offers").select("*").eq("is_active", true).order("created_at", { ascending: false }).limit(1)
-  if (!data || data.length === 0) return null
-
-  const offer = data[0]
-  return {
-    id: offer.id,
-    title: offer.title,
-    description: offer.description || "",
-    discount: offer.discount_label || "",
-    image: offer.image_url || "/placeholder.svg",
-    validUntil: offer.valid_until || "2026-12-31",
-  }
+  return null
 }
 
 export async function getMidPageBanners() {
-  const supabase = createClient()
-  const { data } = await supabase.from("banners").select("id, title, subtitle, image_url, link, position, sort_order").eq("is_active", true).eq("position", "mid-page").order("sort_order", { ascending: true })
-
-  return (data || []).map((b) => ({
-    id: b.id as string,
-    title: (b.title as string) || "",
-    subtitle: (b.subtitle as string) || "",
-    image: (b.image_url as string) || "/placeholder.svg",
-    link: (b.link as string) || "/shop",
-    position: (b.position as string) || "mid-page",
-    sortOrder: (b.sort_order as number) || 0,
-  }))
+  return MID_PAGE_BANNERS
 }
 
 export async function getSiteSettings() {
-  const supabase = createClient()
-  const { data } = await supabase.from("site_settings").select("*").limit(1).maybeSingle()
-  return data
+  return SITE_SETTINGS
 }
 
 export async function getHeroBanners() {
-  try {
-    const supabase = createClient()
-    const { data, error } = await supabase.from("hero_banners").select("id, title, subtitle, image_url, button_link, button_text, sort_order").eq("is_active", true).order("sort_order", { ascending: true }).limit(3)
-    if (error || !data || data.length === 0) return []
-
-    return data.map((b) => ({
-      id: b.id,
-      title: b.title || "Women's Collection",
-      subtitle: b.subtitle || "Discover premium women's fashion",
-      collection: "women-collection",
-      bannerImage: b.image_url || "/placeholder.svg",
-      linkUrl: b.button_link || "/shop",
-      buttonText: b.button_text || "Shop Now",
-      sortOrder: b.sort_order || 0,
-    }))
-  } catch {
-    return []
-  }
+  return HERO_BANNERS
 }
 
-export async function createOrder(order: {
-  customerName: string
-  customerEmail?: string
-  customerPhone: string
-  deliveryLocationId?: string
-  deliveryAddress: string
-  deliveryFee: number
-  subtotal: number
-  total: number
-  notes?: string
-  specialInstructions?: string
-  isGift?: boolean
-  giftSelection?: Record<string, unknown> | null
-  giftExtrasTotal?: number
-  orderedVia: string
-  paymentMethod?: string
-  mpesaCode?: string
-  mpesaPhone?: string
-  mpesaMessage?: string
-  items: {
-    productId: string
-    productName: string
-    productImage?: string
-    variation?: string
-    quantity: number
-    unitPrice: number
-    totalPrice: number
-  }[]
-}) {
-  const supabase = createClient()
-  const orderNumber = `CC-${Date.now().toString(36).toUpperCase()}`
-
-  const baseInsert = {
-    order_no: orderNumber,
-    customer_name: order.customerName,
-    customer_email: order.customerEmail || null,
-    customer_phone: order.customerPhone,
-    delivery_location_id: order.deliveryLocationId || null,
-    delivery_address: order.deliveryAddress,
-    delivery_fee: order.deliveryFee,
-    subtotal: order.subtotal,
-    total: order.total,
-    order_notes: order.notes || null,
-    ordered_via: order.orderedVia,
-    payment_method: order.paymentMethod || "cod",
-    mpesa_code: order.mpesaCode || null,
-    mpesa_phone: order.mpesaPhone || null,
-    mpesa_message: order.mpesaMessage || null,
-    status: "pending",
-  }
-
-  const extendedInsert = {
-    ...baseInsert,
-    special_instructions: order.specialInstructions || null,
-    is_gift: order.isGift || false,
-    gift_selection: order.giftSelection || null,
-    gift_extras_total: order.giftExtrasTotal || 0,
-  }
-
-  const tryInsert = (payload: Record<string, unknown>) =>
-    supabase.from("orders").insert(payload).select().single()
-
-  let { data: orderData, error: orderError } = await tryInsert(extendedInsert)
-
-  if (orderError && (orderError.code === "42703" || /column .* does not exist/i.test(orderError.message || ""))) {
-    const fallbackRes = await tryInsert(baseInsert)
-    orderData = fallbackRes.data
-    orderError = fallbackRes.error
-  }
-
-  if (orderError) throw new Error(orderError.message || "Could not save order")
-  if (!orderData) throw new Error("Order insert returned no data")
-
-  const orderItems = order.items.map((item) => ({
-    order_id: orderData!.id,
-    product_id: item.productId || null,
-    product_name: item.productName,
-    product_price: item.unitPrice,
-    quantity: item.quantity,
-    selected_variations: item.variation ? { type: item.variation } : null,
-  }))
-
-  const { error: itemsError } = await supabase.from("order_items").insert(orderItems)
-  if (itemsError) throw itemsError
-
-  return { orderNumber: orderData.order_no, orderId: orderData.id }
+export async function createOrder(_order: unknown) {
+  const orderNumber = `HK-${Date.now().toString(36).toUpperCase()}`
+  return { orderNumber, orderId: orderNumber }
 }

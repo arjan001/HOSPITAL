@@ -34,26 +34,25 @@ export function OfferBanner() {
               <img
                 src={banner.image}
                 alt={banner.title}
-                className="object-cover group-hover:scale-105 transition-transform duration-700"
-               
+                className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"
               />
-              <div className="absolute inset-0 bg-gradient-to-r from-black/55 via-black/30 to-transparent" />
+              <div className="absolute inset-0 bg-gradient-to-r from-black/70 via-black/45 to-black/10" />
               <div className="relative z-10 p-8 lg:p-10">
-                <p className="text-white/70 text-xs tracking-[0.3em] uppercase mb-2">
-                  {idx === 0 ? "Limited Offer" : idx === 1 ? "Just Dropped" : idx === 2 ? "Featured" : "Explore"}
+                <p className="text-white/80 text-xs tracking-[0.3em] uppercase mb-2">
+                  {idx === 0 ? "Flash Sale" : idx === 1 ? "Free Delivery" : idx === 2 ? "Just Landed" : "Easy Refills"}
                 </p>
-                <h3 className="text-white text-2xl lg:text-3xl font-serif font-bold">
+                <h3 className="text-white text-2xl lg:text-3xl font-serif font-bold leading-tight max-w-sm">
                   {banner.title}
                 </h3>
                 {banner.subtitle && (
-                  <p className="text-white/70 text-sm mt-2 max-w-xs">
+                  <p className="text-white/80 text-sm mt-2 max-w-xs">
                     {banner.subtitle}
                   </p>
                 )}
-                <div className="inline-flex items-center gap-2 mt-4 text-white text-sm font-medium">
+                <span className="inline-flex items-center gap-2 mt-5 bg-white/95 text-black px-5 py-2.5 text-xs font-semibold tracking-wider uppercase rounded-sm group-hover:bg-white transition-colors">
                   Shop Now
                   <ArrowRight className="h-4 w-4 group-hover:translate-x-1 transition-transform" />
-                </div>
+                </span>
               </div>
             </Link>
           ))}

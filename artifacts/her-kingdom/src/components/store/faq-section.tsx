@@ -29,8 +29,8 @@ export function FaqSection({ faqs }: { faqs: Faq[] }) {
             Frequently Asked Questions
           </h2>
           <p className="text-muted-foreground text-sm mt-3 max-w-xl mx-auto">
-            Everything you need to know about shopping curated jewelry, watches
-            and luxe gift packages at{" "}
+            Everything you need to know about ordering medications, vitamins
+            and medical supplies from{" "}
             <Link href="/" className="underline underline-offset-4">
               herkingdom.shop
             </Link>

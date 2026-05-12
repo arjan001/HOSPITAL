@@ -78,16 +78,16 @@ function HeroCarousel({ banners }: { banners: HeroBanner[] }) {
         <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/10 to-transparent" />
       </div>
       <div className="relative z-10 p-8 lg:p-12 w-full">
-        <p className="text-white/80 text-xs tracking-[0.3em] uppercase mb-2">Online Pharmacy</p>
-        <h1 className="text-white text-4xl lg:text-5xl font-serif font-bold leading-tight text-balance">
+        <p className="text-white/80 text-xs tracking-[0.3em] uppercase mb-3">Online Pharmacy</p>
+        <h1 className="text-white text-3xl sm:text-4xl lg:text-5xl font-serif font-bold leading-tight text-balance max-w-xl">
           {mainBanner.title}
         </h1>
-        <p className="text-white/70 text-sm mt-3 leading-relaxed max-w-md">
+        <p className="text-white/80 text-sm sm:text-base mt-4 leading-relaxed max-w-md">
           {mainBanner.subtitle}
         </p>
-        <span className="inline-flex items-center gap-2 mt-5 bg-white text-black px-7 py-3 text-sm font-medium hover:bg-white/90 transition-colors">
+        <span className="inline-flex items-center gap-2.5 mt-7 bg-white text-black px-8 py-4 rounded-sm text-sm sm:text-base font-semibold tracking-wide uppercase shadow-md hover:bg-white/90 hover:shadow-lg transition-all">
           {mainBanner.buttonText}
-          <ArrowRight className="h-4 w-4 group-hover:translate-x-1 transition-transform" />
+          <ArrowRight className="h-5 w-5 group-hover:translate-x-1 transition-transform" />
         </span>
       </div>
     </Link>
