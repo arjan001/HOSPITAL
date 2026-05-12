@@ -184,41 +184,50 @@ export function BlogsPage() {
       <Navbar />
 
       <main className="flex-1">
-        {/* Hero */}
-        <section className="relative overflow-hidden border-b border-black/5">
-          <div className="absolute inset-0 bg-gradient-to-br from-rose-50 via-[#fdfaf7] to-amber-50" aria-hidden="true" />
-          <div
-            className="absolute -top-40 -right-40 w-[520px] h-[520px] rounded-full bg-gradient-to-br from-pink-200/40 to-rose-200/20 blur-3xl"
+        {/* Hero banner */}
+        <section className="relative overflow-hidden" style={{ minHeight: 300 }}>
+          {/* Background image */}
+          <img
+            src="https://images.unsplash.com/photo-1576671081837-49000212a370?w=1400&q=80"
+            alt=""
             aria-hidden="true"
+            className="absolute inset-0 w-full h-full object-cover object-center"
           />
+          {/* Overlay */}
           <div
-            className="absolute -bottom-40 -left-40 w-[440px] h-[440px] rounded-full bg-gradient-to-br from-amber-200/30 to-orange-100/10 blur-3xl"
-            aria-hidden="true"
+            className="absolute inset-0"
+            style={{ background: "linear-gradient(135deg, rgba(61,8,20,0.90) 0%, rgba(122,37,53,0.72) 50%, rgba(61,8,20,0.35) 100%)" }}
           />
+          {/* Bottom fade */}
+          <div className="absolute bottom-0 left-0 right-0 h-14" style={{ background: "linear-gradient(to bottom, transparent, #fdfaf7)" }} />
 
-          <div className="relative max-w-6xl mx-auto px-4 py-20 lg:py-28 text-center">
-            <span className="inline-flex items-center gap-2 bg-white/80 backdrop-blur border border-pink-100 px-4 py-1.5 rounded-full text-[11px] font-semibold uppercase tracking-[0.2em] text-pink-600 mb-6">
+          <div className="relative z-10 max-w-6xl mx-auto px-4 py-20 lg:py-28 text-center">
+            <span
+              className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-[11px] font-semibold uppercase tracking-[0.2em] mb-6"
+              style={{ background: "rgba(249,115,22,0.25)", color: "#f97316", border: "1px solid rgba(249,115,22,0.4)" }}
+            >
               <Sparkles className="h-3.5 w-3.5" />
               The Shaniid RX Journal
             </span>
-            <h1 className="font-serif text-5xl md:text-6xl lg:text-7xl font-semibold leading-[1.05] text-foreground text-balance">
-              Stories, style notes &amp;<br />
-              <span className="italic bg-gradient-to-r from-pink-500 via-rose-500 to-amber-500 bg-clip-text text-transparent">
-                quiet luxury
+            <h1 className="font-serif text-5xl md:text-6xl lg:text-7xl font-bold leading-[1.05] text-white text-balance" style={{ textShadow: "0 2px 24px rgba(0,0,0,0.3)" }}>
+              Health insights &amp;<br />
+              <span className="italic" style={{ color: "#FAE0BE" }}>
+                wellness guidance
               </span>
             </h1>
-            <p className="mt-6 max-w-xl mx-auto text-muted-foreground text-base md:text-lg leading-relaxed">
-              A trusted read from our pharmacists & editors — on medicines, wellness routines, and the everyday habits that keep your family healthy.
+            <p className="mt-6 max-w-xl mx-auto text-base md:text-lg leading-relaxed" style={{ color: "rgba(255,251,245,0.75)" }}>
+              A trusted read from our pharmacists &amp; editors — on medicines, wellness routines, and everyday habits that keep your family healthy.
             </p>
 
             {/* Search */}
             <div className="mt-10 max-w-md mx-auto relative">
-              <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4" style={{ color: "rgba(255,251,245,0.5)" }} />
               <Input
                 placeholder="Search stories, tags, authors…"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                className="pl-11 h-12 rounded-full bg-white/80 backdrop-blur border-black/10 focus-visible:ring-pink-300"
+                className="pl-11 h-12 rounded-full border-0"
+                style={{ background: "rgba(255,255,255,0.15)", backdropFilter: "blur(10px)", color: "#fff" }}
               />
             </div>
 
@@ -226,11 +235,12 @@ export function BlogsPage() {
               <div className="mt-6 flex flex-wrap justify-center gap-2">
                 <button
                   onClick={() => setActiveTag(null)}
-                  className={`px-3.5 py-1.5 rounded-full text-xs font-semibold uppercase tracking-wider transition-colors ${
-                    activeTag === null
-                      ? "bg-foreground text-background"
-                      : "bg-white/80 text-foreground hover:bg-white border border-black/5"
-                  }`}
+                  className="px-3.5 py-1.5 rounded-full text-xs font-semibold uppercase tracking-wider transition-colors"
+                  style={{
+                    background: activeTag === null ? "#3D0814" : "rgba(255,255,255,0.15)",
+                    color: "#fff",
+                    border: "1px solid rgba(255,255,255,0.2)",
+                  }}
                 >
                   All
                 </button>
@@ -238,11 +248,12 @@ export function BlogsPage() {
                   <button
                     key={tag}
                     onClick={() => setActiveTag(activeTag === tag ? null : tag)}
-                    className={`px-3.5 py-1.5 rounded-full text-xs font-semibold uppercase tracking-wider transition-colors ${
-                      activeTag === tag
-                        ? "bg-pink-500 text-white"
-                        : "bg-white/80 text-foreground hover:bg-white border border-black/5"
-                    }`}
+                    className="px-3.5 py-1.5 rounded-full text-xs font-semibold uppercase tracking-wider transition-colors"
+                    style={{
+                      background: activeTag === tag ? "#F97316" : "rgba(255,255,255,0.15)",
+                      color: "#fff",
+                      border: "1px solid rgba(255,255,255,0.2)",
+                    }}
                   >
                     {tag}
                   </button>

@@ -313,33 +313,42 @@ function CarePacksInner() {
       <Navbar />
       <main className="flex-1">
         {/* Hero */}
-        <div
-          className="relative overflow-hidden flex items-end"
-          style={{
-            background: "linear-gradient(115deg, #FCE3CB 0%, #F8CDB1 50%, #F1B59A 100%)",
-            minHeight: 220,
-          }}
-        >
+        <div className="relative overflow-hidden" style={{ minHeight: 280 }}>
+          {/* Banner photo */}
+          <img
+            src="/care-pack-banner.png"
+            alt="Care packs"
+            className="absolute inset-0 w-full h-full object-cover object-center"
+          />
+          {/* Gradient overlay — left-heavy so text is legible */}
           <div
-            className="absolute inset-0 z-0"
+            className="absolute inset-0"
             style={{
-              backgroundImage: "url('/hero-pills-transparent.png')",
-              backgroundSize: "cover",
-              backgroundPosition: "center",
-              opacity: 0.25,
+              background: "linear-gradient(100deg, rgba(61,8,20,0.82) 0%, rgba(61,8,20,0.55) 50%, rgba(61,8,20,0.15) 100%)",
             }}
           />
-          <div className="relative z-10 w-full text-center py-14 px-4">
-            <h1
-              className="text-5xl lg:text-7xl font-black text-white drop-shadow-md"
-              style={{ textShadow: "0 2px 20px rgba(61,8,20,0.35)" }}
-            >
-              Care Packs
-            </h1>
-            <p className="mt-2 text-sm lg:text-base text-white/80 max-w-lg mx-auto">
-              Curated medication bundles for chronic conditions, acute care, family wellness &amp; monitoring.
-            </p>
+          {/* Content */}
+          <div className="relative z-10 mx-auto max-w-7xl px-6 lg:px-8 flex items-center" style={{ minHeight: 280 }}>
+            <div>
+              <span
+                className="inline-block text-xs font-bold uppercase tracking-widest mb-3 px-3 py-1 rounded-full"
+                style={{ background: "rgba(249,115,22,0.25)", color: "#f97316", border: "1px solid rgba(249,115,22,0.4)" }}
+              >
+                Shaniid RX
+              </span>
+              <h1
+                className="text-4xl lg:text-6xl font-black text-white leading-tight"
+                style={{ textShadow: "0 2px 20px rgba(0,0,0,0.3)" }}
+              >
+                Care Packs
+              </h1>
+              <p className="mt-3 text-sm lg:text-base max-w-md" style={{ color: "rgba(255,251,245,0.8)" }}>
+                Curated medication bundles for chronic conditions, acute care, family wellness &amp; monitoring.
+              </p>
+            </div>
           </div>
+          {/* Bottom gradient fade */}
+          <div className="absolute bottom-0 left-0 right-0 h-10" style={{ background: "linear-gradient(to bottom, transparent, #ffffff)" }} />
         </div>
 
         {/* Body: sidebar + content */}

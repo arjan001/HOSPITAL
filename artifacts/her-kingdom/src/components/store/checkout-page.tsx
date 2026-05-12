@@ -680,15 +680,42 @@ export function CheckoutPage() {
   ─────────────────────────────────────────────────────────*/
   if (items.length === 0) {
     return (
-      <div className="min-h-screen flex flex-col bg-white">
+      <div className="min-h-screen flex flex-col" style={{ background: CREAM }}>
         <TopBar /><Navbar />
-        <main className="flex-1 flex items-center justify-center">
-          <div className="text-center">
-            <h1 className="text-2xl font-bold" style={{ color: WINE }}>Your Cart is Empty</h1>
-            <p className="text-sm mt-2" style={{ color: "#6b7280" }}>Add some items to get started.</p>
-            <Link href="/shop">
-              <button className="mt-5 h-12 px-8 rounded-2xl font-bold text-white" style={{ background: WINE_CARD }}>Browse Shop</button>
-            </Link>
+        <main className="flex-1 flex items-center justify-center py-32 px-4">
+          <div className="text-center max-w-sm">
+            <div
+              className="w-24 h-24 rounded-full flex items-center justify-center mx-auto mb-6"
+              style={{ background: PEACH_LIGHT }}
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="h-11 w-11" style={{ color: WINE_CARD }}>
+                <path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z" />
+                <line x1="3" y1="6" x2="21" y2="6" />
+                <path d="M16 10a4 4 0 01-8 0" />
+              </svg>
+            </div>
+            <h1 className="text-2xl font-bold mb-2" style={{ color: WINE }}>Your Cart is Empty</h1>
+            <p className="text-sm mb-8 leading-relaxed" style={{ color: "#6b7280" }}>
+              Looks like you haven't added any medicines yet. Start browsing our pharmacy collection.
+            </p>
+            <div className="flex flex-col gap-3">
+              <Link href="/shop">
+                <button
+                  className="w-full h-12 rounded-2xl font-bold text-white flex items-center justify-center gap-2 transition-opacity hover:opacity-90"
+                  style={{ background: `linear-gradient(135deg, ${WINE_CARD}, ${WINE})` }}
+                >
+                  Browse Shop
+                </button>
+              </Link>
+              <Link href="/care-packs">
+                <button
+                  className="w-full h-11 rounded-2xl font-semibold text-sm transition-colors"
+                  style={{ background: PEACH_LIGHT, color: WINE }}
+                >
+                  Explore Care Packs
+                </button>
+              </Link>
+            </div>
           </div>
         </main>
         <Footer />
