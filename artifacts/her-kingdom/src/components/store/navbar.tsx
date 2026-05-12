@@ -515,14 +515,14 @@ export function Navbar() {
               </div>
 
               {/* Speak to a doctor */}
-              <a
-                href={phoneHref}
+              <Link
+                href="/speak-to-a-doctor"
                 className="inline-flex items-center justify-center gap-2 h-12 px-5 rounded-full text-sm font-semibold whitespace-nowrap shadow-sm hover:shadow-md transition-shadow"
                 style={{ background: PILL_BG, border: `1px solid ${PILL_BORDER}`, color: TEXT_WINE }}
               >
                 <PhoneCall className="h-4 w-4" style={{ color: ACCENT_RED }} />
                 <span>Speak to a doctor</span>
-              </a>
+              </Link>
 
               {/* Upload Prescription */}
               <Link
