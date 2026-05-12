@@ -151,13 +151,11 @@ export function Footer() {
             <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: TEXT_WINE_SOFT }}>
               We accept
             </span>
-            <PaymentBadge label="Paystack" bg="#1A1F36" color="#fff" />
-            <PaymentBadge label="M-PESA" bg="#43B02A" color="#fff" />
-            <PaymentBadge label="Equity" bg="#A4133C" color="#fff" />
-            <PaymentBadge label="Visa" bg="#1A1F71" color="#fff" />
-            <PaymentBadge label="Mastercard" bg="#EB001B" color="#fff" />
-            <PaymentBadge label="JCB" bg="#0E4C96" color="#fff" />
-            <PaymentBadge label="Amex" bg="#2E77BC" color="#fff" />
+            <PaymentLogo src="/payments/paystack.png" alt="Paystack" />
+            <PaymentLogo src="/payments/mpesa-mc-visa.png" alt="M-PESA, Mastercard, Visa" wide />
+            <PaymentLogo src="/payments/equity.png" alt="Equity" />
+            <PaymentLogo src="/payments/jcb.png" alt="JCB" />
+            <PaymentLogo src="/payments/amex.png" alt="American Express" />
           </div>
 
           <div className="flex items-center gap-3">
@@ -231,14 +229,16 @@ function FooterColumn({ title, links }: { title: string; links: { label: string;
   )
 }
 
-function PaymentBadge({ label, bg, color }: { label: string; bg: string; color: string }) {
+function PaymentLogo({ src, alt, wide = false }: { src: string; alt: string; wide?: boolean }) {
   return (
-    <span
-      className="inline-flex items-center justify-center h-7 px-2.5 rounded text-[11px] font-bold tracking-wide"
-      style={{ background: bg, color }}
-    >
-      {label}
-    </span>
+    <img
+      src={src}
+      alt={alt}
+      loading="lazy"
+      decoding="async"
+      className={`h-7 ${wide ? "w-auto" : "w-auto"} object-contain rounded-md`}
+      style={{ maxWidth: wide ? 130 : 56 }}
+    />
   )
 }
 
