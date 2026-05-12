@@ -4,7 +4,7 @@ import { rateLimit, rateLimitResponse, sanitize, isValidEmail } from "../../lib/
 
 const router = Router()
 
-router.post("/", async (req, res) => {
+router.post("/", async (req, res, next) => {
   const rl = rateLimit(req, { limit: 3, windowSeconds: 60 })
   if (!rl.success) return rateLimitResponse(res)
 
@@ -23,8 +23,8 @@ router.post("/", async (req, res) => {
 
     if (error) return res.status(500).json({ error: error.message })
     res.json({ success: true })
-  } catch {
-    res.status(500).json({ error: "Failed to subscribe" })
+  } catch (err) {
+    next(err)
   }
 })
 

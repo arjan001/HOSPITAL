@@ -1,7 +1,9 @@
 import { Router } from "express"
 import { createAdminClient } from "../../../lib/supabase.js"
+import { requireAdmin } from "../../../middlewares/admin-auth.js"
 
 const router = Router()
+router.use(requireAdmin)
 
 router.get("/", async (_req, res) => {
   try {

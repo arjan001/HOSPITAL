@@ -1,7 +1,9 @@
 import { Router } from "express"
 import { createAdminClient } from "../../../lib/supabase.js"
+import { requireAdmin } from "../../../middlewares/admin-auth.js"
 
 const router = Router()
+router.use(requireAdmin)
 
 function slugify(input: string): string {
   return String(input).toLowerCase().trim()

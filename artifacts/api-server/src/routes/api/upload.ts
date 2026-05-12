@@ -9,7 +9,7 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 
 const IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif", "image/svg+xml"])
 const VIDEO_TYPES = new Set(["video/mp4", "video/webm", "video/ogg", "video/quicktime"])
 
-router.post("/", upload.single("file"), async (req, res) => {
+router.post("/", upload.single("file"), async (req, res, next) => {
   const rl = rateLimit(req, { limit: 10, windowSeconds: 60 })
   if (!rl.success) return rateLimitResponse(res)
 
@@ -46,9 +46,8 @@ router.post("/", upload.single("file"), async (req, res) => {
 
     const { data: urlData } = supabase.storage.from("products").getPublicUrl(filename)
     res.json({ url: urlData.publicUrl, isVideo })
-  } catch (error) {
-    console.error("Upload failed:", error)
-    res.status(500).json({ error: "Upload failed" })
+  } catch (err) {
+    next(err)
   }
 })
 

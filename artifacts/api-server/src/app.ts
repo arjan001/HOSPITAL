@@ -1,4 +1,4 @@
-import express, { type Express } from "express";
+import express, { type Express, type NextFunction, type Request, type Response } from "express";
 import cors from "cors";
 import pinoHttp from "pino-http";
 import router from "./routes";
@@ -30,5 +30,18 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 app.use("/api", router);
+
+// Global error handler. Specifically catches the case where Supabase env
+// vars are not configured: instead of crashing with a 500, we degrade to a
+// 503 with an empty payload shape so the frontend can render gracefully.
+app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
+  const message = err instanceof Error ? err.message : String(err)
+  if (/Missing Supabase/i.test(message)) {
+    logger.warn({ message }, "Supabase not configured — returning 503");
+    return res.status(503).json({ error: "Backend not configured", data: [] });
+  }
+  logger.error({ err }, "Unhandled error");
+  res.status(500).json({ error: "Internal server error" });
+});
 
 export default app;

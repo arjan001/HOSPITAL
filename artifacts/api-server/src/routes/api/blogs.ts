@@ -53,6 +53,10 @@ router.get("/", async (_req, res) => {
 
     res.json({ posts: enriched })
   } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    if (/Missing Supabase/i.test(msg)) {
+      return res.status(503).json({ posts: [], error: "Backend not configured" })
+    }
     console.error("[api/blogs] exception:", err)
     res.json({ posts: [] })
   }

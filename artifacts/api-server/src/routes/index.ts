@@ -27,6 +27,9 @@ import adminDeliveryRouter from "./api/admin/delivery.js";
 import adminNewsletterRouter from "./api/admin/newsletter.js";
 import adminSettingsRouter from "./api/admin/settings.js";
 import adminPoliciesRouter from "./api/admin/policies.js";
+import adminAnalyticsRouter from "./api/admin/analytics.js";
+import adminUsersRouter from "./api/admin/users.js";
+import authRouter from "./api/auth.js";
 
 const router: IRouter = Router();
 
@@ -61,5 +64,8 @@ router.use("/admin/delivery", adminDeliveryRouter);
 router.use("/admin/newsletter", adminNewsletterRouter);
 router.use("/admin/settings", adminSettingsRouter);
 router.use("/admin/policies", adminPoliciesRouter);
+router.use("/admin/analytics", adminAnalyticsRouter);
+router.use("/admin/users", adminUsersRouter);
+router.use("/auth", authRouter);
 
 export default router;

@@ -94,7 +94,8 @@ export function AdminShell({ children, title }: { children: ReactNode; title: st
     const supabase = createClient()
     await supabase.auth.signOut()
     navigate("/auth/login")
-    router.refresh()
+    // Force a full reload so any cached SWR / auth state is cleared.
+    if (typeof window !== "undefined") window.location.reload()
   }
 
   const roleBadge = currentUser?.role === "super_admin"
