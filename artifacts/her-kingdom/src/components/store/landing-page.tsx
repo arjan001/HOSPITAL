@@ -8,10 +8,9 @@ import { ExploreCategories } from "./explore-categories"
 import { HealthCategories } from "./health-categories"
 import { FeaturedProducts } from "./featured-products"
 import { OfferBanner } from "./offer-banner"
-import { NewArrivals } from "./new-arrivals"
 import { OnOfferProducts } from "./on-offer-products"
 import { Newsletter } from "./newsletter"
-import { FaqSection, type Faq } from "./faq-section"
+import type { Faq } from "./faq-section"
 
 import { Footer } from "./footer"
 import { OfferModal } from "./offer-modal"
@@ -59,9 +58,7 @@ export function LandingPage({ faqs = DEFAULT_FAQS }: { faqs?: Faq[] }) {
         <HealthCategories />
         <FeaturedProducts />
         <OfferBanner />
-        <NewArrivals />
         <OnOfferProducts />
-        {faqs && faqs.length > 0 && <FaqSection faqs={faqs} />}
         {showNewsletter && <Newsletter />}
       </main>
       <Footer />

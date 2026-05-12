@@ -22,7 +22,7 @@ function shuffle<T>(arr: T[]): T[] {
   return a
 }
 
-const TARGET = 12
+const TARGET = 10
 
 export function OnOfferProducts() {
   const { data } = useSWR<Product[]>("/api/products", safeFetcher)

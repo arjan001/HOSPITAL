@@ -82,7 +82,7 @@ export function FeaturedProducts() {
               className="text-2xl lg:text-4xl font-bold tracking-tight"
               style={{ color: TEXT_WINE }}
             >
-              Featured Products
+              Featured Medicines
             </h2>
             <p className="mt-2 text-sm lg:text-base" style={{ color: TEXT_WINE_SOFT }}>
               Pharmacist-picked essentials, ready to ship today.
