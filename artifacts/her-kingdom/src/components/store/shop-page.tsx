@@ -23,6 +23,8 @@ import { TopBar } from "./top-bar"
 import { Navbar } from "./navbar"
 import { Footer } from "./footer"
 import { ProductCard } from "./product-card"
+import { QuickViewProvider } from "@/lib/quick-view-context"
+import { QuickViewModal } from "./quick-view-modal"
 import type { Product, Category } from "@/lib/types"
 import { Slider } from "@/components/ui/slider"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -490,6 +492,7 @@ export function ShopPage({ seoIntro }: { seoIntro?: ReactNode } = {}) {
   ].filter(Boolean) as string[]
 
   return (
+    <QuickViewProvider>
     <div className="min-h-screen flex flex-col" style={{ background: "#FFFFFF" }}>
       <TopBar />
       <Navbar />
@@ -641,7 +644,7 @@ export function ShopPage({ seoIntro }: { seoIntro?: ReactNode } = {}) {
                   </div>
                   <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-4 lg:gap-5">
                     {topPopular.slice(0, 4).map((p) => (
-                      <PeachProductCard key={p.id} product={p} />
+                      <ProductCard key={p.id} product={p} />
                     ))}
                   </div>
                 </section>
@@ -695,7 +698,7 @@ export function ShopPage({ seoIntro }: { seoIntro?: ReactNode } = {}) {
                   </div>
                   <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-4 lg:gap-5">
                     {featuredSupplements.slice(0, 4).map((p) => (
-                      <PeachProductCard key={p.id} product={p} />
+                      <ProductCard key={p.id} product={p} />
                     ))}
                   </div>
                 </section>
@@ -838,50 +841,8 @@ export function ShopPage({ seoIntro }: { seoIntro?: ReactNode } = {}) {
       </main>
       <Footer />
     </div>
-  )
-}
-
-// -------------------------------------------------------------------------
-// Reference-style "peach" cards (used for the curated sections at the top)
-// -------------------------------------------------------------------------
-
-function PeachProductCard({ product }: { product: Product }) {
-  return (
-    <Link href={`/product/${product.slug}`} className="block group">
-      <div
-        className="relative rounded-2xl p-4 lg:p-5 h-full flex flex-col items-center text-center transition-transform group-hover:-translate-y-1"
-        style={{
-          background: "linear-gradient(160deg, #FCE3CB 0%, #F9CEB1 100%)",
-          border: `1px solid ${PEACH_BORDER}`,
-          boxShadow: "0 14px 30px -22px rgba(184,60,30,0.35)",
-        }}
-      >
-        <div
-          className="w-full aspect-square rounded-xl flex items-center justify-center overflow-hidden mb-3"
-          style={{ background: "#FFFFFF" }}
-        >
-          <img
-            src={product.images[0] || "/placeholder.svg"}
-            alt={product.name}
-            className="object-contain max-h-[78%] max-w-[78%] group-hover:scale-105 transition-transform"
-          />
-        </div>
-        <h3 className="text-sm lg:text-base font-bold" style={{ color: TEXT_WINE }}>
-          {product.name.length > 28 ? `${product.name.slice(0, 28)}…` : product.name}
-        </h3>
-        <p className="text-xs mt-1.5 leading-snug line-clamp-2" style={{ color: TEXT_WINE_SOFT }}>
-          {product.description || "A trusted pick from Shaniid RX."}
-        </p>
-        <span
-          className="mt-3 inline-flex items-center justify-center text-xs font-semibold px-5 h-8 rounded-full text-white transition-transform group-hover:scale-[1.03]"
-          style={{
-            background: `linear-gradient(135deg, ${ACCENT_ORANGE} 0%, ${ACCENT_RED} 100%)`,
-          }}
-        >
-          Seen More
-        </span>
-      </div>
-    </Link>
+    <QuickViewModal />
+    </QuickViewProvider>
   )
 }
 
@@ -918,7 +879,7 @@ function CategoryPeachCard({ name, imageUrl, href }: { name: string; imageUrl: s
             background: `linear-gradient(135deg, ${ACCENT_ORANGE} 0%, ${ACCENT_RED} 100%)`,
           }}
         >
-          Seen More
+          Shop Now
         </span>
       </div>
     </Link>

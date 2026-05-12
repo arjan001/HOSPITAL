@@ -164,9 +164,8 @@ export function Navbar() {
               </SheetTrigger>
               <SheetContent side="left" className="w-80 p-0" style={{ background: BG_CREAM, color: TEXT_WINE }}>
                 <div className="p-6">
-                  <Link href="/" className="inline-flex items-center gap-2">
-                    <img src="/logo-rx.png" alt="Shaniid RX" width={56} height={56} className="h-12 w-12 object-contain" />
-                    <span className="text-lg font-bold tracking-wide" style={{ color: TEXT_WINE }}>Shaniid RX</span>
+                  <Link href="/" className="inline-flex items-center">
+                    <img src="/logo-rx.png" alt="Shaniid RX" width={120} height={60} className="h-14 w-auto object-contain" />
                   </Link>
                 </div>
                 <nav className="flex flex-col px-6 gap-1">
@@ -210,17 +209,14 @@ export function Navbar() {
             </Sheet>
 
             {/* Logo */}
-            <Link href="/" className="flex items-center gap-2 shrink-0" aria-label="Shaniid RX - Home">
+            <Link href="/" className="flex items-center shrink-0" aria-label="Shaniid RX - Home">
               <img
                 src="/logo-rx.png"
                 alt="Shaniid RX"
-                width={64}
-                height={64}
-                className="h-12 lg:h-16 w-auto object-contain"
+                width={160}
+                height={80}
+                className="h-16 lg:h-20 w-auto object-contain"
               />
-              <span className="hidden sm:inline text-lg lg:text-xl font-bold tracking-wide" style={{ color: TEXT_WINE }}>
-                Shaniid RX
-              </span>
             </Link>
 
             {/* Centered primary nav */}
