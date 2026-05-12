@@ -18,12 +18,21 @@ type ProductImageProps = {
 }
 
 const loaderSizeClasses: Record<NonNullable<ProductImageProps["loaderSize"]>, string> = {
-  sm: "w-full h-full max-w-[120px] max-h-[120px]",
-  md: "w-full h-full",
-  lg: "w-full h-full",
+  sm: "w-12 h-12",
+  md: "w-20 h-20",
+  lg: "w-28 h-28",
 }
 
-export function ProductImage({ className, alt, loaderSize = "md", src, fill, style, width, height }: ProductImageProps) {
+export function ProductImage({
+  className,
+  alt,
+  loaderSize = "md",
+  src,
+  fill,
+  style,
+  width,
+  height,
+}: ProductImageProps) {
   const [loaded, setLoaded] = useState(false)
 
   const imgStyle: React.CSSProperties = fill
@@ -34,13 +43,14 @@ export function ProductImage({ className, alt, loaderSize = "md", src, fill, sty
     <>
       {!loaded && (
         <div
-          className="absolute inset-0 flex items-center justify-center bg-secondary z-10 overflow-hidden"
+          className="absolute inset-0 flex items-center justify-center z-10 overflow-hidden"
+          style={{ background: "#FFF6EC" }}
           aria-hidden="true"
         >
           <img
-            src="/loading-rx.svg"
+            src="/logo-rx.png"
             alt=""
-            className={`${loaderSizeClasses[loaderSize]} object-contain opacity-90`}
+            className={`${loaderSizeClasses[loaderSize]} object-contain rx-loader-pulse`}
           />
         </div>
       )}

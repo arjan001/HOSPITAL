@@ -450,3 +450,9 @@
   100% { transform: scale(1.08) translate3d(1%, 1%, 0); }
 }
 .animate-ken-burns { animation: ken-burns 22s ease-in-out infinite alternate; will-change: transform; }
+
+@keyframes rx-loader-pulse {
+  0%, 100% { transform: scale(0.85) rotate(0deg); opacity: 0.7; filter: drop-shadow(0 0 0 rgba(249,115,22,0)); }
+  50% { transform: scale(1.05) rotate(8deg); opacity: 1; filter: drop-shadow(0 0 14px rgba(249,115,22,0.55)); }
+}
+.rx-loader-pulse { animation: rx-loader-pulse 1.6s ease-in-out infinite; will-change: transform, opacity; }

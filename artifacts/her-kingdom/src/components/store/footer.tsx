@@ -2,296 +2,200 @@
 
 import { Link } from "wouter"
 import useSWR from "swr"
-import { MapPin, Phone, Facebook, Twitter, Linkedin, Mail } from "lucide-react"
+import { Facebook, Instagram, Linkedin, Twitter, Youtube, MessageCircle } from "lucide-react"
 import { FloatingWhatsApp } from "./floating-whatsapp"
 import { SeoLinkCloud } from "./seo-link-cloud"
-import appStoreBadge from "@assets/app-store_1778589089523.png"
-import googlePlayBadge from "@assets/image_1778589100949.png"
-import paymentMethods from "@assets/payment_1778589089523.png"
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
-const TEAL = "#1BBFB8"
+// RX warm theme tokens
+const BG_CREAM = "#FFFBF5"
+const TEXT_WINE = "#3D0814"
+const TEXT_WINE_SOFT = "#6B0F1A"
+const ACCENT_RED = "#B91C1C"
+const BORDER_PEACH = "#F2DCC8"
 
 type FooterSettings = {
   store_email?: string
   store_phone?: string
-  store_address?: string
   whatsapp_number?: string
-  footer_description?: string
   footer_instagram?: string
   footer_tiktok?: string
   footer_twitter?: string
   footer_facebook?: string
   footer_linkedin?: string
-  footer_pinterest?: string
-  footer_phone?: string
-  footer_email?: string
-  footer_whatsapp?: string
+  footer_youtube?: string
   copyright_text?: string
 }
 
-const DEFAULTS: Required<FooterSettings> = {
-  store_email: "herkingdomlive@gmail.com",
+const DEFAULTS = {
+  store_email: "support@rxpharmacy.co.ke",
   store_phone: "+254 780 406 059",
-  store_address: "Kenyatta Avenue, Nairobi CBD, Kenya",
   whatsapp_number: "254780406059",
-  footer_description:
-    "RX Pharmacy is proud to be one of Kenya's most trusted online pharmacies, delivering quality medications, supplements and healthcare essentials right to your door.",
   footer_instagram: "https://www.instagram.com/herkingdom_pharmacy/",
   footer_tiktok: "https://www.tiktok.com/@herkingdom_pharmacy",
   footer_twitter: "#",
   footer_facebook: "#",
   footer_linkedin: "#",
-  footer_pinterest: "#",
-  footer_phone: "+254 780 406 059",
-  footer_email: "herkingdomlive@gmail.com",
-  footer_whatsapp: "254780406059",
-  copyright_text: "Copyright © 2026 RX Pharmacy. All Rights Reserved.",
+  footer_youtube: "#",
+  copyright_text:
+    "©2026 Shaneed RX. A subsidiary of Shaniid Group of Technologies Limited. All rights reserved.",
 }
+
+const ABOUT_LINKS = [
+  { label: "Our Mission & Values", href: "/about" },
+  { label: "How Shaneed RX Works", href: "/about#how-it-works" },
+  { label: "Quality Assurance & Safety", href: "/about#quality" },
+  { label: "Our clinical stuff", href: "/about#team" },
+  { label: "Careers", href: "/careers" },
+  { label: "Press & Media", href: "/press" },
+  { label: "Services", href: "/contact" },
+  { label: "Contact Us", href: "/contact" },
+]
+
+const CARE_LINKS = [
+  { label: "Chronic Care Packs", href: "/shop?category=chronic-care" },
+  { label: "Acute & Short Term", href: "/shop?category=acute-care" },
+  { label: "Family & Care Giver", href: "/shop?category=family-care" },
+  { label: "Preventive & Wellness Pack", href: "/shop?category=wellness" },
+  { label: "Devices & Monitoring", href: "/shop?category=devices" },
+  { label: "First-Aid Pack", href: "/shop?category=first-aid" },
+  { label: "Prescription Medicine", href: "/shop?category=prescription" },
+  { label: "Refill & Subscriptions", href: "/shop?filter=subscriptions" },
+  { label: "OTC Products", href: "/shop?category=otc" },
+]
+
+const SUPPORT_LINKS = [
+  { label: "Prescription Upload Guide", href: "/contact" },
+  { label: "Returns & Refund Policy", href: "/refund-policy" },
+  { label: "Order Tracking", href: "/track-order" },
+  { label: "FAQs", href: "/faq" },
+  { label: "Support", href: "/contact" },
+  { label: "Privacy policy", href: "/privacy-policy" },
+  { label: "Terms and conditions", href: "/terms-of-service" },
+  { label: "Prescription policy", href: "/policies/prescription" },
+  { label: "Delivery Timing & Zones", href: "/delivery" },
+]
+
+const LEGAL_LINKS = [
+  { label: "License", href: "/policies/license" },
+  { label: "Regulatory Compliance", href: "/policies/regulatory" },
+  { label: "Quality & Safety Standards", href: "/policies/quality" },
+  { label: "Terms & Conditions", href: "/terms-of-service" },
+  { label: "Pharmacovigilance & Adverse Events", href: "/policies/pharmacovigilance" },
+  { label: "Recall & Safety Notices", href: "/policies/recalls" },
+]
 
 function whatsappHref(number: string): string {
   const digits = (number || "").replace(/[^\d]/g, "")
   return digits ? `https://wa.me/${digits}` : "#"
 }
 
-const INFORMATION = [
-  { label: "Newsroom", href: "/blogs" },
-  { label: "Affiliate Program", href: "/affiliate" },
-  { label: "Careers", href: "/careers" },
-  { label: "Sell on RX Pharmacy", href: "/sell" },
-  { label: "Investor Relations", href: "/investors" },
-]
-
-const CATEGORIES = [
-  { label: "Medications", href: "/shop?category=medications" },
-  { label: "Vitamins & Supplements", href: "/shop?category=supplements" },
-  { label: "Health Devices", href: "/shop?category=devices" },
-  { label: "Baby & Mother Care", href: "/shop?category=baby-care" },
-  { label: "First Aid", href: "/shop?category=first-aid" },
-]
-
-const SERVICES = [
-  { label: "Shipping", href: "/delivery" },
-  { label: "Returns", href: "/refund-policy" },
-  { label: "Product Recalls", href: "/recalls" },
-  { label: "Contact Us", href: "/contact" },
-  { label: "Site Map", href: "/sitemap.xml" },
-]
-
-const BOTTOM_LINKS = [
-  { label: "ABOUT US", href: "/about" },
-  { label: "OUR STORES", href: "/delivery" },
-  { label: "BLOG", href: "/blogs" },
-  { label: "CONTACT", href: "/contact" },
-  { label: "FAQ", href: "/faq" },
-]
-
 export function Footer() {
   const { data } = useSWR<{ settings?: FooterSettings }>("/api/site-data", fetcher)
   const s = data?.settings || {}
 
-  const phone = s.store_phone || s.footer_phone || DEFAULTS.footer_phone
-  const email = s.store_email || s.footer_email || DEFAULTS.footer_email
-  const address = s.store_address || DEFAULTS.store_address
-  const whatsappNumber = s.whatsapp_number || s.footer_whatsapp || DEFAULTS.footer_whatsapp
-  const description = s.footer_description || DEFAULTS.footer_description
-  const copyright = s.copyright_text || DEFAULTS.copyright_text
   const facebook = s.footer_facebook || DEFAULTS.footer_facebook
-  const twitter = s.footer_twitter || DEFAULTS.footer_twitter
+  const instagram = s.footer_instagram || DEFAULTS.footer_instagram
   const linkedin = s.footer_linkedin || DEFAULTS.footer_linkedin
-  const pinterest = s.footer_pinterest || DEFAULTS.footer_pinterest
+  const twitter = s.footer_twitter || DEFAULTS.footer_twitter
+  const youtube = s.footer_youtube || DEFAULTS.footer_youtube
+  const tiktok = s.footer_tiktok || DEFAULTS.footer_tiktok
+  const whatsappNumber = s.whatsapp_number || DEFAULTS.whatsapp_number
   const waHref = whatsappHref(whatsappNumber)
-  const phoneHref = `tel:${phone.replace(/\s+/g, "")}`
-  const emailHref = `mailto:${email}`
+  const copyright = s.copyright_text || DEFAULTS.copyright_text
 
   return (
-    <footer className="bg-white text-foreground border-t border-border">
-      {/* Top contact strip */}
-      <div className="border-b border-border">
-        <div className="mx-auto max-w-7xl px-4 py-8 grid grid-cols-1 md:grid-cols-3 gap-6">
-          {/* Address */}
-          <div className="flex items-center gap-4">
-            <div
-              className="w-14 h-14 rounded-full flex items-center justify-center shrink-0 border-2"
-              style={{ borderColor: TEAL, color: TEAL }}
-            >
-              <MapPin className="h-6 w-6" />
-            </div>
-            <div>
-              <p className="text-xs font-bold uppercase tracking-wider text-foreground">Address</p>
-              <p className="text-sm text-muted-foreground mt-1 leading-snug">{address}</p>
-            </div>
-          </div>
-
-          {/* WhatsApp */}
-          <div className="flex items-center gap-4">
-            <div
-              className="w-14 h-14 rounded-full flex items-center justify-center shrink-0 border-2"
-              style={{ borderColor: TEAL, color: TEAL }}
-            >
-              <Phone className="h-6 w-6" />
-            </div>
-            <div>
-              <p className="text-xs font-bold uppercase tracking-wider text-foreground">WhatsApp Us</p>
-              <a href={waHref} target="_blank" rel="noopener noreferrer" className="text-base font-bold mt-1 block hover:opacity-80 transition-opacity" style={{ color: TEAL }}>
-                {phone}
-              </a>
-              <a href={emailHref} className="text-xs text-muted-foreground hover:text-foreground transition-colors">
-                {email}
-              </a>
-            </div>
-          </div>
-
-          {/* App download */}
-          <div className="flex items-center gap-4">
-            <div className="flex-1">
-              <p className="text-base font-bold text-foreground">Download the app now!</p>
-              <div className="flex items-center gap-2 mt-2">
-                <a href="#" aria-label="Download on Google Play">
-                  <img src={googlePlayBadge} alt="Get it on Google Play" className="h-10 w-auto" />
-                </a>
-                <a href="#" aria-label="Download on the App Store">
-                  <img src={appStoreBadge} alt="Download on the App Store" className="h-10 w-auto" />
-                </a>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
+    <footer style={{ background: BG_CREAM, color: TEXT_WINE }}>
       {/* Main columns */}
-      <div className="mx-auto max-w-7xl px-4 py-12 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-10">
-        {/* Brand */}
-        <div className="col-span-2 md:col-span-3 lg:col-span-1">
-          <Link href="/" className="inline-flex items-center">
-            <img
-              src="/logo-herkingdom.png"
-              alt="RX Pharmacy"
-              width={200}
-              height={80}
-              className="h-12 w-auto object-contain"
-            />
-          </Link>
-          <p className="text-sm text-muted-foreground mt-4 leading-relaxed">
-            {description}
-          </p>
-        </div>
+      <div className="mx-auto max-w-7xl px-4 lg:px-8 pt-14 pb-10">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-10">
+          {/* Brand column — logo stays in current top-left position */}
+          <div className="lg:col-span-1">
+            <Link href="/" className="inline-flex items-center gap-2">
+              <img
+                src="/logo-rx.png"
+                alt="RX Pharmacy"
+                width={64}
+                height={64}
+                className="h-14 w-14 object-contain"
+              />
+              <span className="text-lg font-bold tracking-wide" style={{ color: TEXT_WINE }}>
+                RX Pharmacy
+              </span>
+            </Link>
+            <p className="mt-4 text-sm leading-relaxed" style={{ color: TEXT_WINE_SOFT }}>
+              Kenya's trusted online pharmacy delivering quality medications, supplements and healthcare
+              essentials right to your door.
+            </p>
+          </div>
 
-        {/* Information */}
-        <div>
-          <h3 className="text-base font-bold mb-5">Information</h3>
-          <ul className="flex flex-col gap-3">
-            {INFORMATION.map((l) => (
-              <li key={l.label}>
-                <Link href={l.href} className="text-sm text-muted-foreground hover:text-foreground transition-colors">
-                  {l.label}
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </div>
+          {/* About RX */}
+          <FooterColumn title="About RX" links={ABOUT_LINKS} />
 
-        {/* Categories */}
-        <div>
-          <h3 className="text-base font-bold mb-5">Categories</h3>
-          <ul className="flex flex-col gap-3">
-            {CATEGORIES.map((l) => (
-              <li key={l.label}>
-                <Link href={l.href} className="text-sm text-muted-foreground hover:text-foreground transition-colors">
-                  {l.label}
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </div>
+          {/* Our Care */}
+          <FooterColumn title="Our Care" links={CARE_LINKS} />
 
-        {/* Our services */}
-        <div>
-          <h3 className="text-base font-bold mb-5">Our services</h3>
-          <ul className="flex flex-col gap-3">
-            {SERVICES.map((l) => (
-              <li key={l.label}>
-                <Link href={l.href} className="text-sm text-muted-foreground hover:text-foreground transition-colors">
-                  {l.label}
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </div>
+          {/* Support */}
+          <FooterColumn title="Support" links={SUPPORT_LINKS} />
 
-        {/* Socials */}
-        <div>
-          <h3 className="text-base font-bold mb-5">Socials</h3>
-          <ul className="flex flex-col gap-3">
-            <li>
-              <a href={facebook} target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 text-sm text-muted-foreground hover:text-foreground transition-colors group">
-                <span className="w-7 h-7 rounded-full flex items-center justify-center text-white shrink-0" style={{ background: "#1877F2" }}>
-                  <Facebook className="h-3.5 w-3.5" fill="currentColor" />
-                </span>
-                Facebook
-              </a>
-            </li>
-            <li>
-              <a href={twitter} target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 text-sm text-muted-foreground hover:text-foreground transition-colors">
-                <span className="w-7 h-7 rounded-full flex items-center justify-center text-white shrink-0" style={{ background: "#1DA1F2" }}>
-                  <Twitter className="h-3.5 w-3.5" fill="currentColor" />
-                </span>
-                Twitter
-              </a>
-            </li>
-            <li>
-              <a href={linkedin} target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 text-sm text-muted-foreground hover:text-foreground transition-colors">
-                <span className="w-7 h-7 rounded-full flex items-center justify-center text-white shrink-0" style={{ background: "#0A66C2" }}>
-                  <Linkedin className="h-3.5 w-3.5" fill="currentColor" />
-                </span>
-                Linkedin
-              </a>
-            </li>
-            <li>
-              <a href={pinterest} target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 text-sm text-muted-foreground hover:text-foreground transition-colors">
-                <span className="w-7 h-7 rounded-full flex items-center justify-center text-white shrink-0 text-[11px] font-bold" style={{ background: "#E60023" }}>
-                  P
-                </span>
-                Pinterest
-              </a>
-            </li>
-            <li>
-              <a href={emailHref} className="flex items-center gap-3 text-sm text-muted-foreground hover:text-foreground transition-colors">
-                <span className="w-7 h-7 rounded-full flex items-center justify-center text-white shrink-0" style={{ background: "#EA4335" }}>
-                  <Mail className="h-3.5 w-3.5" />
-                </span>
-                Email
-              </a>
-            </li>
-          </ul>
+          {/* Legal & Compliance */}
+          <FooterColumn title="Legal & Compliance" links={LEGAL_LINKS} />
         </div>
       </div>
 
       {/* Payment partners */}
-      <div className="border-t border-border">
-        <div className="mx-auto max-w-7xl px-4 py-5 flex items-center justify-center gap-4 flex-wrap">
-          <p className="text-sm text-muted-foreground">Our Payment Partners :</p>
-          <img src={paymentMethods} alt="Payment partners: Klarna, PayPal, Visa, Mastercard, Diners Club, American Express" className="h-6 w-auto" />
+      <div style={{ borderTop: `1px solid ${BORDER_PEACH}` }}>
+        <div className="mx-auto max-w-7xl px-4 lg:px-8 py-6 flex flex-col md:flex-row items-center justify-between gap-4">
+          <div className="flex items-center gap-3 flex-wrap">
+            <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: TEXT_WINE_SOFT }}>
+              We accept
+            </span>
+            <PaymentBadge label="Paystack" bg="#1A1F36" color="#fff" />
+            <PaymentBadge label="M-PESA" bg="#43B02A" color="#fff" />
+            <PaymentBadge label="Equity" bg="#A4133C" color="#fff" />
+            <PaymentBadge label="Visa" bg="#1A1F71" color="#fff" />
+            <PaymentBadge label="Mastercard" bg="#EB001B" color="#fff" />
+            <PaymentBadge label="JCB" bg="#0E4C96" color="#fff" />
+            <PaymentBadge label="Amex" bg="#2E77BC" color="#fff" />
+          </div>
+
+          <div className="flex items-center gap-3">
+            <SocialIcon href={facebook} label="Facebook" bg="#1877F2"><Facebook className="h-3.5 w-3.5" fill="currentColor" /></SocialIcon>
+            <SocialIcon href={instagram} label="Instagram" bg="linear-gradient(45deg,#F58529,#DD2A7B,#8134AF)"><Instagram className="h-3.5 w-3.5" /></SocialIcon>
+            <SocialIcon href={linkedin} label="LinkedIn" bg="#0A66C2"><Linkedin className="h-3.5 w-3.5" fill="currentColor" /></SocialIcon>
+            <SocialIcon href={twitter} label="X" bg="#000"><Twitter className="h-3.5 w-3.5" fill="currentColor" /></SocialIcon>
+            <SocialIcon href={waHref} label="WhatsApp" bg="#25D366"><MessageCircle className="h-3.5 w-3.5" fill="currentColor" /></SocialIcon>
+            <SocialIcon href={youtube} label="YouTube" bg="#FF0000"><Youtube className="h-3.5 w-3.5" fill="currentColor" /></SocialIcon>
+            <SocialIcon href={tiktok} label="TikTok" bg="#000">
+              <svg className="h-3 w-3" fill="currentColor" viewBox="0 0 24 24"><path d="M19.59 6.69a4.83 4.83 0 01-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 01-2.88 2.5 2.89 2.89 0 01-2.89-2.89 2.89 2.89 0 012.89-2.89c.28 0 .54.04.79.1v-3.5a6.37 6.37 0 00-.79-.05A6.34 6.34 0 003.15 15.2a6.34 6.34 0 006.34 6.34 6.34 6.34 0 006.34-6.34V8.87a8.16 8.16 0 004.77 1.52V6.94a4.85 4.85 0 01-1.01-.25z"/></svg>
+            </SocialIcon>
+          </div>
         </div>
       </div>
 
-      {/* Bottom bar */}
-      <div className="bg-secondary">
-        <div className="mx-auto max-w-7xl px-4 py-4 flex flex-col md:flex-row items-center justify-between gap-3">
-          <p className="text-xs text-muted-foreground">{copyright}</p>
-          <nav className="flex items-center gap-6 flex-wrap justify-center">
-            {BOTTOM_LINKS.map((l) => (
-              <Link key={l.label} href={l.href} className="text-xs font-bold tracking-wider text-muted-foreground hover:text-foreground transition-colors">
-                {l.label}
-              </Link>
-            ))}
-          </nav>
+      {/* Bottom legal strip */}
+      <div style={{ borderTop: `1px solid ${BORDER_PEACH}`, background: "#FFF6EC" }}>
+        <div className="mx-auto max-w-7xl px-4 lg:px-8 py-6 grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
+          <p className="text-xs leading-relaxed" style={{ color: TEXT_WINE_SOFT }}>
+            Shaniid RX is a licensed pharmacy regulated by the Pharmacy and Poisons Board of Kenya.
+            Prescription medicines are dispensed only upon valid prescription. Information on this site does
+            not replace professional medical advice.
+          </p>
+          <p className="text-xs leading-relaxed md:text-right" style={{ color: TEXT_WINE_SOFT }}>
+            {copyright}
+          </p>
         </div>
-        <div className="border-t border-border/60">
-          <p className="text-center text-[11px] text-muted-foreground py-2.5">
-            Made with <span aria-label="love" className="text-pink-500">♥</span> by{" "}
-            <a href="https://oneplusafrica.com" target="_blank" rel="noopener noreferrer" className="font-medium hover:text-foreground transition-colors underline underline-offset-2">
+        <div style={{ borderTop: `1px solid ${BORDER_PEACH}` }}>
+          <p className="text-center text-[11px] py-2.5" style={{ color: TEXT_WINE_SOFT }}>
+            Made with <span aria-label="love" style={{ color: ACCENT_RED }}>♥</span> by{" "}
+            <a
+              href="https://oneplusafrica.com"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-semibold hover:underline underline-offset-2"
+              style={{ color: TEXT_WINE }}
+            >
               OnePlus Africa
             </a>
           </p>
@@ -301,5 +205,64 @@ export function Footer() {
       <SeoLinkCloud />
       <FloatingWhatsApp />
     </footer>
+  )
+}
+
+function FooterColumn({ title, links }: { title: string; links: { label: string; href: string }[] }) {
+  return (
+    <div>
+      <h3 className="text-sm font-bold mb-4 uppercase tracking-wider" style={{ color: TEXT_WINE }}>
+        {title}
+      </h3>
+      <ul className="flex flex-col gap-2.5">
+        {links.map((l) => (
+          <li key={l.label}>
+            <Link
+              href={l.href}
+              className="text-sm transition-colors hover:underline underline-offset-2"
+              style={{ color: TEXT_WINE_SOFT }}
+            >
+              {l.label}
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
+function PaymentBadge({ label, bg, color }: { label: string; bg: string; color: string }) {
+  return (
+    <span
+      className="inline-flex items-center justify-center h-7 px-2.5 rounded text-[11px] font-bold tracking-wide"
+      style={{ background: bg, color }}
+    >
+      {label}
+    </span>
+  )
+}
+
+function SocialIcon({
+  href,
+  label,
+  bg,
+  children,
+}: {
+  href: string
+  label: string
+  bg: string
+  children: React.ReactNode
+}) {
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      aria-label={label}
+      className="w-8 h-8 rounded-full flex items-center justify-center text-white shrink-0 transition-transform hover:scale-110"
+      style={{ background: bg }}
+    >
+      {children}
+    </a>
   )
 }

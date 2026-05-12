@@ -1,9 +1,11 @@
 "use client"
 
-import React from "react"
-
-import { useState } from "react"
+import React, { useState } from "react"
 import { Send } from "lucide-react"
+
+const DEEP_RED = "#7A0F1B"
+const ACCENT_PEACH = "#F5C9A6"
+const ACCENT_ORANGE = "#F97316"
 
 export function Newsletter() {
   const [email, setEmail] = useState("")
@@ -26,43 +28,51 @@ export function Newsletter() {
   }
 
   return (
-    <section className="py-14 lg:py-20 bg-foreground text-background">
-      <div className="mx-auto max-w-7xl px-4 text-center">
-        <p className="text-background/60 text-xs tracking-[0.3em] uppercase mb-3">
-          Stay Connected
-        </p>
-        <h2 className="text-2xl lg:text-3xl font-serif font-bold text-balance">
-          Subscribe & Get 10% Off Your First Purchase
-        </h2>
-        <p className="text-background/60 text-sm mt-3 max-w-md mx-auto leading-relaxed">
-          Be the first to know about new arrivals, exclusive offers, and styling tips.
-        </p>
+    <section className="py-10 lg:py-14" style={{ background: DEEP_RED }}>
+      <div className="mx-auto max-w-7xl px-4 lg:px-8">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-center">
+          {/* Copy + form */}
+          <div className="text-white">
+            <h2 className="text-3xl lg:text-5xl font-bold tracking-tight">Stay Updated</h2>
+            <p className="mt-3 text-base lg:text-lg text-white/85 max-w-md leading-relaxed">
+              Be the first to know about new products and offers
+            </p>
 
-        {submitted ? (
-          <div className="mt-8 animate-fade-in-up">
-            <p className="text-sm font-medium">Thank you for subscribing!</p>
+            {submitted ? (
+              <p className="mt-6 text-sm font-medium text-white">Thank you for subscribing!</p>
+            ) : (
+              <form onSubmit={handleSubmit} className="mt-6 flex items-center gap-3 max-w-md">
+                <div className="flex-1 h-12 rounded-full bg-white/10 border border-white/30 backdrop-blur-sm flex items-center px-5">
+                  <input
+                    type="email"
+                    placeholder="Enter your email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    required
+                    className="flex-1 h-full bg-transparent text-sm text-white placeholder:text-white/60 outline-none"
+                  />
+                </div>
+                <button
+                  type="submit"
+                  aria-label="Subscribe"
+                  className="h-12 w-14 rounded-full flex items-center justify-center shrink-0 transition-transform hover:scale-105"
+                  style={{ background: ACCENT_PEACH }}
+                >
+                  <Send className="h-5 w-5" style={{ color: ACCENT_ORANGE }} />
+                </button>
+              </form>
+            )}
           </div>
-        ) : (
-          <form onSubmit={handleSubmit} className="mt-8 flex justify-center">
-            <div className="flex w-full max-w-md">
-              <input
-                type="email"
-                placeholder="Enter your email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-                className="flex-1 h-12 px-4 bg-background/10 text-background placeholder:text-background/40 text-sm outline-none border border-background/20 border-r-0"
-              />
-              <button
-                type="submit"
-                className="h-12 px-6 bg-background text-foreground text-sm font-medium flex items-center gap-2 hover:bg-background/90 transition-colors"
-              >
-                Subscribe
-                <Send className="h-3.5 w-3.5" />
-              </button>
-            </div>
-          </form>
-        )}
+
+          {/* Pills hero image */}
+          <div className="hidden lg:flex justify-end">
+            <img
+              src="/newsletter-pills.png"
+              alt="Assorted medication bottles, pills and capsules"
+              className="w-full max-w-lg h-auto object-contain drop-shadow-2xl"
+            />
+          </div>
+        </div>
       </div>
     </section>
   )
