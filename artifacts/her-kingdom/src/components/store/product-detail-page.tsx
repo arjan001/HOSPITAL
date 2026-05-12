@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { Link } from "wouter"
 import {
   ChevronRight,
@@ -19,6 +19,9 @@ import {
   Clock,
   Stethoscope,
   Upload,
+  ZoomIn,
+  X,
+  ChevronLeft,
 } from "lucide-react"
 import { TopBar } from "./top-bar"
 import { Navbar } from "./navbar"
@@ -43,6 +46,156 @@ const PEACH_BORDER = "#F2DCC8"
 const ACCENT_ORANGE = "#F97316"
 const ACCENT_AMBER = "#F59E0B"
 const SUCCESS = "#0F8A65"
+
+// ─── Image Lightbox ───────────────────────────────────────────────────────────
+function ImageLightbox({
+  images,
+  startIndex,
+  onClose,
+}: {
+  images: string[]
+  startIndex: number
+  onClose: () => void
+}) {
+  const [idx, setIdx] = useState(startIndex)
+  const [zoom, setZoom] = useState(false)
+  const [zoomPos, setZoomPos] = useState({ x: 50, y: 50 })
+  const imgRef = useRef<HTMLDivElement>(null)
+
+  const prev = useCallback(() => setIdx((i) => (i === 0 ? images.length - 1 : i - 1)), [images.length])
+  const next = useCallback(() => setIdx((i) => (i === images.length - 1 ? 0 : i + 1)), [images.length])
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose()
+      if (e.key === "ArrowLeft") prev()
+      if (e.key === "ArrowRight") next()
+    }
+    document.addEventListener("keydown", handler)
+    return () => document.removeEventListener("keydown", handler)
+  }, [onClose, prev, next])
+
+  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!imgRef.current || !zoom) return
+    const rect = imgRef.current.getBoundingClientRect()
+    const x = ((e.clientX - rect.left) / rect.width) * 100
+    const y = ((e.clientY - rect.top) / rect.height) * 100
+    setZoomPos({ x, y })
+  }
+
+  const src = images[idx]
+
+  return (
+    <div
+      className="fixed inset-0 z-[9999] flex items-center justify-center"
+      style={{ background: "rgba(15,5,10,0.92)", backdropFilter: "blur(8px)" }}
+      onClick={onClose}
+    >
+      {/* Close */}
+      <button
+        type="button"
+        onClick={onClose}
+        className="absolute top-4 right-4 z-10 w-10 h-10 flex items-center justify-center rounded-full text-white/80 hover:text-white transition-colors"
+        style={{ background: "rgba(255,255,255,0.12)", backdropFilter: "blur(4px)" }}
+      >
+        <X className="h-5 w-5" />
+      </button>
+
+      {/* Counter */}
+      {images.length > 1 && (
+        <span
+          className="absolute top-4 left-1/2 -translate-x-1/2 text-xs font-semibold text-white/70 px-3 py-1 rounded-full"
+          style={{ background: "rgba(255,255,255,0.12)" }}
+        >
+          {idx + 1} / {images.length}
+        </span>
+      )}
+
+      {/* Prev */}
+      {images.length > 1 && (
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); prev() }}
+          className="absolute left-3 lg:left-6 top-1/2 -translate-y-1/2 z-10 w-11 h-11 flex items-center justify-center rounded-full text-white/80 hover:text-white transition-colors"
+          style={{ background: "rgba(255,255,255,0.12)" }}
+        >
+          <ChevronLeft className="h-6 w-6" />
+        </button>
+      )}
+
+      {/* Next */}
+      {images.length > 1 && (
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); next() }}
+          className="absolute right-3 lg:right-6 top-1/2 -translate-y-1/2 z-10 w-11 h-11 flex items-center justify-center rounded-full text-white/80 hover:text-white transition-colors"
+          style={{ background: "rgba(255,255,255,0.12)" }}
+        >
+          <ChevronRight className="h-6 w-6" />
+        </button>
+      )}
+
+      {/* Main image */}
+      <div
+        ref={imgRef}
+        className="relative w-full max-w-3xl max-h-[80vh] flex items-center justify-center px-16 overflow-hidden"
+        style={{ cursor: zoom ? "zoom-out" : "zoom-in" }}
+        onClick={(e) => { e.stopPropagation(); setZoom(!zoom) }}
+        onMouseMove={handleMouseMove}
+        onMouseLeave={() => zoom && setZoomPos({ x: 50, y: 50 })}
+      >
+        <img
+          src={src}
+          alt=""
+          draggable={false}
+          className="max-w-full max-h-[75vh] object-contain select-none transition-transform duration-200 rounded-2xl"
+          style={
+            zoom
+              ? {
+                  transform: "scale(2.5)",
+                  transformOrigin: `${zoomPos.x}% ${zoomPos.y}%`,
+                }
+              : { transform: "scale(1)" }
+          }
+        />
+      </div>
+
+      {/* Thumbnail strip */}
+      {images.length > 1 && (
+        <div
+          className="absolute bottom-5 left-1/2 -translate-x-1/2 flex gap-2 max-w-[90vw] overflow-x-auto pb-1"
+          onClick={(e) => e.stopPropagation()}
+          style={{ scrollbarWidth: "none" }}
+        >
+          {images.map((img, i) => (
+            <button
+              key={i}
+              type="button"
+              onClick={() => { setIdx(i); setZoom(false) }}
+              className="flex-shrink-0 w-14 h-14 rounded-lg overflow-hidden transition-all"
+              style={{
+                border: i === idx ? `2.5px solid ${ACCENT_ORANGE}` : "2px solid rgba(255,255,255,0.2)",
+                opacity: i === idx ? 1 : 0.55,
+              }}
+            >
+              <img src={img} alt="" className="w-full h-full object-contain bg-white/10 p-1" />
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Zoom hint */}
+      {!zoom && (
+        <div
+          className="absolute bottom-5 right-5 flex items-center gap-1.5 text-xs text-white/50 pointer-events-none"
+        >
+          <ZoomIn className="h-3.5 w-3.5" />
+          <span>Click to zoom</span>
+        </div>
+      )}
+    </div>
+  )
+}
 
 const fetcher = (url: string) =>
   fetch(url).then((r) => {
@@ -77,6 +230,7 @@ function ProductDetailPageInner({ slug }: { slug: string }) {
   const { whatsappNumber } = useStoreContact()
   const wishlisted = product ? isInWishlist(product.id) : false
   const [selectedImage, setSelectedImage] = useState(0)
+  const [lightboxOpen, setLightboxOpen] = useState(false)
   const [quantity, setQuantity] = useState(1)
   const [selectedVariations, setSelectedVariations] = useState<Record<string, string>>({})
   const [added, setAdded] = useState(false)
@@ -250,7 +404,7 @@ function ProductDetailPageInner({ slug }: { slug: string }) {
                 </div>
 
                 <div
-                  className="relative flex-1 aspect-square overflow-hidden rounded-2xl"
+                  className="relative flex-1 aspect-square overflow-hidden rounded-2xl group"
                   style={{
                     background:
                       "linear-gradient(155deg, #FFF6EB 0%, #FFE9D4 100%)",
@@ -280,6 +434,23 @@ function ProductDetailPageInner({ slug }: { slug: string }) {
                     <Share2 className="h-4 w-4" style={{ color: WINE }} />
                   </button>
 
+                  {/* zoom icon – visible on hover */}
+                  {!isVideoUrl(product.images[selectedImage]) && (
+                    <button
+                      type="button"
+                      aria-label="Zoom image"
+                      onClick={() => setLightboxOpen(true)}
+                      className="absolute bottom-3 right-3 z-10 grid place-items-center h-9 w-9 rounded-full opacity-0 group-hover:opacity-100 transition-all hover:scale-110"
+                      style={{
+                        background: "rgba(255,255,255,0.88)",
+                        backdropFilter: "blur(6px)",
+                        border: `1px solid ${PEACH_BORDER}`,
+                      }}
+                    >
+                      <ZoomIn className="h-4 w-4" style={{ color: WINE }} />
+                    </button>
+                  )}
+
                   {isVideoUrl(product.images[selectedImage]) ? (
                     <video
                       key={selectedImage}
@@ -289,12 +460,20 @@ function ProductDetailPageInner({ slug }: { slug: string }) {
                       className="absolute inset-0 w-full h-full object-contain bg-black"
                     />
                   ) : (
-                    <ProductImage
-                      key={selectedImage}
-                      src={product.images[selectedImage] || "/placeholder.svg"}
-                      alt={product.name}
-                      className="object-contain p-6"
-                    />
+                    <button
+                      type="button"
+                      aria-label="Open full image"
+                      onClick={() => setLightboxOpen(true)}
+                      className="absolute inset-0 w-full h-full"
+                      style={{ cursor: "zoom-in" }}
+                    >
+                      <ProductImage
+                        key={selectedImage}
+                        src={product.images[selectedImage] || "/placeholder.svg"}
+                        alt={product.name}
+                        className="object-contain p-6 transition-transform duration-300 group-hover:scale-[1.04]"
+                      />
+                    </button>
                   )}
 
                   {product.isOnOffer && product.offerPercentage && (
@@ -773,6 +952,15 @@ function ProductDetailPageInner({ slug }: { slug: string }) {
       </a>
 
       <Footer />
+
+      {/* Image lightbox */}
+      {lightboxOpen && (
+        <ImageLightbox
+          images={product.images}
+          startIndex={selectedImage}
+          onClose={() => setLightboxOpen(false)}
+        />
+      )}
     </div>
   )
 }

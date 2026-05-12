@@ -137,7 +137,7 @@ export function Navbar() {
   const navItems: { label: string; href: string; hasMenu?: boolean }[] = [
     { label: "Home", href: "/" },
     { label: "Shop", href: "/shop", hasMenu: true },
-    { label: "Care Packs", href: "/shop?filter=offers" },
+    { label: "Care Packs", href: "/care-packs" },
     { label: "Services", href: "/services" },
   ]
 

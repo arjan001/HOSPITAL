@@ -195,7 +195,8 @@ function QuickViewContent({ product, onClose }: { product: Product; onClose: () 
   const { toggleItem, isInWishlist } = useWishlist()
   const wishlisted = isInWishlist(product.id)
 
-  const [activeImage, setActiveImage] = useState(product.images[0] ?? "/placeholder.svg")
+  const images = product.images ?? []
+  const [activeImage, setActiveImage] = useState(images[0] ?? "/placeholder.svg")
   const [qty, setQty] = useState(1)
   const [justAdded, setJustAdded] = useState(false)
 
@@ -257,9 +258,9 @@ function QuickViewContent({ product, onClose }: { product: Product; onClose: () 
         </div>
 
         {/* Thumbnail strip */}
-        {product.images.length > 1 && (
+        {images.length > 1 && (
           <div className="mt-4 flex gap-2 overflow-x-auto pb-1">
-            {product.images.slice(0, 6).map((img) => {
+            {images.slice(0, 6).map((img) => {
               const active = img === activeImage
               return (
                 <button

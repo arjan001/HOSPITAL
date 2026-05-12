@@ -20,6 +20,9 @@ import { SearchPage } from "@/components/store/search-page";
 import { DeliveryPage } from "@/components/store/delivery-page";
 import { ServicesPage } from "@/components/store/services-page";
 import { TrackOrderForm } from "@/components/store/track-order-form";
+import { CarePacksPage } from "@/components/store/care-packs-page";
+import FaqPage from "@/pages/faq";
+import ContactPage from "@/pages/contact";
 
 // Admin pages
 import { AdminDashboard } from "@/components/admin/dashboard";
@@ -117,6 +120,9 @@ function Router() {
           return <SearchPage initialQuery={q} />;
         }}
       </Route>
+      <Route path="/care-packs" component={CarePacksPage} />
+      <Route path="/faq" component={FaqPage} />
+      <Route path="/contact" component={ContactPage} />
       <Route path="/delivery" component={DeliveryPage} />
       <Route path="/services" component={ServicesPage} />
       <Route path="/track-order" component={TrackOrderPage} />
