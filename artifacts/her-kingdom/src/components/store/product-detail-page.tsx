@@ -3,15 +3,13 @@
 import { useState } from "react"
 
 import { Link } from "wouter"
-import { ChevronRight, Minus, Plus, Heart, ShoppingBag, Truck, RotateCcw, Shield, Play, Gift } from "lucide-react"
+import { ChevronRight, Minus, Plus, Heart, ShoppingBag, Truck, RotateCcw, Shield, Play } from "lucide-react"
 import { TopBar } from "./top-bar"
 import { Navbar } from "./navbar"
 import { Footer } from "./footer"
 import { ProductCard } from "./product-card"
-import { GiftOptionsModal, giftSelectionTotal, giftSelectionSummary } from "./gift-options-modal"
 import type { Product } from "@/lib/types"
 import { useCart } from "@/lib/cart-context"
-import { useGiftSelection } from "@/lib/gift-context"
 import { useWishlist } from "@/lib/wishlist-context"
 import { isVideoUrl } from "@/lib/media-utils"
 import { Button } from "@/components/ui/button"
@@ -39,14 +37,13 @@ export function ProductDetailPage({ slug }: { slug: string }) {
   const product = data?.product || null
   const related = data?.related || []
   const { addItem } = useCart()
-  const { selection: giftSelection, setSelection: setGiftSelection } = useGiftSelection()
   const { toggleItem, isInWishlist } = useWishlist()
   const { whatsappNumber } = useStoreContact()
   const wishlisted = product ? isInWishlist(product.id) : false
   const [selectedImage, setSelectedImage] = useState(0)
   const [quantity, setQuantity] = useState(1)
   const [selectedVariations, setSelectedVariations] = useState<Record<string, string>>({})
-  const [showGiftModal, setShowGiftModal] = useState(false)
+  const [added, setAdded] = useState(false)
 
   if (isLoading) {
     return (
@@ -85,6 +82,8 @@ export function ProductDetailPage({ slug }: { slug: string }) {
 
   const handleAddToCart = () => {
     addItem(product, quantity, Object.keys(selectedVariations).length > 0 ? selectedVariations : undefined)
+    setAdded(true)
+    setTimeout(() => setAdded(false), 1600)
   }
 
   const productUrl = typeof window !== "undefined" ? `${window.location.origin}/product/${product.slug}` : ""
@@ -139,7 +138,7 @@ export function ProductDetailPage({ slug }: { slug: string }) {
                         </div>
                       </>
                     ) : (
-                      <ProductImage src={img || "/placeholder.svg"} alt={`${product.name} view ${i + 1} - RX Pharmacy Gifting`} fill loaderSize="sm" className="object-cover" />
+                      <ProductImage src={img || "/placeholder.svg"} alt={`${product.name} view ${i + 1}`} fill loaderSize="sm" className="object-cover" />
                     )}
                   </button>
                 ))}
@@ -159,7 +158,7 @@ export function ProductDetailPage({ slug }: { slug: string }) {
                   <ProductImage
                     key={selectedImage}
                     src={product.images[selectedImage] || "/placeholder.svg"}
-                    alt={`${product.name} - RX Pharmacy Gifting`}
+                    alt={`${product.name}`}
                     className="object-cover"
                    
                   />
@@ -245,48 +244,12 @@ export function ProductDetailPage({ slug }: { slug: string }) {
                 </div>
               ))}
 
-              {/* Is this a gift? */}
-              <div className="mt-6">
-                <label className="inline-flex items-center gap-2 cursor-pointer select-none">
-                  <input
-                    type="checkbox"
-                    checked={giftSelection.isGift}
-                    onChange={(e) => {
-                      const nextIsGift = e.target.checked
-                      setGiftSelection({ ...giftSelection, isGift: nextIsGift })
-                      if (nextIsGift) setShowGiftModal(true)
-                    }}
-                    className="h-4 w-4 rounded border-border accent-[#B4336A]"
-                  />
-                  <span className="text-sm underline underline-offset-2 flex items-center gap-1.5">
-                    <Gift className="h-4 w-4 text-[#B4336A]" />
-                    is this a gift?
-                  </span>
-                </label>
-                {giftSelection.isGift && (
-                  <div className="mt-3 border border-border rounded-sm p-3 bg-secondary/30 text-xs flex items-start gap-3 justify-between">
-                    <div className="min-w-0">
-                      <p className="font-medium text-sm">Gifting extras</p>
-                      <p className="text-muted-foreground mt-1 line-clamp-3">
-                        {giftSelectionSummary(giftSelection) || "No add-ons picked yet."}
-                      </p>
-                      {giftSelectionTotal(giftSelection) > 0 && (
-                        <p className="font-semibold mt-1">
-                          Extras total: KSh {giftSelectionTotal(giftSelection).toLocaleString()}
-                        </p>
-                      )}
-                    </div>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="bg-transparent text-xs h-8"
-                      onClick={() => setShowGiftModal(true)}
-                    >
-                      {giftSelectionTotal(giftSelection) > 0 ? "Edit" : "Open options"}
-                    </Button>
-                  </div>
-                )}
+              {/* Prescription notice */}
+              <div className="mt-6 flex items-start gap-2 p-3 rounded-sm border border-[#1BBFB8]/30 bg-[#1BBFB8]/5">
+                <Shield className="h-4 w-4 text-[#1BBFB8] mt-0.5 shrink-0" />
+                <p className="text-xs text-muted-foreground leading-relaxed">
+                  Always read the label and use only as directed. Consult a pharmacist or doctor before use if you are pregnant, breastfeeding, or taking other medication.
+                </p>
               </div>
 
               {/* Quantity */}
@@ -317,16 +280,20 @@ export function ProductDetailPage({ slug }: { slug: string }) {
               <div className="flex gap-3 mt-8">
                 <Button
                   onClick={handleAddToCart}
-                  className="flex-1 bg-pink-200 text-foreground hover:bg-pink-300 h-12 text-sm font-medium"
+                  className={`flex-1 h-12 text-sm font-medium text-white transition-colors ${
+                    added
+                      ? "bg-[#1BBFB8] hover:bg-[#1BBFB8]"
+                      : "bg-[#172B4D] hover:bg-[#11233F]"
+                  }`}
                 >
                   <ShoppingBag className="h-4 w-4 mr-2" />
-                  Add to Cart
+                  {added ? "Added to Cart" : "Add to Cart"}
                 </Button>
                 <a
                   href={`https://wa.me/${whatsappNumber}?text=${whatsappMessage}`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="flex-1 flex items-center justify-center gap-2 bg-background text-foreground border border-foreground h-12 text-sm font-medium hover:bg-secondary transition-colors"
+                  className="flex-1 flex items-center justify-center gap-2 bg-background text-[#172B4D] border border-[#172B4D] h-12 text-sm font-medium hover:bg-[#172B4D]/5 transition-colors"
                 >
                   <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 24 24">
                     <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z" />
@@ -336,10 +303,10 @@ export function ProductDetailPage({ slug }: { slug: string }) {
                 <Button
                   variant="outline"
                   size="icon"
-                  className="h-12 w-12 flex-shrink-0 bg-transparent"
+                  className="h-12 w-12 flex-shrink-0 bg-transparent border-[#1BBFB8]/40 hover:bg-[#1BBFB8]/5"
                   onClick={() => product && toggleItem(product)}
                 >
-                  <Heart className={`h-5 w-5 transition-colors ${wishlisted ? "fill-pink-500 text-pink-500" : "text-pink-500"}`} />
+                  <Heart className={`h-5 w-5 transition-colors ${wishlisted ? "fill-[#1BBFB8] text-[#1BBFB8]" : "text-[#1BBFB8]"}`} />
                   <span className="sr-only">{wishlisted ? "Remove from wishlist" : "Add to wishlist"}</span>
                 </Button>
               </div>
@@ -429,14 +396,6 @@ export function ProductDetailPage({ slug }: { slug: string }) {
       </a>
 
       <Footer />
-
-      <GiftOptionsModal
-        open={showGiftModal}
-        onClose={() => setShowGiftModal(false)}
-        selection={giftSelection}
-        onChange={setGiftSelection}
-        mode="save"
-      />
     </div>
   )
 }

@@ -875,64 +875,6 @@ export function CheckoutPage() {
                 )}
               </div>
 
-              {/* Gift wrapping */}
-              <div>
-                <h2 className="text-lg font-semibold mb-4">Is this a gift?</h2>
-                <label className="flex items-start gap-3 p-4 border border-border rounded-sm cursor-pointer hover:bg-secondary/40 transition-colors">
-                  <input
-                    type="checkbox"
-                    checked={isGift}
-                    onChange={(e) => {
-                      const nextIsGift = e.target.checked
-                      setGiftSelection({ ...giftSelection, isGift: nextIsGift })
-                      if (nextIsGift) setShowGiftModal(true)
-                    }}
-                    className="mt-0.5 h-4 w-4 rounded border-border"
-                  />
-                  <div className="flex-1">
-                    <p className="text-sm font-medium flex items-center gap-2">
-                      <Gift className="h-4 w-4 text-[#B4336A]" /> Is this a Gift? Add Gift Wrap & Extras...
-                    </p>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Pick add-ons, a gift wrap, greeting card and a personal note. Gifting extras are added to your total.
-                    </p>
-                  </div>
-                </label>
-
-                {isGift && (
-                  <div className="mt-3 space-y-3">
-                    <div className="border border-border rounded-sm p-4 bg-secondary/30">
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <p className="text-sm font-medium">Gifting extras</p>
-                          {giftSelectionTotal(giftSelection) > 0 || giftSelection.messageNote || giftSelection.messageFrom || giftSelection.messageTo ? (
-                            <p className="text-xs text-muted-foreground mt-1 line-clamp-3">
-                              {giftSelectionSummary(giftSelection) || "Message added"}
-                            </p>
-                          ) : (
-                            <p className="text-xs text-muted-foreground mt-1">
-                              No add-ons yet. Open the gift options to pick add-ons, a wrap, a card and a note.
-                            </p>
-                          )}
-                        </div>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          onClick={() => setShowGiftModal(true)}
-                          className="bg-transparent text-xs h-9 shrink-0"
-                        >
-                          {giftSelectionTotal(giftSelection) > 0 ? "Edit options" : "Open options"}
-                        </Button>
-                      </div>
-                      {giftSelectionTotal(giftSelection) > 0 && (
-                        <p className="text-xs font-semibold mt-3">
-                          Extras total: {formatPrice(giftSelectionTotal(giftSelection))}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                )}
-              </div>
             </div>
 
             {/* Right - Order Summary */}

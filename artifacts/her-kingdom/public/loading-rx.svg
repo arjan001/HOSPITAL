@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="120" height="120" viewBox="0 0 120 120" role="img" aria-label="Loading">
+  <defs>
+    <linearGradient id="rxg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#1BBFB8"/>
+      <stop offset="100%" stop-color="#172B4D"/>
+    </linearGradient>
+  </defs>
+  <g transform="translate(60 60)">
+    <circle r="44" fill="none" stroke="#E6EEF5" stroke-width="6"/>
+    <circle r="44" fill="none" stroke="url(#rxg)" stroke-width="6" stroke-linecap="round"
+            stroke-dasharray="70 210" transform="rotate(-90)">
+      <animateTransform attributeName="transform" type="rotate"
+                        from="-90" to="270" dur="1.2s" repeatCount="indefinite"/>
+    </circle>
+    <g fill="#172B4D">
+      <rect x="-4" y="-22" width="8" height="44" rx="2"/>
+      <rect x="-22" y="-4" width="44" height="8" rx="2"/>
+    </g>
+    <circle r="14" fill="#1BBFB8" opacity="0.15"/>
+  </g>
+</svg>

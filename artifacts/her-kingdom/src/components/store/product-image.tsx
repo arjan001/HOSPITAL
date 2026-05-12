@@ -38,7 +38,7 @@ export function ProductImage({ className, alt, loaderSize = "md", src, fill, sty
           aria-hidden="true"
         >
           <img
-            src="/loading.gif"
+            src="/loading-rx.svg"
             alt=""
             className={`${loaderSizeClasses[loaderSize]} object-contain opacity-90`}
           />

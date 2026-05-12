@@ -95,7 +95,7 @@ const emptyForm: FormState = {
   excerpt: "",
   content: "",
   cover_image: "",
-  author: "Her Kingdom Editorial",
+  author: "RX Pharmacy Editorial",
   author_role: "Style Editor",
   author_avatar: "",
   tags: [],

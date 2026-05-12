@@ -333,7 +333,7 @@ export function AdminDelivery() {
                 value={form.description}
                 onChange={(e) => setForm({ ...form, description: e.target.value })}
                 rows={2}
-                placeholder={form.type === "pickup" ? "e.g. Collect at the Akamba counter — ask for Her Kingdom parcel" : "Optional notes shown at checkout"}
+                placeholder={form.type === "pickup" ? "e.g. Collect at the Akamba counter — ask for RX Pharmacy parcel" : "Optional notes shown at checkout"}
               />
             </div>
 
