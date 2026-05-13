@@ -1,13 +1,15 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { Link } from "wouter"
 import { useLocation } from "wouter"
 import {
   ChevronRight, Minus, Plus, X, Truck, Loader2, CheckCircle, Package,
   MapPin, ChevronDown, Clock, Navigation, Home, Briefcase, MoreHorizontal,
-  Phone, User, Building2, Map, ArrowRight, ArrowLeft,
+  Phone, User, Building2, Map, ArrowRight, ArrowLeft, Search, Calendar, Zap,
 } from "lucide-react"
+import L from "leaflet"
+import "leaflet/dist/leaflet.css"
 import { TopBar } from "./top-bar"
 import { Navbar } from "./navbar"
 import { Footer } from "./footer"
@@ -79,6 +81,39 @@ interface SavedAddress {
   label: AddressLabel
 }
 
+/* Default centre: Nairobi CBD */
+const DEFAULT_CENTER: [number, number] = [-1.2921, 36.8219]
+
+/* Custom wine-colored pin (no need for image assets) */
+const pinIcon = L.divIcon({
+  className: "",
+  html: `<div style="position:relative;display:flex;flex-direction:column;align-items:center;">
+    <div style="width:36px;height:36px;border-radius:50%;background:#7A2535;border:3px solid #fff;box-shadow:0 6px 16px rgba(122,37,53,0.45);display:flex;align-items:center;justify-content:center;">
+      <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+    </div>
+    <div style="width:0;height:0;border-left:6px solid transparent;border-right:6px solid transparent;border-top:8px solid #7A2535;margin-top:-2px;"></div>
+  </div>`,
+  iconSize: [36, 46],
+  iconAnchor: [18, 46],
+})
+
+async function reverseGeocode(lat: number, lng: number): Promise<string> {
+  try {
+    const r = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`, { headers: { "Accept-Language": "en" } })
+    const d = await r.json()
+    return d?.display_name || ""
+  } catch { return "" }
+}
+
+async function forwardGeocode(query: string): Promise<{ lat: number; lng: number; label: string }[]> {
+  try {
+    const r = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=5&countrycodes=ke&addressdetails=1`, { headers: { "Accept-Language": "en" } })
+    const d = await r.json()
+    if (!Array.isArray(d)) return []
+    return d.map((x: any) => ({ lat: parseFloat(x.lat), lng: parseFloat(x.lon), label: x.display_name }))
+  } catch { return [] }
+}
+
 function AddressModal({
   open, onClose, onSave,
   initial,
@@ -95,6 +130,73 @@ function AddressModal({
   const [apartment, setApartment] = useState(initial?.apartment || "")
   const [region,    setRegion]    = useState(initial?.region || "")
   const [area,      setArea]      = useState(initial?.area || "")
+
+  /* ── Map state ── */
+  const mapEl   = useRef<HTMLDivElement>(null)
+  const mapRef  = useRef<L.Map | null>(null)
+  const markRef = useRef<L.Marker | null>(null)
+  const [coords, setCoords] = useState<[number, number]>(DEFAULT_CENTER)
+  const [suggestions, setSuggestions] = useState<{ lat: number; lng: number; label: string }[]>([])
+  const [showSugg, setShowSugg] = useState(false)
+  const [searching, setSearching] = useState(false)
+
+  /* Init map when modal opens */
+  useEffect(() => {
+    if (!open || !mapEl.current || mapRef.current) return
+    const map = L.map(mapEl.current, { zoomControl: true, attributionControl: false }).setView(coords, 13)
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19 }).addTo(map)
+    const marker = L.marker(coords, { icon: pinIcon, draggable: true }).addTo(map)
+    marker.on("dragend", async () => {
+      const ll = marker.getLatLng()
+      setCoords([ll.lat, ll.lng])
+      const addr = await reverseGeocode(ll.lat, ll.lng)
+      if (addr) setSearch(addr)
+    })
+    map.on("click", async (e: L.LeafletMouseEvent) => {
+      marker.setLatLng(e.latlng)
+      setCoords([e.latlng.lat, e.latlng.lng])
+      const addr = await reverseGeocode(e.latlng.lat, e.latlng.lng)
+      if (addr) setSearch(addr)
+    })
+    mapRef.current = map
+    markRef.current = marker
+    /* Force recalc after render */
+    setTimeout(() => map.invalidateSize(), 100)
+  }, [open]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  /* Cleanup on close */
+  useEffect(() => {
+    if (open) return
+    if (mapRef.current) {
+      mapRef.current.remove()
+      mapRef.current = null
+      markRef.current = null
+    }
+  }, [open])
+
+  /* Move pin helper */
+  const moveTo = (lat: number, lng: number, addr?: string) => {
+    setCoords([lat, lng])
+    if (mapRef.current && markRef.current) {
+      mapRef.current.flyTo([lat, lng], 16, { duration: 0.8 })
+      markRef.current.setLatLng([lat, lng])
+    }
+    if (addr) setSearch(addr)
+  }
+
+  /* Debounced search suggestions */
+  useEffect(() => {
+    if (!open) return
+    const q = search.trim()
+    if (q.length < 3 || q === "My Current Location") { setSuggestions([]); return }
+    const t = setTimeout(async () => {
+      setSearching(true)
+      const r = await forwardGeocode(q)
+      setSuggestions(r)
+      setSearching(false)
+    }, 450)
+    return () => clearTimeout(t)
+  }, [search, open])
 
   if (!open) return null
 
@@ -122,23 +224,42 @@ function AddressModal({
         </div>
 
         <div className="p-6 space-y-6">
-          {/* Search box */}
+          {/* Search box with live suggestions */}
           <div>
             <label className="text-xs font-semibold mb-1.5 block" style={{ color: WINE }}>Search Address *</label>
-            <div className="flex gap-2">
+            <div className="flex gap-2 relative">
               <div className="relative flex-1">
-                <div className="absolute left-3 top-1/2 -translate-y-1/2">
+                <div className="absolute left-3 top-1/2 -translate-y-1/2 z-10">
                   <div className="w-5 h-5 rounded-full flex items-center justify-center" style={{ background: WINE_CARD }}>
-                    <MapPin className="h-3 w-3 text-white" />
+                    <Search className="h-3 w-3 text-white" />
                   </div>
                 </div>
                 <input
                   value={search}
-                  onChange={e => setSearch(e.target.value)}
-                  placeholder="Type your location…"
-                  className="w-full h-11 pl-10 pr-4 rounded-xl border text-sm outline-none focus:ring-2"
-                  style={{ borderColor: PEACH_MED, focusRingColor: WINE_CARD } as React.CSSProperties}
+                  onChange={e => { setSearch(e.target.value); setShowSugg(true) }}
+                  onFocus={() => setShowSugg(true)}
+                  onBlur={() => setTimeout(() => setShowSugg(false), 180)}
+                  placeholder="Search for a street, area or landmark…"
+                  className="w-full h-11 pl-10 pr-10 rounded-xl border text-sm outline-none focus:ring-2"
+                  style={{ borderColor: PEACH_MED } as React.CSSProperties}
                 />
+                {searching && <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin" style={{ color: WINE_CARD }} />}
+                {showSugg && suggestions.length > 0 && (
+                  <div className="absolute left-0 right-0 top-full mt-1 bg-white rounded-xl border shadow-xl z-30 max-h-64 overflow-y-auto" style={{ borderColor: PEACH_MED }}>
+                    {suggestions.map((s, i) => (
+                      <button
+                        key={i}
+                        type="button"
+                        onMouseDown={() => { moveTo(s.lat, s.lng, s.label); setShowSugg(false); setSuggestions([]) }}
+                        className="w-full text-left px-3 py-2 text-xs hover:bg-gray-50 flex items-start gap-2 border-b last:border-b-0"
+                        style={{ borderColor: "#f3f4f6", color: "#374151" }}
+                      >
+                        <MapPin className="h-3.5 w-3.5 flex-shrink-0 mt-0.5" style={{ color: WINE_CARD }} />
+                        <span className="line-clamp-2">{s.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
               <button
                 type="button"
@@ -147,7 +268,11 @@ function AddressModal({
                 onClick={() => {
                   if (navigator.geolocation) {
                     navigator.geolocation.getCurrentPosition(
-                      () => setSearch("My Current Location"),
+                      async pos => {
+                        const { latitude, longitude } = pos.coords
+                        const addr = await reverseGeocode(latitude, longitude)
+                        moveTo(latitude, longitude, addr || `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`)
+                      },
                       () => {}
                     )
                   }
@@ -159,35 +284,18 @@ function AddressModal({
             </div>
           </div>
 
-          {/* Map placeholder */}
-          <div
-            className="w-full rounded-2xl overflow-hidden relative"
-            style={{ height: 200, background: "linear-gradient(135deg, #e8f4e8 0%, #d4e8d4 30%, #c8d8f0 60%, #d0e0f0 100%)" }}
-          >
-            {/* Simulated map roads */}
-            <svg className="absolute inset-0 w-full h-full opacity-30" viewBox="0 0 400 200">
-              <line x1="0" y1="80" x2="400" y2="80" stroke="#94a3b8" strokeWidth="3" />
-              <line x1="0" y1="130" x2="400" y2="130" stroke="#94a3b8" strokeWidth="2" />
-              <line x1="120" y1="0" x2="120" y2="200" stroke="#94a3b8" strokeWidth="2" />
-              <line x1="250" y1="0" x2="250" y2="200" stroke="#94a3b8" strokeWidth="3" />
-              <line x1="320" y1="0" x2="320" y2="200" stroke="#94a3b8" strokeWidth="1.5" />
-              <line x1="60" y1="0" x2="60" y2="200" stroke="#94a3b8" strokeWidth="1.5" />
-            </svg>
-            {/* Pin */}
-            <div className="absolute inset-0 flex items-center justify-center">
-              <div className="flex flex-col items-center">
-                <div
-                  className="w-10 h-10 rounded-full flex items-center justify-center shadow-lg"
-                  style={{ background: ACCENT_RED }}
-                >
-                  <MapPin className="h-5 w-5 text-white" />
-                </div>
-                <div className="w-2 h-2 rounded-full mt-1 bg-gray-400 opacity-50" />
-              </div>
+          {/* Real interactive map (Leaflet + OpenStreetMap) */}
+          <div className="relative">
+            <div
+              ref={mapEl}
+              className="w-full rounded-2xl overflow-hidden border z-0"
+              style={{ height: 260, borderColor: PEACH_MED, background: "#eef2f7" }}
+            />
+            <div className="absolute top-2 left-2 px-2.5 py-1 rounded-full text-[10px] font-semibold flex items-center gap-1 backdrop-blur-md bg-white/80 z-[400]" style={{ color: WINE }}>
+              <MapPin className="h-3 w-3" /> Tap or drag the pin to set your exact spot
             </div>
-            {/* "Powered by" label */}
-            <div className="absolute bottom-2 right-3">
-              <span className="text-[10px] text-gray-500 bg-white/70 px-1.5 py-0.5 rounded">Map view</span>
+            <div className="absolute bottom-2 right-2 px-2 py-0.5 rounded text-[9px] bg-white/80 backdrop-blur-md text-gray-600 z-[400]">
+              © OpenStreetMap
             </div>
           </div>
 
@@ -374,6 +482,8 @@ export function CheckoutPage() {
   const [deliveryLocations, setDeliveryLocations] = useState<DeliveryLocation[]>([])
   const [deliveryNote,     setDeliveryNote]     = useState("")
   const [shippingType,     setShippingType]     = useState<"ondemand" | "scheduled">("ondemand")
+  const [scheduledDate,    setScheduledDate]    = useState("")
+  const [scheduledTime,    setScheduledTime]    = useState("")
 
   /* ── Payment / order ── */
   const [orderResult,     setOrderResult]     = useState<{ orderNumber: string; paymentMethod?: string } | null>(null)
@@ -483,8 +593,10 @@ export function CheckoutPage() {
     deliveryFee:      freeShipping ? 0 : deliveryFee,
     subtotal:         totalPrice,
     total:            grandTotal,
-    notes:            deliveryNote || undefined,
+    notes:            [deliveryNote, shippingType === "scheduled" && scheduledDate ? `Scheduled for ${scheduledDate} ${scheduledTime}` : null].filter(Boolean).join(" · ") || undefined,
     specialInstructions: deliveryNote || undefined,
+    shippingType,
+    scheduledFor:     shippingType === "scheduled" && scheduledDate ? `${scheduledDate} ${scheduledTime}` : undefined,
     isGift,
     giftSelection:    isGift ? giftSelection : undefined,
     giftExtrasTotal:  isGift ? giftSelectionTotal(giftSelection) : 0,
@@ -547,9 +659,19 @@ export function CheckoutPage() {
   const canProceedToPayment = (): boolean => {
     if (fulfilmentMode === "delivery" && !savedAddress) { setFormError("Please add a delivery address."); return false }
     if (fulfilmentMode === "pickup" && !deliveryLocation) { setFormError("Please select a pickup location."); return false }
+    if (fulfilmentMode === "delivery" && shippingType === "scheduled" && (!scheduledDate || !scheduledTime)) {
+      setFormError("Please pick a delivery date and time slot."); return false
+    }
     setFormError("")
     return true
   }
+
+  /* Today as YYYY-MM-DD for date min */
+  const todayStr = new Date().toISOString().slice(0, 10)
+  const TIME_SLOTS = [
+    "08:00 - 10:00", "10:00 - 12:00", "12:00 - 14:00",
+    "14:00 - 16:00", "16:00 - 18:00", "18:00 - 20:00",
+  ]
 
   /* ────────────────────────────────────────────────────────
      ORDER SUCCESS
@@ -1067,35 +1189,126 @@ export function CheckoutPage() {
                           </div>
                         )}
 
-                        {/* Shipping type */}
+                        {/* Shipping type — glassmorphism cards */}
                         {savedAddress && (
-                          <div className="mt-5">
-                            <p className="text-sm font-semibold mb-3" style={{ color: WINE }}>Choose Shipping Type</p>
+                          <div className="mt-6">
+                            <p className="text-sm font-semibold mb-3" style={{ color: WINE }}>When would you like it delivered?</p>
                             <div className="grid grid-cols-2 gap-3">
                               {([
-                                { key: "ondemand",  title: "On Demand",  desc: "You will receive your delivery after your order has been successfully received." },
-                                { key: "scheduled", title: "Scheduled",  desc: "Please select a date and time slot that is most convenient for your item delivery." },
-                              ] as const).map(opt => (
-                                <button
-                                  key={opt.key}
-                                  type="button"
-                                  onClick={() => setShippingType(opt.key)}
-                                  className="rounded-2xl p-4 text-left border-2 transition-all"
-                                  style={{
-                                    borderColor: shippingType === opt.key ? WINE_CARD : PEACH_MED,
-                                    background:  shippingType === opt.key ? CREAM : "#fff",
-                                  }}
-                                >
-                                  <div className="flex items-center gap-2 mb-2">
-                                    <div className="w-4 h-4 rounded-full border-2 flex items-center justify-center" style={{ borderColor: shippingType === opt.key ? WINE_CARD : "#d1d5db" }}>
-                                      {shippingType === opt.key && <div className="w-2 h-2 rounded-full" style={{ background: WINE_CARD }} />}
+                                { key: "ondemand",  icon: Zap,      title: "On Demand",  desc: "Instant delivery within our standard timeline." },
+                                { key: "scheduled", icon: Calendar, title: "Scheduled",  desc: "Pick a specific date and time slot." },
+                              ] as const).map(opt => {
+                                const active = shippingType === opt.key
+                                return (
+                                  <button
+                                    key={opt.key}
+                                    type="button"
+                                    onClick={() => setShippingType(opt.key)}
+                                    className="relative rounded-2xl p-4 text-left border-2 transition-all backdrop-blur-xl overflow-hidden"
+                                    style={{
+                                      borderColor: active ? WINE_CARD : "rgba(242,220,200,0.7)",
+                                      background:  active ? "rgba(255,251,245,0.85)" : "rgba(255,255,255,0.6)",
+                                      boxShadow:   active ? "0 10px 30px -12px rgba(122,37,53,0.25)" : "0 4px 14px -8px rgba(0,0,0,0.06)",
+                                    }}
+                                  >
+                                    <div className="flex items-center gap-2 mb-2">
+                                      <div className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: active ? WINE_CARD : PEACH_LIGHT }}>
+                                        <opt.icon className="h-4 w-4" style={{ color: active ? "#fff" : WINE_CARD }} />
+                                      </div>
+                                      <span className="text-sm font-bold" style={{ color: WINE }}>{opt.title}</span>
+                                      {active && <CheckCircle className="h-4 w-4 ml-auto" style={{ color: WINE_CARD }} />}
                                     </div>
-                                    <span className="text-sm font-bold" style={{ color: WINE }}>{opt.title}</span>
-                                  </div>
-                                  <p className="text-xs" style={{ color: "#6b7280" }}>{opt.desc}</p>
-                                </button>
-                              ))}
+                                    <p className="text-xs leading-relaxed" style={{ color: "#6b7280" }}>{opt.desc}</p>
+                                  </button>
+                                )
+                              })}
                             </div>
+
+                            {/* On-demand timeline panel (glass) */}
+                            {shippingType === "ondemand" && (
+                              <div
+                                className="mt-4 rounded-2xl p-4 border backdrop-blur-xl"
+                                style={{ background: "rgba(255,251,245,0.7)", borderColor: "rgba(242,220,200,0.8)" }}
+                              >
+                                <div className="flex items-start gap-3">
+                                  <div className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: WINE_CARD }}>
+                                    <Clock className="h-4 w-4 text-white" />
+                                  </div>
+                                  <div className="flex-1">
+                                    <p className="text-sm font-bold" style={{ color: WINE }}>Delivery within 4 hours</p>
+                                    <p className="text-xs mt-0.5" style={{ color: "#6b7280" }}>
+                                      For all orders placed between <span className="font-semibold" style={{ color: WINE_CARD }}>8:00 AM</span> and <span className="font-semibold" style={{ color: WINE_CARD }}>8:00 PM</span>. Orders after hours go out first thing the next morning.
+                                    </p>
+                                  </div>
+                                </div>
+                                {/* Mini timeline */}
+                                <div className="mt-4 flex items-center gap-1">
+                                  {["Order", "Packed", "Dispatched", "Delivered"].map((step, i) => (
+                                    <div key={step} className="flex items-center flex-1 last:flex-none">
+                                      <div className="flex flex-col items-center gap-1 flex-shrink-0">
+                                        <div className="w-2.5 h-2.5 rounded-full" style={{ background: i === 0 ? WINE_CARD : "#e5e7eb" }} />
+                                        <span className="text-[10px]" style={{ color: i === 0 ? WINE : "#9ca3af" }}>{step}</span>
+                                      </div>
+                                      {i < 3 && <div className="flex-1 h-px mx-1" style={{ background: "#e5e7eb" }} />}
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Scheduled date + time picker (glass) */}
+                            {shippingType === "scheduled" && (
+                              <div
+                                className="mt-4 rounded-2xl p-4 border backdrop-blur-xl space-y-4"
+                                style={{ background: "rgba(255,251,245,0.7)", borderColor: "rgba(242,220,200,0.8)" }}
+                              >
+                                <div>
+                                  <label className="text-xs font-semibold mb-1.5 block" style={{ color: WINE }}>Pick a date</label>
+                                  <div className="relative">
+                                    <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4" style={{ color: WINE_CARD }} />
+                                    <input
+                                      type="date"
+                                      min={todayStr}
+                                      value={scheduledDate}
+                                      onChange={e => setScheduledDate(e.target.value)}
+                                      className="w-full h-11 pl-10 pr-3 rounded-xl border text-sm outline-none bg-white/80"
+                                      style={{ borderColor: PEACH_MED, color: scheduledDate ? WINE : "#9ca3af" }}
+                                    />
+                                  </div>
+                                </div>
+                                <div>
+                                  <label className="text-xs font-semibold mb-1.5 block" style={{ color: WINE }}>Choose a time slot</label>
+                                  <div className="grid grid-cols-3 gap-2">
+                                    {TIME_SLOTS.map(slot => {
+                                      const sel = scheduledTime === slot
+                                      return (
+                                        <button
+                                          key={slot}
+                                          type="button"
+                                          onClick={() => setScheduledTime(slot)}
+                                          className="px-2 py-2 rounded-xl text-xs font-semibold border transition-all backdrop-blur-md"
+                                          style={{
+                                            borderColor: sel ? WINE_CARD : "rgba(242,220,200,0.8)",
+                                            background:  sel ? WINE_CARD : "rgba(255,255,255,0.7)",
+                                            color:        sel ? "#fff"   : WINE,
+                                          }}
+                                        >
+                                          {slot}
+                                        </button>
+                                      )
+                                    })}
+                                  </div>
+                                </div>
+                                {scheduledDate && scheduledTime && (
+                                  <div className="flex items-center gap-2 px-3 py-2 rounded-xl" style={{ background: PEACH_LIGHT }}>
+                                    <CheckCircle className="h-4 w-4" style={{ color: WINE_CARD }} />
+                                    <p className="text-xs font-semibold" style={{ color: WINE }}>
+                                      Scheduled for {new Date(scheduledDate).toLocaleDateString("en-KE", { weekday: "short", day: "numeric", month: "short" })} · {scheduledTime}
+                                    </p>
+                                  </div>
+                                )}
+                              </div>
+                            )}
                           </div>
                         )}
                       </div>
