@@ -200,7 +200,7 @@ export function AdminShell({ children, title }: { children: ReactNode; title: st
 
       <div className="flex">
         {/* Sidebar - Desktop */}
-        <aside className="hidden lg:flex flex-col w-60 min-h-screen border-r border-border bg-background fixed">
+        <aside className="hidden lg:flex flex-col w-60 h-screen border-r border-border bg-background fixed inset-y-0 left-0">
           <div className="p-6 border-b border-border">
             <Link href="/admin" className="font-serif text-xl font-bold">
               Shaniid RX Admin
