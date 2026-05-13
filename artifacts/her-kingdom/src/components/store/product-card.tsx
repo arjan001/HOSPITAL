@@ -60,17 +60,25 @@ export function ProductCard({ product }: { product: Product }) {
           )}
 
           {/* Top-left discount / new badges */}
-          <div className="absolute top-2 left-2 flex flex-col gap-1.5 z-10">
-            {product.isNew && (
-              <span className="text-[10px] font-bold tracking-wider uppercase px-2.5 py-1 rounded-full text-white"
-                style={{ background: "#3D0814" }}>
-                New
+          <div className="absolute top-0 left-0 flex flex-col gap-1.5 z-10">
+            {hasDiscount && (
+              <span
+                className="text-[11px] font-bold px-3 py-1.5 text-white"
+                style={{
+                  background: `linear-gradient(135deg, ${ACCENT_ORANGE} 0%, ${ACCENT_RED} 100%)`,
+                  borderRadius: "12px 0 12px 0",
+                  boxShadow: "0 4px 10px -4px rgba(185,28,28,0.45)",
+                }}
+              >
+                {product.offerPercentage}% Off
               </span>
             )}
-            {hasDiscount && (
-              <span className="text-[10px] font-bold px-2.5 py-1 rounded-full text-white"
-                style={{ background: "#E91E8C" }}>
-                {product.offerPercentage}% Off
+            {product.isNew && (
+              <span
+                className="text-[10px] font-bold tracking-wider uppercase px-2.5 py-1 ml-2 rounded-full text-white"
+                style={{ background: "#3D0814" }}
+              >
+                New
               </span>
             )}
           </div>
