@@ -5,7 +5,7 @@ import useSWR from "swr"
 import { Link } from "wouter"
 import {
   Package, Tag, Percent, ShoppingBag, Eye, ShoppingCart,
-  ChevronLeft, ChevronRight, Wallet, AlertTriangle, TrendingUp,
+  ChevronLeft, ChevronRight, AlertTriangle, TrendingUp,
   Clock, CheckCircle2, XCircle, Truck, RefreshCw,
 } from "lucide-react"
 import { authedFetcher as fetcher } from "@/lib/api-client"
@@ -24,15 +24,6 @@ interface DashboardData {
   recentProducts: { id: string; name: string; price: number; category: string }[]
   offerProducts: { id: string; name: string; price: number; originalPrice: number | null; offerPercentage: number }[]
   recentOrders: { id: string; orderNo: string; customer: string; total: number; status: string; date: string }[]
-}
-
-interface PayHeroBalance {
-  configured: boolean
-  balance?: number
-  currency?: string
-  channelName?: string
-  channelId?: number
-  error?: string
 }
 
 /* ─────────────────────────────────────────────────────────────
@@ -118,11 +109,6 @@ function statusMeta(s: string) {
 
 export function AdminDashboard() {
   const { data } = useSWR<DashboardData>("/api/admin/dashboard", fetcher)
-  const { data: balance } = useSWR<PayHeroBalance>(
-    "/api/admin/payhero/balance",
-    fetcher,
-    { refreshInterval: 30000 },
-  )
   const { data: allProducts } = useSWR<Product[]>("/api/products", safeFetcher)
 
   const recentProducts = data?.recentProducts || []
@@ -215,35 +201,9 @@ export function AdminDashboard() {
           ))}
         </div>
 
-        {/* PayHero wallet + Order status mix */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          <div className="border border-border rounded-sm p-5 bg-gradient-to-br from-[#00843D]/5 to-background lg:col-span-1">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Wallet className="h-4 w-4 text-[#00843D]" />
-                <span className="text-[11px] text-muted-foreground uppercase tracking-wider">PayHero Wallet</span>
-              </div>
-              <Link href="/admin/payments" className="text-xs text-muted-foreground hover:text-foreground">Manage</Link>
-            </div>
-            {balance?.configured === false ? (
-              <p className="text-sm text-muted-foreground mt-3">
-                Add PayHero credentials in environment to see your wallet balance.
-              </p>
-            ) : balance?.error ? (
-              <p className="text-sm text-red-600 mt-3">{balance.error}</p>
-            ) : balance ? (
-              <>
-                <p className="text-3xl font-bold mt-2 text-[#00843D]">{formatPrice(Number(balance.balance) || 0)}</p>
-                <p className="text-xs text-muted-foreground mt-1">
-                  {balance.channelName || `Channel #${balance.channelId ?? ""}`}
-                </p>
-              </>
-            ) : (
-              <p className="text-sm text-muted-foreground mt-3">Loading...</p>
-            )}
-          </div>
-
-          <div className="border border-border rounded-sm p-5 bg-card lg:col-span-2">
+        {/* Order status mix */}
+        <div className="grid grid-cols-1 gap-4">
+          <div className="border border-border rounded-sm p-5 bg-card">
             <div className="flex items-center justify-between mb-3">
               <span className="text-[11px] text-muted-foreground uppercase tracking-wider">Order Status Mix</span>
               <Link href="/admin/orders" className="text-xs text-muted-foreground hover:text-foreground">View all</Link>
