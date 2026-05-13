@@ -370,12 +370,6 @@ export function SearchPage() {
 
   const totalResults = filteredExact.length + filteredSimilar.length
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
-    const v = inputValue.trim()
-    navigate(v ? `/search?q=${encodeURIComponent(v)}` : `/search`)
-  }
-
   const activeCategoryName = categories.find((c) => c.slug === selectedCategory)?.name
   const activeFilters = [
     selectedCategory && activeCategoryName,
@@ -384,17 +378,21 @@ export function SearchPage() {
   ].filter(Boolean)
 
   // ── Hero banner copy ──
-  const heroTitle = query
+  const heroEyebrow = query
     ? totalResults > 0
-      ? `${totalResults} result${totalResults !== 1 ? "s" : ""} for "${query}"`
-      : `No results for "${query}"`
-    : "Search Shaniid RX"
+      ? `${totalResults} result${totalResults !== 1 ? "s" : ""} found`
+      : "No matches yet"
+    : "Shaniid RX Pharmacy"
+
+  const heroTitle = query
+    ? `Results for “${query}”`
+    : "Find what you need, fast."
 
   const heroSub = query
     ? totalResults > 0
-      ? "Showing medications, devices & wellness products that match your search."
-      : "No matching products found. Try a different term or explore below."
-    : "Find medicines, supplements, care packs, devices and more — delivered fast across Kenya."
+      ? "Verified medications, devices and wellness products — sorted by relevance to your search."
+      : "We couldn't find that one. Try a different spelling or browse the popular categories below."
+    : "Search across thousands of medicines, supplements, care packs and devices — delivered the same day across Kenya."
 
   return (
     <div className="min-h-screen flex flex-col" style={{ background: CREAM }}>
@@ -402,76 +400,112 @@ export function SearchPage() {
       <Navbar />
 
       <main className="flex-1">
-        {/* ── Hero with embedded search bar ── */}
-        <div className="relative overflow-hidden" style={{ minHeight: 220 }}>
-          {/* Wine gradient bg */}
+        {/* ── Hero banner — light cream/peach gradient, no duplicate search ── */}
+        <div className="relative overflow-hidden">
+          {/* Light gradient bg */}
           <div
             className="absolute inset-0"
             style={{
-              background: `linear-gradient(135deg, ${WINE} 0%, ${WINE_CARD} 40%, #5A1020 100%)`,
+              background: `linear-gradient(135deg, #FFFBF5 0%, ${PEACH_LIGHT} 55%, #F8D9B6 100%)`,
             }}
           />
-          {/* Decorative blobs */}
+          {/* Soft decorative orbs */}
           <div
-            className="absolute -top-20 -right-20 w-72 h-72 rounded-full blur-3xl opacity-30"
+            className="absolute -top-24 -right-16 w-80 h-80 rounded-full blur-3xl opacity-50"
+            style={{ background: "#FBD0AC" }}
+          />
+          <div
+            className="absolute top-10 left-1/3 w-64 h-64 rounded-full blur-3xl opacity-30"
             style={{ background: ORANGE }}
           />
           <div
-            className="absolute -bottom-20 -left-20 w-56 h-56 rounded-full blur-3xl opacity-20"
-            style={{ background: PEACH_LIGHT }}
+            className="absolute -bottom-32 -left-20 w-72 h-72 rounded-full blur-3xl opacity-40"
+            style={{ background: "#F4C9A0" }}
           />
-          {/* Bottom fade */}
-          <div className="absolute bottom-0 left-0 right-0 h-12" style={{ background: `linear-gradient(to bottom, transparent, ${CREAM})` }} />
+          {/* Subtle dotted pattern */}
+          <div
+            className="absolute inset-0 opacity-[0.07]"
+            style={{
+              backgroundImage: `radial-gradient(${WINE_CARD} 1px, transparent 1px)`,
+              backgroundSize: "22px 22px",
+            }}
+          />
+          {/* Bottom fade into cream */}
+          <div className="absolute bottom-0 left-0 right-0 h-16" style={{ background: `linear-gradient(to bottom, transparent, ${CREAM})` }} />
 
-          <div className="relative z-10 mx-auto max-w-3xl px-4 pt-12 pb-8 text-center">
-            <div className="inline-flex items-center gap-2 mb-4">
-              <Sparkles className="h-4 w-4" style={{ color: ORANGE }} />
-              <span className="text-xs font-bold uppercase tracking-widest" style={{ color: `${PEACH_LIGHT}CC` }}>
-                Shaniid RX Pharmacy
-              </span>
-            </div>
-            <h1
-              className="font-serif text-3xl lg:text-4xl font-bold text-white mb-2"
-              style={{ textShadow: "0 2px 14px rgba(0,0,0,0.3)" }}
-            >
-              {query ? `"${query}"` : "Search our pharmacy"}
-            </h1>
-            <p className="text-sm mb-6" style={{ color: `${PEACH_LIGHT}BB` }}>{heroSub}</p>
-
-            {/* Search bar */}
-            <form
-              onSubmit={handleSubmit}
-              className="relative flex items-center max-w-xl mx-auto rounded-2xl overflow-hidden shadow-xl"
-              style={{ background: "rgba(255,255,255,0.97)" }}
-            >
-              <Search className="absolute left-4 h-4 w-4 flex-shrink-0" style={{ color: WINE_CARD }} />
-              <input
-                type="text"
-                value={inputValue}
-                onChange={(e) => setInputValue(e.target.value)}
-                placeholder="Search medications, vitamins, devices…"
-                className="flex-1 h-12 pl-11 pr-3 bg-transparent text-sm outline-none"
-                style={{ color: WINE }}
-                autoFocus={!query}
-              />
-              {inputValue && (
-                <button
-                  type="button"
-                  onClick={() => setInputValue("")}
-                  className="px-2 flex-shrink-0"
-                  style={{ color: "#9ca3af" }}
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              )}
-              <button
-                type="submit"
-                className="h-12 px-6 flex-shrink-0 font-bold text-sm text-white transition-opacity hover:opacity-90"
-                style={{ background: `linear-gradient(135deg, ${WINE_CARD}, ${WINE})` }}
+          <div className="relative z-10 mx-auto max-w-5xl px-4 pt-14 pb-12 lg:pt-20 lg:pb-16 grid lg:grid-cols-[1fr_auto] gap-8 items-center">
+            {/* Left: copy */}
+            <div className="text-left">
+              <div
+                className="inline-flex items-center gap-2 px-3 py-1 rounded-full mb-4 border backdrop-blur-md"
+                style={{ background: "rgba(255,255,255,0.7)", borderColor: PEACH_BORDER }}
               >
-                Search
-              </button>
-            </form>
+                <Sparkles className="h-3.5 w-3.5" style={{ color: ORANGE }} />
+                <span className="text-[11px] font-bold uppercase tracking-widest" style={{ color: WINE_CARD }}>
+                  {heroEyebrow}
+                </span>
+              </div>
+              <h1
+                className="font-serif text-3xl lg:text-5xl font-bold mb-3 leading-tight"
+                style={{ color: WINE, letterSpacing: "-0.02em" }}
+              >
+                {heroTitle}
+              </h1>
+              <p className="text-sm lg:text-base max-w-xl" style={{ color: "#6B0F1A99" }}>
+                {heroSub}
+              </p>
+
+              {/* Quick chips — only on idle state */}
+              {!query && (
+                <div className="flex flex-wrap gap-2 mt-5">
+                  {["Pain relief", "Vitamins", "First aid", "Diabetes care", "Skin care"].map(t => (
+                    <button
+                      key={t}
+                      type="button"
+                      onClick={() => { setInputValue(t); navigate(`/search?q=${encodeURIComponent(t)}`) }}
+                      className="px-3 py-1.5 rounded-full text-xs font-semibold border backdrop-blur-md transition-all hover:scale-105"
+                      style={{ background: "rgba(255,255,255,0.85)", borderColor: PEACH_BORDER, color: WINE }}
+                    >
+                      {t}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {/* Hint pointing to navbar search */}
+              {!query && (
+                <p className="text-[11px] mt-5 flex items-center gap-1.5" style={{ color: `${WINE_CARD}AA` }}>
+                  <Search className="h-3 w-3" />
+                  Use the search bar at the top of the page to begin.
+                </p>
+              )}
+            </div>
+
+            {/* Right: glass icon medallion */}
+            <div className="hidden lg:flex justify-end">
+              <div
+                className="relative w-44 h-44 rounded-3xl flex items-center justify-center backdrop-blur-xl border"
+                style={{
+                  background: "rgba(255,255,255,0.55)",
+                  borderColor: PEACH_BORDER,
+                  boxShadow: "0 25px 60px -25px rgba(122,37,53,0.35)",
+                }}
+              >
+                <div
+                  className="w-28 h-28 rounded-2xl flex items-center justify-center"
+                  style={{ background: `linear-gradient(135deg, ${ORANGE}, #ea580c)` }}
+                >
+                  <PackageSearch className="h-12 w-12 text-white" />
+                </div>
+                {/* Floating accent dot */}
+                <div
+                  className="absolute -top-3 -right-3 w-10 h-10 rounded-full flex items-center justify-center shadow-lg"
+                  style={{ background: WINE_CARD }}
+                >
+                  <Sparkles className="h-5 w-5 text-white" />
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 
