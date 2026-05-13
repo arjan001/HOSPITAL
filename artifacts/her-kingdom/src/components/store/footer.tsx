@@ -116,24 +116,24 @@ export function Footer() {
       >
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-8 sm:gap-10">
           {/* Brand column */}
-          <div className="sm:col-span-2 lg:col-span-4 lg:pr-8 text-center sm:text-left">
+          <div className="sm:col-span-2 lg:col-span-3 lg:pr-6 text-center sm:text-left">
             <Link href="/" className="inline-flex items-center">
               <img
                 src="/logo-rx.png"
                 alt="Shaniid RX"
-                width={140}
-                height={48}
-                className="h-12 w-auto object-contain"
+                width={220}
+                height={88}
+                className="h-20 sm:h-24 w-auto object-contain"
               />
             </Link>
-            <p className="mt-4 sm:mt-5 text-sm leading-relaxed max-w-sm mx-auto sm:mx-0" style={{ color: TEXT_MUTED }}>
+            <p className="mt-4 text-sm leading-relaxed max-w-sm mx-auto sm:mx-0" style={{ color: TEXT_MUTED }}>
               Shaniid RX is Kenya's trusted online pharmacy delivering quality medicines, supplements
               and healthcare essentials right to your door — fast, safe, and discreetly.
             </p>
           </div>
 
           {/* Information */}
-          <FooterColumn title="Information" links={ABOUT_LINKS} className="lg:border-l lg:pl-10" />
+          <FooterColumn title="Information" links={ABOUT_LINKS} className="lg:border-l lg:pl-8" />
 
           {/* Categories */}
           <FooterColumn title="Categories" links={CARE_LINKS} />
@@ -142,7 +142,7 @@ export function Footer() {
           <FooterColumn title="Our Services" links={SUPPORT_LINKS} />
 
           {/* Socials */}
-          <div className="sm:col-span-2 lg:col-span-2">
+          <div className="sm:col-span-2 lg:col-span-3">
             <h3 className="text-base font-bold mb-4" style={{ color: TEXT_WINE }}>
               Socials
             </h3>
