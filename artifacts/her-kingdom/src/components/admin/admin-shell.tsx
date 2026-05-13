@@ -78,6 +78,7 @@ const navItems: NavItem[] = [
   { label: "Roles & Permissions",href: "/admin/roles",              icon: Shield,          group: "System" },
   { label: "Audit Log",          href: "/admin/audit-log",          icon: ScrollText,      group: "System" },
   { label: "Settings",           href: "/admin/settings",           icon: Settings,        group: "System" },
+  { label: "My Profile",         href: "/admin/profile",            icon: UserCircle,      group: "System" },
 ]
 
 interface CurrentUser {
@@ -352,7 +353,11 @@ export function AdminShell({ children, title }: { children: ReactNode; title: st
 
           <div className={`border-t border-border ${collapsed ? "p-2" : "p-4"} space-y-3`}>
             {currentUser && !collapsed && (
-              <div className="flex items-center gap-3">
+              <Link
+                href="/admin/profile"
+                className="flex items-center gap-3 -mx-1 px-1 py-1 rounded-md hover:bg-secondary transition-colors"
+                title="My Profile"
+              >
                 <div className="w-8 h-8 rounded-full bg-secondary flex items-center justify-center flex-shrink-0">
                   <UserCircle className="h-4 w-4 text-muted-foreground" />
                 </div>
@@ -360,7 +365,7 @@ export function AdminShell({ children, title }: { children: ReactNode; title: st
                   <p className="text-xs font-medium truncate">{currentUser.display_name}</p>
                   <p className="text-[10px] text-muted-foreground truncate">{roleBadge}</p>
                 </div>
-              </div>
+              </Link>
             )}
             {!collapsed && (
               <div className="flex items-center gap-3">
