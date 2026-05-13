@@ -9,6 +9,7 @@ import { HealthCategories } from "./health-categories"
 import { FeaturedProducts } from "./featured-products"
 import { OfferBanner } from "./offer-banner"
 import { OnOfferProducts } from "./on-offer-products"
+import { HowToOrder } from "./how-to-order"
 import { Newsletter } from "./newsletter"
 import type { Faq } from "./faq-section"
 
@@ -62,6 +63,7 @@ export function LandingPage({ faqs = DEFAULT_FAQS }: { faqs?: Faq[] }) {
           <FeaturedProducts />
           <OfferBanner />
           <OnOfferProducts />
+          <HowToOrder />
           {showNewsletter && <Newsletter />}
         </main>
         <Footer />
