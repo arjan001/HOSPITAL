@@ -110,10 +110,7 @@ export function Footer() {
   return (
     <footer style={{ background: BG_WHITE, color: TEXT_WINE }}>
       {/* ─── Main columns ────────────────────────────────────── */}
-      <div
-        className="mx-auto max-w-7xl px-4 lg:px-8 pt-14 pb-10"
-        style={{ borderTop: `1px solid ${BORDER_LIGHT}` }}
-      >
+      <div className="mx-auto max-w-7xl px-4 lg:px-8 pt-14 pb-10">
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-10">
           {/* Brand column */}
           <div className="lg:col-span-4">
@@ -173,7 +170,7 @@ export function Footer() {
         {/* Legal links — kept as a slim row beneath the main grid */}
         {LEGAL_LINKS.length > 0 && (
           <div className="mt-10 pt-6 flex flex-wrap items-center gap-x-5 gap-y-2"
-            style={{ borderTop: `1px solid ${BORDER_LIGHT}` }}>
+            style={{ borderTop: `1px dashed ${BORDER_LIGHT}` }}>
             <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: TEXT_WINE_SOFT }}>
               Legal & Compliance
             </span>
