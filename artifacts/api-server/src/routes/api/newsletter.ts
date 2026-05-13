@@ -1,5 +1,5 @@
 import { Router } from "express"
-import { createClient } from "../../lib/supabase.js"
+import { createClient } from "../../lib/legacy-store.js"
 import { rateLimit, rateLimitResponse, sanitize, isValidEmail } from "../../lib/security.js"
 
 const router = Router()
@@ -17,8 +17,8 @@ router.post("/", async (req, res) => {
     }
 
     try {
-      const supabase = createClient()
-      const { error } = await supabase
+      const store = createClient()
+      const { error } = await store
         .from("newsletter_subscribers")
         .upsert({ email: cleanEmail }, { onConflict: "email" })
 
@@ -27,7 +27,7 @@ router.post("/", async (req, res) => {
       }
     } catch (dbErr) {
       const msg = dbErr instanceof Error ? dbErr.message : String(dbErr)
-      if (!/Missing Supabase/i.test(msg)) {
+      if (!/Backend disabled/i.test(msg)) {
         console.error("[api/newsletter] DB exception:", dbErr)
       }
     }

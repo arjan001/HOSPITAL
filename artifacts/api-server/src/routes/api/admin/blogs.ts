@@ -1,5 +1,5 @@
 import { Router } from "express"
-import { createAdminClient } from "../../../lib/supabase.js"
+import { createAdminClient } from "../../../lib/legacy-store.js"
 import { requireAdmin } from "../../../middlewares/admin-auth.js"
 
 const router = Router()
@@ -13,8 +13,8 @@ function slugify(input: string): string {
 
 router.get("/", async (_req, res) => {
   try {
-    const supabase = createAdminClient()
-    const { data, error } = await supabase
+    const store = createAdminClient()
+    const { data, error } = await store
       .from("blog_posts").select("*").order("published_at", { ascending: false })
     if (error) throw error
     res.json(data || [])
@@ -25,11 +25,11 @@ router.get("/", async (_req, res) => {
 
 router.post("/", async (req, res) => {
   try {
-    const supabase = createAdminClient()
+    const store = createAdminClient()
     const body = req.body
     const slug = body.slug || slugify(body.title || "")
 
-    const { data, error } = await supabase
+    const { data, error } = await store
       .from("blog_posts")
       .insert({
         slug, title: body.title, excerpt: body.excerpt || null,
@@ -51,7 +51,7 @@ router.post("/", async (req, res) => {
 
 router.put("/", async (req, res) => {
   try {
-    const supabase = createAdminClient()
+    const store = createAdminClient()
     const body = req.body
     const slug = body.slug || slugify(body.title || "")
 
@@ -67,7 +67,7 @@ router.put("/", async (req, res) => {
     if (body.is_published && !body.published_at) updates.published_at = new Date().toISOString()
     else if (!body.is_published) updates.published_at = null
 
-    const { error } = await supabase.from("blog_posts").update(updates).eq("id", body.id)
+    const { error } = await store.from("blog_posts").update(updates).eq("id", body.id)
     if (error) throw error
     res.json({ success: true })
   } catch (error) {
@@ -77,11 +77,11 @@ router.put("/", async (req, res) => {
 
 router.delete("/", async (req, res) => {
   try {
-    const supabase = createAdminClient()
+    const store = createAdminClient()
     const id = req.query.id as string
     if (!id) return res.status(400).json({ error: "Missing ID" })
 
-    const { error } = await supabase.from("blog_posts").delete().eq("id", id)
+    const { error } = await store.from("blog_posts").delete().eq("id", id)
     if (error) throw error
     res.json({ success: true })
   } catch (error) {

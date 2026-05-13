@@ -1,17 +1,17 @@
 import { Router } from "express"
 import { requireAdmin } from "../../../middlewares/admin-auth.js"
-import { createClient } from "../../../lib/supabase.js"
+import { createClient } from "../../../lib/legacy-store.js"
 
 const router = Router()
 router.use(requireAdmin)
 
 router.get("/", async (req, res) => {
-  const supabase = createClient()
+  const store = createClient()
 
   const [bannersRes, navOffersRes, popupRes] = await Promise.all([
-    supabase.from("banners").select("*").order("sort_order", { ascending: true }),
-    supabase.from("navbar_offers").select("*").order("sort_order", { ascending: true }),
-    supabase.from("popup_offers").select("*").order("created_at", { ascending: false }),
+    store.from("banners").select("*").order("sort_order", { ascending: true }),
+    store.from("navbar_offers").select("*").order("sort_order", { ascending: true }),
+    store.from("popup_offers").select("*").order("created_at", { ascending: false }),
   ])
 
   res.json({
@@ -22,12 +22,12 @@ router.get("/", async (req, res) => {
 })
 
 router.post("/", async (req, res) => {
-  const supabase = createClient()
+  const store = createClient()
   const body = req.body
   const type = body.type || "banner"
 
   if (type === "navbar_offer") {
-    const { data, error } = await supabase
+    const { data, error } = await store
       .from("navbar_offers")
       .insert({ text: body.text, is_active: body.isActive ?? true, sort_order: body.sortOrder || 0 })
       .select().single()
@@ -36,7 +36,7 @@ router.post("/", async (req, res) => {
   }
 
   if (type === "popup_offer") {
-    const { data, error } = await supabase
+    const { data, error } = await store
       .from("popup_offers")
       .insert({
         title: body.title, description: body.description || "",
@@ -48,7 +48,7 @@ router.post("/", async (req, res) => {
     return res.json(data)
   }
 
-  const { data, error } = await supabase
+  const { data, error } = await store
     .from("banners")
     .insert({
       title: body.title, subtitle: body.subtitle || "",
@@ -63,12 +63,12 @@ router.post("/", async (req, res) => {
 })
 
 router.put("/", async (req, res) => {
-  const supabase = createClient()
+  const store = createClient()
   const body = req.body
   const type = body.type || "banner"
 
   if (type === "navbar_offer") {
-    const { error } = await supabase
+    const { error } = await store
       .from("navbar_offers")
       .update({ text: body.text, is_active: body.isActive ?? true, sort_order: body.sortOrder || 0 })
       .eq("id", body.id)
@@ -77,7 +77,7 @@ router.put("/", async (req, res) => {
   }
 
   if (type === "popup_offer") {
-    const { error } = await supabase
+    const { error } = await store
       .from("popup_offers")
       .update({
         title: body.title, description: body.description || "",
@@ -89,7 +89,7 @@ router.put("/", async (req, res) => {
     return res.json({ success: true })
   }
 
-  const { error } = await supabase
+  const { error } = await store
     .from("banners")
     .update({
       title: body.title, subtitle: body.subtitle || "",
@@ -104,14 +104,14 @@ router.put("/", async (req, res) => {
 })
 
 router.delete("/", async (req, res) => {
-  const supabase = createClient()
+  const store = createClient()
   const id = req.query.id as string
   const type = req.query.type as string || "banner"
 
   if (!id) return res.status(400).json({ error: "Missing ID" })
 
   const table = type === "navbar_offer" ? "navbar_offers" : type === "popup_offer" ? "popup_offers" : "banners"
-  const { error } = await supabase.from(table).delete().eq("id", id)
+  const { error } = await store.from(table).delete().eq("id", id)
   if (error) return res.status(500).json({ error: error.message })
   res.json({ success: true })
 })

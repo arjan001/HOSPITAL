@@ -1,21 +1,21 @@
 import { Router } from "express"
 import { requireAdmin } from "../../../middlewares/admin-auth.js"
-import { createClient } from "../../../lib/supabase.js"
+import { createClient } from "../../../lib/legacy-store.js"
 
 const router = Router()
 router.use(requireAdmin)
 
 router.get("/", async (req, res) => {
-  const supabase = createClient()
-  const { data } = await supabase.from("hero_banners").select("*").order("sort_order", { ascending: true })
+  const store = createClient()
+  const { data } = await store.from("hero_banners").select("*").order("sort_order", { ascending: true })
   res.json(data || [])
 })
 
 router.post("/", async (req, res) => {
-  const supabase = createClient()
+  const store = createClient()
   const body = req.body
 
-  const { error } = await supabase.from("hero_banners").insert({
+  const { error } = await store.from("hero_banners").insert({
     title: body.title, subtitle: body.subtitle || null,
     image_url: body.imageUrl || null, button_link: body.buttonLink || "/shop",
     button_text: body.buttonText || "Shop Now",
@@ -27,10 +27,10 @@ router.post("/", async (req, res) => {
 })
 
 router.put("/", async (req, res) => {
-  const supabase = createClient()
+  const store = createClient()
   const body = req.body
 
-  const { error } = await supabase.from("hero_banners").update({
+  const { error } = await store.from("hero_banners").update({
     title: body.title, subtitle: body.subtitle || null,
     image_url: body.imageUrl || null, button_link: body.buttonLink || "/shop",
     button_text: body.buttonText || "Shop Now",
@@ -42,11 +42,11 @@ router.put("/", async (req, res) => {
 })
 
 router.delete("/", async (req, res) => {
-  const supabase = createClient()
+  const store = createClient()
   const id = req.query.id as string
   if (!id) return res.status(400).json({ error: "Missing ID" })
 
-  const { error } = await supabase.from("hero_banners").delete().eq("id", id)
+  const { error } = await store.from("hero_banners").delete().eq("id", id)
   if (error) return res.status(500).json({ error: error.message })
   res.json({ success: true })
 })

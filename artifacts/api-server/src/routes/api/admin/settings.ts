@@ -1,21 +1,21 @@
 import { Router } from "express"
 import { requireAdmin } from "../../../middlewares/admin-auth.js"
-import { createClient } from "../../../lib/supabase.js"
+import { createClient } from "../../../lib/legacy-store.js"
 
 const router = Router()
 router.use(requireAdmin)
 
 router.get("/", async (req, res) => {
-  const supabase = createClient()
-  const { data, error } = await supabase.from("site_settings").select("*").limit(1).single()
+  const store = createClient()
+  const { data, error } = await store.from("site_settings").select("*").limit(1).single()
   if (error) return res.status(500).json({ error: error.message })
   res.json(data)
 })
 
 router.put("/", async (req, res) => {
-  const supabase = createClient()
+  const store = createClient()
   const body = req.body
-  const { data: current } = await supabase.from("site_settings").select("id").limit(1).single()
+  const { data: current } = await store.from("site_settings").select("id").limit(1).single()
   if (!current) return res.status(404).json({ error: "No settings row found" })
 
   const updates: Record<string, unknown> = {}
@@ -31,7 +31,7 @@ router.put("/", async (req, res) => {
     if (key in body) updates[key] = body[key]
   }
 
-  const { error } = await supabase.from("site_settings").update(updates).eq("id", current.id)
+  const { error } = await store.from("site_settings").update(updates).eq("id", current.id)
   if (error) return res.status(500).json({ error: error.message })
   res.json({ success: true })
 })

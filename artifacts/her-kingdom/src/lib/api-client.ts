@@ -1,42 +1,19 @@
-import { createClient } from "./supabase/client"
-
 /**
- * Resolve the current Supabase access token, if a session exists. Returns
- * null when Supabase env vars are missing or no user is signed in.
+ * Lightweight wrapper around `fetch` for admin/protected endpoints.
+ *
+ * The previous Supabase-backed admin auth has been removed. The backend's
+ * `requireAdmin` middleware is currently a pass-through (Clerk will own
+ * customer auth later), so we just forward the call and surface non-2xx
+ * responses as thrown errors for SWR.
  */
-async function getAccessToken(): Promise<string | null> {
-  try {
-    const supabase = createClient()
-    const { data } = await supabase.auth.getSession()
-    return data.session?.access_token ?? null
-  } catch {
-    return null
-  }
-}
 
-/**
- * `fetch` wrapper that automatically attaches `Authorization: Bearer <token>`
- * from the current Supabase session. Use for any call to a protected
- * `/api/admin/*` or `/api/upload` endpoint.
- */
 export async function apiFetch(input: string, init: RequestInit = {}): Promise<Response> {
-  const token = await getAccessToken()
-  const headers = new Headers(init.headers || {})
-  if (token && !headers.has("Authorization")) {
-    headers.set("Authorization", `Bearer ${token}`)
-  }
-  return fetch(input, { ...init, headers })
+  return fetch(input, init)
 }
 
-/**
- * SWR fetcher that uses the authenticated client. Drop-in replacement for
- * the per-file `const fetcher = (url) => fetch(url).then(r => r.json())`
- * pattern in admin pages.
- */
 export const authedFetcher = async (url: string) => {
   const res = await apiFetch(url)
   if (!res.ok) {
-    // Mimic SWR's error contract so consumers can render fallback states.
     const body = await res.text().catch(() => "")
     const err = new Error(`Request failed (${res.status})`) as Error & { status?: number; body?: string }
     err.status = res.status

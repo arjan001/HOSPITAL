@@ -126,7 +126,7 @@ export function AdminProfile() {
 
       setPwOk(
         data?.degraded
-          ? "Password validated locally. Real authentication isn't wired in this environment yet — this is a no-op until Supabase admin auth is configured."
+          ? "Password validated locally. Real authentication isn't wired in this environment yet — this is a no-op until the NestJS admin auth lands."
           : "Password updated successfully.",
       )
       setPwCurrent(""); setPwNext(""); setPwConfirm("")

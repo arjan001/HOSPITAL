@@ -1,5 +1,5 @@
 import { Router } from "express"
-import { createOrder } from "../../lib/supabase-data.js"
+import { createOrder } from "../../lib/dev-fixtures.js"
 import { rateLimit, rateLimitResponse, sanitize, isValidPhone, isValidEmail } from "../../lib/security.js"
 
 const router = Router()

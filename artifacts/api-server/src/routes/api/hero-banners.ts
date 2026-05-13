@@ -1,5 +1,5 @@
 import { Router } from "express"
-import { getHeroBanners } from "../../lib/supabase-data.js"
+import { getHeroBanners } from "../../lib/dev-fixtures.js"
 
 const router = Router()
 

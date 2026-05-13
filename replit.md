@@ -33,6 +33,8 @@ The trusted pharmaceutical infrastructure for Africa — a digital storefront an
 
 ## Architecture decisions
 
+- **Supabase has been fully removed (May 2026).** All admin-managed content lives in `cmsStore` (browser localStorage today, NestJS later). The legacy `/api/admin/*` and public `/api/*` routes still exist but back onto a no-op stub in `artifacts/api-server/src/lib/legacy-store.ts` that returns empty reads / soft-error writes — they're scheduled to be deleted as the NestJS port lands. Do **not** add new code that imports from the supabase stubs; persist via `cmsStore` instead.
+- **No real auth backend yet.** `requireAdmin` is a pass-through; `admin-shell.tsx` hardcodes the local super-admin. Customer auth = Clerk (planned). Admin auth = TBD with the NestJS port.
 - **One CMS seam.** Every admin module reads/writes through `cmsStore` so the entire admin can swap to a NestJS-backed API in one file later.
 - **Audit log auto-captures CMS writes** via a `writeRaw` hook in `cms-store.ts`; consumers use a cached snapshot to avoid `useSyncExternalStore` loops.
 - **Server PUT `/api/admin/products` is a full-replace** that rewrites images and variations. Never call it from cached list data — bulk stock changes must use the per-row "Set qty" flow (or a future scoped PATCH endpoint) to avoid wiping nested data.
@@ -80,7 +82,8 @@ Admin: dashboard with KPIs/sparklines/low-stock alerts, products (with CSV impor
 
 - `/api/admin/products` PUT is full-replace and deletes `product_images` + `product_variations` before re-inserting from the request body. Don't call it with stale cached objects, and don't use it for bulk partial updates.
 - `cmsStore` is the only path for admin-managed content. Anything that bypasses it won't be auditable and won't migrate to NestJS cleanly.
-- A handful of pre-existing repo-wide `tsc` errors live in `analytics-store`, `security.ts`, `supabase-data`, `traffic-classifier`, `contact-inquiries`, `pages/contact`, and `tags.name` — out of scope for current admin work; don't chase them when validating a focused change.
+- A handful of pre-existing repo-wide `tsc` errors live in `analytics-store`, `security.ts`, `traffic-classifier`, `contact-inquiries`, `pages/contact`, and `tags.name` — out of scope for current admin work; don't chase them when validating a focused change. (`supabase-data.ts` is gone; the type it exported, `CategorySeoMeta`, now lives inline in `components/store/category-intro.tsx`.)
+- The `lib/legacy-store.ts` stub on the API server returns chainable no-ops. Hitting an admin route from the UI will return `[]` for reads and `{ error: "Backend disabled…" }` for writes — that's expected. Nothing in the panel should depend on those routes; persist via `cmsStore`.
 
 ## Pointers
 

@@ -1,5 +1,5 @@
 import { Router } from "express"
-import { createClient } from "../../lib/supabase.js"
+import { createClient } from "../../lib/legacy-store.js"
 import { rateLimit, rateLimitResponse, sanitizePhoneSearch } from "../../lib/security.js"
 
 const router = Router()
@@ -15,9 +15,9 @@ router.get("/", async (req, res) => {
     return res.status(400).json({ error: "Provide order number or phone number" })
   }
 
-  const supabase = createClient()
+  const store = createClient()
 
-  let query = supabase
+  let query = store
     .from("orders")
     .select("id, order_no, customer_name, customer_phone, customer_email, subtotal, delivery_fee, total, status, delivery_address, delivery_location_id, created_at, payment_method, mpesa_code, order_notes")
     .order("created_at", { ascending: false })
@@ -35,8 +35,8 @@ router.get("/", async (req, res) => {
   if (error) return res.status(500).json({ error: error.message })
   if (!orders || orders.length === 0) return res.status(404).json({ error: "No orders found" })
 
-  const orderIds = orders.map((o) => o.id)
-  const { data: items } = await supabase
+  const orderIds = (orders as any[]).map((o: any) => o.id)
+  const { data: items } = await store
     .from("order_items")
     .select("order_id, product_name, quantity, product_price, selected_variations")
     .in("order_id", orderIds)
@@ -47,18 +47,18 @@ router.get("/", async (req, res) => {
     itemsByOrder[item.order_id]!.push(item)
   }
 
-  const locationIds = orders.map((o) => o.delivery_location_id).filter((id): id is string => id !== null)
-  const { data: locations } = await supabase.from("delivery_locations").select("id, name").in("id", locationIds)
+  const locationIds = (orders as any[]).map((o: any) => o.delivery_location_id).filter((id: any): id is string => id !== null)
+  const { data: locations } = await store.from("delivery_locations").select("id, name").in("id", locationIds)
   const locationMap: Record<string, string> = {}
   for (const loc of locations || []) locationMap[loc.id] = loc.name
 
-  const result = orders.map((o) => ({
+  const result = (orders as any[]).map((o: any) => ({
     id: o.id,
     orderNumber: o.order_no,
     customer: o.customer_name,
     phone: o.customer_phone,
     email: o.customer_email || "",
-    items: (itemsByOrder[o.id] || []).map((item) => {
+    items: (itemsByOrder[o.id] || []).map((item: any) => {
       let variation: string | undefined
       if (item.selected_variations && typeof item.selected_variations === "object") {
         const vars = Object.values(item.selected_variations as Record<string, unknown>).filter((v) => v !== null && v !== "")

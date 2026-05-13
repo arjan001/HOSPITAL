@@ -1,22 +1,22 @@
 import { Router } from "express"
 import { requireAdmin } from "../../../middlewares/admin-auth.js"
-import { createClient } from "../../../lib/supabase.js"
+import { createClient } from "../../../lib/legacy-store.js"
 
 const router = Router()
 router.use(requireAdmin)
 
 router.get("/", async (req, res) => {
-  const supabase = createClient()
-  const { data, error } = await supabase
+  const store = createClient()
+  const { data, error } = await store
     .from("gift_items").select("*").order("sort_order", { ascending: true }).order("created_at", { ascending: false })
   if (error) return res.status(500).json({ error: error.message })
   res.json(data || [])
 })
 
 router.post("/", async (req, res) => {
-  const supabase = createClient()
+  const store = createClient()
   const body = req.body
-  const { data, error } = await supabase
+  const { data, error } = await store
     .from("gift_items")
     .insert({
       category: body.category, name: body.name,
@@ -29,9 +29,9 @@ router.post("/", async (req, res) => {
 })
 
 router.put("/", async (req, res) => {
-  const supabase = createClient()
+  const store = createClient()
   const body = req.body
-  const { error } = await supabase
+  const { error } = await store
     .from("gift_items")
     .update({
       category: body.category, name: body.name,
@@ -44,10 +44,10 @@ router.put("/", async (req, res) => {
 })
 
 router.delete("/", async (req, res) => {
-  const supabase = createClient()
+  const store = createClient()
   const id = req.query.id as string
   if (!id) return res.status(400).json({ error: "Missing ID" })
-  const { error } = await supabase.from("gift_items").delete().eq("id", id)
+  const { error } = await store.from("gift_items").delete().eq("id", id)
   if (error) return res.status(500).json({ error: error.message })
   res.json({ success: true })
 })

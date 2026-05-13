@@ -1,5 +1,5 @@
 import { Router } from "express"
-import { createAdminClient } from "../../lib/supabase.js"
+import { createAdminClient } from "../../lib/legacy-store.js"
 
 const router = Router()
 
@@ -23,13 +23,13 @@ const STATIC_POLICIES: Record<string, { title: string; content: string }> = {
 }
 
 function isSupabaseMissing(err: unknown): boolean {
-  return err instanceof Error && /Missing Supabase/i.test(err.message)
+  return err instanceof Error && /Backend disabled/i.test(err.message)
 }
 
 router.get("/", async (_req, res) => {
   try {
-    const supabase = createAdminClient()
-    const { data, error } = await supabase.from("policies").select("*").order("title")
+    const store = createAdminClient()
+    const { data, error } = await store.from("policies").select("*").order("title")
     if (error) return res.json([])
     res.json(data ?? [])
   } catch (err) {
@@ -42,8 +42,8 @@ router.get("/", async (_req, res) => {
 router.get("/:slug", async (req, res) => {
   const { slug } = req.params
   try {
-    const supabase = createAdminClient()
-    const { data, error } = await supabase
+    const store = createAdminClient()
+    const { data, error } = await store
       .from("policies")
       .select("*")
       .eq("slug", slug)

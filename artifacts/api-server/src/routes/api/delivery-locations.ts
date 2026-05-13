@@ -1,5 +1,5 @@
 import { Router } from "express"
-import { getDeliveryLocations } from "../../lib/supabase-data.js"
+import { getDeliveryLocations } from "../../lib/dev-fixtures.js"
 
 const router = Router()
 

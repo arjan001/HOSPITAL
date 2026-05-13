@@ -1,5 +1,5 @@
 import { Router } from "express"
-import { getNavbarOffers, getPopupOffer, getSiteSettings, getMidPageBanners } from "../../lib/supabase-data.js"
+import { getNavbarOffers, getPopupOffer, getSiteSettings, getMidPageBanners } from "../../lib/dev-fixtures.js"
 
 const router = Router()
 

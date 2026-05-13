@@ -1,13 +1,13 @@
 import { Router } from "express"
 import { requireAdmin } from "../../../middlewares/admin-auth.js"
-import { createClient } from "../../../lib/supabase.js"
+import { createClient } from "../../../lib/legacy-store.js"
 
 const router = Router()
 router.use(requireAdmin)
 
 router.get("/", async (req, res) => {
-  const supabase = createClient()
-  const { data, error } = await supabase
+  const store = createClient()
+  const { data, error } = await store
     .from("delivery_locations").select("*")
     .order("region", { ascending: true })
     .order("type", { ascending: true })
@@ -17,9 +17,9 @@ router.get("/", async (req, res) => {
 })
 
 router.post("/", async (req, res) => {
-  const supabase = createClient()
+  const store = createClient()
   const body = req.body
-  const { data, error } = await supabase
+  const { data, error } = await store
     .from("delivery_locations")
     .insert({
       name: body.name, fee: body.fee,
@@ -34,9 +34,9 @@ router.post("/", async (req, res) => {
 })
 
 router.put("/", async (req, res) => {
-  const supabase = createClient()
+  const store = createClient()
   const body = req.body
-  const { error } = await supabase
+  const { error } = await store
     .from("delivery_locations")
     .update({
       name: body.name, fee: body.fee,
@@ -51,10 +51,10 @@ router.put("/", async (req, res) => {
 })
 
 router.delete("/", async (req, res) => {
-  const supabase = createClient()
+  const store = createClient()
   const id = req.query.id as string
   if (!id) return res.status(400).json({ error: "Missing ID" })
-  const { error } = await supabase.from("delivery_locations").delete().eq("id", id)
+  const { error } = await store.from("delivery_locations").delete().eq("id", id)
   if (error) return res.status(500).json({ error: error.message })
   res.json({ success: true })
 })

@@ -1,34 +1,30 @@
 import { Router } from "express"
-import { createAdminClient, createClient } from "../../lib/supabase.js"
 import { rateLimit, rateLimitResponse, isValidEmail, sanitize, validatePassword } from "../../lib/security.js"
+
+/**
+ * Auth routes — Supabase has been removed. The admin panel uses a hardcoded
+ * local "super_admin" identity (see admin-shell.tsx) and persists settings
+ * through cmsStore. Customer auth will be reintroduced via Clerk later.
+ *
+ * These endpoints exist only so existing client calls don't 404. They are
+ * intentionally inert: `/me` returns the local admin, password rotation
+ * validates the input shape but cannot actually change anything (no auth
+ * backend), and registration is permanently closed.
+ */
 
 const router = Router()
 
-// GET /api/auth/me — returns the current authenticated user (or null when not
-// signed in / backend not configured).
-router.get("/me", async (req, res) => {
-  const authHeader = req.headers.authorization
-  if (!authHeader?.startsWith("Bearer ")) {
-    return res.json({ user: null })
-  }
-  const token = authHeader.slice(7)
+const LOCAL_ADMIN = {
+  id: "local-admin",
+  email: "admin@shaniidrx.local",
+  display_name: "Admin",
+  role: "super_admin",
+}
 
-  let supabase
-  try {
-    supabase = createClient()
-  } catch {
-    return res.status(503).json({ user: null, error: "Backend not configured" })
-  }
-
-  const { data: { user }, error } = await supabase.auth.getUser(token)
-  if (error || !user) return res.json({ user: null })
-
-  res.json({ user: { id: user.id, email: user.email ?? null } })
+router.get("/me", async (_req, res) => {
+  res.json({ user: LOCAL_ADMIN })
 })
 
-// POST /api/auth/login-guard — per-IP brute-force throttle invoked by the
-// login form before attempting Supabase sign-in. Fails open so a client
-// network blip does not lock anyone out.
 router.post("/login-guard", async (req, res) => {
   const rl = rateLimit(req, { limit: 8, windowSeconds: 60 })
   if (!rl.success) return rateLimitResponse(res)
@@ -39,137 +35,32 @@ router.post("/login-guard", async (req, res) => {
   res.json({ ok: true })
 })
 
-// GET /api/auth/check-setup — used by the registration page to determine
-// whether the very first admin has been created. When Supabase is not
-// configured we return `hasAdmin: false` so the registration form is shown.
 router.get("/check-setup", async (_req, res) => {
-  let admin
-  try {
-    admin = createAdminClient()
-  } catch {
-    return res.json({ hasAdmin: false })
-  }
-
-  const { count, error } = await admin
-    .from("admin_users")
-    .select("id", { count: "exact", head: true })
-
-  if (error) return res.json({ hasAdmin: false })
-  res.json({ hasAdmin: (count ?? 0) > 0 })
+  // Setup is "complete" — registration is closed for the local admin.
+  res.json({ hasAdmin: true })
 })
 
-// POST /api/auth/register — creates the first admin record after Supabase
-// auth signup completes on the client. Subsequent admin invitations should
-// flow through the protected `/api/admin/users` endpoint instead.
-router.post("/register", async (req, res, next) => {
+router.post("/register", async (_req, res) => {
+  res.status(410).json({ error: "Admin registration is disabled in this build" })
+})
+
+router.post("/change-password", async (req, res) => {
   const rl = rateLimit(req, { limit: 5, windowSeconds: 60 })
   if (!rl.success) return rateLimitResponse(res)
 
-  try {
-    const email = sanitize(req.body?.email, 320).toLowerCase()
-    const displayName = sanitize(req.body?.displayName, 120)
-    const role = sanitize(req.body?.role, 20) || "admin"
-    const password = req.body?.password
+  const currentPassword = typeof req.body?.currentPassword === "string" ? req.body.currentPassword : ""
+  const newPassword = typeof req.body?.newPassword === "string" ? req.body.newPassword : ""
 
-    if (!email || !isValidEmail(email)) return res.status(400).json({ error: "Valid email required" })
-    if (!displayName) return res.status(400).json({ error: "Display name required" })
-    const pwCheck = validatePassword(password)
-    if (!pwCheck.ok) return res.status(400).json({ error: pwCheck.error })
-
-    const admin = createAdminClient()
-
-    // Lock the endpoint after the first admin exists. Further admins must
-    // be added through the authenticated `/api/admin/users` flow.
-    const { count } = await admin.from("admin_users").select("id", { count: "exact", head: true })
-    if ((count ?? 0) > 0) {
-      return res.status(403).json({ error: "Admin setup already complete" })
-    }
-
-    // Look up the freshly-signed-up Supabase user by email.
-    const { data: usersList, error: listErr } = await admin.auth.admin.listUsers()
-    if (listErr) return res.status(500).json({ error: listErr.message })
-    const authUser = usersList.users.find((u) => (u.email || "").toLowerCase() === email)
-    if (!authUser) return res.status(404).json({ error: "Auth user not found — please sign up first" })
-
-    const finalRole = (count ?? 0) === 0 ? "super_admin" : role
-    const { data, error } = await admin
-      .from("admin_users")
-      .insert({
-        user_id: authUser.id,
-        email,
-        display_name: displayName,
-        role: finalRole,
-        is_active: true,
-      })
-      .select()
-      .single()
-
-    if (error) return res.status(500).json({ error: error.message })
-    res.json({ user: data })
-  } catch (err) {
-    next(err)
+  if (!currentPassword) return res.status(400).json({ error: "Current password is required" })
+  const pwCheck = validatePassword(newPassword)
+  if (!pwCheck.ok) return res.status(400).json({ error: pwCheck.error })
+  if (currentPassword === newPassword) {
+    return res.status(400).json({ error: "New password must be different from the current one" })
   }
-})
 
-// POST /api/auth/change-password — verifies the current password and rotates
-// it via Supabase. When Supabase is not configured we fail gracefully with
-// `degraded: true` so the admin profile UI can show a soft-warn message
-// instead of a hard error during local development.
-router.post("/change-password", async (req, res, next) => {
-  const rl = rateLimit(req, { limit: 5, windowSeconds: 60 })
-  if (!rl.success) return rateLimitResponse(res)
-
-  try {
-    const currentPassword = typeof req.body?.currentPassword === "string" ? req.body.currentPassword : ""
-    const newPassword = typeof req.body?.newPassword === "string" ? req.body.newPassword : ""
-
-    if (!currentPassword) return res.status(400).json({ error: "Current password is required" })
-    const pwCheck = validatePassword(newPassword)
-    if (!pwCheck.ok) return res.status(400).json({ error: pwCheck.error })
-    if (currentPassword === newPassword) {
-      return res.status(400).json({ error: "New password must be different from the current one" })
-    }
-
-    // Identify the caller via Bearer token.
-    const authHeader = req.headers.authorization
-    if (!authHeader?.startsWith("Bearer ")) {
-      // No auth wired yet — accept the input shape so the UI can render a
-      // clean success state during local dev.
-      return res.json({ ok: true, degraded: true })
-    }
-    const token = authHeader.slice(7)
-
-    let supabase, admin
-    try {
-      supabase = createClient()
-      admin = createAdminClient()
-    } catch {
-      return res.json({ ok: true, degraded: true })
-    }
-
-    const { data: { user }, error: userErr } = await supabase.auth.getUser(token)
-    if (userErr || !user || !user.email) {
-      return res.status(401).json({ error: "Not signed in" })
-    }
-
-    // Verify the current password by attempting a fresh sign-in.
-    const { error: verifyErr } = await supabase.auth.signInWithPassword({
-      email: user.email,
-      password: currentPassword,
-    })
-    if (verifyErr) return res.status(401).json({ error: "Current password is incorrect" })
-
-    // Rotate via the service-role client so we don't depend on the user
-    // session being refreshed.
-    const { error: updErr } = await admin.auth.admin.updateUserById(user.id, {
-      password: newPassword,
-    })
-    if (updErr) return res.status(500).json({ error: updErr.message })
-
-    res.json({ ok: true })
-  } catch (err) {
-    next(err)
-  }
+  // No real auth backend — the UI shows a clear "validated locally" message
+  // when `degraded: true` is returned.
+  res.json({ ok: true, degraded: true })
 })
 
 export default router

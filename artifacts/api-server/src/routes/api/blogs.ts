@@ -1,12 +1,12 @@
 import { Router } from "express"
-import { createAdminClient } from "../../lib/supabase.js"
+import { createAdminClient } from "../../lib/legacy-store.js"
 
 const router = Router()
 
 router.get("/", async (_req, res) => {
   try {
-    const supabase = createAdminClient()
-    const { data: posts, error } = await supabase
+    const store = createAdminClient()
+    const { data: posts, error } = await store
       .from("blog_posts")
       .select("id, slug, title, excerpt, cover_image, author, author_role, author_avatar, tags, category, read_time_minutes, views, is_featured, published_at")
       .eq("is_published", true)
@@ -14,14 +14,14 @@ router.get("/", async (_req, res) => {
 
     if (error) return res.json({ posts: [] })
 
-    const ids = (posts || []).map((p) => p.id)
+    const ids = (posts || []).map((p: any) => p.id)
     let ratingsMap: Record<string, { avg: number; count: number }> = {}
     let commentCounts: Record<string, number> = {}
 
     if (ids.length > 0) {
       const [{ data: ratings }, { data: comments }] = await Promise.all([
-        supabase.from("blog_ratings").select("blog_id, stars").in("blog_id", ids),
-        supabase.from("blog_comments").select("blog_id").in("blog_id", ids).eq("is_approved", true),
+        store.from("blog_ratings").select("blog_id, stars").in("blog_id", ids),
+        store.from("blog_comments").select("blog_id").in("blog_id", ids).eq("is_approved", true),
       ])
 
       if (ratings) {
@@ -44,7 +44,7 @@ router.get("/", async (_req, res) => {
       }
     }
 
-    const enriched = (posts || []).map((p) => ({
+    const enriched = (posts || []).map((p: any) => ({
       ...p,
       rating_avg: ratingsMap[p.id]?.avg ?? 0,
       rating_count: ratingsMap[p.id]?.count ?? 0,
@@ -54,7 +54,7 @@ router.get("/", async (_req, res) => {
     res.json({ posts: enriched })
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
-    if (/Missing Supabase/i.test(msg)) {
+    if (/Backend disabled/i.test(msg)) {
       return res.status(503).json({ posts: [], error: "Backend not configured" })
     }
     console.error("[api/blogs] exception:", err)

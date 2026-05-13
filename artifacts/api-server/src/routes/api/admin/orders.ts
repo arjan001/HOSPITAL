@@ -1,26 +1,26 @@
 import { Router } from "express"
 import { requireAdmin } from "../../../middlewares/admin-auth.js"
-import { createClient } from "../../../lib/supabase.js"
+import { createClient } from "../../../lib/legacy-store.js"
 
 const router = Router()
 router.use(requireAdmin)
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 router.get("/", async (req, res) => {
-  const supabase = createClient()
+  const store = createClient()
   const statusFilter = typeof req.query.status === "string" ? req.query.status : undefined
   const countOnly = req.query.count === "true"
 
   // Lightweight count-only branch — used by the admin shell pending-orders badge.
   if (countOnly) {
-    let q = supabase.from("orders").select("*", { count: "exact", head: true })
+    let q = store.from("orders").select("*", { count: "exact", head: true })
     if (statusFilter) q = q.eq("status", statusFilter)
     const { count, error: countError } = await q
     if (countError) return res.status(500).json({ error: countError.message })
     return res.json({ count: count ?? 0 })
   }
 
-  let ordersQuery = supabase
+  let ordersQuery = store
     .from("orders")
     .select("*, delivery_locations(name)")
     .order("created_at", { ascending: false })
@@ -30,8 +30,8 @@ router.get("/", async (req, res) => {
 
   if (error) return res.status(500).json({ error: error.message })
 
-  const orderIds = (orders || []).map((o) => o.id)
-  const { data: items } = await supabase
+  const orderIds = (orders || []).map((o: any) => o.id)
+  const { data: items } = await store
     .from("order_items")
     .select("*")
     .in("order_id", orderIds.length > 0 ? orderIds : ["none"])
@@ -42,13 +42,13 @@ router.get("/", async (req, res) => {
     itemsByOrder[item.order_id]!.push(item)
   }
 
-  const result = (orders || []).map((o) => ({
+  const result = (orders || []).map((o: any) => ({
     id: o.id,
     orderNo: o.order_no || "",
     customer: o.customer_name,
     phone: o.customer_phone,
     email: o.customer_email || "",
-    items: (itemsByOrder[o.id] || []).map((item) => ({
+    items: (itemsByOrder[o.id] || []).map((item: any) => ({
       name: item.product_name,
       qty: item.quantity,
       price: Number(item.product_price),
@@ -77,7 +77,7 @@ router.get("/", async (req, res) => {
 })
 
 router.delete("/", async (req, res) => {
-  const supabase = createClient()
+  const store = createClient()
   const ids = req.query.ids as string
 
   if (!ids) return res.status(400).json({ error: "Missing ids" })
@@ -88,22 +88,22 @@ router.delete("/", async (req, res) => {
   const invalid = idArray.filter((id) => !UUID_RE.test(id))
   if (invalid.length > 0) return res.status(400).json({ error: "Invalid order id format" })
 
-  await supabase.from("analytics_events").delete().in("order_id", idArray)
-  await supabase.from("order_shipments").delete().in("order_id", idArray)
-  await supabase.from("order_items").delete().in("order_id", idArray)
+  await store.from("analytics_events").delete().in("order_id", idArray)
+  await store.from("order_shipments").delete().in("order_id", idArray)
+  await store.from("order_items").delete().in("order_id", idArray)
 
-  const { data: deleted, error } = await supabase.from("orders").delete().in("id", idArray).select("id")
+  const { data: deleted, error } = await store.from("orders").delete().in("id", idArray).select("id")
   if (error) return res.status(500).json({ error: error.message })
   res.json({ success: true, deleted: deleted?.length ?? 0 })
 })
 
 router.patch("/", async (req, res) => {
-  const supabase = createClient()
+  const store = createClient()
   const body = req.body
 
   if (!body.id || !body.status) return res.status(400).json({ error: "Missing id or status" })
 
-  const { error } = await supabase.from("orders").update({ status: body.status }).eq("id", body.id)
+  const { error } = await store.from("orders").update({ status: body.status }).eq("id", body.id)
   if (error) return res.status(500).json({ error: error.message })
   res.json({ success: true })
 })

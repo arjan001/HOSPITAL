@@ -1,6 +1,14 @@
 import { Link } from "wouter"
 import type { Product } from "@/lib/types"
-import type { CategorySeoMeta } from "@/lib/supabase-data"
+export interface CategorySeoMeta {
+  slug: string
+  name: string
+  description?: string | null
+  intro_html?: string | null
+  meta_title?: string | null
+  meta_description?: string | null
+  hero_image_url?: string | null
+}
 import { formatPrice } from "@/lib/format"
 
 /**

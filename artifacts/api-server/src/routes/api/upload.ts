@@ -1,5 +1,5 @@
 import { Router } from "express"
-import { createClient } from "../../lib/supabase.js"
+import { createClient } from "../../lib/legacy-store.js"
 import { rateLimit, rateLimitResponse } from "../../lib/security.js"
 import { requireAdmin } from "../../middlewares/admin-auth.js"
 import multer from "multer"
@@ -17,7 +17,7 @@ router.post("/", requireAdmin, upload.single("file"), async (req, res, next) => 
   if (!rl.success) return rateLimitResponse(res)
 
   try {
-    const supabase = createClient()
+    const store = createClient()
 
     const file = req.file
     if (!file) return res.status(400).json({ error: "No file provided" })
@@ -33,13 +33,13 @@ router.post("/", requireAdmin, upload.single("file"), async (req, res, next) => 
     const ext = file.originalname.split(".").pop()?.replace(/[^a-z0-9]/gi, "") || (isVideo ? "mp4" : "jpg")
     const filename = `${productSlug}/${Date.now()}-${Math.random().toString(36).substring(2, 8)}.${ext}`
 
-    const { error: uploadError } = await supabase.storage
+    const { error: uploadError } = await store.storage
       .from("products")
       .upload(filename, file.buffer, { contentType: file.mimetype, upsert: false })
 
     if (uploadError) return res.status(500).json({ error: uploadError.message })
 
-    const { data: urlData } = supabase.storage.from("products").getPublicUrl(filename)
+    const { data: urlData } = store.storage.from("products").getPublicUrl(filename)
     res.json({ url: urlData.publicUrl, isVideo })
   } catch (err) {
     next(err)

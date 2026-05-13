@@ -1,6 +1,6 @@
 import { Router } from "express"
 import { requireAdmin } from "../../../middlewares/admin-auth.js"
-import { createClient } from "../../../lib/supabase.js"
+import { createClient } from "../../../lib/legacy-store.js"
 
 const router = Router()
 router.use(requireAdmin)
@@ -11,12 +11,12 @@ function resolveCategoryImage(slug: string | null | undefined, imageUrl: string 
 }
 
 router.get("/", async (req, res) => {
-  const supabase = createClient()
+  const store = createClient()
 
   const [productsRes, imagesRes, variationsRes] = await Promise.all([
-    supabase.from("products").select("*, categories(name, slug)").order("sort_order", { ascending: true }),
-    supabase.from("product_images").select("*").order("sort_order", { ascending: true }),
-    supabase.from("product_variations").select("*"),
+    store.from("products").select("*, categories(name, slug)").order("sort_order", { ascending: true }),
+    store.from("product_images").select("*").order("sort_order", { ascending: true }),
+    store.from("product_variations").select("*"),
   ])
 
   const imagesByProduct: Record<string, string[]> = {}
@@ -31,7 +31,7 @@ router.get("/", async (req, res) => {
     variationsByProduct[v.product_id].push({ type: v.type, options: Array.isArray(v.options) ? v.options : [v.value] })
   }
 
-  const products = (productsRes.data || []).map((p) => {
+  const products = (productsRes.data || []).map((p: any) => {
     const cats = (p as Record<string, unknown> & { categories?: { name: string; slug: string } }).categories
     return {
       id: p.id,
@@ -56,13 +56,13 @@ router.get("/", async (req, res) => {
 })
 
 router.post("/", async (req, res) => {
-  const supabase = createClient()
+  const store = createClient()
   const body = req.body
 
   try {
-    const { data: category } = await supabase.from("categories").select("id").eq("slug", body.categorySlug).single()
+    const { data: category } = await store.from("categories").select("id").eq("slug", body.categorySlug).single()
 
-    const { data: product, error: productError } = await supabase
+    const { data: product, error: productError } = await store
       .from("products")
       .insert({
         name: body.name, slug: body.slug, price: body.price,
@@ -80,7 +80,7 @@ router.post("/", async (req, res) => {
     if (productError) throw productError
 
     if (body.images?.length) {
-      await supabase.from("product_images").insert(
+      await store.from("product_images").insert(
         body.images.map((imgUrl: string, i: number) => ({
           product_id: product.id, image_url: imgUrl,
           alt_text: `${body.name} - Image ${i + 1}`, sort_order: i, is_primary: i === 0,
@@ -89,7 +89,7 @@ router.post("/", async (req, res) => {
     }
 
     if (body.variations?.length) {
-      await supabase.from("product_variations").insert(
+      await store.from("product_variations").insert(
         body.variations.map((v: { type: string; options: string[] }) => ({ product_id: product.id, type: v.type, options: v.options }))
       )
     }
@@ -102,13 +102,13 @@ router.post("/", async (req, res) => {
 })
 
 router.put("/", async (req, res) => {
-  const supabase = createClient()
+  const store = createClient()
   const body = req.body
 
   try {
-    const { data: category } = await supabase.from("categories").select("id").eq("slug", body.categorySlug).single()
+    const { data: category } = await store.from("categories").select("id").eq("slug", body.categorySlug).single()
 
-    const { error: updateError } = await supabase
+    const { error: updateError } = await store
       .from("products")
       .update({
         name: body.name, slug: body.slug, price: body.price,
@@ -125,9 +125,9 @@ router.put("/", async (req, res) => {
 
     if (updateError) throw updateError
 
-    await supabase.from("product_images").delete().eq("product_id", body.id)
+    await store.from("product_images").delete().eq("product_id", body.id)
     if (body.images?.length) {
-      await supabase.from("product_images").insert(
+      await store.from("product_images").insert(
         body.images.map((imgUrl: string, i: number) => ({
           product_id: body.id, image_url: imgUrl,
           alt_text: `${body.name} - Image ${i + 1}`, sort_order: i, is_primary: i === 0,
@@ -135,9 +135,9 @@ router.put("/", async (req, res) => {
       )
     }
 
-    await supabase.from("product_variations").delete().eq("product_id", body.id)
+    await store.from("product_variations").delete().eq("product_id", body.id)
     if (body.variations?.length) {
-      await supabase.from("product_variations").insert(
+      await store.from("product_variations").insert(
         body.variations.map((v: { type: string; options: string[] }) => ({ product_id: body.id, type: v.type, options: v.options }))
       )
     }
@@ -150,12 +150,12 @@ router.put("/", async (req, res) => {
 })
 
 router.delete("/", async (req, res) => {
-  const supabase = createClient()
+  const store = createClient()
   const id = req.query.id as string
 
   if (!id) return res.status(400).json({ error: "Missing product ID" })
 
-  const { error } = await supabase.from("products").delete().eq("id", id)
+  const { error } = await store.from("products").delete().eq("id", id)
   if (error) return res.status(500).json({ error: error.message })
   res.json({ success: true })
 })

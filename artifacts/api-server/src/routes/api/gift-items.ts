@@ -1,15 +1,15 @@
 import { Router } from "express"
-import { createClient } from "../../lib/supabase.js"
+import { createClient } from "../../lib/legacy-store.js"
 
 const router = Router()
 const VALID_CATEGORIES = new Set(["addon", "gift_wrap", "greeting_card"])
 
 router.get("/", async (req, res) => {
   try {
-    const supabase = createClient()
+    const store = createClient()
     const category = req.query.category as string | undefined
 
-    let query = supabase
+    let query = store
       .from("gift_items")
       .select("*")
       .eq("is_active", true)
@@ -23,7 +23,7 @@ router.get("/", async (req, res) => {
     const { data, error } = await query
     if (error) return res.json([])
 
-    const items = (data || []).map((row) => ({
+    const items = (data || []).map((row: any) => ({
       id: row.id as string,
       category: row.category as string,
       name: row.name as string,
@@ -37,7 +37,7 @@ router.get("/", async (req, res) => {
     res.json(items)
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
-    if (/Missing Supabase/i.test(msg)) {
+    if (/Backend disabled/i.test(msg)) {
       return res.json([])
     }
     console.error("[api/gift-items] exception:", err)

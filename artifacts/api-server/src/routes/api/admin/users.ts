@@ -1,6 +1,6 @@
 import { Router } from "express"
 import { requireAdmin } from "../../../middlewares/admin-auth.js"
-import { createAdminClient } from "../../../lib/supabase.js"
+import { createAdminClient } from "../../../lib/legacy-store.js"
 
 const router = Router()
 

@@ -1,5 +1,5 @@
 import { Router } from "express"
-import { getProducts, getProductBySlug } from "../../lib/supabase-data.js"
+import { getProducts, getProductBySlug } from "../../lib/dev-fixtures.js"
 
 const router = Router()
 

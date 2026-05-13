@@ -1,7 +1,9 @@
-// Dummy in-memory pharmacy catalog used while Supabase is not configured.
-// Once SUPABASE_URL/SUPABASE_SERVICE_ROLE_KEY are wired up, this file can be
-// reverted to its Supabase-backed implementation. The shape returned by every
-// exported function exactly matches what the frontend expects today.
+// In-memory pharmacy catalog used by the public storefront API routes.
+// Supabase has been removed — the storefront persists nothing server-side
+// today; everything admin-managed lives in cmsStore on the client. This
+// fixture file backs the legacy public `/api/products`, `/api/categories`,
+// `/api/site-data` etc. routes so the storefront keeps rendering. Will be
+// replaced by the NestJS port.
 
 type Product = {
   id: string

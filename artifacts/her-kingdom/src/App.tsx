@@ -52,8 +52,6 @@ import { AdminAuditLog } from "@/components/admin/audit-log";
 import { PopupOffer } from "@/components/store/popup-offer";
 
 // Auth pages (admin)
-import LoginPage from "@/pages/auth/login";
-import RegisterPage from "@/pages/auth/register";
 
 // Account pages (customer-facing)
 import AccountLoginPage from "@/pages/account/login";
@@ -182,8 +180,6 @@ function Router() {
         {(params) => <PolicyPage slug={params.slug} />}
       </Route>
       {/* Auth (admin) */}
-      <Route path="/auth/login" component={LoginPage} />
-      <Route path="/auth/register" component={RegisterPage} />
       {/* Account (customer-facing) */}
       <Route path="/account/login" component={AccountLoginPage} />
       <Route path="/account/register" component={AccountRegisterPage} />
