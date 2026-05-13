@@ -133,7 +133,7 @@ export function Footer() {
           </div>
 
           {/* Information */}
-          <FooterColumn title="Information" links={ABOUT_LINKS} />
+          <FooterColumn title="Information" links={ABOUT_LINKS} className="lg:border-l lg:pl-10" />
 
           {/* Categories */}
           <FooterColumn title="Categories" links={CARE_LINKS} />
@@ -257,9 +257,17 @@ export function Footer() {
   )
 }
 
-function FooterColumn({ title, links }: { title: string; links: { label: string; href: string }[] }) {
+function FooterColumn({
+  title,
+  links,
+  className = "",
+}: {
+  title: string
+  links: { label: string; href: string }[]
+  className?: string
+}) {
   return (
-    <div className="lg:col-span-2">
+    <div className={`lg:col-span-2 ${className}`} style={className.includes("border") ? { borderColor: "#EFEBE3" } : undefined}>
       <h3 className="text-base font-bold mb-4" style={{ color: TEXT_WINE }}>
         {title}
       </h3>
