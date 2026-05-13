@@ -94,9 +94,8 @@ export default function AccountRegisterPage() {
     setLoading(true)
     await new Promise((r) => setTimeout(r, 1100))
     setLoading(false)
-    // Mask the phone number and redirect to phone verification
-    const masked = "****" + form.phone.replace(/\D/g, "").slice(-4)
-    navigate(`/account/verify-phone?phone=${encodeURIComponent(masked)}`)
+    // Phone verification is disabled for now — go straight to the account login.
+    navigate(`/account/login?registered=1`)
   }
 
   if (success) {

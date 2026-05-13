@@ -63,7 +63,7 @@ const CARE_LINKS = [
 ]
 
 const SUPPORT_LINKS = [
-  { label: "Prescription Upload Guide", href: "/contact" },
+  { label: "Prescription Upload Guide", href: "/policies/prescription-upload-guide" },
   { label: "Returns & Refund Policy", href: "/refund-policy" },
   { label: "Order Tracking", href: "/track-order" },
   { label: "FAQs", href: "/faq" },
