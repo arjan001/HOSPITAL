@@ -110,7 +110,10 @@ export function Footer() {
   return (
     <footer style={{ background: BG_WHITE, color: TEXT_WINE }}>
       {/* ─── Main columns ────────────────────────────────────── */}
-      <div className="mx-auto max-w-7xl px-4 lg:px-8 pt-14 pb-10">
+      <div
+        className="mx-auto max-w-7xl px-4 lg:px-8 pt-14 pb-10"
+        style={{ borderTop: `1px solid ${BORDER_LIGHT}` }}
+      >
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-10">
           {/* Brand column */}
           <div className="lg:col-span-4">
