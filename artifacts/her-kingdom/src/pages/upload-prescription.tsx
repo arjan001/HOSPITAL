@@ -3,7 +3,7 @@ import { Link, useLocation } from "wouter"
 import { TopBar } from "@/components/store/top-bar"
 import { Navbar } from "@/components/store/navbar"
 import { Footer } from "@/components/store/footer"
-import { X, ArrowLeft, FileText } from "lucide-react"
+import { X, ArrowLeft, FileText, CheckCircle2, ShieldCheck, Phone, Clock } from "lucide-react"
 import { useStoreContact } from "@/hooks/use-store-contact"
 
 const WINE       = "#3D0814"
@@ -399,58 +399,115 @@ export default function UploadPrescriptionPage() {
   )
 
   /* ──────────── Success modal ──────────── */
-  const SuccessModal = () => (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center px-4"
-      style={{ background: "rgba(0,0,0,0.35)" }}
-    >
-      <div className="bg-white rounded-2xl p-8 w-full max-w-md shadow-2xl relative">
-        {/* Clipboard emoji / icon */}
-        <div className="text-5xl mb-4">📋</div>
-        <h2 className="text-xl font-bold mb-2" style={{ color: WINE }}>Prescription Complete</h2>
-        <p className="text-sm leading-relaxed mb-6" style={{ color: "#6b7280" }}>
-          We are now processing your prescription. Expect a call from a doctor to confirm it soon.
-        </p>
-        <div className="flex gap-3">
+  const SuccessModal = () => {
+    const reset = () => {
+      setShowModal(false)
+      setStep(1)
+      setFiles([])
+      setFirstName(""); setLastName(""); setGender(""); setDob("")
+      setPaymentMethod("cash")
+    }
+    return (
+      <div
+        className="fixed inset-0 z-50 flex items-center justify-center px-4"
+        style={{ background: "rgba(15,23,42,0.55)", backdropFilter: "blur(4px)" }}
+        onClick={reset}
+      >
+        <div
+          className="bg-white rounded-2xl w-full max-w-md shadow-2xl relative overflow-hidden border border-neutral-200"
+          onClick={e => e.stopPropagation()}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="rx-success-title"
+        >
+          {/* Close */}
           <button
             type="button"
-            onClick={() => {
-              setShowModal(false)
-              setStep(1)
-              setFiles([])
-              setFirstName(""); setLastName(""); setGender(""); setDob("")
-              setPaymentMethod("cash")
-            }}
-            className="flex-1 h-11 rounded-full text-sm font-semibold hover:bg-gray-50 transition-colors"
-            style={btnOutline}
+            onClick={reset}
+            className="absolute top-3 right-3 w-8 h-8 rounded-full flex items-center justify-center text-neutral-500 hover:bg-neutral-100 transition-colors"
+            aria-label="Close"
           >
-            Upload Another Prescription
+            <X className="h-4 w-4" />
           </button>
-          <Link
-            href="/shop"
-            className="flex-1 h-11 rounded-full text-sm font-semibold flex items-center justify-center hover:opacity-90 transition-opacity"
-            style={btnGreen}
-          >
-            Continue Shopping
-          </Link>
+
+          {/* Header with success icon */}
+          <div className="px-7 pt-8 pb-5 text-center">
+            <div className="inline-flex items-center justify-center w-16 h-16 rounded-full mx-auto mb-4" style={{ background: "#ECFDF5" }}>
+              <div className="inline-flex items-center justify-center w-12 h-12 rounded-full" style={{ background: "#10B981" }}>
+                <CheckCircle2 className="h-7 w-7 text-white" strokeWidth={2.5} />
+              </div>
+            </div>
+            <h2 id="rx-success-title" className="text-xl font-bold text-neutral-900">
+              Prescription received
+            </h2>
+            <p className="text-sm leading-relaxed mt-2 text-neutral-600">
+              Thanks{firstName ? `, ${firstName}` : ""} — your prescription is now with our pharmacist team for review.
+            </p>
+          </div>
+
+          {/* What happens next */}
+          <div className="mx-6 mb-6 rounded-xl border border-neutral-200 bg-neutral-50 p-4 space-y-3">
+            <p className="text-[11px] font-bold uppercase tracking-wider text-neutral-500">What happens next</p>
+            <div className="flex items-start gap-3">
+              <div className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: "#FEE2E2", color: ACCENT_RED }}>
+                <Phone className="h-3.5 w-3.5" />
+              </div>
+              <p className="text-sm text-neutral-700 leading-snug">
+                A licensed pharmacist will <span className="font-semibold text-neutral-900">call you</span> to confirm dosage and delivery.
+              </p>
+            </div>
+            <div className="flex items-start gap-3">
+              <div className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: "#FEF3C7", color: "#92400e" }}>
+                <Clock className="h-3.5 w-3.5" />
+              </div>
+              <p className="text-sm text-neutral-700 leading-snug">
+                Usually within <span className="font-semibold text-neutral-900">15 minutes</span> during pharmacy hours (8 AM – 10 PM).
+              </p>
+            </div>
+            <div className="flex items-start gap-3">
+              <div className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: "#DCFCE7", color: "#166534" }}>
+                <ShieldCheck className="h-3.5 w-3.5" />
+              </div>
+              <p className="text-sm text-neutral-700 leading-snug">
+                Your details are kept <span className="font-semibold text-neutral-900">private and secure</span>.
+              </p>
+            </div>
+          </div>
+
+          {/* Actions */}
+          <div className="px-6 pb-6 flex flex-col sm:flex-row gap-2.5">
+            <button
+              type="button"
+              onClick={reset}
+              className="flex-1 h-11 rounded-full text-sm font-semibold border border-neutral-300 text-neutral-700 hover:bg-neutral-50 transition-colors"
+            >
+              Upload Another
+            </button>
+            <Link
+              href="/shop"
+              className="flex-1 h-11 rounded-full text-sm font-bold text-white flex items-center justify-center hover:opacity-90 transition-opacity"
+              style={{ background: `linear-gradient(135deg, ${ACCENT_ORG} 0%, ${ACCENT_RED} 100%)` }}
+            >
+              Continue Shopping
+            </Link>
+          </div>
+
+          {/* WhatsApp footer link */}
+          <div className="px-6 pb-5 text-center border-t border-neutral-100 pt-4">
+            <a
+              href={whatsappHref}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 text-xs font-semibold text-neutral-600 hover:text-neutral-900"
+            >
+              Need help?
+              <span className="font-bold" style={{ color: "#25D366" }}>Chat on WhatsApp</span>
+            </a>
+          </div>
         </div>
       </div>
-
-      {/* Need Help chip */}
-      <a
-        href={whatsappHref}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="fixed bottom-6 right-6 flex items-center gap-2 px-4 py-2.5 rounded-full text-sm font-semibold text-white shadow-lg"
-        style={{ background: "#25D366" }}
-      >
-        Need Help?
-        <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 24 24">
-          <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347"/>
-        </svg>
-      </a>
-    </div>
-  )
+    )
+  }
 
   return (
     <div className="min-h-screen flex flex-col bg-white">
