@@ -116,17 +116,17 @@ export function Footer() {
       >
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-10">
           {/* Brand column */}
-          <div className="lg:col-span-4">
+          <div className="lg:col-span-4 lg:pr-8">
             <Link href="/" className="inline-flex items-center">
               <img
                 src="/logo-rx.png"
                 alt="Shaniid RX"
-                width={160}
-                height={160}
-                className="h-24 w-auto object-contain"
+                width={140}
+                height={48}
+                className="h-12 w-auto object-contain"
               />
             </Link>
-            <p className="mt-3 text-sm leading-relaxed max-w-sm" style={{ color: TEXT_MUTED }}>
+            <p className="mt-5 text-sm leading-relaxed max-w-sm" style={{ color: TEXT_MUTED }}>
               Shaniid RX is Kenya's trusted online pharmacy delivering quality medicines, supplements
               and healthcare essentials right to your door — fast, safe, and discreetly.
             </p>
