@@ -653,6 +653,7 @@ export function AdminBlogs() {
       const t = setTimeout(() => setSuccess(""), 3000)
       return () => clearTimeout(t)
     }
+    return undefined
   }, [success])
 
   useEffect(() => {
@@ -660,6 +661,7 @@ export function AdminBlogs() {
       const t = setTimeout(() => setError(""), 5000)
       return () => clearTimeout(t)
     }
+    return undefined
   }, [error])
 
   const filteredBlogs = useMemo(() => {

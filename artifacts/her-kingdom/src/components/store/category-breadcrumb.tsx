@@ -57,7 +57,6 @@ export function CategoryBreadcrumb({
           key={activeImage}
           src={activeImage}
           alt={imageAlt || title}
-          priority
           sizes="(max-width: 768px) 100vw, 1280px"
           className="object-cover object-center animate-ken-burns"
         />

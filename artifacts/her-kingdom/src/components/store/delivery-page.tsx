@@ -260,7 +260,7 @@ export function DeliveryPage() {
                   <span className="text-center">Est. Time</span>
                   <span className="text-right">Fee</span>
                 </div>
-                <div className="divide-y" style={{ divideColor: PEACH_BORDER }}>
+                <div className="divide-y" style={{ ["--tw-divide-opacity" as string]: 1, borderColor: PEACH_BORDER }}>
                   {deliveryLocations.map((loc, i) => (
                     <div
                       key={loc.id}

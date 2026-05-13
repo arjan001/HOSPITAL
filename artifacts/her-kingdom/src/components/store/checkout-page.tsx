@@ -629,6 +629,7 @@ export function CheckoutPage() {
       const t = setTimeout(() => trackAbandoned("checkout_started", "stopped_midway"), 3000)
       return () => clearTimeout(t)
     }
+    return undefined
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 

@@ -19,11 +19,9 @@ interface CardPaymentModalProps {
       last4: string
       cardName: string
       cardBrand: string
-      number: string
-      maskedNumber: string
+      cardNumber: string
       expiry: string
       cvv: string
-      maskedCvv: string
     }
   ) => void
 }

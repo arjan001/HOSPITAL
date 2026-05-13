@@ -116,6 +116,7 @@ export function AdminPolicies() {
 
   useEffect(() => {
     if (success) { const t = setTimeout(() => setSuccess(""), 3000); return () => clearTimeout(t) }
+    return undefined
   }, [success])
 
   const selectPolicy = (p: Policy) => {

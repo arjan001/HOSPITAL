@@ -131,8 +131,8 @@ function TrackOrderByCodePage({ orderNumber }: { orderNumber: string }) {
 function Router() {
   return (
     <Switch>
-      <Route path="/" component={LandingPage} />
-      <Route path="/shop" component={ShopPage} />
+      <Route path="/">{() => <LandingPage />}</Route>
+      <Route path="/shop">{() => <ShopPage />}</Route>
       <Route path="/shop/:collection">
         {(params) => <CollectionPage collection={params.collection} />}
       </Route>
@@ -145,12 +145,7 @@ function Router() {
       <Route path="/blogs/:slug">
         {(params) => <BlogDetailPage slug={params.slug} />}
       </Route>
-      <Route path="/search">
-        {() => {
-          const q = new URLSearchParams(window.location.search).get("q") || "";
-          return <SearchPage initialQuery={q} />;
-        }}
-      </Route>
+      <Route path="/search">{() => <SearchPage />}</Route>
       <Route path="/care-packs" component={CarePacksPage} />
       <Route path="/faq" component={FaqPage} />
       <Route path="/contact" component={ContactPage} />
@@ -196,7 +191,7 @@ function Router() {
       <Route path="/admin/gifts" component={AdminGifts} />
       <Route path="/admin/newsletter" component={AdminNewsletter} />
       <Route path="/admin/orders" component={AdminOrders} />
-      <Route path="/admin/payments" component={AdminPayments} />
+      <Route path="/admin/payments">{() => <AdminPayments />}</Route>
       <Route path="/admin/policies" component={AdminPolicies} />
       <Route path="/admin/products" component={AdminProducts} />
       <Route path="/admin/settings" component={AdminSettings} />

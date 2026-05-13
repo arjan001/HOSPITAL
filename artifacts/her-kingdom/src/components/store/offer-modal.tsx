@@ -72,7 +72,6 @@ export function OfferModal() {
             alt={offer.title}
             className="object-cover object-center"
             sizes="(max-width: 640px) 92vw, 360px"
-            priority
           />
         </div>
 
