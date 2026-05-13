@@ -4,62 +4,57 @@ import { TopBar } from "@/components/store/top-bar"
 import { Navbar } from "@/components/store/navbar"
 import { Footer } from "@/components/store/footer"
 import {
-  MessageSquare, Phone, Clock, Users, Check, Lock,
-  Send, Plus, ShieldCheck, Video, PhoneOff, X,
+  MessageSquare, Phone, Clock, Users, Check, Lock, ArrowLeft, ArrowRight,
+  Send, Plus, ShieldCheck, Video, X, FileText, Stethoscope, Brain, Pill, HeartPulse,
 } from "lucide-react"
 
-/* ── Palette ─────────────────────────────────────────────── */
-const WINE      = "#3D0814"
-const WINE_CARD = "#7A2535"
-const PEACH_CARD= "#FAE0BE"
-const PEACH_MED = "#F5CFA0"
-const GRAD      = "linear-gradient(135deg, #F5D4A8 0%, #C47880 100%)"
-const ACCENT    = "#B91C1C"
-const ORG       = "#F97316"
-const CALL_BG   = "linear-gradient(145deg, #7B3A10 0%, #5A1C10 40%, #3D0814 100%)"
+/* ── Palette (aligned with upload-prescription) ──────────── */
+const WINE       = "#3D0814"
+const ACCENT_RED = "#B91C1C"
+const ACCENT_ORG = "#F97316"
+const BORDER     = "#e5e7eb"
+const SOFT_BG    = "#FFFBF5"
+const PEACH_TINT = "#FFF1E6"
+const CALL_BG    = "linear-gradient(145deg, #7B3A10 0%, #5A1C10 40%, #3D0814 100%)"
 
 type Screen = "select" | "concern" | "payment" | "connecting" | "chat" | "videocall" | "summary"
 
-/* ── Small helpers ───────────────────────────────────────── */
-function GradBanner({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="rounded-2xl px-6 py-5" style={{ background: GRAD }}>
-      {children}
-    </div>
-  )
+/* ── Shared button styles ────────────────────────────────── */
+const btnPrimary: React.CSSProperties = {
+  background: `linear-gradient(135deg, ${ACCENT_ORG} 0%, ${ACCENT_RED} 100%)`,
+  color: "#fff",
+  border: "none",
+}
+const btnOutline: React.CSSProperties = {
+  background: "#fff",
+  color: WINE,
+  border: `1px solid ${BORDER}`,
 }
 
-function Feature({ text, light = false }: { text: string; light?: boolean }) {
+/* ── Small helpers ───────────────────────────────────────── */
+function Feature({ text }: { text: string }) {
   return (
     <div className="flex items-center gap-2.5 text-sm">
       <div className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0"
-        style={{ background: light ? "rgba(255,255,255,0.22)" : "rgba(61,8,20,0.14)" }}>
-        <Check className="w-3 h-3" style={{ color: light ? "#fff" : ACCENT }} strokeWidth={2.5} />
+        style={{ background: PEACH_TINT }}>
+        <Check className="w-3 h-3" style={{ color: ACCENT_RED }} strokeWidth={2.5} />
       </div>
-      <span style={{ color: light ? "rgba(255,255,255,0.88)" : "#374151" }}>{text}</span>
+      <span style={{ color: "#374151" }}>{text}</span>
     </div>
-  )
-}
-
-function Radio({ checked, onChange, label }: { checked: boolean; onChange: () => void; label: string }) {
-  return (
-    <label className="flex items-center gap-3 cursor-pointer text-sm py-3 px-4 rounded-xl"
-      style={{ background: "#fff", border: "1px solid #e5e7eb" }}>
-      <span className="w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0"
-        style={{ borderColor: checked ? ACCENT : "#d1d5db" }}>
-        {checked && <span className="w-2.5 h-2.5 rounded-full" style={{ background: ACCENT }} />}
-      </span>
-      <span style={{ color: WINE }}>{label}</span>
-      <input type="radio" className="sr-only" checked={checked} onChange={onChange} />
-    </label>
   )
 }
 
 function DoctorAvatar({ size = 56 }: { size?: number }) {
   return (
     <div className="rounded-full flex items-center justify-center flex-shrink-0"
-      style={{ width: size, height: size, background: GRAD, border: "3px solid rgba(255,255,255,0.3)" }}>
-      <span className="text-white font-bold" style={{ fontSize: size * 0.28 }}>SK</span>
+      style={{
+        width: size,
+        height: size,
+        background: `linear-gradient(135deg, ${ACCENT_ORG} 0%, ${ACCENT_RED} 100%)`,
+        border: "3px solid #fff",
+        boxShadow: "0 4px 12px -4px rgba(185,28,28,0.3)",
+      }}>
+      <span className="text-white font-bold" style={{ fontSize: size * 0.32 }}>SK</span>
     </div>
   )
 }
@@ -83,9 +78,10 @@ export default function SpeakToADoctorPage() {
   const [consType,   setConsType]   = useState<"chat" | "call">("chat")
   const [category,   setCategory]   = useState("")
   const [symptoms,   setSymptoms]   = useState("")
-  const [payMethod,  setPayMethod]  = useState("mpesa")
+  const [payMethod,  setPayMethod]  = useState<"mpesa" | "card">("mpesa")
+  const [mpesaPhone, setMpesaPhone] = useState("")
   const [connectPct, setConnectPct] = useState(0)
-  const [callTimer,  setCallTimer]  = useState(480)   // 8 min countdown
+  const [callTimer,  setCallTimer]  = useState(480)
   const [messages,   setMessages]   = useState<{ from: "doctor"|"user"; text: string; time: string }[]>([])
   const [input,      setInput]      = useState("")
   const [typing,     setTyping]     = useState(false)
@@ -127,9 +123,6 @@ export default function SpeakToADoctorPage() {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" })
   }, [messages, typing])
 
-  const selectCategory = (label: string) =>
-    setCategory(p => p === label ? "" : label)
-
   const sendMessage = () => {
     const text = input.trim()
     if (!text) return
@@ -153,101 +146,113 @@ export default function SpeakToADoctorPage() {
   /* ══════════════════ SELECT ══════════════════════════════ */
   if (screen === "select") return (
     <Shell>
-      {/* Full-width hero strip */}
-      <div className="w-full px-6 lg:px-16 py-14" style={{ background: "linear-gradient(160deg, #FFFBF5 0%, #FFF0DE 100%)" }}>
-        <div className="text-center mb-10">
-          <h1 className="text-4xl lg:text-5xl font-extrabold" style={{ color: WINE }}>Speak to a Doctor</h1>
-          <p className="mt-3 text-base lg:text-lg" style={{ color: "#6b7280" }}>Choose your preferred consultation method</p>
+      <div className="mx-auto max-w-5xl px-4 py-10 lg:py-14">
+        {/* Breadcrumb */}
+        <nav className="text-xs mb-6 flex items-center gap-1.5" style={{ color: "#9ca3af" }}>
+          <Link href="/" className="hover:underline">Home</Link>
+          <span>/</span>
+          <Link href="/services" className="hover:underline">Services</Link>
+          <span>/</span>
+          <span style={{ color: WINE }}>Speak to a Doctor</span>
+        </nav>
+
+        {/* Header */}
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold" style={{ color: WINE }}>Speak to a Doctor</h1>
+          <p className="text-sm mt-2" style={{ color: "#6b7280" }}>
+            Choose your preferred consultation method. A licensed doctor will be available within minutes.
+          </p>
         </div>
 
-        {/* Availability banner — full width */}
-        <div className="rounded-2xl px-8 py-5 mb-8" style={{ background: GRAD }}>
-          <div className="flex items-center gap-4">
-            <Users className="h-7 w-7 flex-shrink-0" style={{ color: WINE }} />
-            <div>
-              <p className="font-bold text-lg" style={{ color: WINE }}>3 Doctors Available Now</p>
-              <p className="text-sm" style={{ color: WINE_CARD }}>Average response time: 2–5 minutes</p>
-            </div>
-          </div>
+        {/* Availability strip — minimal */}
+        <div
+          className="flex items-center gap-3 rounded-lg px-4 py-3 mb-8"
+          style={{ background: SOFT_BG, border: `1px solid ${BORDER}` }}
+        >
+          <span className="w-2 h-2 rounded-full bg-green-500 flex-shrink-0" />
+          <p className="text-sm font-semibold" style={{ color: WINE }}>3 doctors available now</p>
+          <span className="text-sm" style={{ color: "#6b7280" }}>· average response 2–5 min</span>
         </div>
 
-        {/* Consultation cards — side by side, wide */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Consultation cards */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
           {/* Chat card */}
-          <div className="rounded-3xl overflow-hidden flex flex-col" style={{ background: PEACH_CARD }}>
-            <div className="p-8 flex-1">
-              <div className="flex items-start justify-between mb-5">
-                <div className="w-14 h-14 rounded-2xl flex items-center justify-center" style={{ background: "rgba(61,8,20,0.12)" }}>
-                  <MessageSquare className="h-7 w-7" style={{ color: WINE }} />
-                </div>
-                <div className="text-right">
-                  <p className="font-extrabold text-base" style={{ color: WINE }}>KSH 1,000</p>
-                  <p className="text-xs" style={{ color: WINE_CARD }}>one-time</p>
-                </div>
+          <div className="rounded-xl bg-white p-6 flex flex-col" style={{ border: `1px solid ${BORDER}` }}>
+            <div className="flex items-start justify-between mb-4">
+              <div className="w-11 h-11 rounded-lg flex items-center justify-center" style={{ background: PEACH_TINT }}>
+                <MessageSquare className="h-5 w-5" style={{ color: ACCENT_RED }} />
               </div>
-              <h2 className="text-2xl font-bold mb-1" style={{ color: WINE }}>Chat Consultation</h2>
-              <p className="text-sm mb-5" style={{ color: "#4b5563" }}>Text-based consultation with a licensed doctor</p>
-              <div className="flex items-center gap-5 text-xs mb-6" style={{ color: WINE_CARD }}>
-                <span className="flex items-center gap-1.5"><Clock className="h-4 w-4" /> 5 min</span>
-                <span className="flex items-center gap-1.5"><Users className="h-4 w-4" /> Available now</span>
-              </div>
-              <p className="text-xs font-bold mb-3" style={{ color: WINE }}>What's included:</p>
-              <div className="space-y-2">
-                {["Instant messaging","Share images & reports","Written prescription","Follow-up support"].map(f => <Feature key={f} text={f} />)}
+              <div className="text-right">
+                <p className="font-bold text-base" style={{ color: WINE }}>KSh 1,000</p>
+                <p className="text-xs" style={{ color: "#9ca3af" }}>one-time</p>
               </div>
             </div>
-            <div className="px-8 pb-7">
-              <button onClick={() => { setConsType("chat"); setScreen("concern") }}
-                className="w-full h-13 py-3.5 rounded-2xl font-bold text-base transition-opacity hover:opacity-80"
-                style={{ background: "rgba(61,8,20,0.13)", color: WINE }}>
-                Select Chat Consultation
-              </button>
+            <h2 className="text-lg font-bold mb-1" style={{ color: WINE }}>Chat Consultation</h2>
+            <p className="text-sm mb-4" style={{ color: "#6b7280" }}>Text-based consultation with a licensed doctor</p>
+            <div className="flex items-center gap-4 text-xs mb-5" style={{ color: "#6b7280" }}>
+              <span className="flex items-center gap-1.5"><Clock className="h-3.5 w-3.5" /> 5 min</span>
+              <span className="flex items-center gap-1.5"><Users className="h-3.5 w-3.5" /> Available now</span>
             </div>
+            <p className="text-xs font-semibold uppercase tracking-wide mb-3" style={{ color: "#6b7280" }}>What's included</p>
+            <div className="space-y-2 flex-1">
+              {["Instant messaging","Share images & reports","Written prescription","Follow-up support"].map(f => <Feature key={f} text={f} />)}
+            </div>
+            <button
+              onClick={() => { setConsType("chat"); setScreen("concern") }}
+              className="mt-6 w-full h-11 rounded-full font-semibold text-sm transition-opacity hover:opacity-90"
+              style={btnPrimary}
+            >
+              Select Chat Consultation
+            </button>
           </div>
 
           {/* Call card */}
-          <div className="rounded-3xl overflow-hidden flex flex-col" style={{ background: WINE_CARD }}>
-            <div className="p-8 flex-1">
-              <div className="flex items-start justify-between mb-5">
-                <div className="w-14 h-14 rounded-2xl flex items-center justify-center" style={{ background: "rgba(255,255,255,0.15)" }}>
-                  <Phone className="h-7 w-7 text-white" />
-                </div>
-                <div className="text-right">
-                  <p className="font-extrabold text-base text-white">KSH 1,500</p>
-                  <p className="text-xs" style={{ color: "rgba(255,255,255,0.6)" }}>one-time</p>
-                </div>
+          <div className="rounded-xl bg-white p-6 flex flex-col" style={{ border: `1px solid ${BORDER}` }}>
+            <div className="flex items-start justify-between mb-4">
+              <div className="w-11 h-11 rounded-lg flex items-center justify-center" style={{ background: PEACH_TINT }}>
+                <Phone className="h-5 w-5" style={{ color: ACCENT_RED }} />
               </div>
-              <h2 className="text-2xl font-bold mb-1 text-white">Call Consultation</h2>
-              <p className="text-sm mb-5" style={{ color: "rgba(255,255,255,0.72)" }}>Voice or video call with a licensed doctor</p>
-              <div className="flex items-center gap-5 text-xs mb-6" style={{ color: "rgba(255,255,255,0.6)" }}>
-                <span className="flex items-center gap-1.5"><Clock className="h-4 w-4" /> 10 min</span>
-                <span className="flex items-center gap-1.5"><Users className="h-4 w-4" /> Available now</span>
-              </div>
-              <p className="text-xs font-bold mb-3 text-white">What's included:</p>
-              <div className="space-y-2">
-                {["Face-to-face interaction","Real-time diagnosis","Detailed consultation","Prescription & notes"].map(f => <Feature key={f} text={f} light />)}
+              <div className="text-right">
+                <p className="font-bold text-base" style={{ color: WINE }}>KSh 1,500</p>
+                <p className="text-xs" style={{ color: "#9ca3af" }}>one-time</p>
               </div>
             </div>
-            <div className="px-8 pb-7">
-              <button onClick={() => { setConsType("call"); setScreen("concern") }}
-                className="w-full py-3.5 rounded-2xl font-bold text-base text-white transition-opacity hover:opacity-80"
-                style={{ background: "rgba(255,255,255,0.15)" }}>
-                Select Call Consultation
-              </button>
+            <h2 className="text-lg font-bold mb-1" style={{ color: WINE }}>Call Consultation</h2>
+            <p className="text-sm mb-4" style={{ color: "#6b7280" }}>Voice or video call with a licensed doctor</p>
+            <div className="flex items-center gap-4 text-xs mb-5" style={{ color: "#6b7280" }}>
+              <span className="flex items-center gap-1.5"><Clock className="h-3.5 w-3.5" /> 10 min</span>
+              <span className="flex items-center gap-1.5"><Users className="h-3.5 w-3.5" /> Available now</span>
             </div>
+            <p className="text-xs font-semibold uppercase tracking-wide mb-3" style={{ color: "#6b7280" }}>What's included</p>
+            <div className="space-y-2 flex-1">
+              {["Face-to-face interaction","Real-time diagnosis","Detailed consultation","Prescription & notes"].map(f => <Feature key={f} text={f} />)}
+            </div>
+            <button
+              onClick={() => { setConsType("call"); setScreen("concern") }}
+              className="mt-6 w-full h-11 rounded-full font-semibold text-sm transition-opacity hover:opacity-90"
+              style={btnPrimary}
+            >
+              Select Call Consultation
+            </button>
           </div>
         </div>
 
         {/* Trust badges */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-5 mt-8">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-6">
           {[
-            { title: "Licensed Doctors",  sub: "Board certified & verified" },
-            { title: "Private & Secure",   sub: "End-to-end encrypted" },
-            { title: "No Hidden Fees",     sub: "Pay once, no subscriptions" },
+            { icon: <ShieldCheck className="h-4 w-4" />, title: "Licensed Doctors",  sub: "Board certified & verified" },
+            { icon: <Lock className="h-4 w-4" />,        title: "Private & Secure",   sub: "End-to-end encrypted" },
+            { icon: <Check className="h-4 w-4" />,       title: "No Hidden Fees",     sub: "Pay once, no subscriptions" },
           ].map(b => (
-            <div key={b.title} className="rounded-2xl p-6" style={{ background: PEACH_CARD }}>
-              <p className="font-bold" style={{ color: WINE }}>{b.title}</p>
-              <p className="text-sm mt-1" style={{ color: "#6b7280" }}>{b.sub}</p>
+            <div key={b.title} className="rounded-lg bg-white px-4 py-3 flex items-start gap-3" style={{ border: `1px solid ${BORDER}` }}>
+              <span className="w-8 h-8 rounded-md flex items-center justify-center flex-shrink-0 mt-0.5"
+                style={{ background: PEACH_TINT, color: ACCENT_RED }}>
+                {b.icon}
+              </span>
+              <div>
+                <p className="font-semibold text-sm" style={{ color: WINE }}>{b.title}</p>
+                <p className="text-xs mt-0.5" style={{ color: "#6b7280" }}>{b.sub}</p>
+              </div>
             </div>
           ))}
         </div>
@@ -256,204 +261,270 @@ export default function SpeakToADoctorPage() {
   )
 
   /* ══════════════════ CONCERN ═════════════════════════════ */
-  if (screen === "concern") return (
-    <Shell>
-      <div className="w-full px-6 lg:px-16 py-14">
-        <div className="text-center mb-10">
-          <h1 className="text-4xl lg:text-5xl font-extrabold" style={{ color: WINE }}>Tell us about your concern</h1>
-          <p className="mt-3 text-base" style={{ color: "#6b7280" }}>This helps us connect you with the right specialist</p>
-        </div>
+  if (screen === "concern") {
+    const cats = [
+      { key: "general",   label: "General Consultation", icon: <Stethoscope className="h-5 w-5" /> },
+      { key: "pharmacy",  label: "Pharmacy Query",       icon: <Pill className="h-5 w-5" /> },
+      { key: "mental",    label: "Mental Health",        icon: <Brain className="h-5 w-5" /> },
+      { key: "other",     label: "Others",               icon: <HeartPulse className="h-5 w-5" /> },
+    ]
+    return (
+      <Shell>
+        <div className="mx-auto max-w-3xl px-4 py-10 lg:py-14">
+          <nav className="text-xs mb-6 flex items-center gap-1.5" style={{ color: "#9ca3af" }}>
+            <Link href="/" className="hover:underline">Home</Link>
+            <span>/</span>
+            <button onClick={() => setScreen("select")} className="hover:underline">Speak to a Doctor</button>
+            <span>/</span>
+            <span style={{ color: WINE }}>Your Concern</span>
+          </nav>
 
-        <div className="max-w-4xl mx-auto space-y-8">
-          {/* Category selector boxes */}
-          <div>
-            <p className="font-bold text-lg mb-4" style={{ color: WINE }}>
-              Quick Categories <span className="text-base font-normal text-gray-400">(Optional)</span>
+          <div className="mb-8">
+            <h1 className="text-3xl font-bold" style={{ color: WINE }}>Tell us about your concern</h1>
+            <p className="text-sm mt-2" style={{ color: "#6b7280" }}>
+              This helps us connect you with the right specialist.
             </p>
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-              {[
-                { key: "general",   label: "General Consultation", emoji: "🩺" },
-                { key: "pharmacy",  label: "Pharmacy Query",        emoji: "🧰" },
-                { key: "mental",    label: "Mental Health",         emoji: "🧠" },
-                { key: "other",     label: "Others",                emoji: "💊" },
-              ].map(c => {
-                const selected = category === c.label
-                return (
-                  <button
-                    key={c.key}
-                    type="button"
-                    onClick={() => selectCategory(c.label)}
-                    className="flex flex-col items-center gap-3 py-6 px-4 rounded-2xl transition-all text-center"
-                    style={{
-                      border: `2px solid ${selected ? ACCENT : "#e5e7eb"}`,
-                      background: selected ? "#FFF1E6" : "#fff",
-                      boxShadow: selected ? "0 4px 16px -6px rgba(185,28,28,0.22)" : "none",
-                    }}
-                  >
-                    <span className="text-4xl">{c.emoji}</span>
-                    <span className="text-sm font-semibold leading-tight" style={{ color: selected ? ACCENT : WINE }}>{c.label}</span>
-                    {selected && (
-                      <span className="w-5 h-5 rounded-full flex items-center justify-center" style={{ background: ACCENT }}>
-                        <Check className="w-3 h-3 text-white" strokeWidth={3} />
+          </div>
+
+          <div className="space-y-7">
+            {/* Categories */}
+            <div>
+              <label className="text-xs font-semibold uppercase tracking-wide block mb-3" style={{ color: "#6b7280" }}>
+                Quick Categories <span className="normal-case font-normal">(optional)</span>
+              </label>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                {cats.map(c => {
+                  const selected = category === c.label
+                  return (
+                    <button
+                      key={c.key}
+                      type="button"
+                      onClick={() => setCategory(prev => prev === c.label ? "" : c.label)}
+                      className="flex flex-col items-center gap-2 py-4 px-3 rounded-xl bg-white transition-all text-center"
+                      style={{
+                        border: `1.5px solid ${selected ? ACCENT_RED : BORDER}`,
+                        background: selected ? PEACH_TINT : "#fff",
+                      }}
+                    >
+                      <span className="w-9 h-9 rounded-lg flex items-center justify-center"
+                        style={{ background: selected ? "#fff" : PEACH_TINT, color: ACCENT_RED }}>
+                        {c.icon}
                       </span>
-                    )}
-                  </button>
-                )
-              })}
+                      <span className="text-xs font-semibold leading-tight" style={{ color: WINE }}>{c.label}</span>
+                    </button>
+                  )
+                })}
+              </div>
             </div>
-          </div>
 
-          {/* Symptoms textarea */}
-          <div>
-            <div className="flex items-center gap-2 mb-3">
-              <span className="text-xl">📋</span>
-              <p className="font-bold text-lg" style={{ color: WINE }}>
-                Describe your symptoms <span className="text-base font-normal text-gray-400">(Optional)</span>
-              </p>
+            {/* Symptoms */}
+            <div>
+              <label className="text-xs font-semibold uppercase tracking-wide block mb-3" style={{ color: "#6b7280" }}>
+                Describe your symptoms <span className="normal-case font-normal">(optional)</span>
+              </label>
+              <textarea
+                rows={5}
+                value={symptoms}
+                maxLength={500}
+                onChange={e => setSymptoms(e.target.value)}
+                placeholder="E.g., I've been experiencing headaches for the past 3 days, especially in the morning…"
+                className="w-full px-4 py-3 rounded-lg text-sm resize-none outline-none transition-shadow focus:shadow-sm bg-white"
+                style={{ border: `1px solid ${BORDER}`, color: WINE }}
+              />
+              <p className="text-xs mt-1.5" style={{ color: "#9ca3af" }}>{symptoms.length}/500 characters</p>
             </div>
-            <textarea
-              rows={5}
-              value={symptoms}
-              maxLength={500}
-              onChange={e => setSymptoms(e.target.value)}
-              placeholder="E.g., I've been experiencing headaches for the past 3 days, especially in the morning…"
-              className="w-full px-5 py-4 rounded-2xl text-sm resize-none outline-none"
-              style={{ background: PEACH_MED, border: "none", color: WINE }}
-            />
-            <p className="text-xs mt-1" style={{ color: "#6b7280" }}>{symptoms.length}/500 characters</p>
-          </div>
 
-          {/* Security notice */}
-          <GradBanner>
-            <div className="flex items-start gap-3">
-              <Lock className="h-5 w-5 flex-shrink-0 mt-0.5" style={{ color: WINE }} />
+            {/* Privacy notice */}
+            <div className="flex items-start gap-3 rounded-lg px-4 py-3" style={{ background: SOFT_BG, border: `1px solid ${BORDER}` }}>
+              <Lock className="h-4 w-4 flex-shrink-0 mt-0.5" style={{ color: ACCENT_RED }} />
               <div>
-                <p className="font-bold" style={{ color: WINE }}>Your information is secure</p>
-                <p className="text-sm mt-0.5" style={{ color: WINE_CARD }}>
-                  All consultations are confidential and protected by medical privacy laws. Your data is encrypted and never shared.
+                <p className="text-sm font-semibold" style={{ color: WINE }}>Your information is secure</p>
+                <p className="text-xs mt-0.5" style={{ color: "#6b7280" }}>
+                  All consultations are confidential and protected by medical privacy laws.
                 </p>
               </div>
             </div>
-          </GradBanner>
 
-          {/* Actions */}
-          <div className="flex gap-4">
-            <button onClick={() => setScreen("select")}
-              className="flex-1 h-13 py-3.5 rounded-2xl font-bold text-base transition-opacity hover:opacity-80"
-              style={{ background: PEACH_CARD, color: WINE }}>
-              Back
-            </button>
-            <button onClick={() => setScreen("payment")}
-              className="flex-1 py-3.5 rounded-2xl font-bold text-base text-white transition-opacity hover:opacity-90"
-              style={{ background: WINE_CARD }}>
-              Continue
-            </button>
+            {/* Actions */}
+            <div className="flex justify-end gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setScreen("select")}
+                className="h-11 px-6 rounded-full text-sm font-semibold flex items-center gap-2 hover:bg-gray-50 transition-colors"
+                style={btnOutline}
+              >
+                <ArrowLeft className="h-4 w-4" /> Back
+              </button>
+              <button
+                type="button"
+                onClick={() => setScreen("payment")}
+                className="h-11 px-8 rounded-full text-sm font-semibold hover:opacity-90 transition-opacity"
+                style={btnPrimary}
+              >
+                Continue
+              </button>
+            </div>
           </div>
         </div>
-      </div>
-    </Shell>
-  )
+      </Shell>
+    )
+  }
 
   /* ══════════════════ PAYMENT ═════════════════════════════ */
   if (screen === "payment") return (
     <Shell>
-      <div className="w-full px-6 lg:px-16 py-12">
-        <GradBanner>
-          <div className="flex items-center gap-3">
-            <span className="w-3.5 h-3.5 rounded-full bg-green-500 flex-shrink-0" />
-            <div>
-              <p className="font-bold" style={{ color: WINE }}>Doctor availability confirmed</p>
-              <p className="text-sm" style={{ color: WINE_CARD }}>A doctor will be ready to connect with you after payment authorization</p>
-            </div>
-          </div>
-        </GradBanner>
+      <div className="mx-auto max-w-5xl px-4 py-10 lg:py-14">
+        <nav className="text-xs mb-6 flex items-center gap-1.5" style={{ color: "#9ca3af" }}>
+          <Link href="/" className="hover:underline">Home</Link>
+          <span>/</span>
+          <button onClick={() => setScreen("select")} className="hover:underline">Speak to a Doctor</button>
+          <span>/</span>
+          <span style={{ color: WINE }}>Payment</span>
+        </nav>
 
-        <button onClick={() => setScreen("connecting")}
-          className="w-full py-3.5 rounded-2xl font-bold text-base text-white mt-4 mb-10 transition-opacity hover:opacity-90"
-          style={{ background: WINE_CARD }}>
-          Continue Payment
-        </button>
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold" style={{ color: WINE }}>Payment Authorization</h1>
+          <p className="text-sm mt-2" style={{ color: "#6b7280" }}>
+            Secure your consultation slot. You'll only be charged once a doctor connects.
+          </p>
+        </div>
 
-        <h2 className="text-2xl font-bold mb-1" style={{ color: WINE }}>Payment Authorization</h2>
-        <p className="text-sm mb-8" style={{ color: "#6b7280" }}>Secure your consultation slot</p>
-
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          {/* Left */}
-          <div className="space-y-5">
-            <div className="rounded-2xl p-6" style={{ background: PEACH_CARD }}>
-              <p className="font-bold mb-3" style={{ color: WINE }}>Authorization Only — Not an Immediate Charge</p>
-              <ul className="space-y-2 text-sm" style={{ color: "#374151" }}>
-                {["Payment will only be processed once the doctor connects with you.",
-                  "If no doctor connects within 15 minutes, you will NOT be charged.",
-                  "Full refund if consultation is cancelled or interrupted.",
-                ].map(t => <li key={t} className="flex gap-2"><span className="mt-0.5 flex-shrink-0">•</span>{t}</li>)}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Left — payment + info */}
+          <div className="lg:col-span-2 space-y-5">
+            {/* Authorization info */}
+            <div className="rounded-xl bg-white p-5" style={{ border: `1px solid ${BORDER}` }}>
+              <p className="font-semibold text-sm mb-2.5" style={{ color: WINE }}>Authorization only — not an immediate charge</p>
+              <ul className="space-y-1.5 text-sm" style={{ color: "#6b7280" }}>
+                {[
+                  "Payment is processed only once the doctor connects with you.",
+                  "If no doctor connects within 15 minutes, you will not be charged.",
+                  "Full refund if the consultation is cancelled or interrupted.",
+                ].map(t => (
+                  <li key={t} className="flex gap-2">
+                    <Check className="h-4 w-4 flex-shrink-0 mt-0.5" style={{ color: ACCENT_RED }} />
+                    {t}
+                  </li>
+                ))}
               </ul>
             </div>
 
-            <div>
-              <p className="font-bold mb-3" style={{ color: WINE }}>Secure Payment Information</p>
-              <div className="rounded-2xl p-6 space-y-3" style={{ background: GRAD }}>
-                <p className="font-semibold text-sm" style={{ color: WINE }}>Cardholder Name</p>
-                <div className="grid grid-cols-2 gap-2">
-                  {["Card Number","EXP Number","CVC","Name On Card"].map(pl => (
-                    <input key={pl} placeholder={pl}
-                      className="h-10 px-3 rounded-lg text-sm outline-none w-full"
-                      style={{ background: "#fff", color: WINE }} />
-                  ))}
-                </div>
-                <div className="space-y-2 mt-1">
-                  {["Credit/Debit Card","Paypal","Master Card","Mpesa"].map(m => (
-                    <Radio key={m} checked={payMethod === m.toLowerCase().replace(/\s/g,"")} onChange={() => setPayMethod(m.toLowerCase().replace(/\s/g,""))} label={m} />
-                  ))}
-                </div>
+            {/* Payment method */}
+            <div className="rounded-xl bg-white p-5" style={{ border: `1px solid ${BORDER}` }}>
+              <p className="font-semibold text-sm mb-3" style={{ color: WINE }}>Payment Method</p>
+
+              <div className="space-y-2.5">
+                {/* M-PESA */}
+                <label
+                  className="flex items-center gap-3 px-4 py-3 rounded-lg cursor-pointer transition-colors"
+                  style={{
+                    border: `1.5px solid ${payMethod === "mpesa" ? ACCENT_RED : BORDER}`,
+                    background: payMethod === "mpesa" ? PEACH_TINT : "#fff",
+                  }}
+                >
+                  <span className="w-4 h-4 rounded-full border-2 flex items-center justify-center flex-shrink-0"
+                    style={{ borderColor: payMethod === "mpesa" ? ACCENT_RED : "#d1d5db" }}>
+                    {payMethod === "mpesa" && <span className="w-2 h-2 rounded-full" style={{ background: ACCENT_RED }} />}
+                  </span>
+                  <input type="radio" className="sr-only" checked={payMethod === "mpesa"} onChange={() => setPayMethod("mpesa")} />
+                  <span className="flex-1 text-sm font-semibold" style={{ color: WINE }}>M-PESA</span>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full"
+                    style={{ background: "#fff", color: "#6b7280", border: `1px solid ${BORDER}` }}>
+                    Powered by Paystack
+                  </span>
+                </label>
+
+                {payMethod === "mpesa" && (
+                  <div className="px-4">
+                    <label className="text-xs font-semibold uppercase tracking-wide block mb-1.5" style={{ color: "#6b7280" }}>
+                      M-PESA Phone Number
+                    </label>
+                    <input
+                      type="tel"
+                      value={mpesaPhone}
+                      onChange={e => setMpesaPhone(e.target.value)}
+                      placeholder="07XX XXX XXX"
+                      className="w-full h-11 px-3 rounded-lg text-sm outline-none transition-shadow focus:shadow-sm"
+                      style={{ border: `1px solid ${BORDER}`, color: WINE }}
+                    />
+                  </div>
+                )}
+
+                {/* Card */}
+                <label
+                  className="flex items-center gap-3 px-4 py-3 rounded-lg cursor-pointer transition-colors"
+                  style={{
+                    border: `1.5px solid ${payMethod === "card" ? ACCENT_RED : BORDER}`,
+                    background: payMethod === "card" ? PEACH_TINT : "#fff",
+                  }}
+                >
+                  <span className="w-4 h-4 rounded-full border-2 flex items-center justify-center flex-shrink-0"
+                    style={{ borderColor: payMethod === "card" ? ACCENT_RED : "#d1d5db" }}>
+                    {payMethod === "card" && <span className="w-2 h-2 rounded-full" style={{ background: ACCENT_RED }} />}
+                  </span>
+                  <input type="radio" className="sr-only" checked={payMethod === "card"} onChange={() => setPayMethod("card")} />
+                  <span className="flex-1 text-sm font-semibold" style={{ color: WINE }}>Credit / Debit Card</span>
+                </label>
               </div>
             </div>
           </div>
 
           {/* Right — Order Summary */}
-          <div className="rounded-2xl p-7" style={{ background: GRAD }}>
-            <p className="font-bold text-lg mb-3" style={{ color: WINE }}>Order Summary</p>
-            <div className="h-px mb-5" style={{ background: "rgba(61,8,20,0.15)" }} />
-            <div className="space-y-4 mb-5">
-              <div>
-                <p className="text-xs" style={{ color: WINE_CARD }}>Consultation Type</p>
-                <p className="font-bold" style={{ color: WINE }}>{consType === "chat" ? "Chat Consultation" : "Call Consultation"}</p>
+          <div className="rounded-xl bg-white p-5 h-fit" style={{ border: `1px solid ${BORDER}` }}>
+            <p className="font-semibold text-sm mb-4" style={{ color: WINE }}>Order Summary</p>
+
+            <div className="space-y-3 pb-4 mb-4" style={{ borderBottom: `1px solid ${BORDER}` }}>
+              <div className="flex justify-between text-sm">
+                <span style={{ color: "#6b7280" }}>Consultation Type</span>
+                <span className="font-semibold" style={{ color: WINE }}>{consType === "chat" ? "Chat" : "Call"}</span>
               </div>
-              <div>
-                <p className="text-xs" style={{ color: WINE_CARD }}>Estimated Duration</p>
-                <p className="font-bold" style={{ color: WINE }}>{consType === "chat" ? "5 minutes" : "10 minutes"}</p>
+              <div className="flex justify-between text-sm">
+                <span style={{ color: "#6b7280" }}>Duration</span>
+                <span className="font-semibold" style={{ color: WINE }}>{consType === "chat" ? "5 min" : "10 min"}</span>
               </div>
               {category && (
-                <div>
-                  <p className="text-xs mb-1" style={{ color: WINE_CARD }}>Your Concern</p>
-                  <span className="inline-block px-3 py-1 rounded-full text-xs font-bold text-white" style={{ background: WINE_CARD }}>{category}</span>
+                <div className="flex justify-between text-sm">
+                  <span style={{ color: "#6b7280" }}>Concern</span>
+                  <span className="font-semibold text-right" style={{ color: WINE }}>{category}</span>
                 </div>
               )}
             </div>
-            <div className="h-px mb-4" style={{ background: "rgba(61,8,20,0.15)" }} />
-            <div className="space-y-2 text-sm">
+
+            <div className="space-y-2 pb-4 mb-4 text-sm" style={{ borderBottom: `1px solid ${BORDER}` }}>
               <div className="flex justify-between">
-                <span style={{ color: "#374151" }}>Consultation Fee</span>
-                <span className="font-bold" style={{ color: ACCENT }}>KSh {fee.toLocaleString()}</span>
+                <span style={{ color: "#6b7280" }}>Consultation Fee</span>
+                <span className="font-semibold" style={{ color: WINE }}>KSh {fee.toLocaleString()}</span>
               </div>
               <div className="flex justify-between">
-                <span style={{ color: "#374151" }}>Service Fee</span>
-                <span className="font-bold" style={{ color: "#374151" }}>0 KSH</span>
-              </div>
-              <div className="h-px my-2" style={{ background: "rgba(61,8,20,0.15)" }} />
-              <div className="flex justify-between">
-                <span className="font-bold" style={{ color: WINE }}>Total Authorization</span>
-                <span className="font-bold" style={{ color: ACCENT }}>KSh {fee.toLocaleString()}</span>
+                <span style={{ color: "#6b7280" }}>Service Fee</span>
+                <span className="font-semibold" style={{ color: WINE }}>KSh 0</span>
               </div>
             </div>
-            <button onClick={() => setScreen("connecting")}
-              className="w-full py-3.5 rounded-2xl font-bold text-base mt-6 transition-opacity hover:opacity-80"
-              style={{ background: PEACH_CARD, color: WINE }}>
-              Authorize & Start Consultation
+
+            <div className="flex justify-between mb-5">
+              <span className="font-bold text-sm" style={{ color: WINE }}>Total</span>
+              <span className="font-bold text-base" style={{ color: ACCENT_RED }}>KSh {fee.toLocaleString()}</span>
+            </div>
+
+            <button
+              onClick={() => setScreen("connecting")}
+              disabled={payMethod === "mpesa" && mpesaPhone.trim().length < 10}
+              className="w-full h-12 rounded-full font-semibold text-sm disabled:opacity-40 transition-opacity hover:opacity-90"
+              style={btnPrimary}
+            >
+              Authorize & Connect
             </button>
-            <p className="text-xs text-center mt-3" style={{ color: WINE_CARD }}>
-              By authorizing, you agree that payment will be processed only when connected to a doctor.
+            <p className="text-xs text-center mt-3" style={{ color: "#9ca3af" }}>
+              Payment processed only when connected to a doctor.
             </p>
+
+            <button
+              onClick={() => setScreen("concern")}
+              className="w-full h-11 rounded-full font-semibold text-sm mt-3 flex items-center justify-center gap-2 hover:bg-gray-50 transition-colors"
+              style={btnOutline}
+            >
+              <ArrowLeft className="h-4 w-4" /> Back
+            </button>
           </div>
         </div>
       </div>
@@ -462,87 +533,86 @@ export default function SpeakToADoctorPage() {
 
   /* ══════════════════ CONNECTING ══════════════════════════ */
   if (screen === "connecting") {
-    /* ── CALL: full-screen dark gradient ── */
+    /* CALL — keep the dramatic dark fullscreen for immersion */
     if (consType === "call") return (
       <div className="fixed inset-0 flex flex-col" style={{ background: CALL_BG }}>
-        {/* Top badges */}
         <div className="flex items-start justify-between p-6 z-10">
-          <div className="rounded-2xl px-5 py-3" style={{ background: PEACH_CARD }}>
-            <p className="font-bold text-sm" style={{ color: WINE }}>Connecting to Doctor</p>
-            <p className="text-sm" style={{ color: WINE_CARD }}>DR. Salad Khalif</p>
+          <div className="rounded-xl bg-white px-4 py-2.5 shadow-lg">
+            <p className="font-semibold text-xs" style={{ color: "#9ca3af" }}>Connecting to</p>
+            <p className="font-bold text-sm" style={{ color: WINE }}>Dr. Salad Khalif</p>
           </div>
-          <div className="rounded-2xl px-5 py-3" style={{ background: PEACH_CARD }}>
-            <p className="font-bold text-sm" style={{ color: WINE }}>8 Mins</p>
+          <div className="rounded-xl bg-white px-4 py-2.5 shadow-lg">
+            <p className="font-bold text-sm" style={{ color: WINE }}>{fmtTime(callTimer)}</p>
           </div>
         </div>
 
-        {/* Doctor avatar — center */}
         <div className="flex-1 flex items-center justify-center">
           <div
-            className="w-52 h-52 rounded-full flex items-center justify-center"
-            style={{ background: GRAD, border: "4px solid rgba(255,255,255,0.2)", boxShadow: "0 0 60px rgba(245,212,168,0.25)" }}
+            className="w-48 h-48 rounded-full flex items-center justify-center"
+            style={{
+              background: `linear-gradient(135deg, ${ACCENT_ORG} 0%, ${ACCENT_RED} 100%)`,
+              border: "4px solid rgba(255,255,255,0.2)",
+              boxShadow: "0 0 60px rgba(249,115,22,0.3)",
+            }}
           >
             <span className="text-white font-extrabold text-5xl">SK</span>
           </div>
         </div>
 
-        {/* Progress */}
         <div className="px-10 pb-10">
           <div className="h-1.5 rounded-full overflow-hidden mb-3" style={{ background: "rgba(255,255,255,0.15)" }}>
             <div className="h-full rounded-full transition-all duration-300"
-              style={{ width: `${connectPct}%`, background: PEACH_CARD }} />
+              style={{ width: `${connectPct}%`, background: `linear-gradient(90deg, ${ACCENT_ORG}, ${ACCENT_RED})` }} />
           </div>
-          <p className="text-center text-sm" style={{ color: "rgba(255,255,255,0.55)" }}>Connecting…</p>
+          <p className="text-center text-sm" style={{ color: "rgba(255,255,255,0.6)" }}>Connecting…</p>
         </div>
       </div>
     )
 
-    /* ── CHAT: centered loading screen ── */
+    /* CHAT — clean white loading */
     return (
       <Shell>
-        <div className="mx-auto max-w-lg px-4 py-14 text-center">
+        <div className="mx-auto max-w-md px-4 py-14 text-center">
           <div className="flex justify-center mb-6">
-            <div className="w-28 h-28 rounded-full flex items-center justify-center"
-              style={{ background: GRAD, border: "4px solid #e5e7eb" }}>
-              <span className="text-white font-extrabold text-3xl">SK</span>
-            </div>
+            <DoctorAvatar size={108} />
           </div>
           <h2 className="text-2xl font-bold mb-1" style={{ color: WINE }}>Connecting to Doctor</h2>
-          <p className="font-semibold" style={{ color: WINE_CARD }}>DR. Salad Khalif</p>
-          <p className="text-sm mb-8" style={{ color: "#6b7280" }}>General Practice · 12 years experience</p>
+          <p className="font-semibold text-sm" style={{ color: ACCENT_RED }}>Dr. Salad Khalif</p>
+          <p className="text-xs mb-8" style={{ color: "#6b7280" }}>General Practice · 12 years experience</p>
 
-          <div className="h-2 rounded-full overflow-hidden mb-3" style={{ background: "#e5e7eb" }}>
+          <div className="h-1.5 rounded-full overflow-hidden mb-3" style={{ background: BORDER }}>
             <div className="h-full rounded-full transition-all duration-300"
-              style={{ width: `${connectPct}%`, background: `linear-gradient(90deg, ${ORG} 0%, ${ACCENT} 100%)` }} />
+              style={{ width: `${connectPct}%`, background: `linear-gradient(90deg, ${ACCENT_ORG} 0%, ${ACCENT_RED} 100%)` }} />
           </div>
-          <p className="text-sm mb-10" style={{ color: "#6b7280" }}>Confirming Payment Authorized…</p>
+          <p className="text-xs mb-10" style={{ color: "#6b7280" }}>Confirming payment authorization…</p>
 
-          <div className="grid grid-cols-2 gap-4 mb-6">
-            <div className="rounded-2xl p-5" style={{ background: PEACH_CARD }}>
-              <div className="w-10 h-10 rounded-xl flex items-center justify-center mx-auto mb-3" style={{ background: "rgba(61,8,20,0.12)" }}>
-                <span className="text-lg">💳</span>
+          <div className="grid grid-cols-2 gap-3 mb-5">
+            <div className="rounded-lg bg-white p-4 text-left" style={{ border: `1px solid ${BORDER}` }}>
+              <div className="w-8 h-8 rounded-md flex items-center justify-center mb-2"
+                style={{ background: PEACH_TINT, color: ACCENT_RED }}>
+                <ShieldCheck className="h-4 w-4" />
               </div>
-              <p className="font-bold text-sm" style={{ color: WINE }}>Payment Authorized</p>
-              <p className="text-xs mt-0.5" style={{ color: ACCENT }}>Not charged yet</p>
+              <p className="font-semibold text-xs" style={{ color: WINE }}>Payment Authorized</p>
+              <p className="text-[11px] mt-0.5" style={{ color: "#9ca3af" }}>Not charged yet</p>
             </div>
-            <div className="rounded-2xl p-5 text-white" style={{ background: WINE_CARD }}>
-              <div className="w-10 h-10 rounded-xl flex items-center justify-center mx-auto mb-3" style={{ background: "rgba(255,255,255,0.15)" }}>
-                <ShieldCheck className="h-5 w-5 text-white" />
+            <div className="rounded-lg bg-white p-4 text-left" style={{ border: `1px solid ${BORDER}` }}>
+              <div className="w-8 h-8 rounded-md flex items-center justify-center mb-2"
+                style={{ background: PEACH_TINT, color: ACCENT_RED }}>
+                <Lock className="h-4 w-4" />
               </div>
-              <p className="font-bold text-sm">Secure Connection</p>
-              <p className="text-xs mt-0.5" style={{ color: "rgba(255,220,190,0.85)" }}>End-to-end encrypted</p>
+              <p className="font-semibold text-xs" style={{ color: WINE }}>Secure Connection</p>
+              <p className="text-[11px] mt-0.5" style={{ color: "#9ca3af" }}>End-to-end encrypted</p>
             </div>
           </div>
 
-          <GradBanner>
-            <div className="flex items-start gap-3 text-left">
-              <span className="text-xl flex-shrink-0">💲</span>
-              <div>
-                <p className="font-bold text-sm" style={{ color: WINE }}>You will only be charged once Dr. Salad connects with you</p>
-                <p className="text-sm mt-0.5" style={{ color: WINE_CARD }}>Estimated connection time: 30–60 seconds</p>
-              </div>
+          <div className="rounded-lg px-4 py-3 text-left flex items-start gap-3"
+            style={{ background: SOFT_BG, border: `1px solid ${BORDER}` }}>
+            <Clock className="h-4 w-4 flex-shrink-0 mt-0.5" style={{ color: ACCENT_RED }} />
+            <div>
+              <p className="text-xs font-semibold" style={{ color: WINE }}>You will only be charged once Dr. Salad connects</p>
+              <p className="text-[11px] mt-0.5" style={{ color: "#6b7280" }}>Estimated connection time: 30–60 seconds</p>
             </div>
-          </GradBanner>
+          </div>
         </div>
       </Shell>
     )
@@ -551,52 +621,49 @@ export default function SpeakToADoctorPage() {
   /* ══════════════════ VIDEO CALL ══════════════════════════ */
   if (screen === "videocall") return (
     <div className="fixed inset-0 flex flex-col" style={{ background: CALL_BG }}>
-      {/* Top badges */}
       <div className="flex items-start justify-between p-5 z-10">
-        <div className="rounded-2xl px-5 py-3" style={{ background: PEACH_CARD }}>
-          <p className="font-bold text-sm" style={{ color: WINE }}>DR. Salad Khalif</p>
-          <p className="text-xs flex items-center gap-1.5 mt-0.5" style={{ color: WINE_CARD }}>
-            <span className="w-2 h-2 rounded-full bg-green-400 inline-block" /> General Practice
+        <div className="rounded-xl bg-white px-4 py-2.5 shadow-lg">
+          <p className="font-bold text-sm" style={{ color: WINE }}>Dr. Salad Khalif</p>
+          <p className="text-xs flex items-center gap-1.5 mt-0.5" style={{ color: "#6b7280" }}>
+            <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block" /> General Practice
           </p>
         </div>
-        <div className="rounded-2xl px-5 py-3 font-bold text-sm" style={{ background: PEACH_CARD, color: WINE }}>
+        <div className="rounded-xl bg-white px-4 py-2.5 font-bold text-sm shadow-lg" style={{ color: WINE }}>
           {fmtTime(callTimer)}
         </div>
       </div>
 
-      {/* User's camera — top right */}
-      <div className="absolute top-4 right-5 z-20">
-        <div className="w-32 h-24 rounded-2xl overflow-hidden"
-          style={{ background: "linear-gradient(135deg, #4a3020 0%, #2a1010 100%)", border: "2px solid rgba(255,255,255,0.15)" }}>
-          <div className="w-full h-full flex items-center justify-center">
-            <span className="text-2xl opacity-60">👤</span>
-          </div>
+      <div className="absolute top-4 right-5 z-20" style={{ marginTop: 70 }}>
+        <div className="w-32 h-24 rounded-xl overflow-hidden bg-gray-800 border-2 border-white/20 flex items-center justify-center">
+          <Users className="h-6 w-6 text-white/40" />
         </div>
       </div>
 
-      {/* Doctor avatar — center */}
       <div className="flex-1 flex items-center justify-center">
         <div
           className="w-52 h-52 rounded-full flex items-center justify-center"
-          style={{ background: GRAD, border: "4px solid rgba(255,255,255,0.2)", boxShadow: "0 0 80px rgba(245,212,168,0.2)" }}
+          style={{
+            background: `linear-gradient(135deg, ${ACCENT_ORG} 0%, ${ACCENT_RED} 100%)`,
+            border: "4px solid rgba(255,255,255,0.2)",
+            boxShadow: "0 0 80px rgba(249,115,22,0.25)",
+          }}
         >
           <span className="text-white font-extrabold text-5xl">SK</span>
         </div>
       </div>
 
-      {/* Control bar */}
-      <div className="pb-12 flex items-center justify-center gap-5">
+      <div className="pb-12 flex items-center justify-center gap-4">
         {[
-          { icon: <Video className="h-6 w-6" />,    action: () => {} },
-          { icon: <Phone className="h-6 w-6" />,    action: () => {} },
-          { icon: <MessageSquare className="h-6 w-6" />, action: () => setScreen("chat") },
-          { icon: <X className="h-6 w-6 text-white" />, action: () => setScreen("summary"), dark: true },
+          { icon: <Video className="h-5 w-5" />,         action: () => {} },
+          { icon: <Phone className="h-5 w-5" />,         action: () => {} },
+          { icon: <MessageSquare className="h-5 w-5" />, action: () => setScreen("chat") },
+          { icon: <X className="h-5 w-5 text-white" />,  action: () => setScreen("summary"), dark: true },
         ].map((btn, i) => (
           <button
             key={i}
             onClick={btn.action}
-            className="w-16 h-16 rounded-full flex items-center justify-center transition-transform hover:scale-105 active:scale-95"
-            style={{ background: btn.dark ? ACCENT : PEACH_CARD, color: btn.dark ? "#fff" : WINE }}
+            className="w-14 h-14 rounded-full flex items-center justify-center transition-transform hover:scale-105 active:scale-95 shadow-lg"
+            style={{ background: btn.dark ? ACCENT_RED : "#fff", color: btn.dark ? "#fff" : WINE }}
           >
             {btn.icon}
           </button>
@@ -610,39 +677,45 @@ export default function SpeakToADoctorPage() {
     <div className="min-h-screen flex flex-col bg-white">
       <TopBar /><Navbar />
       <main className="flex-1 flex flex-col overflow-hidden">
-        {/* Doctor header */}
-        <div className="px-8 py-4 flex items-center justify-between" style={{ background: GRAD }}>
+        {/* Doctor header — clean white */}
+        <div className="px-6 py-4 flex items-center justify-between bg-white" style={{ borderBottom: `1px solid ${BORDER}` }}>
           <div className="flex items-center gap-3">
-            <DoctorAvatar size={46} />
+            <DoctorAvatar size={42} />
             <div>
-              <p className="font-bold" style={{ color: WINE }}>DR. Salad Khalif</p>
-              <p className="text-xs flex items-center gap-1.5" style={{ color: WINE_CARD }}>
-                <span className="w-2 h-2 rounded-full bg-green-500 inline-block" /> General Practice
+              <p className="font-bold text-sm" style={{ color: WINE }}>Dr. Salad Khalif</p>
+              <p className="text-xs flex items-center gap-1.5" style={{ color: "#6b7280" }}>
+                <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block" /> General Practice · Online
               </p>
             </div>
           </div>
-          <button onClick={() => setScreen("summary")}
-            className="h-9 px-6 rounded-xl font-bold text-sm text-white"
-            style={{ background: WINE_CARD }}>
+          <button
+            onClick={() => setScreen("summary")}
+            className="h-9 px-5 rounded-full font-semibold text-xs transition-opacity hover:opacity-90"
+            style={btnPrimary}
+          >
             End Consultation
           </button>
         </div>
 
         {/* Messages */}
-        <div className="flex-1 overflow-y-auto px-8 py-6 space-y-4">
+        <div className="flex-1 overflow-y-auto px-6 py-6 space-y-3" style={{ background: SOFT_BG }}>
           {messages.map((m, i) => (
             <div key={i} className={`flex ${m.from === "user" ? "justify-end" : "justify-start"}`}>
-              <div className="max-w-[65%] rounded-2xl px-5 py-3"
-                style={{ background: m.from === "doctor" ? PEACH_CARD : WINE_CARD, color: m.from === "doctor" ? WINE : "#fff" }}>
+              <div className="max-w-[70%] rounded-2xl px-4 py-2.5 shadow-sm"
+                style={{
+                  background: m.from === "doctor" ? "#fff" : ACCENT_RED,
+                  color: m.from === "doctor" ? WINE : "#fff",
+                  border: m.from === "doctor" ? `1px solid ${BORDER}` : "none",
+                }}>
                 <p className="text-sm leading-relaxed">{m.text}</p>
-                <p className="text-xs mt-1 opacity-55">{m.time}</p>
+                <p className="text-[10px] mt-1 opacity-60">{m.time}</p>
               </div>
             </div>
           ))}
           {typing && (
-            <div className="flex justify-end">
-              <div className="rounded-2xl px-5 py-3" style={{ background: PEACH_CARD }}>
-                <p className="text-sm" style={{ color: WINE }}>Typing….</p>
+            <div className="flex justify-start">
+              <div className="rounded-2xl px-4 py-2.5 bg-white shadow-sm" style={{ border: `1px solid ${BORDER}` }}>
+                <p className="text-xs italic" style={{ color: "#6b7280" }}>Doctor is typing…</p>
               </div>
             </div>
           )}
@@ -650,18 +723,25 @@ export default function SpeakToADoctorPage() {
         </div>
 
         {/* Input */}
-        <div className="px-8 py-4 border-t" style={{ borderColor: "#e5e7eb" }}>
-          <div className="flex items-center gap-3 rounded-full px-5 py-2.5"
-            style={{ border: `1.5px solid ${ORG}` }}>
-            <button type="button" style={{ color: ACCENT }}><Plus className="h-5 w-5" /></button>
-            <input value={input} onChange={e => setInput(e.target.value)}
+        <div className="px-6 py-4 bg-white" style={{ borderTop: `1px solid ${BORDER}` }}>
+          <div className="flex items-center gap-3 rounded-full px-4 py-2"
+            style={{ border: `1px solid ${BORDER}` }}>
+            <button type="button" className="text-gray-400 hover:text-gray-600 transition-colors">
+              <Plus className="h-5 w-5" />
+            </button>
+            <input
+              value={input}
+              onChange={e => setInput(e.target.value)}
               onKeyDown={e => e.key === "Enter" && sendMessage()}
               placeholder="Type your message…"
               className="flex-1 text-sm outline-none bg-transparent"
-              style={{ color: WINE }} />
-            <button onClick={sendMessage}
-              className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0"
-              style={{ background: ORG }}>
+              style={{ color: WINE }}
+            />
+            <button
+              onClick={sendMessage}
+              className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 transition-opacity hover:opacity-90"
+              style={btnPrimary}
+            >
               <Send className="h-4 w-4 text-white" />
             </button>
           </div>
@@ -673,51 +753,104 @@ export default function SpeakToADoctorPage() {
   /* ══════════════════ SUMMARY ═════════════════════════════ */
   return (
     <Shell>
-      <div className="w-full px-6 lg:px-16 py-12">
-        <h2 className="text-3xl font-bold mb-2" style={{ color: WINE }}>Consultation Summary</h2>
-        <p className="text-sm mb-8" style={{ color: "#6b7280" }}>Dr. Salad Khalif · {new Date().toLocaleDateString()}</p>
+      <div className="mx-auto max-w-4xl px-4 py-10 lg:py-14">
+        <nav className="text-xs mb-6 flex items-center gap-1.5" style={{ color: "#9ca3af" }}>
+          <Link href="/" className="hover:underline">Home</Link>
+          <span>/</span>
+          <span style={{ color: WINE }}>Consultation Summary</span>
+        </nav>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <div className="mb-8 flex items-start gap-4">
+          <DoctorAvatar size={52} />
+          <div>
+            <h1 className="text-2xl font-bold" style={{ color: WINE }}>Consultation Summary</h1>
+            <p className="text-sm mt-1" style={{ color: "#6b7280" }}>
+              Dr. Salad Khalif · {new Date().toLocaleDateString()}
+            </p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
           {/* Diagnosis */}
-          <div className="rounded-2xl p-7" style={{ background: PEACH_CARD, border: `1.5px solid ${ORG}` }}>
-            <p className="text-sm mb-4" style={{ color: WINE }}>
-              <strong>Diagnosis:</strong> Common cold with mild symptoms
-            </p>
-            <p className="font-bold text-sm mb-3" style={{ color: WINE }}>Recommendations:</p>
-            <ul className="space-y-2 text-sm mb-4" style={{ color: "#374151" }}>
-              {["Get adequate rest (7–8 hours of sleep)","Stay hydrated — drink plenty of water",
-                "Take prescribed medication as directed","Monitor temperature twice daily"
-              ].map(r => <li key={r} className="flex gap-2"><span>•</span>{r}</li>)}
+          <div className="rounded-xl bg-white p-6" style={{ border: `1px solid ${BORDER}` }}>
+            <div className="flex items-center gap-2 mb-4">
+              <span className="w-8 h-8 rounded-md flex items-center justify-center"
+                style={{ background: PEACH_TINT, color: ACCENT_RED }}>
+                <FileText className="h-4 w-4" />
+              </span>
+              <p className="font-semibold text-sm" style={{ color: WINE }}>Diagnosis & Recommendations</p>
+            </div>
+
+            <div className="text-sm mb-4 pb-4" style={{ color: "#374151", borderBottom: `1px solid ${BORDER}` }}>
+              <span className="font-semibold" style={{ color: WINE }}>Diagnosis:</span> Common cold with mild symptoms
+            </div>
+
+            <p className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: "#6b7280" }}>Recommendations</p>
+            <ul className="space-y-1.5 text-sm mb-4" style={{ color: "#374151" }}>
+              {[
+                "Get adequate rest (7–8 hours of sleep)",
+                "Stay hydrated — drink plenty of water",
+                "Take prescribed medication as directed",
+                "Monitor temperature twice daily",
+              ].map(r => (
+                <li key={r} className="flex gap-2">
+                  <Check className="h-4 w-4 flex-shrink-0 mt-0.5" style={{ color: ACCENT_RED }} />
+                  {r}
+                </li>
+              ))}
             </ul>
-            <p className="text-sm" style={{ color: WINE }}>
+
+            <div className="rounded-lg px-3 py-2.5 text-xs" style={{ background: SOFT_BG, border: `1px solid ${BORDER}`, color: WINE }}>
               <strong>Follow-up:</strong> If symptoms persist beyond 5 days or worsen, please consult again.
-            </p>
+            </div>
           </div>
 
           {/* Recommended medicine */}
-          <div>
-            <h3 className="font-bold text-xl mb-4" style={{ color: WINE }}>Recommended Medicines</h3>
-            <div className="rounded-2xl p-7 text-center" style={{ border: `1.5px solid ${ORG}` }}>
-              <div className="w-20 h-20 rounded-2xl flex items-center justify-center mx-auto mb-4"
-                style={{ background: WINE_CARD }}>
-                <span className="text-3xl">💊</span>
+          <div className="rounded-xl bg-white p-6" style={{ border: `1px solid ${BORDER}` }}>
+            <div className="flex items-center gap-2 mb-4">
+              <span className="w-8 h-8 rounded-md flex items-center justify-center"
+                style={{ background: PEACH_TINT, color: ACCENT_RED }}>
+                <Pill className="h-4 w-4" />
+              </span>
+              <p className="font-semibold text-sm" style={{ color: WINE }}>Recommended Medicine</p>
+            </div>
+
+            <div className="rounded-lg p-4 flex items-center gap-4" style={{ background: SOFT_BG, border: `1px solid ${BORDER}` }}>
+              <div className="w-14 h-14 rounded-lg flex items-center justify-center flex-shrink-0"
+                style={{ background: "#fff", border: `1px solid ${BORDER}` }}>
+                <Pill className="h-7 w-7" style={{ color: ACCENT_RED }} />
               </div>
-              <p className="font-bold text-lg" style={{ color: WINE }}>Paracetamol 500mg</p>
-              <p className="text-sm mb-2" style={{ color: "#6b7280" }}>Take 1 tablet every 8 hours</p>
-              <p className="font-bold mb-5" style={{ color: WINE }}>KSH 800</p>
-              <button className="h-11 px-8 rounded-xl text-sm font-semibold"
-                style={{ background: PEACH_CARD, color: WINE }}>
-                + Add To Cart
+              <div className="flex-1 min-w-0">
+                <p className="font-bold text-sm" style={{ color: WINE }}>Paracetamol 500mg</p>
+                <p className="text-xs" style={{ color: "#6b7280" }}>Take 1 tablet every 8 hours</p>
+                <p className="font-bold text-sm mt-1" style={{ color: ACCENT_RED }}>KSh 800</p>
+              </div>
+              <button
+                className="h-10 px-5 rounded-full text-xs font-semibold transition-opacity hover:opacity-90"
+                style={btnPrimary}
+              >
+                Add to Cart
               </button>
             </div>
           </div>
         </div>
 
-        <Link href="/shop"
-          className="mt-8 block w-full py-4 rounded-2xl font-bold text-base text-white text-center transition-opacity hover:opacity-90"
-          style={{ background: WINE_CARD }}>
-          Go to the shop
-        </Link>
+        <div className="flex justify-end gap-3 mt-8">
+          <button
+            onClick={() => setScreen("select")}
+            className="h-11 px-6 rounded-full text-sm font-semibold flex items-center gap-2 hover:bg-gray-50 transition-colors"
+            style={btnOutline}
+          >
+            <ArrowLeft className="h-4 w-4" /> New Consultation
+          </button>
+          <Link
+            href="/shop"
+            className="h-11 px-8 rounded-full text-sm font-semibold flex items-center justify-center gap-2 hover:opacity-90 transition-opacity"
+            style={btnPrimary}
+          >
+            Continue Shopping <ArrowRight className="h-4 w-4" />
+          </Link>
+        </div>
       </div>
     </Shell>
   )

@@ -2,7 +2,7 @@
 
 import { Link } from "wouter"
 
-import { Heart, ShoppingBag, Eye, Play, Check } from "lucide-react"
+import { Heart, ShoppingBag, Eye, Play, Check, BellRing } from "lucide-react"
 import { useState } from "react"
 import type { Product } from "@/lib/types"
 import { formatPrice } from "@/lib/format"
@@ -126,34 +126,46 @@ export function ProductCard({ product }: { product: Product }) {
           )}
         </div>
 
-        {/* Add To Cart — neutral default, themed on hover */}
-        <button
-          type="button"
-          aria-live="polite"
-          onClick={() => {
-            addItem(product)
-            setJustAdded(true)
-            window.setTimeout(() => setJustAdded(false), 1400)
-          }}
-          onMouseEnter={() => setHoverBtn(true)}
-          onMouseLeave={() => setHoverBtn(false)}
-          className="mt-3 w-full flex items-center justify-center gap-1.5 h-10 rounded-full font-semibold text-sm transition-all duration-200"
-          style={
-            justAdded
-              ? { background: "#15803D", color: "white", border: "none" }
-              : hoverBtn
-                ? {
-                    background: `linear-gradient(135deg, ${ACCENT_ORANGE} 0%, ${ACCENT_RED} 100%)`,
-                    color: "white",
-                    border: "none",
-                    boxShadow: "0 8px 20px -8px rgba(185,28,28,0.5)",
-                  }
-                : { background: "transparent", color: "#1A1A1A", border: "1.5px solid #D8D8D8" }
-          }
-        >
-          {justAdded ? <Check className="h-4 w-4" /> : <ShoppingBag className="h-4 w-4" />}
-          {justAdded ? "Added" : "+ Add To Cart"}
-        </button>
+        {/* Add To Cart — out-of-stock shows Notify Me */}
+        {product.inStock === false ? (
+          <button
+            type="button"
+            onClick={(e) => { e.preventDefault() }}
+            className="mt-3 w-full flex items-center justify-center gap-2 h-10 rounded-full font-semibold text-sm text-white transition-opacity hover:opacity-90"
+            style={{ background: "#1A1A1A" }}
+          >
+            <BellRing className="h-4 w-4" />
+            Notify Me
+          </button>
+        ) : (
+          <button
+            type="button"
+            aria-live="polite"
+            onClick={() => {
+              addItem(product)
+              setJustAdded(true)
+              window.setTimeout(() => setJustAdded(false), 1400)
+            }}
+            onMouseEnter={() => setHoverBtn(true)}
+            onMouseLeave={() => setHoverBtn(false)}
+            className="mt-3 w-full flex items-center justify-center gap-1.5 h-10 rounded-full font-semibold text-sm transition-all duration-200"
+            style={
+              justAdded
+                ? { background: "#15803D", color: "white", border: "none" }
+                : hoverBtn
+                  ? {
+                      background: `linear-gradient(135deg, ${ACCENT_ORANGE} 0%, ${ACCENT_RED} 100%)`,
+                      color: "white",
+                      border: "none",
+                      boxShadow: "0 8px 20px -8px rgba(185,28,28,0.5)",
+                    }
+                  : { background: "transparent", color: "#1A1A1A", border: "1.5px solid #D8D8D8" }
+            }
+          >
+            {justAdded ? <Check className="h-4 w-4" /> : <ShoppingBag className="h-4 w-4" />}
+            {justAdded ? "Added" : "+ Add To Cart"}
+          </button>
+        )}
       </div>
     </div>
   )

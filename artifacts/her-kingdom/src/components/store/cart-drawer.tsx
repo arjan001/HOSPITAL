@@ -61,24 +61,53 @@ export function CartDrawer() {
 
         {/* Empty state */}
         {items.length === 0 ? (
-          <div className="flex-1 flex flex-col items-center justify-center gap-5 p-8">
-            <div
-              className="w-20 h-20 rounded-full flex items-center justify-center"
-              style={{ background: PEACH_LIGHT }}
-            >
-              <ShoppingBag className="h-9 w-9" style={{ color: WINE_CARD }} />
+          <div className="flex-1 flex flex-col bg-white px-6 py-10">
+            <div className="flex-1 flex flex-col items-center justify-center text-center">
+              <div
+                className="w-20 h-20 rounded-full flex items-center justify-center mb-6"
+                style={{ background: "#F3F4F6" }}
+              >
+                <ShoppingBag className="h-9 w-9" style={{ color: "#9CA3AF" }} strokeWidth={1.5} />
+              </div>
+              <p className="font-bold text-xl" style={{ color: WINE }}>This is a bit empty</p>
+              <p className="text-sm mt-2 max-w-xs" style={{ color: "#6b7280" }}>
+                Let's start adding items to your shopping bag
+              </p>
+              <button
+                onClick={() => setIsCartOpen(false)}
+                className="mt-6 w-full max-w-xs h-12 rounded-full text-sm font-bold text-white transition-opacity hover:opacity-90"
+                style={{ background: WINE }}
+              >
+                Start Shopping
+              </button>
             </div>
-            <div className="text-center">
-              <p className="font-bold" style={{ color: WINE }}>Your cart is empty</p>
-              <p className="text-sm mt-1" style={{ color: "#6b7280" }}>Add some medicines to get started</p>
+
+            {/* Divider with OR */}
+            <div className="flex items-center gap-3 my-6 max-w-xs mx-auto w-full">
+              <div className="flex-1 h-px" style={{ background: "#E5E7EB" }} />
+              <span className="text-xs font-medium" style={{ color: "#9CA3AF" }}>OR</span>
+              <div className="flex-1 h-px" style={{ background: "#E5E7EB" }} />
             </div>
-            <button
-              onClick={() => setIsCartOpen(false)}
-              className="px-6 py-2.5 rounded-full text-sm font-bold text-white transition-opacity hover:opacity-85"
-              style={{ background: WINE_CARD }}
-            >
-              Browse Shop
-            </button>
+
+            {/* Sign in / Create Account */}
+            <div className="flex flex-col gap-3 max-w-xs mx-auto w-full pb-4">
+              <Link
+                href="/account/login"
+                onClick={() => setIsCartOpen(false)}
+                className="h-12 rounded-full text-sm font-bold text-white flex items-center justify-center transition-opacity hover:opacity-90"
+                style={{ background: WINE }}
+              >
+                Sign in
+              </Link>
+              <Link
+                href="/account/register"
+                onClick={() => setIsCartOpen(false)}
+                className="h-12 rounded-full text-sm font-bold flex items-center justify-center transition-colors hover:bg-[#FFF6EE]"
+                style={{ background: "#fff", border: `1.5px solid ${WINE}`, color: WINE }}
+              >
+                Create Account
+              </Link>
+            </div>
           </div>
         ) : (
           <>

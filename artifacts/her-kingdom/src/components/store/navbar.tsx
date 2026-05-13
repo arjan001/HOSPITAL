@@ -259,11 +259,11 @@ export function Navbar() {
               >
                 <button
                   type="button"
-                  className="inline-flex items-center gap-1.5 text-sm font-semibold transition-opacity hover:opacity-80"
+                  className="inline-flex flex-col items-center gap-0.5 transition-opacity hover:opacity-80"
                   style={{ color: TEXT_WINE }}
                 >
                   <User className="h-5 w-5" style={{ color: ACCENT_RED }} />
-                  <span>Account</span>
+                  <span className="text-[11px] font-semibold leading-none">Account</span>
                 </button>
 
                 {/* Account dropdown — broad white card matching reference */}
@@ -370,7 +370,7 @@ export function Navbar() {
 
               <Link
                 href="/wishlist"
-                className="hidden md:inline-flex items-center gap-2 text-sm font-semibold transition-opacity hover:opacity-80"
+                className="hidden md:inline-flex flex-col items-center gap-0.5 transition-opacity hover:opacity-80"
                 style={{ color: TEXT_WINE }}
                 aria-label={`Wishlist with ${wishlistCount} items`}
               >
@@ -385,13 +385,13 @@ export function Navbar() {
                     </span>
                   )}
                 </span>
-                <span>My wishlist</span>
+                <span className="text-[11px] font-semibold leading-none">Wishlist</span>
               </Link>
 
               <button
                 type="button"
                 onClick={() => setIsCartOpen(true)}
-                className="hidden md:inline-flex items-center gap-2 text-sm font-semibold transition-opacity hover:opacity-80"
+                className="hidden md:inline-flex flex-col items-center gap-0.5 transition-opacity hover:opacity-80"
                 style={{ color: TEXT_WINE }}
                 aria-label="Open cart"
               >
@@ -406,7 +406,7 @@ export function Navbar() {
                     </span>
                   )}
                 </span>
-                <span>Cart</span>
+                <span className="text-[11px] font-semibold leading-none">Cart</span>
               </button>
 
               {/* Mobile wishlist + cart icons */}
