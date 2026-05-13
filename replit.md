@@ -34,7 +34,9 @@ _Describe the high-level user-facing capabilities of this app once they exist._
 
 ## User preferences
 
-_Populate as you build — explicit user instructions worth remembering across sessions._
+- **Customer auth (login/registration): use Clerk.** To be implemented later as a dedicated task. Until then, leave the placeholder `/account/login`, `/account/register`, `/account/verify-phone`, `/account/email-verified` routes in place — do not build a custom auth flow.
+- **Visual style:** clean white / Medilazar-style for product surfaces (modals, cards). Reserve the wine palette (`#3D0814`, `#6B0F1A`) for primary brand chrome (header, hero, footer band) and use the orange/red accent (`#F97316` / `#B91C1C`) for CTAs. No emojis, no "AI vibe" gradients on content surfaces.
+- **References:** MyDawa and Medilazar for pharmacy UX patterns.
 
 ## Gotchas
 
