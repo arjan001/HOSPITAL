@@ -67,27 +67,6 @@ const CARE_PACKS: CarePack[] = [
     href: "/shop?category=acute-care",
     image: "/newsletter-pills.png",
   },
-  {
-    title: "Digestive Health Pack",
-    description: "Gut comfort essentials for the whole family.",
-    price: "KSH 6,500",
-    href: "/shop?category=wellness",
-    image: "/newsletter-pills.png",
-  },
-  {
-    title: "Infection Recovery Pack",
-    description: "Antibiotics and immune support, dispensed safely.",
-    price: "KSH 6,500",
-    href: "/shop?category=acute-care",
-    image: "/newsletter-pills.png",
-  },
-  {
-    title: "Family First Aid Pack",
-    description: "Stocked first-aid kit ready for any home or trip.",
-    price: "KSH 6,500",
-    href: "/shop?category=first-aid",
-    image: "/newsletter-pills.png",
-  },
 ]
 
 type DeviceItem = {
@@ -201,12 +180,15 @@ function CarePackCard({ pack }: { pack: CarePack }) {
         style={{ background: "#FFF1E6" }}
       >
         <ProductImage src={pack.image} alt={pack.title} fill loaderSize="md" />
-        <span
-          className="absolute top-2 right-2 w-8 h-8 rounded-full flex items-center justify-center text-white shadow-md"
+        <Link
+          href={pack.href}
+          aria-label={`Preview ${pack.title}`}
+          title={`Preview ${pack.title}`}
+          className="absolute top-2 right-2 w-8 h-8 rounded-full flex items-center justify-center text-white shadow-md transition-transform hover:scale-110 z-10"
           style={{ background: ACCENT_RED }}
         >
           <Eye className="h-4 w-4" />
-        </span>
+        </Link>
       </div>
 
       <h4 className="text-sm font-bold text-center" style={{ color: TEXT_WINE }}>

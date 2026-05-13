@@ -96,8 +96,11 @@ export function QuickViewModal() {
 }
 
 function QuickViewBody({ slug, onClose }: { slug: string; onClose: () => void }) {
-  // Fetch single product
-  const { data, error, isLoading } = useSWR<Product>(`/api/products/${slug}`, safeFetcher)
+  // Fetch single product — API returns { product, related }
+  const { data, error, isLoading } = useSWR<{ product: Product; related?: Product[] }>(
+    `/api/products/${slug}`,
+    safeFetcher,
+  )
 
   // Tiny minimum-display delay so the spinner is visible (avoids flash on cached responses)
   const [minDelayDone, setMinDelayDone] = useState(false)
@@ -108,9 +111,9 @@ function QuickViewBody({ slug, onClose }: { slug: string; onClose: () => void })
   }, [slug])
 
   if (isLoading || !minDelayDone) return <QuickViewLoader />
-  if (error || !data) return <QuickViewError onClose={onClose} />
+  if (error || !data?.product) return <QuickViewError onClose={onClose} />
 
-  return <QuickViewContent product={data} onClose={onClose} />
+  return <QuickViewContent product={data.product} onClose={onClose} />
 }
 
 function QuickViewLoader() {
