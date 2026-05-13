@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from "react"
 import { apiFetch, authedFetcher as fetcher } from "@/lib/api-client"
 
 import { toast } from "sonner"
-import { Plus, Pencil, Trash2, X, Upload, Search, Download, FileUp, ImagePlus, Loader2, Eye } from "lucide-react"
+import { Plus, Pencil, Trash2, X, Upload, Search, Download, FileUp, ImagePlus, Loader2, Eye, AlertTriangle, PackageX, PackageCheck } from "lucide-react"
 import { AdminShell } from "./admin-shell"
 import { formatPrice } from "@/lib/format"
 import { isVideoUrl } from "@/lib/media-utils"
@@ -39,6 +39,8 @@ interface ProductForm {
   isOnOffer: boolean
   offerPercentage: string
   inStock: boolean
+  stockCount: string
+  lowStockThreshold: string
   variations: ProductVariation[]
   tags: string
 }
@@ -55,6 +57,8 @@ const emptyForm: ProductForm = {
   isOnOffer: false,
   offerPercentage: "",
   inStock: true,
+  stockCount: "0",
+  lowStockThreshold: "5",
   variations: [],
   tags: "",
 }
@@ -81,6 +85,21 @@ export function AdminProducts() {
   const [isUploading, setIsUploading] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [previewProduct, setPreviewProduct] = useState<Product | null>(null)
+  const [stockFilter, setStockFilter] = useState<"all" | "low" | "out" | "ok" | "untracked">("all")
+
+  function stockStatus(p: Product): "out" | "low" | "ok" | "untracked" {
+    if (!p.inStock) return "out"
+    if (p.stockCount === undefined || p.stockCount === null) return "untracked"
+    const count = p.stockCount
+    const threshold = p.lowStockThreshold ?? 5
+    if (count <= 0) return "out"
+    if (count <= threshold) return "low"
+    return "ok"
+  }
+
+  const lowStockCount = products.filter((p) => stockStatus(p) === "low").length
+  const outOfStockCount = products.filter((p) => stockStatus(p) === "out").length
+  const untrackedCount = products.filter((p) => stockStatus(p) === "untracked").length
 
   const filtered = products.filter((p) => {
     const matchesSearch =
@@ -88,7 +107,8 @@ export function AdminProducts() {
       p.category.toLowerCase().includes(searchQuery.toLowerCase())
     const matchesCategory =
       categoryFilter === "all" || p.categorySlug === categoryFilter
-    return matchesSearch && matchesCategory
+    const matchesStock = stockFilter === "all" || stockStatus(p) === stockFilter
+    return matchesSearch && matchesCategory && matchesStock
   })
 
   const { paginatedItems, currentPage, totalPages, totalItems, itemsPerPage, goToPage, changePerPage } = usePagination(filtered, { defaultPerPage: 20 })
@@ -113,6 +133,8 @@ export function AdminProducts() {
       isOnOffer: product.isOnOffer || false,
       offerPercentage: product.offerPercentage?.toString() || "",
       inStock: product.inStock,
+      stockCount: (product.stockCount ?? 0).toString(),
+      lowStockThreshold: (product.lowStockThreshold ?? 5).toString(),
       variations: product.variations ? [...product.variations] : [],
       tags: product.tags.join(", "),
     })
@@ -139,6 +161,8 @@ export function AdminProducts() {
       isOnOffer: form.isOnOffer,
       offerPercentage: form.offerPercentage ? Number.parseInt(form.offerPercentage) : 0,
       inStock: form.inStock,
+      stockCount: Number.parseInt(form.stockCount) || 0,
+      lowStockThreshold: Number.parseInt(form.lowStockThreshold) || 0,
       variations: form.variations,
       tags: form.tags.split(",").map((t) => t.trim()).filter(Boolean),
     }
@@ -491,6 +515,58 @@ export function AdminProducts() {
           )}
         </div>
 
+        {/* Stock filter chips */}
+        <div className="flex items-center gap-2 flex-wrap">
+          {([
+            { key: "all", label: `All ${products.length}` },
+            { key: "ok",  label: `In stock ${products.filter((p) => stockStatus(p) === "ok").length}` },
+            { key: "low", label: `Low ${lowStockCount}` },
+            { key: "out", label: `Out ${outOfStockCount}` },
+            ...(untrackedCount > 0 ? [{ key: "untracked" as const, label: `Untracked ${untrackedCount}` }] : []),
+          ] as const).map((c) => {
+            const active = stockFilter === c.key
+            const tone =
+              c.key === "low" ? "text-amber-700 border-amber-300 bg-amber-50" :
+              c.key === "out" ? "text-red-700 border-red-300 bg-red-50" :
+              c.key === "ok"  ? "text-green-700 border-green-300 bg-green-50" :
+              c.key === "untracked" ? "text-muted-foreground border-border bg-secondary" :
+              "text-muted-foreground border-border bg-background"
+            return (
+              <button
+                key={c.key}
+                type="button"
+                onClick={() => setStockFilter(c.key)}
+                className={`text-xs px-3 py-1.5 rounded-full border transition-colors ${
+                  active ? "bg-foreground text-background border-foreground" : `${tone} hover:opacity-90`
+                }`}
+              >
+                {c.label}
+              </button>
+            )
+          })}
+        </div>
+
+        {/* Stock alert banner */}
+        {(lowStockCount > 0 || outOfStockCount > 0) && stockFilter === "all" && (
+          <div className="border border-amber-200 bg-amber-50 rounded-md p-3 flex items-start gap-3">
+            <AlertTriangle className="h-4 w-4 text-amber-700 mt-0.5 flex-shrink-0" />
+            <div className="text-sm text-amber-900 flex-1">
+              <span className="font-semibold">Stock attention needed.</span>{" "}
+              {outOfStockCount > 0 && (
+                <button type="button" onClick={() => setStockFilter("out")} className="underline underline-offset-2 mr-3">
+                  {outOfStockCount} out of stock
+                </button>
+              )}
+              {lowStockCount > 0 && (
+                <button type="button" onClick={() => setStockFilter("low")} className="underline underline-offset-2">
+                  {lowStockCount} running low
+                </button>
+              )}
+              <span className="block text-xs text-amber-800/80 mt-0.5">Refill or hide these before customers see "out of stock" pages.</span>
+            </div>
+          </div>
+        )}
+
         {/* Bulk Actions */}
         {selectedIds.size > 0 && (
           <div className="flex items-center gap-3 bg-secondary p-3 rounded-sm">
@@ -517,6 +593,7 @@ export function AdminProducts() {
                   <th className="text-left px-4 py-3 font-medium">Product</th>
                   <th className="text-left px-4 py-3 font-medium hidden sm:table-cell">Category</th>
                   <th className="text-left px-4 py-3 font-medium">Price</th>
+                  <th className="text-left px-4 py-3 font-medium">Stock</th>
                   <th className="text-left px-4 py-3 font-medium hidden md:table-cell">Status</th>
                   <th className="text-right px-4 py-3 font-medium">Actions</th>
                 </tr>
@@ -550,6 +627,43 @@ export function AdminProducts() {
                         )}
                       </div>
                     </td>
+                    <td className="px-4 py-3">
+                      {(() => {
+                        const status = stockStatus(product)
+                        const count = product.stockCount ?? 0
+                        if (status === "out") {
+                          return (
+                            <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-red-700 bg-red-50 border border-red-200 px-2 py-1 rounded-sm">
+                              <PackageX className="h-3 w-3" /> Out of stock
+                            </span>
+                          )
+                        }
+                        if (status === "low") {
+                          return (
+                            <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-1 rounded-sm">
+                              <AlertTriangle className="h-3 w-3" /> Low — {count} left
+                            </span>
+                          )
+                        }
+                        if (status === "untracked") {
+                          return (
+                            <button
+                              type="button"
+                              onClick={() => openEdit(product)}
+                              className="inline-flex items-center gap-1 text-[11px] font-medium text-muted-foreground bg-secondary border border-border px-2 py-1 rounded-sm hover:bg-secondary/70"
+                              title="Set quantity"
+                            >
+                              <PackageCheck className="h-3 w-3" /> Set qty
+                            </button>
+                          )
+                        }
+                        return (
+                          <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-green-700 bg-green-50 border border-green-200 px-2 py-1 rounded-sm">
+                            <PackageCheck className="h-3 w-3" /> {count} in stock
+                          </span>
+                        )
+                      })()}
+                    </td>
                     <td className="px-4 py-3 hidden md:table-cell">
                       <div className="flex items-center gap-2">
                         {product.isNew && (
@@ -560,11 +674,6 @@ export function AdminProducts() {
                         {product.isOnOffer && (
                           <span className="text-[10px] font-semibold bg-foreground text-background px-2 py-0.5 uppercase tracking-wider">
                             Offer
-                          </span>
-                        )}
-                        {!product.inStock && (
-                          <span className="text-[10px] font-semibold bg-secondary text-muted-foreground px-2 py-0.5 uppercase tracking-wider">
-                            Out of Stock
                           </span>
                         )}
                       </div>
@@ -800,12 +909,55 @@ export function AdminProducts() {
               <Input value={form.tags} onChange={(e) => setForm({ ...form, tags: e.target.value })} placeholder="thrift, vintage, high-waist" />
             </div>
 
-            {/* Toggles */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-              <div className="flex items-center gap-2">
-                <Switch checked={form.inStock} onCheckedChange={(checked) => setForm({ ...form, inStock: checked })} />
-                <Label className="text-sm">In Stock</Label>
+            {/* Inventory */}
+            <div className="border border-border rounded-md p-4 bg-secondary/30 space-y-3">
+              <div className="flex items-center justify-between">
+                <Label className="text-sm font-semibold">Inventory</Label>
+                {(() => {
+                  const count = Number.parseInt(form.stockCount) || 0
+                  const threshold = Number.parseInt(form.lowStockThreshold) || 0
+                  if (count <= 0) return <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-sm bg-red-100 text-red-800">Out of Stock</span>
+                  if (count <= threshold) return <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-sm bg-amber-100 text-amber-800">Low Stock — {count} left</span>
+                  return <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-sm bg-green-100 text-green-800">In Stock — {count}</span>
+                })()}
               </div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <Label className="text-xs text-muted-foreground mb-1.5 block">Quantity in stock</Label>
+                  <Input
+                    type="number"
+                    min="0"
+                    value={form.stockCount}
+                    onChange={(e) => {
+                      const next = e.target.value
+                      const n = Number.parseInt(next) || 0
+                      setForm({ ...form, stockCount: next, inStock: n > 0 })
+                    }}
+                    placeholder="0"
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs text-muted-foreground mb-1.5 block">Low-stock alert at</Label>
+                  <Input
+                    type="number"
+                    min="0"
+                    value={form.lowStockThreshold}
+                    onChange={(e) => setForm({ ...form, lowStockThreshold: e.target.value })}
+                    placeholder="5"
+                  />
+                </div>
+                <div className="flex items-end gap-2 pb-1">
+                  <Switch checked={form.inStock} onCheckedChange={(checked) => setForm({ ...form, inStock: checked })} />
+                  <Label className="text-sm">Available for purchase</Label>
+                </div>
+              </div>
+              <p className="text-[11px] text-muted-foreground leading-relaxed">
+                Storefront shows an "Only X left" warning when stock drops to the threshold. At 0 the product is automatically marked out of stock.
+              </p>
+            </div>
+
+            {/* Toggles */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
               <div className="flex items-center gap-2">
                 <Switch checked={form.isNew} onCheckedChange={(checked) => setForm({ ...form, isNew: checked })} />
                 <Label className="text-sm">New</Label>
@@ -1065,11 +1217,14 @@ export function AdminProducts() {
                       {previewProduct.offerPercentage ? `${previewProduct.offerPercentage}% Off` : "Offer"}
                     </span>
                   )}
-                  {previewProduct.inStock ? (
-                    <span className="text-[10px] font-semibold text-green-700 bg-green-100 px-2 py-0.5 uppercase tracking-wider rounded-sm">In Stock</span>
-                  ) : (
-                    <span className="text-[10px] font-semibold text-destructive bg-destructive/10 px-2 py-0.5 uppercase tracking-wider rounded-sm">Out of Stock</span>
-                  )}
+                  {(() => {
+                    const status = stockStatus(previewProduct)
+                    const count = previewProduct.stockCount ?? 0
+                    if (status === "out") return <span className="text-[10px] font-semibold text-destructive bg-destructive/10 px-2 py-0.5 uppercase tracking-wider rounded-sm">Out of Stock</span>
+                    if (status === "low") return <span className="text-[10px] font-semibold text-amber-700 bg-amber-100 px-2 py-0.5 uppercase tracking-wider rounded-sm">Only {count} Left</span>
+                    if (status === "untracked") return <span className="text-[10px] font-semibold text-green-700 bg-green-100 px-2 py-0.5 uppercase tracking-wider rounded-sm">In Stock</span>
+                    return <span className="text-[10px] font-semibold text-green-700 bg-green-100 px-2 py-0.5 uppercase tracking-wider rounded-sm">{count} In Stock</span>
+                  })()}
                 </div>
               </div>
 
