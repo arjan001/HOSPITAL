@@ -28,7 +28,7 @@ export function Newsletter() {
   }
 
   return (
-    <section className="py-8 lg:py-10" style={{ background: DEEP_RED }}>
+    <section className="py-10 lg:py-14" style={{ background: DEEP_RED }}>
       <div className="mx-auto max-w-7xl px-4 lg:px-8">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-center">
           {/* Copy + form */}
@@ -69,7 +69,7 @@ export function Newsletter() {
             <img
               src="/newsletter-pills.png"
               alt="Assorted medication bottles, pills and capsules"
-              className="w-full max-w-md h-auto max-h-[240px] object-contain drop-shadow-2xl"
+              className="w-full max-w-lg h-auto object-contain drop-shadow-2xl"
             />
           </div>
         </div>
