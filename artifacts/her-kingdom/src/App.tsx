@@ -45,6 +45,9 @@ import { AdminCustomPages } from "@/components/admin/custom-pages";
 import { AdminFooterCms } from "@/components/admin/footer-cms";
 import { AdminWebsiteSettings } from "@/components/admin/website-settings";
 import { AdminPopupOffer } from "@/components/admin/popup-offer";
+import { AdminPrescriptions } from "@/components/admin/prescriptions";
+import { AdminRolesPermissions } from "@/components/admin/roles-permissions";
+import { AdminConsultations } from "@/components/admin/consultations";
 import { PopupOffer } from "@/components/store/popup-offer";
 
 // Auth pages (admin)
@@ -206,6 +209,9 @@ function Router() {
       <Route path="/admin/footer" component={AdminFooterCms} />
       <Route path="/admin/website-settings" component={AdminWebsiteSettings} />
       <Route path="/admin/popup-offer" component={AdminPopupOffer} />
+      <Route path="/admin/prescriptions" component={AdminPrescriptions} />
+      <Route path="/admin/roles" component={AdminRolesPermissions} />
+      <Route path="/admin/consultations" component={AdminConsultations} />
       <Route component={NotFound} />
     </Switch>
   );

@@ -27,6 +27,9 @@ import {
   BookOpen,
   Layers,
   Megaphone as MegaphoneAlt,
+  ClipboardList,
+  Stethoscope,
+  Shield,
 } from "lucide-react"
 
 type NavItem = {
@@ -101,6 +104,9 @@ const navItems: NavItem[] = [
   { label: "Gifts", href: "/admin/gifts", icon: Gift, group: "Catalog" },
   { label: "Delivery", href: "/admin/delivery-locations", icon: Truck, group: "Catalog" },
 
+  { label: "Prescriptions", href: "/admin/prescriptions", icon: ClipboardList, group: "Pharmacy" },
+  { label: "Consultations", href: "/admin/consultations", icon: Stethoscope, group: "Pharmacy" },
+
   { label: "Announcement Bar", href: "/admin/announcement", icon: MegaphoneAlt, group: "Storefront CMS" },
   { label: "Offers & Banners", href: "/admin/banners", icon: ImageIcon, group: "Storefront CMS" },
   { label: "Custom Pages", href: "/admin/pages", icon: FileText, group: "Storefront CMS" },
@@ -112,6 +118,7 @@ const navItems: NavItem[] = [
   { label: "Popup Offer", href: "/admin/popup-offer", icon: Megaphone, group: "Marketing" },
 
   { label: "Users & Roles", href: "/admin/users", icon: Users, group: "System" },
+  { label: "Roles & Permissions", href: "/admin/roles", icon: Shield, group: "System" },
   { label: "Website Settings", href: "/admin/website-settings", icon: Settings, group: "System" },
   { label: "Settings", href: "/admin/settings", icon: Settings, group: "System" },
 ]

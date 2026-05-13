@@ -124,7 +124,7 @@ export function AdminAnalytics() {
     const fetchRealtime = () => {
       apiFetch("/api/admin/analytics/realtime")
         .then((r) => r.json())
-        .then((data) => setRealTimeUsers(data.activeUsers || 0))
+        .then((data) => setRealTimeUsers(data.activeVisitors ?? data.activeUsers ?? 0))
         .catch(() => setRealTimeUsers(0))
     }
     fetchRealtime()
@@ -138,17 +138,17 @@ export function AdminAnalytics() {
   const totalOrders = orders.length
   const totalSales = salesOrders.length
 
-  const viewChange = analytics ? Math.round(((analytics.humanViewCount - analytics.previousPeriodViews) / Math.max(analytics.previousPeriodViews, 1)) * 100) : 0
+  const viewChange = analytics ? Math.round((((analytics.humanViewCount ?? 0) - (analytics.previousPeriodViews ?? 0)) / Math.max(analytics.previousPeriodViews ?? 0, 1)) * 100) : 0
 
   const stats = [
-    { label: "Real Visitors", value: analytics?.humanViewCount.toString() || "0", change: `${viewChange >= 0 ? "+" : ""}${viewChange}% vs prev period`, up: viewChange >= 0, icon: Users },
-    { label: "Unique Sessions", value: analytics?.uniqueSessions.toString() || "0", change: `${analytics?.bounceRate || 0}% bounce rate`, up: (analytics?.bounceRate || 0) < 50, icon: Eye },
-    { label: "Avg. Time on Page", value: formatDuration(analytics?.avgDuration || 0), change: `${analytics?.avgScrollDepth || 0}% avg scroll depth`, up: (analytics?.avgDuration || 0) > 30, icon: Clock },
+    { label: "Real Visitors", value: (analytics?.humanViewCount ?? 0).toString(), change: `${viewChange >= 0 ? "+" : ""}${viewChange}% vs prev period`, up: viewChange >= 0, icon: Users },
+    { label: "Unique Sessions", value: (analytics?.uniqueSessions ?? 0).toString(), change: `${analytics?.bounceRate ?? 0}% bounce rate`, up: (analytics?.bounceRate ?? 0) < 50, icon: Eye },
+    { label: "Avg. Time on Page", value: formatDuration(analytics?.avgDuration ?? 0), change: `${analytics?.avgScrollDepth ?? 0}% avg scroll depth`, up: (analytics?.avgDuration ?? 0) > 30, icon: Clock },
     { label: "Active Now", value: realTimeUsers.toString(), change: "Real-time visitors", up: realTimeUsers > 0, icon: Activity },
     { label: "Sales Revenue", value: formatPrice(totalRevenue), change: `${totalSales} confirmed sales`, up: totalSales > 0, icon: DollarSign },
     { label: "Total Orders", value: totalOrders.toString(), change: `${orders.filter(o => o.status === "pending").length} pending`, up: true, icon: ShoppingBag },
-    { label: "Total Clicks", value: analytics?.totalClicks.toString() || "0", change: "Button & link clicks", up: true, icon: MousePointerClick },
-    { label: "Bot Traffic", value: `${analytics?.botTraffic.percentage || 0}%`, change: `${analytics?.botViewCount || 0} bot visits filtered`, up: (analytics?.botTraffic.percentage || 0) < 20, icon: Bot },
+    { label: "Total Clicks", value: (analytics?.totalClicks ?? 0).toString(), change: "Button & link clicks", up: true, icon: MousePointerClick },
+    { label: "Bot Traffic", value: `${analytics?.botTraffic?.percentage ?? 0}%`, change: `${analytics?.botViewCount ?? 0} bot visits filtered`, up: (analytics?.botTraffic?.percentage ?? 0) < 20, icon: Bot },
   ]
 
   // Revenue by month from confirmed sales only
@@ -195,8 +195,8 @@ export function AdminAnalytics() {
     .sort((a, b) => b.revenue - a.revenue)
     .slice(0, 6)
 
-  // Recent activity
-  const recentActivity = orders
+  // Recent activity (clone before sort — orders is SWR-cached, mutating leaks to other consumers)
+  const recentActivity = [...orders]
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
     .map((o) => {
       const statusAction = o.status === "pending" ? "New order" : o.status === "dispatched" ? "Order dispatched" : o.status === "delivered" ? "Order delivered" : `Order ${o.status}`
@@ -806,7 +806,7 @@ export function AdminAnalytics() {
                 <div className="flex items-center gap-2 text-xs text-muted-foreground uppercase tracking-wider mb-2">
                   <BarChart3 className="h-3.5 w-3.5" /> Bot Percentage
                 </div>
-                <p className="text-2xl font-bold">{analytics?.botTraffic.percentage || 0}%</p>
+                <p className="text-2xl font-bold">{analytics?.botTraffic?.percentage ?? 0}%</p>
                 <p className="text-xs text-muted-foreground mt-1">Of total traffic is automated</p>
               </div>
             </div>
@@ -849,27 +849,27 @@ export function AdminAnalytics() {
                 <div className="flex items-center gap-2 text-xs text-muted-foreground uppercase tracking-wider mb-2">
                   <ShoppingCart className="h-3.5 w-3.5" /> Abandoned Carts
                 </div>
-                <p className="text-2xl font-bold">{analytics?.abandonedCheckouts.total || 0}</p>
+                <p className="text-2xl font-bold">{analytics?.abandonedCheckouts?.total ?? 0}</p>
                 <p className="text-xs text-muted-foreground mt-1">Incomplete checkouts</p>
               </div>
               <div className="border border-border p-5 rounded-sm">
                 <div className="flex items-center gap-2 text-xs text-muted-foreground uppercase tracking-wider mb-2">
                   <DollarSign className="h-3.5 w-3.5" /> Lost Revenue
                 </div>
-                <p className="text-2xl font-bold">{formatPrice(analytics?.abandonedCheckouts.value || 0)}</p>
+                <p className="text-2xl font-bold">{formatPrice(analytics?.abandonedCheckouts?.value ?? 0)}</p>
                 <p className="text-xs text-muted-foreground mt-1">Potential revenue left behind</p>
               </div>
               <div className="border border-border p-5 rounded-sm">
                 <div className="flex items-center gap-2 text-xs text-muted-foreground uppercase tracking-wider mb-2">
                   <TrendingUp className="h-3.5 w-3.5" /> Recovered
                 </div>
-                <p className="text-2xl font-bold">{analytics?.abandonedCheckouts.recovered || 0}</p>
+                <p className="text-2xl font-bold">{analytics?.abandonedCheckouts?.recovered ?? 0}</p>
                 <p className="text-xs text-muted-foreground mt-1">Completed after abandoning</p>
               </div>
             </div>
 
             {/* Abandonment by Reason */}
-            {analytics?.abandonedCheckouts.byReason && Object.keys(analytics.abandonedCheckouts.byReason).length > 0 && (
+            {analytics?.abandonedCheckouts?.byReason && Object.keys(analytics.abandonedCheckouts.byReason).length > 0 && (
               <div className="border border-border rounded-sm">
                 <div className="px-5 py-3 border-b border-border">
                   <h2 className="text-sm font-semibold flex items-center gap-2">
@@ -905,7 +905,7 @@ export function AdminAnalytics() {
             )}
 
             {/* Abandonment by Step */}
-            {analytics?.abandonedCheckouts.byStep && Object.keys(analytics.abandonedCheckouts.byStep).length > 0 && (
+            {analytics?.abandonedCheckouts?.byStep && Object.keys(analytics.abandonedCheckouts.byStep).length > 0 && (
               <div className="border border-border rounded-sm">
                 <div className="px-5 py-3 border-b border-border">
                   <h2 className="text-sm font-semibold flex items-center gap-2">
@@ -939,9 +939,9 @@ export function AdminAnalytics() {
                 <h2 className="text-sm font-semibold">Recent Abandoned Checkouts</h2>
               </div>
               <div className="divide-y divide-border">
-                {(analytics?.abandonedCheckouts.recent || []).length === 0 ? (
+                {(analytics?.abandonedCheckouts?.recent || []).length === 0 ? (
                   <div className="px-5 py-8 text-center text-sm text-muted-foreground">No abandoned checkouts yet</div>
-                ) : (analytics?.abandonedCheckouts.recent || []).map((a) => (
+                ) : (analytics?.abandonedCheckouts?.recent || []).map((a) => (
                   <div key={a.id} className="flex items-center justify-between px-5 py-3">
                     <div>
                       <p className="text-sm font-medium">{a.customerName}</p>
