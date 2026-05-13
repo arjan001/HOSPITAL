@@ -26,6 +26,7 @@ import { ProductCard } from "./product-card"
 import { QuickViewProvider } from "@/lib/quick-view-context"
 import { QuickViewModal } from "./quick-view-modal"
 import type { Product, Category } from "@/lib/types"
+import { useCategories } from "@/components/admin/categories"
 import { Slider } from "@/components/ui/slider"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
@@ -339,9 +340,8 @@ export function ShopPage({ seoIntro }: { seoIntro?: ReactNode } = {}) {
   const tagParam = searchParams.get("tag") || ""
 
   const { data: productsData } = useSWR<Product[]>("/api/products", safeFetcher)
-  const { data: categoriesData } = useSWR<Category[]>("/api/categories", safeFetcher)
   const products = asArray<Product>(productsData)
-  const categories = asArray<Category>(categoriesData)
+  const categories = useCategories()
 
   const isShopAll = !categoryParam && !filterParam && !queryParam
 

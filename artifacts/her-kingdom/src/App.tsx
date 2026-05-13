@@ -4,7 +4,6 @@ import { Toaster } from "@/components/ui/sonner";
 import NotFound from "@/pages/not-found";
 import { CartProvider } from "@/lib/cart-context";
 import { WishlistProvider } from "@/lib/wishlist-context";
-import { GiftProvider } from "@/lib/gift-context";
 import { PageViewTracker } from "@/components/page-view-tracker";
 
 // Store pages (lazy via direct imports)
@@ -32,7 +31,6 @@ import { AdminBlogs } from "@/components/admin/blogs";
 import { AdminCardDetails } from "@/components/admin/card-details";
 import { AdminCategories } from "@/components/admin/categories";
 import { AdminDelivery } from "@/components/admin/delivery";
-import { AdminGifts } from "@/components/admin/gifts";
 import { NewsletterComponent as AdminNewsletter } from "@/components/admin/newsletter";
 import { AdminOrders } from "@/components/admin/orders";
 import { AdminPayments } from "@/components/admin/payments";
@@ -60,6 +58,7 @@ import AccountLoginPage from "@/pages/account/login";
 import AccountRegisterPage from "@/pages/account/register";
 import VerifyPhonePage from "@/pages/account/verify-phone";
 import EmailVerifiedPage from "@/pages/account/email-verified";
+import AccountSettingsPage from "@/pages/account/settings";
 import UploadPrescriptionPage from "@/pages/upload-prescription";
 import SpeakToADoctorPage from "@/pages/speak-to-a-doctor";
 
@@ -187,6 +186,7 @@ function Router() {
       <Route path="/account/register" component={AccountRegisterPage} />
       <Route path="/account/verify-phone" component={VerifyPhonePage} />
       <Route path="/account/email-verified" component={EmailVerifiedPage} />
+      <Route path="/account/settings" component={AccountSettingsPage} />
       <Route path="/upload-prescription" component={UploadPrescriptionPage} />
       <Route path="/speak-to-a-doctor" component={SpeakToADoctorPage} />
       {/* Admin */}
@@ -197,7 +197,6 @@ function Router() {
       <Route path="/admin/card-details" component={AdminCardDetails} />
       <Route path="/admin/categories" component={AdminCategories} />
       <Route path="/admin/delivery-locations" component={AdminDelivery} />
-      <Route path="/admin/gifts" component={AdminGifts} />
       <Route path="/admin/newsletter" component={AdminNewsletter} />
       <Route path="/admin/orders" component={AdminOrders} />
       <Route path="/admin/payments">{() => <AdminPayments />}</Route>
@@ -228,14 +227,12 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <WishlistProvider>
         <CartProvider>
-          <GiftProvider>
-            <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
-              <Router />
-              <GlobalOverlays />
-              <PageViewTracker />
-            </WouterRouter>
-            <Toaster position="top-right" richColors closeButton />
-          </GiftProvider>
+          <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
+            <Router />
+            <GlobalOverlays />
+            <PageViewTracker />
+          </WouterRouter>
+          <Toaster position="top-right" richColors closeButton />
         </CartProvider>
       </WishlistProvider>
     </QueryClientProvider>

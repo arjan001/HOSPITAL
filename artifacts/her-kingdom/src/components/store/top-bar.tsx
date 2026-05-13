@@ -1,29 +1,34 @@
 "use client"
 
-import useSWR from "swr"
-import { safeFetcher } from "@/lib/fetcher"
-import { useCmsDoc } from "@/lib/cms-store"
+import { useCmsDoc, useCmsCollection } from "@/lib/cms-store"
 import { ANNOUNCEMENT_DEFAULTS, type AnnouncementSettings } from "@/components/admin/announcement-bar"
+import {
+  NAV_OFFERS_KEY,
+  NAV_OFFERS_DEFAULTS,
+  type NavOffer,
+} from "@/components/admin/banners"
 
 export function TopBar() {
   const [announce] = useCmsDoc<AnnouncementSettings>("announcement", ANNOUNCEMENT_DEFAULTS)
-  const { data } = useSWR<{ navbarOffers?: { text: string }[] }>("/api/site-data", safeFetcher)
+  const { items: navOffersAll } = useCmsCollection<NavOffer>(NAV_OFFERS_KEY, NAV_OFFERS_DEFAULTS)
 
-  // CMS announcement bar takes priority. Falls back to API navbarOffers, then a default line.
+  // CMS announcement bar takes priority. Falls back to CMS navbar offers, then a default line.
   const cmsMessages: { text: string; href?: string }[] = announce.enabled
     ? announce.messages.filter((m) => m.text.trim())
     : []
-  const apiOffers: { text: string; href?: string }[] = Array.isArray(data?.navbarOffers)
-    ? data!.navbarOffers!.map((o) => ({ text: o?.text })).filter((o) => Boolean(o.text))
-    : []
+
+  const navOffers: { text: string; href?: string }[] = navOffersAll
+    .filter((n) => n.isActive && n.text.trim())
+    .map((n) => ({ text: n.text, href: n.href || undefined }))
+
   const messages =
     cmsMessages.length > 0
       ? cmsMessages
-      : apiOffers.length > 0
-        ? apiOffers
+      : navOffers.length > 0
+        ? navOffers
         : [{ text: "FREE DELIVERY on orders above KSh 5,000" }]
 
-  if (announce.enabled === false && cmsMessages.length === 0 && apiOffers.length === 0) return null
+  if (announce.enabled === false && cmsMessages.length === 0 && navOffers.length === 0) return null
 
   const repeated = [...messages, ...messages, ...messages, ...messages]
 

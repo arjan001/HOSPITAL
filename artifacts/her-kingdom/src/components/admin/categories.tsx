@@ -1,335 +1,458 @@
 "use client"
 
-import { useState, useEffect, useRef } from "react"
-import { apiFetch, authedFetcher as fetcher } from "@/lib/api-client"
-
-import { toast } from "sonner"
-import { Plus, Pencil, Trash2, Search, ImagePlus, Loader2, X } from "lucide-react"
-import { usePagination } from "@/hooks/use-pagination"
-import { PaginationControls } from "@/components/pagination-controls"
+import { useMemo, useState } from "react"
+import useSWR from "swr"
+import {
+  Plus, Pencil, Trash2, ArrowUp, ArrowDown, ChevronRight, ChevronDown,
+  Search, ImageIcon, Eye, EyeOff,
+  Pill, Stethoscope, Heart, HeartPulse, Baby, Sparkles, Leaf,
+  ShieldCheck, FlaskConical, Syringe, Eye as EyeLucide, Activity, Tag,
+} from "lucide-react"
+import type { LucideIcon } from "lucide-react"
 import { AdminShell } from "./admin-shell"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Switch } from "@/components/ui/switch"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import useSWR from "swr"
+import { useCmsCollection, newId, slugify, cmsStore, type CmsRecord } from "@/lib/cms-store"
+import { safeFetcher, asArray } from "@/lib/fetcher"
+import type { Category as StoreCategory } from "@/lib/types"
 
+const WINE = "#3D0814"
 
-interface AdminCategory {
+/* ─────────────────────────────────────────────────────────────
+   TYPE + DEFAULTS
+────────────────────────────────────────────────────────────── */
+
+export interface CmsCategory extends CmsRecord {
   id: string
   name: string
   slug: string
-  image: string
-  productCount: number
+  parentId: string | null
+  icon: string        // lucide-react icon name; "" for none
+  image: string       // thumbnail URL
+  banner: string      // category page hero URL
   isActive: boolean
 }
 
-interface CategoryForm {
-  name: string
-  slug: string
-  image: string
+export const CATEGORIES_KEY = "categories"
+
+export const ICON_LIBRARY: { name: string; Icon: LucideIcon }[] = [
+  { name: "Pill", Icon: Pill },
+  { name: "Stethoscope", Icon: Stethoscope },
+  { name: "Heart", Icon: Heart },
+  { name: "HeartPulse", Icon: HeartPulse },
+  { name: "Baby", Icon: Baby },
+  { name: "Sparkles", Icon: Sparkles },
+  { name: "Leaf", Icon: Leaf },
+  { name: "ShieldCheck", Icon: ShieldCheck },
+  { name: "FlaskConical", Icon: FlaskConical },
+  { name: "Syringe", Icon: Syringe },
+  { name: "Eye", Icon: EyeLucide },
+  { name: "Activity", Icon: Activity },
+  { name: "Tag", Icon: Tag },
+]
+
+const ICON_MAP: Record<string, LucideIcon> = Object.fromEntries(ICON_LIBRARY.map((i) => [i.name, i.Icon]))
+
+export function getCategoryIcon(name: string): LucideIcon | null {
+  return ICON_MAP[name] || null
 }
 
-const emptyForm: CategoryForm = { name: "", slug: "", image: "" }
+export const CATEGORIES_DEFAULTS: CmsCategory[] = [
+  { id: "cat-medications",   name: "Medications",            slug: "medications",            parentId: null,                 icon: "Pill",         image: "/images/categories/medications.png",      banner: "", isActive: true },
+  { id: "cat-pain-relief",   name: "Pain Relief",            slug: "pain-relief",            parentId: "cat-medications",    icon: "Activity",     image: "",                                        banner: "", isActive: true },
+  { id: "cat-cold-flu",      name: "Cold & Flu",             slug: "cold-flu",               parentId: "cat-medications",    icon: "ShieldCheck",  image: "",                                        banner: "", isActive: true },
+  { id: "cat-antibiotics",   name: "Antibiotics",            slug: "antibiotics",            parentId: "cat-medications",    icon: "FlaskConical", image: "",                                        banner: "", isActive: true },
+  { id: "cat-vitamins",      name: "Vitamins & Supplements", slug: "vitamins",               parentId: null,                 icon: "Leaf",         image: "/images/categories/vitamins.png",         banner: "", isActive: true },
+  { id: "cat-medical-dev",   name: "Medical Devices",        slug: "medical-devices",        parentId: null,                 icon: "Stethoscope",  image: "/images/categories/medical-devices.png",  banner: "", isActive: true },
+  { id: "cat-bp",            name: "Blood Pressure",         slug: "blood-pressure-monitors", parentId: "cat-medical-dev",   icon: "HeartPulse",   image: "",                                        banner: "", isActive: true },
+  { id: "cat-glucose",       name: "Glucose Monitors",       slug: "glucose-monitors",       parentId: "cat-medical-dev",    icon: "Activity",     image: "",                                        banner: "", isActive: true },
+  { id: "cat-personal-care", name: "Personal Care",          slug: "personal-care",          parentId: null,                 icon: "Sparkles",     image: "/images/categories/personal-care.png",    banner: "", isActive: true },
+  { id: "cat-mother-baby",   name: "Mother & Baby",          slug: "mother-baby",            parentId: null,                 icon: "Baby",         image: "/images/categories/mother-baby.png",      banner: "", isActive: true },
+  { id: "cat-skincare",      name: "Skincare & Beauty",      slug: "skincare-beauty",        parentId: null,                 icon: "Sparkles",     image: "/images/categories/skincare-beauty.png",  banner: "", isActive: true },
+]
+
+/* ─────────────────────────────────────────────────────────────
+   STOREFRONT-FACING HOOK
+   Returns Category[] (compat with existing storefront type).
+   Prefers cmsStore active categories; falls back to API if empty.
+────────────────────────────────────────────────────────────── */
+
+export function useCategories(): StoreCategory[] {
+  const { items } = useCmsCollection<CmsCategory>(CATEGORIES_KEY, CATEGORIES_DEFAULTS)
+  const { data } = useSWR<StoreCategory[]>("/api/categories", safeFetcher)
+
+  // Only prefer cmsStore when an admin has explicitly persisted edits — the
+  // seeded defaults shouldn't shadow real backend data on first load.
+  const persisted = cmsStore.has(CATEGORIES_KEY)
+  if (persisted) {
+    const cms = items.filter((c) => c.isActive)
+    if (cms.length > 0) {
+      return cms.map((c) => ({
+        id: c.id,
+        name: c.name,
+        slug: c.slug,
+        image: c.image || "/placeholder.svg",
+        productCount: 0,
+      }))
+    }
+  }
+  return asArray<StoreCategory>(data)
+}
+
+/* ─────────────────────────────────────────────────────────────
+   ADMIN
+────────────────────────────────────────────────────────────── */
+
+interface FormState {
+  name: string
+  slug: string
+  parentId: string | null
+  icon: string
+  image: string
+  banner: string
+}
+
+const EMPTY_FORM: FormState = {
+  name: "", slug: "", parentId: null, icon: "", image: "", banner: "",
+}
+
+interface TreeRow {
+  cat: CmsCategory
+  index: number
+  isFirstInGroup: boolean
+  isLastInGroup: boolean
+}
+
+function moveWithinSiblings(items: CmsCategory[], idx: number, delta: -1 | 1): string[] {
+  const target = items[idx]
+  if (!target) return items.map((c) => c.id)
+  const siblings = items.filter((c) => c.parentId === target.parentId)
+  const sIdx = siblings.findIndex((c) => c.id === target.id)
+  const sNext = sIdx + delta
+  if (sNext < 0 || sNext >= siblings.length) return items.map((c) => c.id)
+  const newSiblings = siblings.slice()
+  const [moved] = newSiblings.splice(sIdx, 1)
+  newSiblings.splice(sNext, 0, moved)
+  // Splice the new sibling order back into the full list at the original positions.
+  let cursor = 0
+  return items.map((c) => {
+    if (c.parentId !== target.parentId) return c.id
+    const next = newSiblings[cursor++]
+    return next.id
+  })
+}
 
 export function AdminCategories() {
-  const { data: cats = [], mutate } = useSWR<AdminCategory[]>("/api/admin/categories", fetcher)
-  const [isOpen, setIsOpen] = useState(false)
-  const [editId, setEditId] = useState<string | null>(null)
-  const [form, setForm] = useState<CategoryForm>(emptyForm)
+  const { items, upsert, remove, reorder } = useCmsCollection<CmsCategory>(CATEGORIES_KEY, CATEGORIES_DEFAULTS)
+
   const [search, setSearch] = useState("")
-  const [isUploading, setIsUploading] = useState(false)
-  const [uploadingCatId, setUploadingCatId] = useState<string | null>(null)
-  const formFileInputRef = useRef<HTMLInputElement>(null)
-  const inlineFileInputRef = useRef<HTMLInputElement>(null)
-  const pendingInlineCatRef = useRef<AdminCategory | null>(null)
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
+  const [open, setOpen] = useState(false)
+  const [editing, setEditing] = useState<CmsCategory | null>(null)
+  const [form, setForm] = useState<FormState>(EMPTY_FORM)
 
-  const filtered = cats.filter((c) =>
-    c.name.toLowerCase().includes(search.toLowerCase())
-  )
-
-  const { paginatedItems, currentPage, totalPages, totalItems, itemsPerPage, goToPage, changePerPage, resetPage } = usePagination(filtered, { defaultPerPage: 12 })
-
-  useEffect(() => { resetPage() }, [search])
-
-  const openNew = () => { setEditId(null); setForm(emptyForm); setIsOpen(true) }
-  const openEdit = (cat: AdminCategory) => {
-    setEditId(cat.id)
-    setForm({ name: cat.name, slug: cat.slug, image: cat.image && !cat.image.startsWith("/placeholder") ? cat.image : "" })
-    setIsOpen(true)
-  }
-
-  const handleSave = async () => {
-    const body = { id: editId, name: form.name, slug: form.slug, image: form.image }
-    const res = await apiFetch("/api/admin/categories", {
-      method: editId ? "PUT" : "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
+  const parents = items.filter((c) => c.parentId === null)
+  const childrenOf = useMemo(() => {
+    const m = new Map<string, CmsCategory[]>()
+    items.forEach((c) => {
+      if (!c.parentId) return
+      const list = m.get(c.parentId) || []
+      list.push(c)
+      m.set(c.parentId, list)
     })
-    mutate()
-    setIsOpen(false)
-    if (res.ok) toast.success(editId ? "Category updated" : "Category created")
-    else toast.error("Failed to save category")
-  }
+    return m
+  }, [items])
 
-  const handleDelete = async (id: string) => {
-    if (!confirm("Delete this category?")) return
-    const res = await apiFetch(`/api/admin/categories?id=${id}`, { method: "DELETE" })
-    mutate()
-    if (res.ok) toast.success("Category deleted")
-    else toast.error("Failed to delete category")
-  }
+  const matchesSearch = (c: CmsCategory) =>
+    !search.trim() || c.name.toLowerCase().includes(search.toLowerCase()) || c.slug.toLowerCase().includes(search.toLowerCase())
 
-  const uploadCategoryImage = async (file: File, slugHint: string): Promise<string | null> => {
-    const slug = (slugHint || "category").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") || "category"
-    const fd = new FormData()
-    fd.append("file", file)
-    fd.append("productSlug", `categories-${slug}`)
-    try {
-      const res = await apiFetch("/api/upload", { method: "POST", body: fd })
-      const data = await res.json()
-      if (!res.ok || !data.url) {
-        toast.error(data?.error || "Upload failed")
-        return null
-      }
-      return data.url as string
-    } catch (err) {
-      console.error("Category upload failed:", err)
-      toast.error("Upload failed")
-      return null
-    }
-  }
+  const rows: TreeRow[] = []
+  parents.forEach((p) => {
+    const parentMatches = matchesSearch(p)
+    const children = childrenOf.get(p.id) || []
+    const childMatches = children.filter(matchesSearch)
+    if (!parentMatches && childMatches.length === 0) return
 
-  const handleFormFileSelect = async (files: FileList | null) => {
-    const file = files?.[0]
-    if (!file) return
-    setIsUploading(true)
-    const url = await uploadCategoryImage(file, form.slug || form.name)
-    if (url) {
-      setForm((prev) => ({ ...prev, image: url }))
-      toast.success("Image uploaded")
-    }
-    setIsUploading(false)
-  }
-
-  const handleInlineFileSelect = async (files: FileList | null) => {
-    const file = files?.[0]
-    const cat = pendingInlineCatRef.current
-    pendingInlineCatRef.current = null
-    if (!file || !cat) return
-    setUploadingCatId(cat.id)
-    const url = await uploadCategoryImage(file, cat.slug || cat.name)
-    if (url) {
-      const res = await apiFetch("/api/admin/categories", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: cat.id, name: cat.name, slug: cat.slug, image: url, isActive: cat.isActive }),
+    const pIdx = items.findIndex((c) => c.id === p.id)
+    rows.push({
+      cat: p,
+      index: pIdx,
+      isFirstInGroup: parents[0]?.id === p.id,
+      isLastInGroup: parents[parents.length - 1]?.id === p.id,
+    })
+    if (collapsed[p.id]) return
+    const visibleChildren = search.trim() ? childMatches : children
+    visibleChildren.forEach((ch) => {
+      const cIdx = items.findIndex((c) => c.id === ch.id)
+      rows.push({
+        cat: ch,
+        index: cIdx,
+        isFirstInGroup: children[0]?.id === ch.id,
+        isLastInGroup: children[children.length - 1]?.id === ch.id,
       })
-      if (res.ok) {
-        toast.success(`Updated image for ${cat.name}`)
-        mutate()
-      } else {
-        toast.error("Failed to save image")
-      }
+    })
+  })
+
+  const openNew = (parentId: string | null = null) => {
+    setEditing(null)
+    setForm({ ...EMPTY_FORM, parentId })
+    setOpen(true)
+  }
+  const openEdit = (c: CmsCategory) => {
+    setEditing(c)
+    setForm({ name: c.name, slug: c.slug, parentId: c.parentId, icon: c.icon, image: c.image, banner: c.banner })
+    setOpen(true)
+  }
+  const save = () => {
+    if (!form.name.trim()) return
+    const slug = (form.slug || slugify(form.name)).trim()
+    upsert({
+      id: editing?.id || newId("cat"),
+      name: form.name.trim(),
+      slug,
+      parentId: form.parentId,
+      icon: form.icon,
+      image: form.image,
+      banner: form.banner,
+      isActive: editing?.isActive ?? true,
+    })
+    setOpen(false)
+  }
+  const onDelete = (c: CmsCategory) => {
+    const kids = childrenOf.get(c.id) || []
+    if (kids.length > 0) {
+      if (!confirm(`"${c.name}" has ${kids.length} subcategor${kids.length === 1 ? "y" : "ies"}. Delete it and re-parent its children to top-level?`)) return
+      kids.forEach((k) => upsert({ ...k, parentId: null }))
+    } else if (!confirm(`Delete "${c.name}"?`)) {
+      return
     }
-    setUploadingCatId(null)
+    remove(c.id)
   }
 
-  const triggerInlineUpload = (cat: AdminCategory) => {
-    pendingInlineCatRef.current = cat
-    inlineFileInputRef.current?.click()
-  }
+  const Row = ({ row }: { row: TreeRow }) => {
+    const { cat, index } = row
+    const Icon = getCategoryIcon(cat.icon)
+    const childCount = (childrenOf.get(cat.id) || []).length
+    const isParent = cat.parentId === null
+    const isCollapsed = !!collapsed[cat.id]
 
-  const handleInlineDrop = async (e: React.DragEvent, cat: AdminCategory) => {
-    e.preventDefault()
-    e.stopPropagation()
-    const file = e.dataTransfer.files?.[0]
-    if (!file) return
-    setUploadingCatId(cat.id)
-    const url = await uploadCategoryImage(file, cat.slug || cat.name)
-    if (url) {
-      const res = await apiFetch("/api/admin/categories", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: cat.id, name: cat.name, slug: cat.slug, image: url, isActive: cat.isActive }),
-      })
-      if (res.ok) {
-        toast.success(`Updated image for ${cat.name}`)
-        mutate()
-      } else {
-        toast.error("Failed to save image")
-      }
-    }
-    setUploadingCatId(null)
+    return (
+      <div
+        className={`flex items-center gap-3 border border-border rounded-sm p-3 bg-card ${
+          isParent ? "" : "ml-8 border-l-2 border-l-secondary"
+        }`}
+      >
+        {isParent && childCount > 0 ? (
+          <Button
+            variant="ghost" size="icon" className="h-7 w-7"
+            onClick={() => setCollapsed((s) => ({ ...s, [cat.id]: !s[cat.id] }))}
+            title={isCollapsed ? "Expand" : "Collapse"}
+          >
+            {isCollapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+          </Button>
+        ) : (
+          <div className="w-7" />
+        )}
+
+        <div className="w-10 h-10 bg-secondary rounded-sm flex items-center justify-center overflow-hidden flex-shrink-0">
+          {cat.image ? (
+            <img src={cat.image} alt={cat.name} className="w-full h-full object-cover" />
+          ) : Icon ? (
+            <Icon className="h-5 w-5 text-foreground/70" />
+          ) : (
+            <ImageIcon className="h-4 w-4 text-muted-foreground" />
+          )}
+        </div>
+
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <h3 className="text-sm font-semibold truncate">{cat.name}</h3>
+            {isParent && childCount > 0 && (
+              <span className="text-[10px] px-1.5 py-0.5 rounded bg-secondary text-foreground/60">
+                {childCount} sub
+              </span>
+            )}
+            {!cat.isActive && (
+              <span className="text-[10px] text-amber-700 inline-flex items-center gap-1">
+                <EyeOff className="h-3 w-3" />Hidden
+              </span>
+            )}
+          </div>
+          <p className="text-xs text-muted-foreground truncate">/{cat.slug}{cat.icon && ` · ${cat.icon}`}</p>
+        </div>
+
+        <div className="flex items-center gap-1.5">
+          {isParent && (
+            <Button
+              variant="ghost" size="sm" className="h-8 text-xs"
+              onClick={() => openNew(cat.id)} title="Add subcategory"
+            >
+              <Plus className="h-3 w-3 mr-1" /> Sub
+            </Button>
+          )}
+          <Button
+            variant="ghost" size="icon" className="h-8 w-8"
+            onClick={() => reorder(moveWithinSiblings(items, index, -1))} title="Move up"
+          >
+            <ArrowUp className="h-3.5 w-3.5" />
+          </Button>
+          <Button
+            variant="ghost" size="icon" className="h-8 w-8"
+            onClick={() => reorder(moveWithinSiblings(items, index, 1))} title="Move down"
+          >
+            <ArrowDown className="h-3.5 w-3.5" />
+          </Button>
+          <Switch checked={cat.isActive} onCheckedChange={() => upsert({ ...cat, isActive: !cat.isActive })} />
+          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openEdit(cat)} title="Edit">
+            <Pencil className="h-3.5 w-3.5" />
+          </Button>
+          <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => onDelete(cat)} title="Delete">
+            <Trash2 className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+      </div>
+    )
   }
 
   return (
     <AdminShell title="Categories">
       <div className="space-y-6">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between flex-wrap gap-3">
           <div>
             <h1 className="text-2xl font-serif font-bold">Categories</h1>
-            <p className="text-sm text-muted-foreground mt-1">{cats.length} categories &middot; Drag an image onto any card to update it</p>
+            <p className="text-sm text-muted-foreground mt-1">
+              {items.length} categories · {parents.length} top-level. Drag uses up/down arrows; subcategories nest under their parent.
+            </p>
           </div>
-          <Button onClick={openNew} className="bg-foreground text-background hover:bg-foreground/90">
-            <Plus className="h-4 w-4 mr-2" />
-            Add Category
+          <Button onClick={() => openNew(null)} className="text-white" style={{ background: WINE }}>
+            <Plus className="h-4 w-4 mr-2" /> Add Category
           </Button>
         </div>
 
         <div className="relative max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input placeholder="Search categories..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-10 h-10" />
+          <Input
+            placeholder="Search categories..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="pl-10 h-10"
+          />
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {paginatedItems.map((cat) => {
-            const hasImage = !!cat.image && !cat.image.startsWith("/placeholder")
-            const isThisUploading = uploadingCatId === cat.id
-            return (
-              <div key={cat.id} className="border border-border rounded-sm overflow-hidden group">
-                <div
-                  className="relative aspect-[4/3] bg-secondary cursor-pointer"
-                  onDragOver={(e) => { e.preventDefault(); e.currentTarget.classList.add("ring-2", "ring-foreground") }}
-                  onDragLeave={(e) => { e.preventDefault(); e.currentTarget.classList.remove("ring-2", "ring-foreground") }}
-                  onDrop={(e) => { e.currentTarget.classList.remove("ring-2", "ring-foreground"); handleInlineDrop(e, cat) }}
-                  onClick={() => !isThisUploading && triggerInlineUpload(cat)}
-                  title="Click or drag an image to update this category"
-                >
-                  {hasImage ? (
-                    <img src={cat.image} alt={cat.name} className="object-cover" />
-                  ) : (
-                    <div className="absolute inset-0 flex flex-col items-center justify-center text-muted-foreground">
-                      <ImagePlus className="h-8 w-8 mb-1.5" />
-                      <p className="text-xs font-medium">No image</p>
-                      <p className="text-[10px]">Click or drop to upload</p>
-                    </div>
-                  )}
-                  <div className="absolute inset-0 bg-foreground/0 group-hover:bg-foreground/30 transition-colors flex items-center justify-center">
-                    {isThisUploading ? (
-                      <div className="bg-background/90 px-3 py-1.5 rounded-sm flex items-center gap-2">
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                        <span className="text-xs font-medium">Uploading...</span>
-                      </div>
-                    ) : hasImage ? (
-                      <div className="opacity-0 group-hover:opacity-100 transition-opacity bg-background/90 px-3 py-1.5 rounded-sm flex items-center gap-1.5">
-                        <ImagePlus className="h-3.5 w-3.5" />
-                        <span className="text-xs font-medium">Replace image</span>
-                      </div>
-                    ) : null}
-                  </div>
-                </div>
-                <div className="p-4 flex items-center justify-between">
-                  <div>
-                    <h3 className="text-sm font-semibold">{cat.name}</h3>
-                    <p className="text-xs text-muted-foreground mt-0.5">{cat.productCount} products</p>
-                    <p className="text-xs text-muted-foreground">/{cat.slug}</p>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openEdit(cat)}>
-                      <Pencil className="h-3.5 w-3.5" />
-                    </Button>
-                    <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => handleDelete(cat.id)}>
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            )
-          })}
-        </div>
-
-        <PaginationControls
-          currentPage={currentPage}
-          totalPages={totalPages}
-          totalItems={totalItems}
-          itemsPerPage={itemsPerPage}
-          onPageChange={goToPage}
-          onItemsPerPageChange={changePerPage}
-          perPageOptions={[6, 12, 24]}
-        />
+        {rows.length === 0 ? (
+          <div className="border border-dashed border-border rounded-sm py-12 text-center">
+            <Tag className="h-8 w-8 text-muted-foreground/50 mx-auto mb-3" />
+            <p className="text-sm text-muted-foreground">
+              {search.trim() ? "No categories match your search." : "No categories yet. Add your first category above."}
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {rows.map((r) => (
+              <Row key={r.cat.id} row={r} />
+            ))}
+          </div>
+        )}
       </div>
 
-      <input
-        ref={inlineFileInputRef}
-        type="file"
-        accept="image/*"
-        className="hidden"
-        onChange={(e) => { handleInlineFileSelect(e.target.files); if (e.target) e.target.value = "" }}
-      />
-
-      <Dialog open={isOpen} onOpenChange={setIsOpen}>
+      <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-w-md bg-background text-foreground">
           <DialogHeader>
-            <DialogTitle className="font-serif">{editId ? "Edit Category" : "Add Category"}</DialogTitle>
+            <DialogTitle>
+              {editing ? "Edit" : "Add"} Category
+              {form.parentId && !editing && (
+                <span className="ml-2 text-xs font-normal text-muted-foreground">
+                  under {items.find((c) => c.id === form.parentId)?.name}
+                </span>
+              )}
+            </DialogTitle>
           </DialogHeader>
-          <div className="space-y-4 mt-4">
+          <div className="space-y-4 mt-4 max-h-[70vh] overflow-y-auto pr-1">
             <div>
-              <Label className="text-sm font-medium mb-1.5 block">Category Name *</Label>
-              <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="e.g. Skinny Jeans" />
+              <Label className="text-sm font-medium mb-1.5 block">Name *</Label>
+              <Input
+                value={form.name}
+                onChange={(e) => setForm({ ...form, name: e.target.value, slug: form.slug || slugify(e.target.value) })}
+                placeholder="Pain Relief"
+              />
             </div>
             <div>
               <Label className="text-sm font-medium mb-1.5 block">Slug</Label>
-              <Input value={form.slug} onChange={(e) => setForm({ ...form, slug: e.target.value })} placeholder="Auto-generated from name" />
+              <Input value={form.slug} onChange={(e) => setForm({ ...form, slug: e.target.value })} placeholder="pain-relief" />
             </div>
 
             <div>
-              <Label className="text-sm font-medium mb-1.5 block">Category Image</Label>
-              <div
-                onDragOver={(e) => { e.preventDefault(); e.currentTarget.classList.add("border-foreground", "bg-secondary/50") }}
-                onDragLeave={(e) => { e.preventDefault(); e.currentTarget.classList.remove("border-foreground", "bg-secondary/50") }}
-                onDrop={(e) => { e.preventDefault(); e.currentTarget.classList.remove("border-foreground", "bg-secondary/50"); handleFormFileSelect(e.dataTransfer.files) }}
-                onClick={() => !isUploading && formFileInputRef.current?.click()}
-                className="border-2 border-dashed border-border rounded-sm p-4 cursor-pointer hover:border-foreground/40 transition-colors text-center"
+              <Label className="text-sm font-medium mb-1.5 block">Parent</Label>
+              <select
+                value={form.parentId || ""}
+                onChange={(e) => setForm({ ...form, parentId: e.target.value || null })}
+                className="w-full h-10 border border-border rounded-sm px-3 text-sm bg-background"
               >
-                {isUploading ? (
-                  <div className="flex items-center justify-center gap-2 py-2">
-                    <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-                    <span className="text-sm text-muted-foreground">Uploading...</span>
-                  </div>
-                ) : form.image ? (
-                  <div className="flex items-center gap-3">
-                    <div className="relative w-20 h-16 rounded-sm overflow-hidden bg-secondary shrink-0">
-                      <img src={form.image} alt="Preview" className="object-cover" />
-                    </div>
-                    <div className="text-left flex-1 min-w-0">
-                      <p className="text-xs font-medium truncate">Image uploaded</p>
-                      <p className="text-[11px] text-muted-foreground">Click or drop to replace</p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={(e) => { e.stopPropagation(); setForm((prev) => ({ ...prev, image: "" })) }}
-                      className="shrink-0 p-1 rounded-sm hover:bg-secondary"
-                      aria-label="Remove image"
-                    >
-                      <X className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
-                ) : (
-                  <div className="py-2">
-                    <ImagePlus className="h-7 w-7 mx-auto text-muted-foreground mb-1.5" />
-                    <p className="text-sm font-medium">Click or drag image here</p>
-                    <p className="text-[11px] text-muted-foreground mt-0.5">JPG, PNG or WebP. Max 5MB.</p>
-                  </div>
-                )}
-                <input
-                  ref={formFileInputRef}
-                  type="file"
-                  accept="image/*"
-                  className="hidden"
-                  onChange={(e) => { handleFormFileSelect(e.target.files); if (e.target) e.target.value = "" }}
-                />
-              </div>
-              <div className="mt-2">
-                <Label className="text-[11px] text-muted-foreground mb-1 block">Or paste an image URL</Label>
-                <Input value={form.image} onChange={(e) => setForm({ ...form, image: e.target.value })} placeholder="https://..." />
+                <option value="">— Top-level —</option>
+                {parents
+                  .filter((p) => p.id !== editing?.id)
+                  .map((p) => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
+              </select>
+            </div>
+
+            <div>
+              <Label className="text-sm font-medium mb-1.5 block">Icon</Label>
+              <div className="flex flex-wrap gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setForm({ ...form, icon: "" })}
+                  className={`h-9 w-9 rounded-sm border flex items-center justify-center text-[10px] font-medium ${
+                    form.icon === "" ? "border-foreground bg-secondary" : "border-border"
+                  }`}
+                  title="No icon"
+                >
+                  ✕
+                </button>
+                {ICON_LIBRARY.map(({ name, Icon }) => (
+                  <button
+                    key={name}
+                    type="button"
+                    onClick={() => setForm({ ...form, icon: name })}
+                    className={`h-9 w-9 rounded-sm border flex items-center justify-center ${
+                      form.icon === name ? "border-foreground bg-secondary" : "border-border hover:bg-secondary/50"
+                    }`}
+                    title={name}
+                  >
+                    <Icon className="h-4 w-4" />
+                  </button>
+                ))}
               </div>
             </div>
 
+            <div>
+              <Label className="text-sm font-medium mb-1.5 block">Thumbnail Image URL</Label>
+              <Input value={form.image} onChange={(e) => setForm({ ...form, image: e.target.value })} placeholder="/images/categories/medications.png" />
+              {form.image && (
+                <div className="relative w-20 h-20 mt-2 rounded-sm overflow-hidden bg-secondary border border-border">
+                  <img src={form.image} alt="" className="w-full h-full object-cover" />
+                </div>
+              )}
+            </div>
+
+            <div>
+              <Label className="text-sm font-medium mb-1.5 block">Category Page Banner URL</Label>
+              <Input value={form.banner} onChange={(e) => setForm({ ...form, banner: e.target.value })} placeholder="/banners/medications.png (optional)" />
+              {form.banner && (
+                <div className="relative w-full h-24 mt-2 rounded-sm overflow-hidden bg-secondary border border-border">
+                  <img src={form.banner} alt="" className="w-full h-full object-cover" />
+                </div>
+              )}
+            </div>
+
             <div className="flex justify-end gap-3 pt-4 border-t border-border">
-              <Button variant="outline" onClick={() => setIsOpen(false)} className="bg-transparent">Cancel</Button>
-              <Button onClick={handleSave} disabled={!form.name || isUploading} className="bg-foreground text-background hover:bg-foreground/90">
-                {editId ? "Update" : "Add"} Category
+              <Button variant="outline" onClick={() => setOpen(false)} className="bg-transparent">Cancel</Button>
+              <Button onClick={save} disabled={!form.name.trim()} className="text-white" style={{ background: WINE }}>
+                {editing ? "Update" : "Add"}
               </Button>
             </div>
           </div>

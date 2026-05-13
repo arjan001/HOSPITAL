@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react"
 import { apiFetch, authedFetcher as fetcher } from "@/lib/api-client"
 import { toast } from "sonner"
-import { Eye, Truck, CheckCircle, Clock, Package, XCircle, Search, Trash2, Loader2, MessageSquare, Phone, Download, DollarSign, Gift, StickyNote } from "lucide-react"
+import { Eye, Truck, CheckCircle, Clock, Package, XCircle, Search, Trash2, Loader2, MessageSquare, Phone, Download, DollarSign, StickyNote } from "lucide-react"
 import { usePagination } from "@/hooks/use-pagination"
 import { PaginationControls } from "@/components/pagination-controls"
 import { AdminShell } from "./admin-shell"
@@ -20,39 +20,6 @@ import useSWR from "swr"
 
 type OrderStatus = "pending" | "confirmed" | "dispatched" | "delivered" | "cancelled"
 
-interface GiftSelectionAddon {
-  id: string
-  name: string
-  price: number
-  quantity?: number
-  imageUrl?: string
-}
-
-interface GiftSelectionWrap {
-  id: string
-  name: string
-  price: number
-  imageUrl?: string
-}
-
-interface GiftSelectionCard {
-  id: string
-  name: string
-  price: number
-  message?: string
-  imageUrl?: string
-}
-
-interface GiftSelectionPayload {
-  isGift?: boolean
-  addons?: GiftSelectionAddon[]
-  wraps?: GiftSelectionWrap[]
-  cards?: GiftSelectionCard[]
-  messageFrom?: string
-  messageTo?: string
-  messageNote?: string
-}
-
 interface Order {
   id: string
   orderNo: string
@@ -67,9 +34,6 @@ interface Order {
   address: string
   notes: string
   specialInstructions: string
-  isGift: boolean
-  giftSelection: GiftSelectionPayload | null
-  giftExtrasTotal: number
   status: OrderStatus
   orderedVia: string
   paymentMethod: string
@@ -490,97 +454,6 @@ export function AdminOrders() {
                   </div>
                   <div className="p-4">
                     <p className="text-sm whitespace-pre-wrap break-words">{selectedOrder.specialInstructions}</p>
-                  </div>
-                </div>
-              )}
-
-              {/* Gift Details */}
-              {selectedOrder.isGift && (
-                <div className="border border-[#B4336A]/25 rounded-sm overflow-hidden">
-                  <div className="bg-[#B4336A]/5 px-4 py-2 flex items-center gap-2">
-                    <Gift className="h-3.5 w-3.5 text-[#B4336A]" />
-                    <span className="text-xs font-semibold uppercase tracking-wider text-[#B4336A]">Gift Order</span>
-                    {selectedOrder.giftExtrasTotal > 0 && (
-                      <span className="ml-auto text-xs font-semibold text-[#B4336A]">
-                        + {formatPrice(selectedOrder.giftExtrasTotal)}
-                      </span>
-                    )}
-                  </div>
-                  <div className="p-4 space-y-3">
-                    {selectedOrder.giftSelection?.addons && selectedOrder.giftSelection.addons.length > 0 && (
-                      <div>
-                        <p className="text-xs font-medium text-muted-foreground mb-1.5">Add-ons</p>
-                        <ul className="text-sm space-y-1">
-                          {selectedOrder.giftSelection.addons.map((a, i) => (
-                            <li key={a.id || i} className="flex justify-between gap-3">
-                              <span>
-                                {a.name}
-                                {a.quantity && a.quantity > 1 ? ` x${a.quantity}` : ""}
-                              </span>
-                              <span className="text-muted-foreground">{formatPrice(a.price * (a.quantity || 1))}</span>
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-
-                    {selectedOrder.giftSelection?.wraps && selectedOrder.giftSelection.wraps.length > 0 && (
-                      <div>
-                        <p className="text-xs font-medium text-muted-foreground mb-1.5">Gift Wrapping</p>
-                        <ul className="text-sm space-y-1">
-                          {selectedOrder.giftSelection.wraps.map((w, i) => (
-                            <li key={w.id || i} className="flex justify-between gap-3">
-                              <span>{w.name}</span>
-                              <span className="text-muted-foreground">{formatPrice(w.price)}</span>
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-
-                    {selectedOrder.giftSelection?.cards && selectedOrder.giftSelection.cards.length > 0 && (
-                      <div>
-                        <p className="text-xs font-medium text-muted-foreground mb-1.5">Greeting Cards</p>
-                        <ul className="text-sm space-y-2">
-                          {selectedOrder.giftSelection.cards.map((c, i) => (
-                            <li key={c.id || i} className="border border-border rounded-sm p-2">
-                              <div className="flex justify-between gap-3">
-                                <span className="font-medium">{c.name}</span>
-                                <span className="text-muted-foreground">{formatPrice(c.price)}</span>
-                              </div>
-                              {c.message && (
-                                <p className="text-xs italic text-muted-foreground mt-1.5 whitespace-pre-wrap break-words">
-                                  &ldquo;{c.message}&rdquo;
-                                </p>
-                              )}
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-
-                    {(selectedOrder.giftSelection?.messageFrom ||
-                      selectedOrder.giftSelection?.messageTo ||
-                      selectedOrder.giftSelection?.messageNote) && (
-                      <div className="border-t border-border pt-3">
-                        <p className="text-xs font-medium text-muted-foreground mb-1.5">Card Message</p>
-                        {selectedOrder.giftSelection.messageFrom && (
-                          <p className="text-xs"><span className="text-muted-foreground">From:</span> {selectedOrder.giftSelection.messageFrom}</p>
-                        )}
-                        {selectedOrder.giftSelection.messageTo && (
-                          <p className="text-xs"><span className="text-muted-foreground">To:</span> {selectedOrder.giftSelection.messageTo}</p>
-                        )}
-                        {selectedOrder.giftSelection.messageNote && (
-                          <p className="text-sm italic mt-1 whitespace-pre-wrap break-words">
-                            &ldquo;{selectedOrder.giftSelection.messageNote}&rdquo;
-                          </p>
-                        )}
-                      </div>
-                    )}
-
-                    {!selectedOrder.giftSelection && (
-                      <p className="text-xs text-muted-foreground">Marked as a gift order. No gifting selections were saved.</p>
-                    )}
                   </div>
                 </div>
               )}

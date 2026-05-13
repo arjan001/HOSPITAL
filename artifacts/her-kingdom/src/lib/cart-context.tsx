@@ -3,12 +3,6 @@
 import { createContext, useContext, useState, useCallback, useEffect, type ReactNode } from "react"
 import type { CartItem, Product } from "./types"
 
-export interface GiftPersonalization {
-  wrap: boolean
-  ribbon: boolean
-  cardMessage: string
-}
-
 interface CartContextType {
   items: CartItem[]
   addItem: (product: Product, quantity?: number, variations?: Record<string, string>) => void
@@ -19,13 +13,9 @@ interface CartContextType {
   totalPrice: number
   isCartOpen: boolean
   setIsCartOpen: (open: boolean) => void
-  gift: GiftPersonalization
-  setGift: (updater: Partial<GiftPersonalization>) => void
 }
 
 const CART_KEY = "herkingdom-cart"
-const GIFT_KEY = "herkingdom-gift"
-const DEFAULT_GIFT: GiftPersonalization = { wrap: false, ribbon: false, cardMessage: "" }
 
 function loadCart(): CartItem[] {
   if (typeof window === "undefined") return []
@@ -46,33 +36,12 @@ function saveCart(items: CartItem[]) {
   }
 }
 
-function loadGift(): GiftPersonalization {
-  if (typeof window === "undefined") return DEFAULT_GIFT
-  try {
-    const stored = sessionStorage.getItem(GIFT_KEY)
-    return stored ? { ...DEFAULT_GIFT, ...JSON.parse(stored) } : DEFAULT_GIFT
-  } catch {
-    return DEFAULT_GIFT
-  }
-}
-
-function saveGift(gift: GiftPersonalization) {
-  if (typeof window === "undefined") return
-  try {
-    sessionStorage.setItem(GIFT_KEY, JSON.stringify(gift))
-  } catch {
-    // silently fail
-  }
-}
-
 const CartContext = createContext<CartContextType | undefined>(undefined)
 
 export function CartProvider({ children }: { children: ReactNode }) {
   const [items, setItems] = useState<CartItem[]>([])
   const [isCartOpen, setIsCartOpen] = useState(false)
-  const [specialInstructions, setSpecialInstructionsState] = useState("")
   const [hydrated, setHydrated] = useState(false)
-  const [gift, setGiftState] = useState<GiftPersonalization>(DEFAULT_GIFT)
 
   // Hydrate from sessionStorage on mount
   useEffect(() => {
@@ -80,7 +49,6 @@ export function CartProvider({ children }: { children: ReactNode }) {
     if (stored.length > 0) {
       setItems(stored)
     }
-    setGiftState(loadGift())
     setHydrated(true)
   }, [])
 
@@ -90,12 +58,6 @@ export function CartProvider({ children }: { children: ReactNode }) {
       saveCart(items)
     }
   }, [items, hydrated])
-
-  useEffect(() => {
-    if (hydrated) {
-      saveGift(gift)
-    }
-  }, [gift, hydrated])
 
   const addItem = useCallback((product: Product, quantity = 1, variations?: Record<string, string>) => {
     setItems((prev) => {
@@ -133,11 +95,6 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
   const clearCart = useCallback(() => {
     setItems([])
-    setGiftState(DEFAULT_GIFT)
-  }, [])
-
-  const setGift = useCallback((updater: Partial<GiftPersonalization>) => {
-    setGiftState((prev) => ({ ...prev, ...updater }))
   }, [])
 
   const totalItems = items.reduce((sum, item) => sum + item.quantity, 0)
@@ -217,8 +174,6 @@ export function CartProvider({ children }: { children: ReactNode }) {
         totalPrice,
         isCartOpen,
         setIsCartOpen,
-        gift,
-        setGift,
       }}
     >
       {children}

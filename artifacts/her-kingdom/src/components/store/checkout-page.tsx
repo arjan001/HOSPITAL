@@ -16,9 +16,7 @@ import { Navbar } from "./navbar"
 import { Footer } from "./footer"
 import { MpesaPaymentModal } from "./mpesa-payment-modal"
 import { CardPaymentModal } from "./card-payment-modal"
-import { GiftOptionsModal, giftSelectionTotal, giftSelectionSummary } from "./gift-options-modal"
 import { useCart } from "@/lib/cart-context"
-import { useGiftSelection } from "@/lib/gift-context"
 import { formatPrice } from "@/lib/format"
 import type { DeliveryLocation } from "@/lib/types"
 import { useStoreContact } from "@/hooks/use-store-contact"
@@ -504,9 +502,8 @@ function CouponAccordion() {
 ────────────────────────────────────────────────────────────── */
 export function CheckoutPage() {
   const [, navigate]    = useLocation()
-  const { items, removeItem, updateQuantity, totalPrice, clearCart, gift: cartGift, setGift: setCartGift } = useCart()
+  const { items, removeItem, updateQuantity, totalPrice, clearCart } = useCart()
   const { whatsappNumber } = useStoreContact()
-  const { selection: giftSelection, setSelection: setGiftSelection, resetSelection: resetGiftSelection } = useGiftSelection()
 
   /* ── Step state ── */
   const [step, setStep] = useState<1 | 2 | 3>(1)
@@ -530,7 +527,6 @@ export function CheckoutPage() {
   const [orderResult,     setOrderResult]     = useState<{ orderNumber: string; paymentMethod?: string } | null>(null)
   const [showMpesa,       setShowMpesa]       = useState(false)
   const [showCardPayment, setShowCardPayment] = useState(false)
-  const [showGiftModal,   setShowGiftModal]   = useState(false)
   const [isSubmitting,    setIsSubmitting]    = useState(false)
   const [formError,       setFormError]       = useState("")
 
@@ -585,14 +581,6 @@ export function CheckoutPage() {
     }).catch(() => {})
   }, [])
 
-  /* ── Sync gift from cart ── */
-  useEffect(() => {
-    if (cartGift.wrap || cartGift.ribbon || cartGift.cardMessage) {
-      setGiftSelection({ ...giftSelection, isGift: true, messageNote: cartGift.cardMessage || giftSelection.messageNote })
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cartGift.wrap, cartGift.ribbon, cartGift.cardMessage])
-
   /* ── Mark order recovered ── */
   useEffect(() => {
     if (!orderResult) return
@@ -613,10 +601,8 @@ export function CheckoutPage() {
   }
   const selectedDelivery = deliveryLocations.find(l => l.id === deliveryLocation)
   const deliveryFee      = selectedDelivery?.fee || 0
-  const isGift           = giftSelection.isGift
-  const giftFee          = isGift ? giftSelectionTotal(giftSelection) : 0
   const freeShipping     = totalPrice >= freeShippingThreshold
-  const grandTotal       = totalPrice + (freeShipping ? 0 : deliveryFee) + giftFee
+  const grandTotal       = totalPrice + (freeShipping ? 0 : deliveryFee)
   const amountToFree     = Math.max(0, freeShippingThreshold - totalPrice)
   const freeProgress     = Math.min(100, Math.round((totalPrice / freeShippingThreshold) * 100))
 
@@ -638,9 +624,6 @@ export function CheckoutPage() {
     specialInstructions: deliveryNote || undefined,
     shippingType,
     scheduledFor:     shippingType === "scheduled" && scheduledDate ? `${scheduledDate} ${scheduledTime}` : undefined,
-    isGift,
-    giftSelection:    isGift ? giftSelection : undefined,
-    giftExtrasTotal:  isGift ? giftSelectionTotal(giftSelection) : 0,
     orderedVia:       via,
     items: items.map(item => ({
       productId:   item.product.id,
@@ -684,7 +667,7 @@ export function CheckoutPage() {
 
   const handleMpesaConfirmed = (result: { orderNumber: string; mpesaReceipt: string; phone: string }) => {
     setOrderResult({ orderNumber: result.orderNumber, paymentMethod: "mpesa" })
-    clearCart(); resetGiftSelection()
+    clearCart()
     setTimeout(() => setShowMpesa(false), 1500)
   }
 
@@ -956,12 +939,6 @@ export function CheckoutPage() {
             <div className="flex justify-between">
               <span className="text-gray-500">Shipping Charge</span>
               <span className="font-bold text-green-600">FREE</span>
-            </div>
-          )}
-          {isGift && giftFee > 0 && (
-            <div className="flex justify-between">
-              <span className="text-gray-500">Gift extras</span>
-              <span className="font-semibold text-gray-900">{formatPrice(giftFee)}</span>
             </div>
           )}
           <div className="h-px bg-gray-200" />
@@ -1516,7 +1493,7 @@ export function CheckoutPage() {
                               return
                             }
                             setOrderResult({ orderNumber: data.orderNumber, paymentMethod: "cod" })
-                            clearCart(); resetGiftSelection()
+                            clearCart()
                           } catch (err) {
                             setFormError(err instanceof Error ? err.message : "Network error")
                           } finally { setIsSubmitting(false) }
@@ -1579,13 +1556,6 @@ export function CheckoutPage() {
         onClose={() => setShowCardPayment(false)}
         total={grandTotal}
         onPaymentComplete={handleCardPaymentComplete}
-      />
-
-      <GiftOptionsModal
-        open={showGiftModal}
-        onClose={() => setShowGiftModal(false)}
-        selection={giftSelection}
-        onChange={setGiftSelection}
       />
     </div>
   )

@@ -3,9 +3,7 @@
 import { Link } from "wouter"
 
 import { ArrowRight } from "lucide-react"
-import type { Category } from "@/lib/types"
-import useSWR from "swr"
-import { safeFetcher, asArray } from "@/lib/fetcher"
+import { useCategories } from "@/components/admin/categories"
 
 const COLLECTIONS = [
   { name: "Women", slug: "women", image: "/images/products/medications/pill-bottle-white.png", href: "/shop/women" },
@@ -19,8 +17,7 @@ const CATEGORY_IMAGES: Record<string, string> = {
 }
 
 export function CategoriesSection() {
-  const { data } = useSWR<Category[]>("/api/categories", safeFetcher)
-  const categories = asArray<Category>(data)
+  const categories = useCategories()
 
   return (
     <section className="hidden md:block py-14 lg:py-20">

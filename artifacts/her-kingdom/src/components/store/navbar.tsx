@@ -8,7 +8,8 @@ import { useLocation } from "wouter"
 import { Search, ShoppingBag, Menu, PhoneCall, User, Package, Camera, Heart, Settings, PackageCheck } from "lucide-react"
 import { useCart } from "@/lib/cart-context"
 import { useWishlist } from "@/lib/wishlist-context"
-import type { Product, Category } from "@/lib/types"
+import type { Product } from "@/lib/types"
+import { useCategories } from "@/components/admin/categories"
 import { Button } from "@/components/ui/button"
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
 import { CartDrawer } from "./cart-drawer"
@@ -74,9 +75,8 @@ export function Navbar() {
   const { phoneHref } = useStoreContact()
   const { data: settingsResp } = useSWR<{ settings?: SiteSettings }>("/api/site-data", safeFetcher)
   const settings = settingsResp?.settings || {}
-  const { data: categoriesData } = useSWR<Category[]>("/api/categories", safeFetcher)
   const { data: allProductsData } = useSWR<Product[]>("/api/products", safeFetcher)
-  const categories = asArray<Category>(categoriesData)
+  const categories = useCategories()
   const allProducts = asArray<Product>(allProductsData)
 
   const [searchQuery, setSearchQuery] = useState("")

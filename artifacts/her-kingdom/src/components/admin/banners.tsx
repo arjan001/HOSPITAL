@@ -1,9 +1,10 @@
 "use client"
 
 import { useState } from "react"
-import { apiFetch, authedFetcher as fetcher } from "@/lib/api-client"
-
-import { Plus, Pencil, Trash2, Megaphone } from "lucide-react"
+import {
+  Plus, Pencil, Trash2, Megaphone, ArrowUp, ArrowDown,
+  Image as ImageIcon, Link2, Eye, EyeOff,
+} from "lucide-react"
 import { AdminShell } from "./admin-shell"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -12,395 +13,548 @@ import { Textarea } from "@/components/ui/textarea"
 import { Switch } from "@/components/ui/switch"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import useSWR from "swr"
+import { useCmsCollection, newId, type CmsRecord } from "@/lib/cms-store"
 
+const WINE = "#3D0814"
 
-interface HeroBannerData {
+/* ─────────────────────────────────────────────────────────────
+   TYPES + CMS KEYS
+────────────────────────────────────────────────────────────── */
+
+export interface HeroSlide extends CmsRecord {
   id: string
   title: string
-  subtitle: string | null
-  image_url: string | null
-  button_link: string
-  button_text: string
-  is_active: boolean
-  sort_order: number
+  subtitle: string
+  image: string
+  buttonText: string
+  buttonLink: string
+  isActive: boolean
 }
 
-interface BannerData {
+export interface PromoBanner extends CmsRecord {
   id: string
+  kicker: string
   title: string
-  subtitle: string | null
-  image_url: string | null
-  link_url: string
-  position: string
-  is_active: boolean
+  subtitle: string
+  image: string
+  link: string
+  cta: string
+  textSide: "left" | "right"
+  tone: "light" | "dark"
+  isActive: boolean
 }
 
-interface NavOfferData {
+export interface NavOffer extends CmsRecord {
   id: string
   text: string
-  is_active: boolean
+  href: string
+  isActive: boolean
 }
 
-interface PopupData {
-  id: string
-  title: string
-  description: string | null
-  discount_percentage: number | null
-  discount_label: string | null
-  image_url: string | null
-  link: string
-  valid_until: string | null
-  is_active: boolean
+export const HERO_SLIDES_KEY = "hero-slides"
+export const PROMO_BANNERS_KEY = "promo-banners"
+export const NAV_OFFERS_KEY = "navbar-offers"
+
+export const HERO_SLIDES_DEFAULTS: HeroSlide[] = [
+  {
+    id: "hero-1",
+    title: "Your Trusted Online Pharmacy",
+    subtitle:
+      "Authentic medications, vitamins and medical devices — sourced from licensed suppliers, delivered quickly across Kenya.",
+    image: "/banners/hero-pharmacy-main.png",
+    buttonText: "Shop Medications",
+    buttonLink: "/shop?category=medications",
+    isActive: true,
+  },
+  {
+    id: "hero-2",
+    title: "Smart Medical Devices",
+    subtitle:
+      "Thermometers, blood pressure monitors, pulse oximeters and more — keep track of your health at home.",
+    image: "/banners/hero-medical-devices.png",
+    buttonText: "Browse Devices",
+    buttonLink: "/shop?category=medical-devices",
+    isActive: true,
+  },
+  {
+    id: "hero-3",
+    title: "Vitamins & Wellness",
+    subtitle:
+      "Daily multivitamins, immunity boosters and supplements to support your everyday wellbeing.",
+    image: "/banners/hero-vitamins-supplements.png",
+    buttonText: "Shop Wellness",
+    buttonLink: "/shop?category=vitamins",
+    isActive: true,
+  },
+]
+
+export const PROMO_BANNERS_DEFAULTS: PromoBanner[] = [
+  {
+    id: "promo-1",
+    kicker: "Wellness & Supplements",
+    title: "Daily Gummies for Glowing Health",
+    subtitle: "Turmeric, collagen and tropical vitamins — fruit-flavoured, easy on the gut.",
+    image: "/banner-wellness.png",
+    link: "/shop?category=wellness-supplements",
+    cta: "Shop Now",
+    textSide: "right",
+    tone: "light",
+    isActive: true,
+  },
+  {
+    id: "promo-2",
+    kicker: "Skincare & Beauty",
+    title: "Glow Rituals — Up to 30% Off",
+    subtitle: "Pharmacist-loved serums, creams and personal-care picks delivered to your door.",
+    image: "/banner-skincare.png",
+    link: "/shop?category=skincare-beauty",
+    cta: "Discover",
+    textSide: "left",
+    tone: "dark",
+    isActive: true,
+  },
+]
+
+export const NAV_OFFERS_DEFAULTS: NavOffer[] = []
+
+/* ─────────────────────────────────────────────────────────────
+   SHARED ROW PRIMITIVES
+────────────────────────────────────────────────────────────── */
+
+function RowActions({
+  active, onToggle, onEdit, onDelete, onUp, onDown, isFirst, isLast,
+}: {
+  active: boolean
+  onToggle: () => void
+  onEdit: () => void
+  onDelete: () => void
+  onUp: () => void
+  onDown: () => void
+  isFirst: boolean
+  isLast: boolean
+}) {
+  return (
+    <div className="flex items-center gap-1.5">
+      <Button
+        variant="ghost" size="icon" className="h-8 w-8"
+        onClick={onUp} disabled={isFirst} title="Move up"
+      >
+        <ArrowUp className="h-3.5 w-3.5" />
+      </Button>
+      <Button
+        variant="ghost" size="icon" className="h-8 w-8"
+        onClick={onDown} disabled={isLast} title="Move down"
+      >
+        <ArrowDown className="h-3.5 w-3.5" />
+      </Button>
+      <Switch checked={active} onCheckedChange={onToggle} />
+      <Button variant="ghost" size="icon" className="h-8 w-8" onClick={onEdit} title="Edit">
+        <Pencil className="h-3.5 w-3.5" />
+      </Button>
+      <Button
+        variant="ghost" size="icon" className="h-8 w-8 text-destructive"
+        onClick={onDelete} title="Delete"
+      >
+        <Trash2 className="h-3.5 w-3.5" />
+      </Button>
+    </div>
+  )
 }
+
+function ImagePreview({ src, alt, className = "w-32 h-20" }: { src: string; alt: string; className?: string }) {
+  return (
+    <div className={`relative ${className} bg-secondary rounded-sm overflow-hidden flex-shrink-0 border border-border`}>
+      {src ? (
+        <img src={src} alt={alt} className="w-full h-full object-cover" />
+      ) : (
+        <div className="w-full h-full flex items-center justify-center text-muted-foreground">
+          <ImageIcon className="h-5 w-5" />
+        </div>
+      )}
+    </div>
+  )
+}
+
+function EmptyState({ icon: Icon, label }: { icon: typeof ImageIcon; label: string }) {
+  return (
+    <div className="border border-dashed border-border rounded-sm py-12 text-center">
+      <Icon className="h-8 w-8 text-muted-foreground/50 mx-auto mb-3" />
+      <p className="text-sm text-muted-foreground">{label}</p>
+    </div>
+  )
+}
+
+/* Move helper */
+function moveItem<T extends { id: string }>(items: T[], idx: number, delta: -1 | 1): string[] {
+  const target = idx + delta
+  if (target < 0 || target >= items.length) return items.map((i) => i.id)
+  const next = items.slice()
+  const [moved] = next.splice(idx, 1)
+  next.splice(target, 0, moved)
+  return next.map((i) => i.id)
+}
+
+/* ─────────────────────────────────────────────────────────────
+   HERO SLIDES TAB
+────────────────────────────────────────────────────────────── */
+
+const HERO_FORM_BLANK: Omit<HeroSlide, "id" | "isActive"> = {
+  title: "", subtitle: "", image: "", buttonText: "Shop Now", buttonLink: "/shop",
+}
+
+function HeroSlidesTab() {
+  const { items, upsert, remove, reorder } = useCmsCollection<HeroSlide>(HERO_SLIDES_KEY, HERO_SLIDES_DEFAULTS)
+  const [open, setOpen] = useState(false)
+  const [editing, setEditing] = useState<HeroSlide | null>(null)
+  const [form, setForm] = useState({ ...HERO_FORM_BLANK })
+
+  const openNew = () => { setEditing(null); setForm({ ...HERO_FORM_BLANK }); setOpen(true) }
+  const openEdit = (h: HeroSlide) => {
+    setEditing(h)
+    setForm({ title: h.title, subtitle: h.subtitle, image: h.image, buttonText: h.buttonText, buttonLink: h.buttonLink })
+    setOpen(true)
+  }
+  const save = () => {
+    if (!form.title.trim()) return
+    upsert({
+      id: editing?.id || newId("hero"),
+      isActive: editing?.isActive ?? true,
+      ...form,
+    })
+    setOpen(false)
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <p className="text-xs text-muted-foreground">
+          Slides shown on the homepage hero. The first active slide is the main banner; the next two appear as side cards.
+        </p>
+        <Button onClick={openNew} className="text-white" style={{ background: WINE }}>
+          <Plus className="h-4 w-4 mr-2" /> Add Hero Slide
+        </Button>
+      </div>
+
+      {items.length === 0 && <EmptyState icon={ImageIcon} label="No hero slides yet. Add your first slide above." />}
+
+      <div className="space-y-2">
+        {items.map((h, idx) => (
+          <div key={h.id} className="flex items-center gap-4 border border-border rounded-sm p-3 bg-card">
+            <div className="text-xs font-mono text-muted-foreground w-6 text-center">{idx + 1}</div>
+            <ImagePreview src={h.image} alt={h.title} />
+            <div className="flex-1 min-w-0">
+              <h3 className="text-sm font-semibold truncate">{h.title}</h3>
+              <p className="text-xs text-muted-foreground truncate mt-0.5">{h.subtitle}</p>
+              <p className="text-[11px] text-muted-foreground/80 mt-1 flex items-center gap-1">
+                <Link2 className="h-3 w-3" /> {h.buttonLink}
+                <span className="mx-1">·</span>
+                <span className="px-1.5 py-0.5 rounded bg-secondary text-foreground/70">{h.buttonText}</span>
+                {!h.isActive && <span className="ml-1 text-amber-700 inline-flex items-center gap-1"><EyeOff className="h-3 w-3" />Hidden</span>}
+              </p>
+            </div>
+            <RowActions
+              active={h.isActive}
+              onToggle={() => upsert({ ...h, isActive: !h.isActive })}
+              onEdit={() => openEdit(h)}
+              onDelete={() => remove(h.id)}
+              onUp={() => reorder(moveItem(items, idx, -1))}
+              onDown={() => reorder(moveItem(items, idx, 1))}
+              isFirst={idx === 0}
+              isLast={idx === items.length - 1}
+            />
+          </div>
+        ))}
+      </div>
+
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="max-w-md bg-background text-foreground">
+          <DialogHeader><DialogTitle>{editing ? "Edit" : "Add"} Hero Slide</DialogTitle></DialogHeader>
+          <div className="space-y-4 mt-4">
+            <Field label="Title *" value={form.title} onChange={(v) => setForm({ ...form, title: v })} placeholder="Your Trusted Online Pharmacy" />
+            <Field label="Subtitle" value={form.subtitle} onChange={(v) => setForm({ ...form, subtitle: v })} placeholder="Short supporting line" multiline />
+            <div>
+              <Label className="text-sm font-medium mb-1.5 block">Image URL</Label>
+              <Input value={form.image} onChange={(e) => setForm({ ...form, image: e.target.value })} placeholder="/banners/hero-pharmacy-main.png" />
+              {form.image && (
+                <div className="relative w-full h-28 mt-2 rounded-sm overflow-hidden bg-secondary border border-border">
+                  <img src={form.image} alt="Preview" className="w-full h-full object-cover" />
+                </div>
+              )}
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Button Text" value={form.buttonText} onChange={(v) => setForm({ ...form, buttonText: v })} />
+              <Field label="Button Link" value={form.buttonLink} onChange={(v) => setForm({ ...form, buttonLink: v })} placeholder="/shop" />
+            </div>
+            <DialogFooter onCancel={() => setOpen(false)} onSave={save} disabled={!form.title.trim()} editing={!!editing} />
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div>
+  )
+}
+
+/* ─────────────────────────────────────────────────────────────
+   PROMO BANNERS TAB
+────────────────────────────────────────────────────────────── */
+
+const PROMO_FORM_BLANK: Omit<PromoBanner, "id" | "isActive"> = {
+  kicker: "", title: "", subtitle: "", image: "", link: "/shop", cta: "Shop Now",
+  textSide: "left", tone: "light",
+}
+
+function PromoBannersTab() {
+  const { items, upsert, remove, reorder } = useCmsCollection<PromoBanner>(PROMO_BANNERS_KEY, PROMO_BANNERS_DEFAULTS)
+  const [open, setOpen] = useState(false)
+  const [editing, setEditing] = useState<PromoBanner | null>(null)
+  const [form, setForm] = useState({ ...PROMO_FORM_BLANK })
+
+  const openNew = () => { setEditing(null); setForm({ ...PROMO_FORM_BLANK }); setOpen(true) }
+  const openEdit = (p: PromoBanner) => {
+    setEditing(p)
+    setForm({
+      kicker: p.kicker, title: p.title, subtitle: p.subtitle, image: p.image,
+      link: p.link, cta: p.cta, textSide: p.textSide, tone: p.tone,
+    })
+    setOpen(true)
+  }
+  const save = () => {
+    if (!form.title.trim()) return
+    upsert({ id: editing?.id || newId("promo"), isActive: editing?.isActive ?? true, ...form })
+    setOpen(false)
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <p className="text-xs text-muted-foreground">
+          Mid-page promo cards shown below the hero. Two are visible at a time on desktop.
+        </p>
+        <Button onClick={openNew} className="text-white" style={{ background: WINE }}>
+          <Plus className="h-4 w-4 mr-2" /> Add Promo Banner
+        </Button>
+      </div>
+
+      {items.length === 0 && <EmptyState icon={ImageIcon} label="No promo banners yet. Add your first banner above." />}
+
+      <div className="space-y-2">
+        {items.map((p, idx) => (
+          <div key={p.id} className="flex items-center gap-4 border border-border rounded-sm p-3 bg-card">
+            <div className="text-xs font-mono text-muted-foreground w-6 text-center">{idx + 1}</div>
+            <ImagePreview src={p.image} alt={p.title} />
+            <div className="flex-1 min-w-0">
+              <p className="text-[10px] tracking-[0.2em] uppercase text-muted-foreground/80 mb-0.5">{p.kicker}</p>
+              <h3 className="text-sm font-semibold truncate">{p.title}</h3>
+              <p className="text-xs text-muted-foreground truncate">{p.subtitle}</p>
+              <p className="text-[11px] text-muted-foreground/80 mt-1 flex items-center gap-2 flex-wrap">
+                <span className="flex items-center gap-1"><Link2 className="h-3 w-3" />{p.link}</span>
+                <span className="px-1.5 py-0.5 rounded bg-secondary text-foreground/70">CTA: {p.cta}</span>
+                <span className="px-1.5 py-0.5 rounded bg-secondary text-foreground/70">Text: {p.textSide}</span>
+                <span className="px-1.5 py-0.5 rounded bg-secondary text-foreground/70">Tone: {p.tone}</span>
+                {!p.isActive && <span className="text-amber-700 inline-flex items-center gap-1"><EyeOff className="h-3 w-3" />Hidden</span>}
+              </p>
+            </div>
+            <RowActions
+              active={p.isActive}
+              onToggle={() => upsert({ ...p, isActive: !p.isActive })}
+              onEdit={() => openEdit(p)}
+              onDelete={() => remove(p.id)}
+              onUp={() => reorder(moveItem(items, idx, -1))}
+              onDown={() => reorder(moveItem(items, idx, 1))}
+              isFirst={idx === 0}
+              isLast={idx === items.length - 1}
+            />
+          </div>
+        ))}
+      </div>
+
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="max-w-md bg-background text-foreground">
+          <DialogHeader><DialogTitle>{editing ? "Edit" : "Add"} Promo Banner</DialogTitle></DialogHeader>
+          <div className="space-y-4 mt-4">
+            <Field label="Kicker" value={form.kicker} onChange={(v) => setForm({ ...form, kicker: v })} placeholder="Wellness & Supplements" />
+            <Field label="Title *" value={form.title} onChange={(v) => setForm({ ...form, title: v })} />
+            <Field label="Subtitle" value={form.subtitle} onChange={(v) => setForm({ ...form, subtitle: v })} multiline />
+            <div>
+              <Label className="text-sm font-medium mb-1.5 block">Image URL</Label>
+              <Input value={form.image} onChange={(e) => setForm({ ...form, image: e.target.value })} placeholder="/banner-wellness.png" />
+              {form.image && (
+                <div className="relative w-full h-28 mt-2 rounded-sm overflow-hidden bg-secondary border border-border">
+                  <img src={form.image} alt="Preview" className="w-full h-full object-cover" />
+                </div>
+              )}
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Link" value={form.link} onChange={(v) => setForm({ ...form, link: v })} placeholder="/shop" />
+              <Field label="CTA Text" value={form.cta} onChange={(v) => setForm({ ...form, cta: v })} />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label className="text-sm font-medium mb-1.5 block">Text Side</Label>
+                <div className="flex gap-2">
+                  {(["left", "right"] as const).map((s) => (
+                    <Button key={s} type="button" variant={form.textSide === s ? "default" : "outline"} size="sm"
+                      onClick={() => setForm({ ...form, textSide: s })}
+                      className={form.textSide === s ? "text-white" : "bg-transparent"}
+                      style={form.textSide === s ? { background: WINE } : undefined}>{s}</Button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <Label className="text-sm font-medium mb-1.5 block">Tone</Label>
+                <div className="flex gap-2">
+                  {(["light", "dark"] as const).map((t) => (
+                    <Button key={t} type="button" variant={form.tone === t ? "default" : "outline"} size="sm"
+                      onClick={() => setForm({ ...form, tone: t })}
+                      className={form.tone === t ? "text-white" : "bg-transparent"}
+                      style={form.tone === t ? { background: WINE } : undefined}>{t}</Button>
+                  ))}
+                </div>
+              </div>
+            </div>
+            <DialogFooter onCancel={() => setOpen(false)} onSave={save} disabled={!form.title.trim()} editing={!!editing} />
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div>
+  )
+}
+
+/* ─────────────────────────────────────────────────────────────
+   NAVBAR OFFERS TAB
+────────────────────────────────────────────────────────────── */
+
+function NavbarOffersTab() {
+  const { items, upsert, remove, reorder } = useCmsCollection<NavOffer>(NAV_OFFERS_KEY, NAV_OFFERS_DEFAULTS)
+  const [open, setOpen] = useState(false)
+  const [editing, setEditing] = useState<NavOffer | null>(null)
+  const [form, setForm] = useState({ text: "", href: "" })
+
+  const openNew = () => { setEditing(null); setForm({ text: "", href: "" }); setOpen(true) }
+  const openEdit = (n: NavOffer) => { setEditing(n); setForm({ text: n.text, href: n.href || "" }); setOpen(true) }
+  const save = () => {
+    if (!form.text.trim()) return
+    upsert({ id: editing?.id || newId("nav"), isActive: editing?.isActive ?? true, ...form })
+    setOpen(false)
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <p className="text-xs text-muted-foreground">
+          Short messages that scroll across the marquee bar. Used as a fallback when the Announcement Bar is disabled.
+        </p>
+        <Button onClick={openNew} className="text-white" style={{ background: WINE }}>
+          <Plus className="h-4 w-4 mr-2" /> Add Offer Text
+        </Button>
+      </div>
+
+      {items.length === 0 && <EmptyState icon={Megaphone} label="No navbar offers yet. Add your first message above." />}
+
+      <div className="space-y-2">
+        {items.map((n, idx) => (
+          <div key={n.id} className="flex items-center gap-4 border border-border rounded-sm p-3 bg-card">
+            <Megaphone className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium truncate">{n.text}</p>
+              {n.href && (
+                <p className="text-[11px] text-muted-foreground/80 mt-0.5 flex items-center gap-1">
+                  <Link2 className="h-3 w-3" />{n.href}
+                </p>
+              )}
+            </div>
+            <RowActions
+              active={n.isActive}
+              onToggle={() => upsert({ ...n, isActive: !n.isActive })}
+              onEdit={() => openEdit(n)}
+              onDelete={() => remove(n.id)}
+              onUp={() => reorder(moveItem(items, idx, -1))}
+              onDown={() => reorder(moveItem(items, idx, 1))}
+              isFirst={idx === 0}
+              isLast={idx === items.length - 1}
+            />
+          </div>
+        ))}
+      </div>
+
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="max-w-md bg-background text-foreground">
+          <DialogHeader><DialogTitle>{editing ? "Edit" : "Add"} Navbar Offer</DialogTitle></DialogHeader>
+          <div className="space-y-4 mt-4">
+            <Field label="Offer Text *" value={form.text} onChange={(v) => setForm({ ...form, text: v })} placeholder="FREE DELIVERY on orders above KSh 5,000" />
+            <Field label="Link (optional)" value={form.href} onChange={(v) => setForm({ ...form, href: v })} placeholder="/shop" />
+            <DialogFooter onCancel={() => setOpen(false)} onSave={save} disabled={!form.text.trim()} editing={!!editing} />
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div>
+  )
+}
+
+/* ─────────────────────────────────────────────────────────────
+   SHARED FORM BITS
+────────────────────────────────────────────────────────────── */
+
+function Field({
+  label, value, onChange, placeholder, multiline,
+}: {
+  label: string; value: string; onChange: (v: string) => void; placeholder?: string; multiline?: boolean
+}) {
+  return (
+    <div>
+      <Label className="text-sm font-medium mb-1.5 block">{label}</Label>
+      {multiline ? (
+        <Textarea value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} rows={3} />
+      ) : (
+        <Input value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} />
+      )}
+    </div>
+  )
+}
+
+function DialogFooter({
+  onCancel, onSave, disabled, editing,
+}: { onCancel: () => void; onSave: () => void; disabled: boolean; editing: boolean }) {
+  return (
+    <div className="flex justify-end gap-3 pt-4 border-t border-border">
+      <Button variant="outline" onClick={onCancel} className="bg-transparent">Cancel</Button>
+      <Button onClick={onSave} disabled={disabled} className="text-white" style={{ background: WINE }}>
+        {editing ? "Update" : "Add"}
+      </Button>
+    </div>
+  )
+}
+
+/* ─────────────────────────────────────────────────────────────
+   ROOT
+────────────────────────────────────────────────────────────── */
 
 export function AdminBanners() {
-  const { data, mutate } = useSWR<{ banners: BannerData[]; navbarOffers: NavOfferData[]; popupOffers: PopupData[] }>("/api/admin/banners", fetcher)
-  const banners = data?.banners || []
-  const navOffers = data?.navbarOffers || []
-  const popupOffers = data?.popupOffers || []
-
-  // Hero banners
-  const { data: heroBanners = [], mutate: mutateHero } = useSWR<HeroBannerData[]>("/api/admin/hero-banners", fetcher)
-  const [heroModal, setHeroModal] = useState(false)
-  const [editHero, setEditHero] = useState<HeroBannerData | null>(null)
-  const [heroForm, setHeroForm] = useState({ title: "", subtitle: "", imageUrl: "", buttonLink: "/shop", buttonText: "Shop Now" })
-
-  const openHeroNew = () => { setEditHero(null); setHeroForm({ title: "", subtitle: "", imageUrl: "", buttonLink: "/shop", buttonText: "Shop Now" }); setHeroModal(true) }
-  const openHeroEdit = (h: HeroBannerData) => { setEditHero(h); setHeroForm({ title: h.title, subtitle: h.subtitle || "", imageUrl: h.image_url || "", buttonLink: h.button_link || "/shop", buttonText: h.button_text || "Shop Now" }); setHeroModal(true) }
-  const saveHero = async () => {
-    try {
-      const response = await apiFetch("/api/admin/hero-banners", {
-        method: editHero ? "PUT" : "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: editHero?.id, ...heroForm, isActive: editHero?.is_active ?? true, sortOrder: editHero?.sort_order ?? heroBanners.length }),
-      })
-      if (!response.ok) throw new Error("Failed to save hero banner")
-      await mutateHero()
-      setHeroModal(false)
-    } catch (error) {
-      alert(`Error saving hero banner: ${error instanceof Error ? error.message : "Unknown error"}`)
-    }
-  }
-  const deleteHero = async (id: string) => {
-    try {
-      const response = await apiFetch(`/api/admin/hero-banners?id=${id}`, { method: "DELETE" })
-      if (!response.ok) throw new Error("Failed to delete hero banner")
-      await mutateHero()
-    } catch (error) {
-      alert(`Error deleting hero banner: ${error instanceof Error ? error.message : "Unknown error"}`)
-    }
-  }
-  const toggleHero = async (h: HeroBannerData) => {
-    await apiFetch("/api/admin/hero-banners", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: h.id, title: h.title, subtitle: h.subtitle, imageUrl: h.image_url, buttonLink: h.button_link, buttonText: h.button_text, isActive: !h.is_active, sortOrder: h.sort_order }) })
-    mutateHero()
-  }
-
-  // Banner modal
-  const [bannerModal, setBannerModal] = useState(false)
-  const [editBanner, setEditBanner] = useState<BannerData | null>(null)
-  const [bannerForm, setBannerForm] = useState({ title: "", subtitle: "", image: "", link: "", position: "hero" as string })
-
-  // Nav offer modal
-  const [navModal, setNavModal] = useState(false)
-  const [editNav, setEditNav] = useState<NavOfferData | null>(null)
-  const [navText, setNavText] = useState("")
-
-  // Popup offer modal
-  const [popupModal, setPopupModal] = useState(false)
-  const [editPopup, setEditPopup] = useState<PopupData | null>(null)
-  const [popupForm, setPopupForm] = useState({ title: "", description: "", discountPercentage: "", discountLabel: "", image: "", link: "/shop", validUntil: "" })
-
-  // Banner CRUD
-  const openBannerNew = () => { setEditBanner(null); setBannerForm({ title: "", subtitle: "", image: "", link: "", position: "hero" }); setBannerModal(true) }
-  const openBannerEdit = (b: BannerData) => { setEditBanner(b); setBannerForm({ title: b.title, subtitle: b.subtitle || "", image: b.image_url || "", link: b.link_url, position: b.position }); setBannerModal(true) }
-  const saveBanner = async () => {
-    try {
-      const response = await apiFetch("/api/admin/banners", {
-        method: editBanner ? "PUT" : "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type: "banner", id: editBanner?.id, title: bannerForm.title, subtitle: bannerForm.subtitle, image: bannerForm.image, link: bannerForm.link, position: bannerForm.position, isActive: editBanner?.is_active ?? true }),
-      })
-      if (!response.ok) throw new Error("Failed to save banner")
-      await mutate()
-      setBannerModal(false)
-    } catch (error) {
-      alert(`Error saving banner: ${error instanceof Error ? error.message : "Unknown error"}`)
-    }
-  }
-  const deleteBanner = async (id: string) => {
-    try {
-      const response = await apiFetch(`/api/admin/banners?id=${id}&type=banner`, { method: "DELETE" })
-      if (!response.ok) throw new Error("Failed to delete banner")
-      await mutate()
-    } catch (error) {
-      alert(`Error deleting banner: ${error instanceof Error ? error.message : "Unknown error"}`)
-    }
-  }
-  const toggleBanner = async (b: BannerData) => {
-    try {
-      const response = await apiFetch("/api/admin/banners", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type: "banner", id: b.id, title: b.title, subtitle: b.subtitle, image: b.image_url, link: b.link_url, position: b.position, isActive: !b.is_active }) })
-      if (!response.ok) throw new Error("Failed to toggle banner")
-      await mutate()
-    } catch (error) {
-      alert(`Error toggling banner: ${error instanceof Error ? error.message : "Unknown error"}`)
-    }
-  }
-
-  // Nav CRUD
-  const openNavNew = () => { setEditNav(null); setNavText(""); setNavModal(true) }
-  const openNavEdit = (n: NavOfferData) => { setEditNav(n); setNavText(n.text); setNavModal(true) }
-  const saveNav = async () => {
-    try {
-      const response = await apiFetch("/api/admin/banners", { method: editNav ? "PUT" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type: "navbar_offer", id: editNav?.id, text: navText, isActive: editNav?.is_active ?? true }) })
-      if (!response.ok) throw new Error("Failed to save navbar offer")
-      await mutate()
-      setNavModal(false)
-    } catch (error) {
-      alert(`Error saving navbar offer: ${error instanceof Error ? error.message : "Unknown error"}`)
-    }
-  }
-  const deleteNav = async (id: string) => {
-    try {
-      const response = await apiFetch(`/api/admin/banners?id=${id}&type=navbar_offer`, { method: "DELETE" })
-      if (!response.ok) throw new Error("Failed to delete navbar offer")
-      await mutate()
-    } catch (error) {
-      alert(`Error deleting navbar offer: ${error instanceof Error ? error.message : "Unknown error"}`)
-    }
-  }
-  const toggleNav = async (n: NavOfferData) => {
-    try {
-      const response = await apiFetch("/api/admin/banners", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type: "navbar_offer", id: n.id, text: n.text, isActive: !n.is_active }) })
-      if (!response.ok) throw new Error("Failed to toggle navbar offer")
-      await mutate()
-    } catch (error) {
-      alert(`Error toggling navbar offer: ${error instanceof Error ? error.message : "Unknown error"}`)
-    }
-  }
-
-  // Popup CRUD
-  const openPopupNew = () => { setEditPopup(null); setPopupForm({ title: "", description: "", discountPercentage: "", discountLabel: "", image: "", link: "/shop", validUntil: "" }); setPopupModal(true) }
-  const openPopupEdit = (p: PopupData) => { setEditPopup(p); setPopupForm({ title: p.title, description: p.description || "", discountPercentage: p.discount_percentage?.toString() || "", discountLabel: p.discount_label || "", image: p.image_url || "", link: p.link || "/shop", validUntil: p.valid_until || "" }); setPopupModal(true) }
-  const savePopup = async () => {
-    try {
-      const response = await apiFetch("/api/admin/banners", { method: editPopup ? "PUT" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type: "popup_offer", id: editPopup?.id, title: popupForm.title, description: popupForm.description, discountPercentage: popupForm.discountPercentage ? Number(popupForm.discountPercentage) : null, discountLabel: popupForm.discountLabel, image: popupForm.image, link: popupForm.link, validUntil: popupForm.validUntil, isActive: editPopup?.is_active ?? true }) })
-      if (!response.ok) throw new Error("Failed to save popup offer")
-      await mutate()
-      setPopupModal(false)
-    } catch (error) {
-      alert(`Error saving popup offer: ${error instanceof Error ? error.message : "Unknown error"}`)
-    }
-  }
-  const deletePopup = async (id: string) => {
-    try {
-      const response = await apiFetch(`/api/admin/banners?id=${id}&type=popup_offer`, { method: "DELETE" })
-      if (!response.ok) throw new Error("Failed to delete popup offer")
-      await mutate()
-    } catch (error) {
-      alert(`Error deleting popup offer: ${error instanceof Error ? error.message : "Unknown error"}`)
-    }
-  }
-  const togglePopup = async (p: PopupData) => {
-    try {
-      const response = await apiFetch("/api/admin/banners", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type: "popup_offer", id: p.id, title: p.title, description: p.description, discountPercentage: p.discount_percentage, discountLabel: p.discount_label, image: p.image_url, link: p.link, validUntil: p.valid_until, isActive: !p.is_active }) })
-      if (!response.ok) throw new Error("Failed to toggle popup offer")
-      await mutate()
-    } catch (error) {
-      alert(`Error toggling popup offer: ${error instanceof Error ? error.message : "Unknown error"}`)
-    }
-  }
+  const { items: heroItems } = useCmsCollection<HeroSlide>(HERO_SLIDES_KEY, HERO_SLIDES_DEFAULTS)
+  const { items: promoItems } = useCmsCollection<PromoBanner>(PROMO_BANNERS_KEY, PROMO_BANNERS_DEFAULTS)
+  const { items: navItems } = useCmsCollection<NavOffer>(NAV_OFFERS_KEY, NAV_OFFERS_DEFAULTS)
 
   return (
     <AdminShell title="Offers & Banners">
       <div className="space-y-6">
         <div>
           <h1 className="text-2xl font-serif font-bold">Offers & Banners</h1>
-          <p className="text-sm text-muted-foreground mt-1">Manage homepage banners, navbar running offers, and popup offers.</p>
+          <p className="text-sm text-muted-foreground mt-1">
+            Manage homepage hero slides, mid-page promo banners and the marquee offer messages.
+            Popup offers are managed separately under <a className="underline" href="/admin/popup-offer">Popup Offer</a>.
+          </p>
         </div>
 
         <Tabs defaultValue="hero">
           <TabsList className="bg-secondary">
-            <TabsTrigger value="hero">Hero Banners ({heroBanners.length})</TabsTrigger>
-            <TabsTrigger value="banners">Banners ({banners.length})</TabsTrigger>
-            <TabsTrigger value="navbar">Navbar Offers ({navOffers.length})</TabsTrigger>
-            <TabsTrigger value="popup">Popup Offers ({popupOffers.length})</TabsTrigger>
+            <TabsTrigger value="hero">Hero Slides ({heroItems.length})</TabsTrigger>
+            <TabsTrigger value="promos">Promo Banners ({promoItems.length})</TabsTrigger>
+            <TabsTrigger value="navbar">Navbar Offers ({navItems.length})</TabsTrigger>
           </TabsList>
-
-          <TabsContent value="hero" className="mt-6 space-y-4">
-            <div className="flex justify-end">
-              <Button onClick={openHeroNew} className="bg-foreground text-background hover:bg-foreground/90"><Plus className="h-4 w-4 mr-2" /> Add Hero Banner</Button>
-            </div>
-            {heroBanners.length === 0 && <p className="text-sm text-muted-foreground text-center py-8">No hero banners yet. Add your first collection banner above.</p>}
-            {heroBanners.map((h) => (
-              <div key={h.id} className="flex items-center gap-4 border border-border rounded-sm p-4">
-                <div className="relative w-32 h-20 bg-secondary rounded-sm overflow-hidden flex-shrink-0">
-                  <img src={h.image_url || "/placeholder.svg"} alt={h.title} className="object-cover" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <h3 className="text-sm font-semibold truncate">{h.title}</h3>
-                  <p className="text-xs text-muted-foreground">Link: {h.button_link} -- Button: {h.button_text}</p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Switch checked={h.is_active} onCheckedChange={() => toggleHero(h)} />
-                  <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openHeroEdit(h)}><Pencil className="h-3.5 w-3.5" /></Button>
-                  <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => deleteHero(h.id)}><Trash2 className="h-3.5 w-3.5" /></Button>
-                </div>
-              </div>
-            ))}
-          </TabsContent>
-
-          <TabsContent value="banners" className="mt-6 space-y-4">
-            <div className="flex justify-end">
-              <Button onClick={openBannerNew} className="bg-foreground text-background hover:bg-foreground/90"><Plus className="h-4 w-4 mr-2" /> Add Banner</Button>
-            </div>
-            {banners.length === 0 && <p className="text-sm text-muted-foreground text-center py-8">No banners yet. Add your first banner above.</p>}
-            {banners.map((b) => (
-              <div key={b.id} className="flex items-center gap-4 border border-border rounded-sm p-4">
-                <div className="relative w-32 h-20 bg-secondary rounded-sm overflow-hidden flex-shrink-0">
-                  <img src={b.image_url || "/placeholder.svg"} alt={b.title} className="object-cover" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <h3 className="text-sm font-semibold truncate">{b.title}</h3>
-                  <p className="text-xs text-muted-foreground">{b.subtitle} -- {b.position}</p>
-                  <p className="text-xs text-muted-foreground">Link: {b.link_url}</p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Switch checked={b.is_active} onCheckedChange={() => toggleBanner(b)} />
-                  <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openBannerEdit(b)}><Pencil className="h-3.5 w-3.5" /></Button>
-                  <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => deleteBanner(b.id)}><Trash2 className="h-3.5 w-3.5" /></Button>
-                </div>
-              </div>
-            ))}
-          </TabsContent>
-
-          <TabsContent value="navbar" className="mt-6 space-y-4">
-            <div className="flex justify-end">
-              <Button onClick={openNavNew} className="bg-foreground text-background hover:bg-foreground/90"><Plus className="h-4 w-4 mr-2" /> Add Offer Text</Button>
-            </div>
-            {navOffers.length === 0 && <p className="text-sm text-muted-foreground text-center py-8">No navbar offers yet. Add your first offer above.</p>}
-            {navOffers.map((n) => (
-              <div key={n.id} className="flex items-center gap-4 border border-border rounded-sm p-4">
-                <Megaphone className="h-5 w-5 text-muted-foreground flex-shrink-0" />
-                <p className="flex-1 text-sm">{n.text}</p>
-                <div className="flex items-center gap-2">
-                  <Switch checked={n.is_active} onCheckedChange={() => toggleNav(n)} />
-                  <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openNavEdit(n)}><Pencil className="h-3.5 w-3.5" /></Button>
-                  <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => deleteNav(n.id)}><Trash2 className="h-3.5 w-3.5" /></Button>
-                </div>
-              </div>
-            ))}
-          </TabsContent>
-
-          <TabsContent value="popup" className="mt-6 space-y-4">
-            <div className="flex justify-end">
-              <Button onClick={openPopupNew} className="bg-foreground text-background hover:bg-foreground/90"><Plus className="h-4 w-4 mr-2" /> Add Popup Offer</Button>
-            </div>
-            {popupOffers.length === 0 && <p className="text-sm text-muted-foreground text-center py-8">No popup offers yet. Add your first offer above.</p>}
-            {popupOffers.map((p) => (
-              <div key={p.id} className="flex items-center gap-4 border border-border rounded-sm p-4">
-                <div className="relative w-20 h-14 bg-secondary rounded-sm overflow-hidden flex-shrink-0">
-                  <img src={p.image_url || "/placeholder.svg"} alt={p.title} className="object-cover" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <h3 className="text-sm font-semibold">{p.title}</h3>
-                  <p className="text-xs text-muted-foreground">{p.discount_percentage ? `${p.discount_percentage}% OFF` : "No discount set"}</p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Switch checked={p.is_active} onCheckedChange={() => togglePopup(p)} />
-                  <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openPopupEdit(p)}><Pencil className="h-3.5 w-3.5" /></Button>
-                  <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => deletePopup(p.id)}><Trash2 className="h-3.5 w-3.5" /></Button>
-                </div>
-              </div>
-            ))}
-          </TabsContent>
+          <TabsContent value="hero" className="mt-6"><HeroSlidesTab /></TabsContent>
+          <TabsContent value="promos" className="mt-6"><PromoBannersTab /></TabsContent>
+          <TabsContent value="navbar" className="mt-6"><NavbarOffersTab /></TabsContent>
         </Tabs>
       </div>
-
-      {/* Banner Modal */}
-      <Dialog open={bannerModal} onOpenChange={setBannerModal}>
-        <DialogContent className="max-w-md bg-background text-foreground">
-          <DialogHeader><DialogTitle className="font-serif">{editBanner ? "Edit" : "Add"} Banner</DialogTitle></DialogHeader>
-          <div className="space-y-4 mt-4">
-            <div><Label className="text-sm font-medium mb-1.5 block">Title *</Label><Input value={bannerForm.title} onChange={(e) => setBannerForm({ ...bannerForm, title: e.target.value })} /></div>
-            <div><Label className="text-sm font-medium mb-1.5 block">Subtitle</Label><Input value={bannerForm.subtitle} onChange={(e) => setBannerForm({ ...bannerForm, subtitle: e.target.value })} /></div>
-            <div><Label className="text-sm font-medium mb-1.5 block">Image URL</Label><Input value={bannerForm.image} onChange={(e) => setBannerForm({ ...bannerForm, image: e.target.value })} /></div>
-            <div><Label className="text-sm font-medium mb-1.5 block">Link</Label><Input value={bannerForm.link} onChange={(e) => setBannerForm({ ...bannerForm, link: e.target.value })} placeholder="/shop" /></div>
-            <div>
-              <Label className="text-sm font-medium mb-1.5 block">Position</Label>
-              <div className="flex gap-2">
-                <Button variant={bannerForm.position === "hero" ? "default" : "outline"} size="sm" onClick={() => setBannerForm({ ...bannerForm, position: "hero" })} className={bannerForm.position === "hero" ? "bg-foreground text-background" : "bg-transparent"}>Hero</Button>
-                <Button variant={bannerForm.position === "mid-page" ? "default" : "outline"} size="sm" onClick={() => setBannerForm({ ...bannerForm, position: "mid-page" })} className={bannerForm.position === "mid-page" ? "bg-foreground text-background" : "bg-transparent"}>Mid-page</Button>
-              </div>
-            </div>
-            <div className="flex justify-end gap-3 pt-4 border-t border-border">
-              <Button variant="outline" onClick={() => setBannerModal(false)} className="bg-transparent">Cancel</Button>
-              <Button onClick={saveBanner} disabled={!bannerForm.title} className="bg-foreground text-background hover:bg-foreground/90">{editBanner ? "Update" : "Add"} Banner</Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Nav Offer Modal */}
-      <Dialog open={navModal} onOpenChange={setNavModal}>
-        <DialogContent className="max-w-md bg-background text-foreground">
-          <DialogHeader><DialogTitle className="font-serif">{editNav ? "Edit" : "Add"} Navbar Offer</DialogTitle></DialogHeader>
-          <div className="space-y-4 mt-4">
-            <div><Label className="text-sm font-medium mb-1.5 block">Offer Text *</Label><Input value={navText} onChange={(e) => setNavText(e.target.value)} placeholder="FREE SHIPPING on orders above KSh 5,000" /></div>
-            <div className="flex justify-end gap-3 pt-4 border-t border-border">
-              <Button variant="outline" onClick={() => setNavModal(false)} className="bg-transparent">Cancel</Button>
-              <Button onClick={saveNav} disabled={!navText} className="bg-foreground text-background hover:bg-foreground/90">{editNav ? "Update" : "Add"}</Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Popup Offer Modal */}
-      <Dialog open={popupModal} onOpenChange={setPopupModal}>
-        <DialogContent className="max-w-md bg-background text-foreground">
-          <DialogHeader><DialogTitle className="font-serif">{editPopup ? "Edit" : "Add"} Popup Offer</DialogTitle></DialogHeader>
-          <div className="space-y-4 mt-4">
-            <div><Label className="text-sm font-medium mb-1.5 block">Title *</Label><Input value={popupForm.title} onChange={(e) => setPopupForm({ ...popupForm, title: e.target.value })} /></div>
-            <div><Label className="text-sm font-medium mb-1.5 block">Description</Label><Textarea value={popupForm.description} onChange={(e) => setPopupForm({ ...popupForm, description: e.target.value })} rows={3} /></div>
-            <div className="grid grid-cols-2 gap-4">
-              <div><Label className="text-sm font-medium mb-1.5 block">Discount %</Label><Input type="number" value={popupForm.discountPercentage} onChange={(e) => setPopupForm({ ...popupForm, discountPercentage: e.target.value })} placeholder="30" /></div>
-              <div><Label className="text-sm font-medium mb-1.5 block">Image URL</Label><Input value={popupForm.image} onChange={(e) => setPopupForm({ ...popupForm, image: e.target.value })} /></div>
-            </div>
-            <div className="flex justify-end gap-3 pt-4 border-t border-border">
-              <Button variant="outline" onClick={() => setPopupModal(false)} className="bg-transparent">Cancel</Button>
-              <Button onClick={savePopup} disabled={!popupForm.title} className="bg-foreground text-background hover:bg-foreground/90">{editPopup ? "Update" : "Add"} Offer</Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
-      {/* Hero Banner Modal */}
-      <Dialog open={heroModal} onOpenChange={setHeroModal}>
-        <DialogContent className="max-w-md bg-background text-foreground">
-          <DialogHeader><DialogTitle className="font-serif">{editHero ? "Edit" : "Add"} Hero Banner</DialogTitle></DialogHeader>
-          <div className="space-y-4 mt-4">
-            <div><Label className="text-sm font-medium mb-1.5 block">Title *</Label><Input value={heroForm.title} onChange={(e) => setHeroForm({ ...heroForm, title: e.target.value })} placeholder="Premium Bodysuits Collection" /></div>
-            <div><Label className="text-sm font-medium mb-1.5 block">Subtitle</Label><Input value={heroForm.subtitle} onChange={(e) => setHeroForm({ ...heroForm, subtitle: e.target.value })} placeholder="Discover stylish women's fashion" /></div>
-            <div>
-              <Label className="text-sm font-medium mb-1.5 block">Banner Image</Label>
-              <Input value={heroForm.imageUrl} onChange={(e) => setHeroForm({ ...heroForm, imageUrl: e.target.value })} placeholder="/images/products/medications/pill-bottle-white.png" />
-              <p className="text-[11px] text-muted-foreground mt-1">Use any image from /images/products/** (e.g. /images/products/vitamins/vitamin-c-bottle.png, /images/products/medical-devices/digital-thermometer.png, /images/products/medications/blister-pack-tablets.png).</p>
-              {heroForm.imageUrl && (
-                <div className="relative w-full h-28 mt-2 rounded-sm overflow-hidden bg-secondary">
-                  <img src={heroForm.imageUrl} alt="Preview" className="object-cover" />
-                </div>
-              )}
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div><Label className="text-sm font-medium mb-1.5 block">Button Link</Label><Input value={heroForm.buttonLink} onChange={(e) => setHeroForm({ ...heroForm, buttonLink: e.target.value })} placeholder="/shop" /></div>
-              <div><Label className="text-sm font-medium mb-1.5 block">Button Text</Label><Input value={heroForm.buttonText} onChange={(e) => setHeroForm({ ...heroForm, buttonText: e.target.value })} /></div>
-            </div>
-            <div className="flex justify-end gap-3 pt-4 border-t border-border">
-              <Button variant="outline" onClick={() => setHeroModal(false)} className="bg-transparent">Cancel</Button>
-              <Button onClick={saveHero} disabled={!heroForm.title} className="bg-foreground text-background hover:bg-foreground/90">{editHero ? "Update" : "Add"}</Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
     </AdminShell>
   )
 }

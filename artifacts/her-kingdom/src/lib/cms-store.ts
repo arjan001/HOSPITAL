@@ -118,7 +118,7 @@ export function useCmsDoc<T>(key: string, defaults: T): [T, (next: T | ((prev: T
   return [value, setValue]
 }
 
-export type CmsRecord = { id: string; [k: string]: unknown }
+export type CmsRecord = { id: string }
 
 export function useCmsCollection<T extends CmsRecord>(
   key: string,
@@ -162,9 +162,19 @@ export function useCmsCollection<T extends CmsRecord>(
 
 /* ---------- Imperative helpers (non-React contexts) ---------- */
 
+function hasRaw(key: string): boolean {
+  if (typeof window === "undefined") return false
+  try {
+    return window.localStorage.getItem(fullKey(key)) !== null
+  } catch {
+    return false
+  }
+}
+
 export const cmsStore = {
   get: readRaw,
   set: writeRaw,
+  has: hasRaw,
 }
 
 /* ---------- Utilities ---------- */
