@@ -59,7 +59,7 @@ const BANNERS: Banner[] = [
 
 export function OfferBanner() {
   return (
-    <section className="py-14 lg:py-20" style={{ background: "#FFFBF5" }}>
+    <section className="py-8 lg:py-10" style={{ background: "#FFFBF5" }}>
       <div className="mx-auto max-w-7xl px-4 lg:px-8">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 lg:gap-7">
           {BANNERS.map((b) => (
@@ -80,7 +80,7 @@ function BannerCard({ banner }: { banner: Banner }) {
   return (
     <Link
       href={banner.href}
-      className="group relative overflow-hidden rounded-3xl min-h-[280px] lg:min-h-[320px] flex items-center transition-transform hover:-translate-y-1"
+      className="group relative overflow-hidden rounded-2xl min-h-[170px] lg:min-h-[185px] flex items-center transition-transform hover:-translate-y-0.5"
       style={{
         border: `1px solid ${BORDER_PEACH}`,
         boxShadow:
@@ -98,12 +98,12 @@ function BannerCard({ banner }: { banner: Banner }) {
       />
 
       <div
-        className={`relative z-10 p-7 lg:p-10 max-w-[58%] ${
+        className={`relative z-10 px-5 py-4 lg:px-7 lg:py-5 max-w-[58%] ${
           banner.textSide === "right" ? "ml-auto text-right" : "text-left"
         }`}
       >
         <span
-          className={`inline-flex items-center gap-1.5 text-[10px] tracking-[0.25em] uppercase mb-3 font-bold px-3 py-1 rounded-full ${
+          className={`inline-flex items-center gap-1.5 text-[9px] tracking-[0.22em] uppercase mb-2 font-bold px-2.5 py-0.5 rounded-full ${
             banner.textSide === "right" ? "flex-row-reverse" : ""
           }`}
           style={{
@@ -119,19 +119,19 @@ function BannerCard({ banner }: { banner: Banner }) {
           {banner.kicker}
         </span>
         <h3
-          className="text-2xl lg:text-[28px] font-bold leading-tight"
+          className="text-base lg:text-lg font-bold leading-snug"
           style={{ color: titleColor }}
         >
           {banner.title}
         </h3>
         <p
-          className="text-sm mt-2.5 leading-relaxed"
+          className="text-xs mt-1 leading-relaxed line-clamp-2"
           style={{ color: subColor }}
         >
           {banner.subtitle}
         </p>
         <span
-          className={`inline-flex items-center gap-2 mt-5 px-5 py-2.5 text-xs font-bold tracking-wider uppercase rounded-full transition-transform group-hover:scale-[1.03] ${
+          className={`inline-flex items-center gap-1.5 mt-3 px-3.5 py-1.5 text-[10px] font-bold tracking-wider uppercase rounded-full transition-transform group-hover:scale-[1.03] ${
             banner.textSide === "right" ? "flex-row-reverse" : ""
           }`}
           style={{
@@ -144,7 +144,7 @@ function BannerCard({ banner }: { banner: Banner }) {
         >
           {banner.cta}
           <ArrowRight
-            className={`h-4 w-4 transition-transform ${
+            className={`h-3 w-3 transition-transform ${
               banner.textSide === "right"
                 ? "rotate-180 group-hover:-translate-x-0.5"
                 : "group-hover:translate-x-0.5"
