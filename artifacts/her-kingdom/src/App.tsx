@@ -40,6 +40,12 @@ import { AdminPolicies } from "@/components/admin/policies";
 import { AdminProducts } from "@/components/admin/products";
 import { AdminSettings } from "@/components/admin/settings";
 import { UsersManagement } from "@/components/admin/users";
+import { AdminAnnouncementBar } from "@/components/admin/announcement-bar";
+import { AdminCustomPages } from "@/components/admin/custom-pages";
+import { AdminFooterCms } from "@/components/admin/footer-cms";
+import { AdminWebsiteSettings } from "@/components/admin/website-settings";
+import { AdminPopupOffer } from "@/components/admin/popup-offer";
+import { PopupOffer } from "@/components/store/popup-offer";
 
 // Auth pages (admin)
 import LoginPage from "@/pages/auth/login";
@@ -56,6 +62,7 @@ import SpeakToADoctorPage from "@/pages/speak-to-a-doctor";
 // Policy pages
 import PolicyPage from "@/pages/policy";
 import AboutPage from "@/pages/about";
+import CustomPageView from "@/pages/custom-page";
 
 // Store layout wrappers
 import { TopBar } from "@/components/store/top-bar";
@@ -164,6 +171,7 @@ function Router() {
       <Route path="/refund-policy">
         {() => <PolicyPage slug="refund-policy" />}
       </Route>
+      <Route path="/pages/:slug" component={CustomPageView} />
       <Route path="/policies/:slug">
         {(params) => <PolicyPage slug={params.slug} />}
       </Route>
@@ -193,9 +201,18 @@ function Router() {
       <Route path="/admin/products" component={AdminProducts} />
       <Route path="/admin/settings" component={AdminSettings} />
       <Route path="/admin/users" component={UsersManagement} />
+      <Route path="/admin/announcement" component={AdminAnnouncementBar} />
+      <Route path="/admin/pages" component={AdminCustomPages} />
+      <Route path="/admin/footer" component={AdminFooterCms} />
+      <Route path="/admin/website-settings" component={AdminWebsiteSettings} />
+      <Route path="/admin/popup-offer" component={AdminPopupOffer} />
       <Route component={NotFound} />
     </Switch>
   );
+}
+
+function GlobalOverlays() {
+  return <PopupOffer />;
 }
 
 function App() {
@@ -206,6 +223,7 @@ function App() {
           <GiftProvider>
             <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
               <Router />
+              <GlobalOverlays />
               <PageViewTracker />
             </WouterRouter>
             <Toaster position="top-right" richColors closeButton />

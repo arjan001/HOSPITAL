@@ -4,6 +4,9 @@ import { Link } from "wouter"
 import useSWR from "swr"
 import { Facebook, Instagram, Twitter, Youtube, Linkedin, Mail, ArrowUp } from "lucide-react"
 import { SeoLinkCloud } from "./seo-link-cloud"
+import { useCmsDoc, useCmsCollection } from "@/lib/cms-store"
+import { FOOTER_DEFAULTS, type FooterSettings as CmsFooterSettings } from "@/components/admin/footer-cms"
+import type { CustomPage } from "@/components/admin/custom-pages"
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
@@ -46,41 +49,6 @@ const DEFAULTS = {
     "©2026 Shaneed RX. A subsidiary of Shaniid Group of Technologies Limited. All rights reserved.",
 }
 
-const ABOUT_LINKS = [
-  { label: "Who We Are", href: "/who-we-are" },
-  { label: "How Shaneed RX Works", href: "/who-we-are#how-it-works" },
-  { label: "Quality Assurance & Safety", href: "/who-we-are#quality" },
-  { label: "Our Clinical Team", href: "/who-we-are#our-team" },
-  { label: "Careers", href: "/careers" },
-  { label: "Press & Media", href: "/press" },
-]
-
-const CARE_LINKS = [
-  { label: "Chronic Care Packs", href: "/shop?category=chronic-care" },
-  { label: "Family & Care Giver", href: "/shop?category=family-care" },
-  { label: "Preventive & Wellness", href: "/shop?category=wellness" },
-  { label: "Devices & Monitoring", href: "/shop?category=devices" },
-  { label: "First-Aid Pack", href: "/shop?category=first-aid" },
-  { label: "OTC Products", href: "/shop?category=otc" },
-]
-
-const SUPPORT_LINKS = [
-  { label: "Prescription Upload Guide", href: "/policies/prescription-upload-guide" },
-  { label: "Returns & Refund Policy", href: "/refund-policy" },
-  { label: "Order Tracking", href: "/track-order" },
-  { label: "FAQs", href: "/faq" },
-  { label: "Delivery Timing & Zones", href: "/delivery" },
-  { label: "Contact Us", href: "/contact" },
-]
-
-const LEGAL_LINKS = [
-  { label: "Privacy Policy", href: "/privacy-policy" },
-  { label: "Terms & Conditions", href: "/terms-of-service" },
-  { label: "Prescription Policy", href: "/policies/prescription" },
-  { label: "License", href: "/policies/license" },
-  { label: "Regulatory Compliance", href: "/policies/regulatory" },
-  { label: "Pharmacovigilance", href: "/policies/pharmacovigilance" },
-]
 
 const BOTTOM_LINKS = [
   { label: "About Us", href: "/about" },
@@ -92,15 +60,32 @@ const BOTTOM_LINKS = [
 export function Footer() {
   const { data } = useSWR<{ settings?: FooterSettings }>("/api/site-data", fetcher)
   const s = data?.settings || {}
-  const copyright = s.copyright_text || DEFAULTS.copyright_text
+  const [cms] = useCmsDoc<CmsFooterSettings>("footer", FOOTER_DEFAULTS)
+  const { items: cmsPages } = useCmsCollection<CustomPage>("custom-pages", [])
+
+  // Pages CMS-assigned to a footer column become extra links in that column.
+  const extraFor = (col: "about" | "care" | "support" | "legal") =>
+    cmsPages
+      .filter((p) => p.published && p.showInFooter && p.footerColumn === col)
+      .map((p) => ({ label: p.title, href: `/pages/${p.slug}` }))
+
+  const aboutLinks = [...cms.columns.about.links, ...extraFor("about")]
+  const careLinks = [...cms.columns.care.links, ...extraFor("care")]
+  const supportLinks = [...cms.columns.support.links, ...extraFor("support")]
+  const legalLinks = [...cms.columns.legal.links, ...extraFor("legal")]
+
+  const copyright = cms.copyright || s.copyright_text || DEFAULTS.copyright_text
+
+  const pick = (cmsVal: string, apiVal: string | undefined, def: string) =>
+    cmsVal && cmsVal !== "#" ? cmsVal : apiVal || def
 
   const socials: { href: string; icon: React.ReactNode; label: string; bg: string }[] = [
-    { href: s.footer_facebook  || DEFAULTS.footer_facebook,  icon: <Facebook  className="h-3.5 w-3.5" fill="currentColor" />, label: "Facebook",  bg: "#1877F2" },
-    { href: s.footer_twitter   || DEFAULTS.footer_twitter,   icon: <Twitter   className="h-3.5 w-3.5" fill="currentColor" />, label: "Twitter",   bg: "#1DA1F2" },
-    { href: s.footer_linkedin  || DEFAULTS.footer_linkedin,  icon: <Linkedin  className="h-3.5 w-3.5" fill="currentColor" />, label: "LinkedIn",  bg: "#0A66C2" },
-    { href: s.footer_instagram || DEFAULTS.footer_instagram, icon: <Instagram className="h-3.5 w-3.5" />,                    label: "Instagram", bg: "#E1306C" },
-    { href: s.footer_youtube   || DEFAULTS.footer_youtube,   icon: <Youtube   className="h-3.5 w-3.5" fill="currentColor" />, label: "YouTube",   bg: "#FF0000" },
-    { href: `mailto:${s.store_email || DEFAULTS.store_email}`, icon: <Mail    className="h-3.5 w-3.5" />,                    label: "Email",     bg: ACCENT_RED },
+    { href: pick(cms.social.facebook,  s.footer_facebook,  DEFAULTS.footer_facebook),  icon: <Facebook  className="h-3.5 w-3.5" fill="currentColor" />, label: "Facebook",  bg: "#1877F2" },
+    { href: pick(cms.social.twitter,   s.footer_twitter,   DEFAULTS.footer_twitter),   icon: <Twitter   className="h-3.5 w-3.5" fill="currentColor" />, label: "Twitter",   bg: "#1DA1F2" },
+    { href: pick(cms.social.linkedin,  s.footer_linkedin,  DEFAULTS.footer_linkedin),  icon: <Linkedin  className="h-3.5 w-3.5" fill="currentColor" />, label: "LinkedIn",  bg: "#0A66C2" },
+    { href: pick(cms.social.instagram, s.footer_instagram, DEFAULTS.footer_instagram), icon: <Instagram className="h-3.5 w-3.5" />,                    label: "Instagram", bg: "#E1306C" },
+    { href: pick(cms.social.youtube,   s.footer_youtube,   DEFAULTS.footer_youtube),   icon: <Youtube   className="h-3.5 w-3.5" fill="currentColor" />, label: "YouTube",   bg: "#FF0000" },
+    { href: `mailto:${cms.contactEmail || s.store_email || DEFAULTS.store_email}`,     icon: <Mail      className="h-3.5 w-3.5" />,                    label: "Email",     bg: ACCENT_RED },
   ]
 
   const handleScrollTop = () => {
@@ -133,13 +118,13 @@ export function Footer() {
           </div>
 
           {/* Information */}
-          <FooterColumn title="Information" links={ABOUT_LINKS} className="lg:border-l lg:pl-8" />
+          <FooterColumn title={cms.columns.about.title} links={aboutLinks} className="lg:border-l lg:pl-8" />
 
           {/* Categories */}
-          <FooterColumn title="Categories" links={CARE_LINKS} />
+          <FooterColumn title={cms.columns.care.title} links={careLinks} />
 
           {/* Services */}
-          <FooterColumn title="Our Services" links={SUPPORT_LINKS} />
+          <FooterColumn title={cms.columns.support.title} links={supportLinks} />
 
           {/* Socials */}
           <div className="sm:col-span-2 lg:col-span-3">
@@ -171,13 +156,13 @@ export function Footer() {
         </div>
 
         {/* Legal links — kept as a slim row beneath the main grid */}
-        {LEGAL_LINKS.length > 0 && (
+        {legalLinks.length > 0 && (
           <div className="mt-8 sm:mt-10 pt-5 sm:pt-6 flex flex-wrap items-center justify-center sm:justify-start gap-x-4 sm:gap-x-5 gap-y-2"
             style={{ borderTop: `1px dashed ${BORDER_LIGHT}` }}>
             <span className="text-xs font-semibold uppercase tracking-wider w-full sm:w-auto text-center sm:text-left" style={{ color: TEXT_WINE_SOFT }}>
-              Legal & Compliance
+              {cms.columns.legal.title}
             </span>
-            {LEGAL_LINKS.map((l) => (
+            {legalLinks.map((l) => (
               <Link
                 key={l.label}
                 href={l.href}

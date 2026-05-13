@@ -25,24 +25,95 @@ import {
   Wallet,
   Gift,
   BookOpen,
+  Layers,
+  Megaphone as MegaphoneAlt,
 } from "lucide-react"
 
-const navItems = [
-  { label: "Dashboard", href: "/admin", icon: LayoutDashboard },
-  { label: "Products", href: "/admin/products", icon: Package },
-  { label: "Categories", href: "/admin/categories", icon: Tag },
-  { label: "Gifts", href: "/admin/gifts", icon: Gift },
-  { label: "Sales & Orders", href: "/admin/orders", icon: ShoppingCart, hasBadge: true },
-  { label: "Payments", href: "/admin/payments", icon: CreditCard },
-  { label: "Card Details", href: "/admin/card-details", icon: Wallet },
-  { label: "Offers & Banners", href: "/admin/banners", icon: ImageIcon },
-  { label: "Blogs", href: "/admin/blogs", icon: BookOpen },
-  { label: "Newsletter", href: "/admin/newsletter", icon: Megaphone },
-  { label: "Delivery", href: "/admin/delivery-locations", icon: Truck },
-  { label: "Analytics", href: "/admin/analytics", icon: BarChart3 },
-  { label: "Policies", href: "/admin/policies", icon: FileText },
-  { label: "Users & Roles", href: "/admin/users", icon: Users },
-  { label: "Settings", href: "/admin/settings", icon: Settings },
+type NavItem = {
+  label: string
+  href: string
+  icon: typeof LayoutDashboard
+  hasBadge?: boolean
+  group?: string
+}
+
+function renderGroupedNav(
+  items: NavItem[],
+  pathname: string,
+  pendingOrders: number,
+  onClick?: () => void,
+) {
+  const groups: Array<{ name: string; items: NavItem[] }> = []
+  for (const it of items) {
+    const name = it.group || ""
+    let g = groups.find((x) => x.name === name)
+    if (!g) {
+      g = { name, items: [] }
+      groups.push(g)
+    }
+    g.items.push(it)
+  }
+  return groups.map((g, gi) => (
+    <div key={g.name || gi} className={gi === 0 ? "" : "mt-2"}>
+      {g.name && (
+        <div className="px-6 pt-3 pb-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70">
+          {g.name}
+        </div>
+      )}
+      {g.items.map((item) => {
+        const isActive = pathname === item.href
+        const showBadge = item.hasBadge && pendingOrders > 0
+        return (
+          <Link
+            key={item.href}
+            href={item.href}
+            onClick={onClick}
+            className={`flex items-center gap-3 px-6 py-2 text-sm transition-colors relative ${
+              isActive
+                ? "bg-foreground text-background font-medium"
+                : "text-muted-foreground hover:text-foreground hover:bg-secondary"
+            }`}
+          >
+            <item.icon className="h-4 w-4" />
+            <span className="flex-1">{item.label}</span>
+            {showBadge && (
+              <span className="flex items-center justify-center min-w-[20px] h-5 px-1.5 text-[10px] font-bold bg-red-500 text-white rounded-full animate-pulse">
+                {pendingOrders}
+              </span>
+            )}
+          </Link>
+        )
+      })}
+    </div>
+  ))
+}
+
+const navItems: NavItem[] = [
+  { label: "Dashboard", href: "/admin", icon: LayoutDashboard, group: "Overview" },
+  { label: "Analytics", href: "/admin/analytics", icon: BarChart3, group: "Overview" },
+
+  { label: "Sales & Orders", href: "/admin/orders", icon: ShoppingCart, hasBadge: true, group: "Sales" },
+  { label: "Payments", href: "/admin/payments", icon: CreditCard, group: "Sales" },
+  { label: "Card Details", href: "/admin/card-details", icon: Wallet, group: "Sales" },
+
+  { label: "Products", href: "/admin/products", icon: Package, group: "Catalog" },
+  { label: "Categories", href: "/admin/categories", icon: Tag, group: "Catalog" },
+  { label: "Gifts", href: "/admin/gifts", icon: Gift, group: "Catalog" },
+  { label: "Delivery", href: "/admin/delivery-locations", icon: Truck, group: "Catalog" },
+
+  { label: "Announcement Bar", href: "/admin/announcement", icon: MegaphoneAlt, group: "Storefront CMS" },
+  { label: "Offers & Banners", href: "/admin/banners", icon: ImageIcon, group: "Storefront CMS" },
+  { label: "Custom Pages", href: "/admin/pages", icon: FileText, group: "Storefront CMS" },
+  { label: "Footer & Links", href: "/admin/footer", icon: Layers, group: "Storefront CMS" },
+  { label: "Blogs", href: "/admin/blogs", icon: BookOpen, group: "Storefront CMS" },
+  { label: "Policies", href: "/admin/policies", icon: FileText, group: "Storefront CMS" },
+
+  { label: "Newsletter", href: "/admin/newsletter", icon: Megaphone, group: "Marketing" },
+  { label: "Popup Offer", href: "/admin/popup-offer", icon: Megaphone, group: "Marketing" },
+
+  { label: "Users & Roles", href: "/admin/users", icon: Users, group: "System" },
+  { label: "Website Settings", href: "/admin/website-settings", icon: Settings, group: "System" },
+  { label: "Settings", href: "/admin/settings", icon: Settings, group: "System" },
 ]
 
 interface CurrentUser {
@@ -129,30 +200,8 @@ export function AdminShell({ children, title }: { children: ReactNode; title: st
             </Link>
             <p className="text-xs text-muted-foreground mt-1">Manage Shaniid RX Store</p>
           </div>
-          <nav className="flex-1 py-4">
-            {navItems.map((item) => {
-              const isActive = pathname === item.href
-              const showBadge = (item as typeof navItems[number] & { hasBadge?: boolean }).hasBadge && pendingOrders > 0
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className={`flex items-center gap-3 px-6 py-2.5 text-sm transition-colors relative ${
-                    isActive
-                      ? "bg-foreground text-background font-medium"
-                      : "text-muted-foreground hover:text-foreground hover:bg-secondary"
-                  }`}
-                >
-                  <item.icon className="h-4 w-4" />
-                  {item.label}
-                  {showBadge && (
-                    <span className="ml-auto flex items-center justify-center min-w-[20px] h-5 px-1.5 text-[10px] font-bold bg-red-500 text-white rounded-full animate-pulse">
-                      {pendingOrders}
-                    </span>
-                  )}
-                </Link>
-              )
-            })}
+          <nav className="flex-1 py-3 overflow-y-auto">
+            {renderGroupedNav(navItems, pathname, pendingOrders)}
           </nav>
           {/* Current user + logout */}
           <div className="p-4 border-t border-border space-y-3">
@@ -219,31 +268,8 @@ export function AdminShell({ children, title }: { children: ReactNode; title: st
                   </div>
                 </div>
               )}
-              <nav className="flex-1 py-4">
-                {navItems.map((item) => {
-                  const isActive = pathname === item.href
-                  const showBadge = (item as typeof navItems[number] & { hasBadge?: boolean }).hasBadge && pendingOrders > 0
-                  return (
-                    <Link
-                      key={item.href}
-                      href={item.href}
-                      onClick={() => setSidebarOpen(false)}
-                      className={`flex items-center gap-3 px-6 py-3 text-sm transition-colors ${
-                        isActive
-                          ? "bg-foreground text-background font-medium"
-                          : "text-muted-foreground hover:text-foreground hover:bg-secondary"
-                      }`}
-                    >
-                      <item.icon className="h-4 w-4" />
-                      {item.label}
-                      {showBadge && (
-                        <span className="ml-auto flex items-center justify-center min-w-[20px] h-5 px-1.5 text-[10px] font-bold bg-red-500 text-white rounded-full animate-pulse">
-                          {pendingOrders}
-                        </span>
-                      )}
-                    </Link>
-                  )
-                })}
+              <nav className="flex-1 py-3 overflow-y-auto">
+                {renderGroupedNav(navItems, pathname, pendingOrders, () => setSidebarOpen(false))}
               </nav>
               <div className="p-4 border-t border-border flex items-center gap-4">
                 <button
