@@ -236,6 +236,7 @@ function ProductDetailPageInner({ slug }: { slug: string }) {
   // Hover zoom state for main product image
   const [imgHovered, setImgHovered] = useState(false)
   const [zoomOrigin, setZoomOrigin] = useState({ x: 50, y: 50 })
+  const [reviewModalOpen, setReviewModalOpen] = useState(false)
   const mainImgRef = useRef<HTMLDivElement>(null)
   const recentlyViewed = useRecentlyViewed(product?.id)
 
@@ -325,24 +326,23 @@ function ProductDetailPageInner({ slug }: { slug: string }) {
       <main className="flex-1">
         <div className="mx-auto max-w-[1280px] px-4 lg:px-6 pt-6 pb-12">
           {/* Breadcrumb */}
-          <nav className="flex items-center gap-1.5 text-[12px] text-neutral-500 mb-6 flex-wrap">
-            <Link href="/" className="hover:text-[color:var(--ink)] transition-colors" style={{ ["--ink" as never]: WINE }}>
+          <nav aria-label="Breadcrumb" className="flex items-center gap-2 text-[13px] text-neutral-500 mb-6 flex-wrap">
+            <Link href="/" className="hover:text-neutral-900 transition-colors">
               Home
             </Link>
-            <ChevronRight className="h-3 w-3" />
-            <Link href="/shop" className="hover:text-[color:var(--ink)] transition-colors" style={{ ["--ink" as never]: WINE }}>
+            <span className="text-neutral-300">/</span>
+            <Link href="/shop" className="hover:text-neutral-900 transition-colors">
               Products
             </Link>
-            <ChevronRight className="h-3 w-3" />
+            <span className="text-neutral-300">/</span>
             <Link
               href={`/shop?category=${product.categorySlug}`}
-              className="hover:text-[color:var(--ink)] transition-colors"
-              style={{ ["--ink" as never]: WINE }}
+              className="hover:text-neutral-900 transition-colors"
             >
               {product.category}
             </Link>
-            <ChevronRight className="h-3 w-3" />
-            <span style={{ color: WINE }} className="font-medium truncate max-w-[260px]">
+            <span className="text-neutral-300">/</span>
+            <span className="font-medium text-neutral-900 truncate max-w-[280px]">
               {product.name}
             </span>
           </nav>
@@ -351,56 +351,10 @@ function ProductDetailPageInner({ slug }: { slug: string }) {
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8">
             {/* Gallery */}
             <div className="lg:col-span-5">
-              <div className="flex gap-3">
-                <div className="hidden sm:flex flex-col gap-3">
-                  {product.images.map((img, i) => (
-                    <button
-                      key={i}
-                      type="button"
-                      onClick={() => setSelectedImage(i)}
-                      aria-label={`View image ${i + 1}`}
-                      className="relative w-16 h-16 lg:w-20 lg:h-20 overflow-hidden rounded-xl transition-all"
-                      style={{
-                        background: "#FFF1E6",
-                        border:
-                          selectedImage === i
-                            ? `2px solid ${WINE}`
-                            : `1px solid ${PEACH_BORDER}`,
-                        boxShadow:
-                          selectedImage === i
-                            ? "0 8px 18px -10px rgba(61,8,20,0.35)"
-                            : "none",
-                      }}
-                    >
-                      {isVideoUrl(img) ? (
-                        <>
-                          <video
-                            src={img}
-                            muted
-                            playsInline
-                            preload="metadata"
-                            className="absolute inset-0 w-full h-full object-cover"
-                          />
-                          <div className="absolute inset-0 grid place-items-center">
-                            <Play className="h-3 w-3 text-white drop-shadow" />
-                          </div>
-                        </>
-                      ) : (
-                        <ProductImage
-                          src={img || "/placeholder.svg"}
-                          alt={`${product.name} view ${i + 1}`}
-                          fill
-                          loaderSize="sm"
-                          className="object-contain p-1"
-                        />
-                      )}
-                    </button>
-                  ))}
-                </div>
-
+              <div className="flex flex-col gap-3">
                 <div
                   ref={mainImgRef}
-                  className="relative flex-1 aspect-square overflow-hidden rounded-2xl"
+                  className="relative w-full aspect-square overflow-hidden rounded-2xl"
                   style={{
                     background: "linear-gradient(155deg, #FFF6EB 0%, #FFE9D4 100%)",
                     border: `1px solid ${PEACH_BORDER}`,
@@ -481,34 +435,49 @@ function ProductDetailPageInner({ slug }: { slug: string }) {
                     </span>
                   )}
                 </div>
-              </div>
 
-              {/* mobile thumbnail row */}
-              <div className="sm:hidden mt-3 flex gap-2 overflow-x-auto pb-1">
-                {product.images.map((img, i) => (
-                  <button
-                    key={i}
-                    type="button"
-                    onClick={() => setSelectedImage(i)}
-                    className="relative shrink-0 w-16 h-16 overflow-hidden rounded-lg"
-                    style={{
-                      border:
-                        selectedImage === i
-                          ? `2px solid ${WINE}`
-                          : `1px solid ${PEACH_BORDER}`,
-                      background: "#FFF1E6",
-                    }}
-                    aria-label={`View image ${i + 1}`}
-                  >
-                    <ProductImage
-                      src={img || "/placeholder.svg"}
-                      alt=""
-                      fill
-                      loaderSize="sm"
-                      className="object-contain p-1"
-                    />
-                  </button>
-                ))}
+                {/* Thumbnail row — below main image (matches reference) */}
+                <div className="flex gap-2.5 overflow-x-auto pb-1">
+                  {product.images.map((img, i) => (
+                    <button
+                      key={i}
+                      type="button"
+                      onClick={() => setSelectedImage(i)}
+                      aria-label={`View image ${i + 1}`}
+                      className="relative shrink-0 w-16 h-16 lg:w-[72px] lg:h-[72px] overflow-hidden rounded-lg transition-all"
+                      style={{
+                        background: "#FAFAFA",
+                        border:
+                          selectedImage === i
+                            ? `2px solid ${WINE}`
+                            : `1px solid #E5E7EB`,
+                      }}
+                    >
+                      {isVideoUrl(img) ? (
+                        <>
+                          <video
+                            src={img}
+                            muted
+                            playsInline
+                            preload="metadata"
+                            className="absolute inset-0 w-full h-full object-cover"
+                          />
+                          <div className="absolute inset-0 grid place-items-center">
+                            <Play className="h-3 w-3 text-white drop-shadow" />
+                          </div>
+                        </>
+                      ) : (
+                        <ProductImage
+                          src={img || "/placeholder.svg"}
+                          alt={`${product.name} view ${i + 1}`}
+                          fill
+                          loaderSize="sm"
+                          className="object-contain p-1"
+                        />
+                      )}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
 
@@ -556,31 +525,22 @@ function ProductDetailPageInner({ slug }: { slug: string }) {
                 </span>
                 <button
                   type="button"
-                  className="ml-auto text-[12px] font-medium hover:underline"
-                  style={{ color: WINE_SOFT }}
+                  onClick={() => setReviewModalOpen(true)}
+                  className="ml-auto text-[13px] font-medium underline underline-offset-2 hover:opacity-80"
+                  style={{ color: "#0EA5E9" }}
                 >
                   Write a Review
                 </button>
               </div>
 
-              {/* Stock pill */}
-              <div className="mt-4">
+              {/* Stock — simple text (matches reference) */}
+              <div className="mt-3">
                 {product.inStock ? (
-                  <span
-                    className="inline-flex items-center gap-1.5 text-[12px] font-semibold px-3 py-1 rounded-full"
-                    style={{
-                      color: SUCCESS,
-                      background: "#E6F4EE",
-                      border: "1px solid #BFE3D2",
-                    }}
-                  >
-                    <Check className="h-3.5 w-3.5" /> In Stock
+                  <span className="text-[13px] font-medium" style={{ color: SUCCESS }}>
+                    In Stock
                   </span>
                 ) : (
-                  <span
-                    className="inline-flex items-center gap-1.5 text-[12px] font-semibold px-3 py-1 rounded-full"
-                    style={{ color: "#9b1c1c", background: "#FBEAEA", border: "1px solid #F1C9C9" }}
-                  >
+                  <span className="text-[13px] font-medium text-red-600">
                     Out of Stock
                   </span>
                 )}
@@ -749,16 +709,14 @@ function ProductDetailPageInner({ slug }: { slug: string }) {
                     </div>
                   </div>
 
-                  {/* Actions */}
+                  {/* Actions — peach pill + outlined wishlist (matches reference) */}
                   <button
                     onClick={handleAddToCart}
                     disabled={!product.inStock}
-                    className="mt-5 w-full h-12 rounded-full text-sm font-semibold transition-transform hover:scale-[1.02] disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center justify-center gap-2 text-white"
+                    className="mt-5 w-full h-11 rounded-full text-sm font-semibold transition-all hover:opacity-90 disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center justify-center gap-2"
                     style={{
-                      background: added
-                        ? `linear-gradient(135deg, ${SUCCESS} 0%, #0A6F50 100%)`
-                        : `linear-gradient(135deg, ${WINE} 0%, ${WINE_SOFT} 100%)`,
-                      boxShadow: "0 14px 28px -14px rgba(61,8,20,0.5)",
+                      background: added ? "#E6F4EE" : "#F2DCC8",
+                      color: added ? SUCCESS : WINE,
                     }}
                   >
                     {added ? (
@@ -767,7 +725,7 @@ function ProductDetailPageInner({ slug }: { slug: string }) {
                       </>
                     ) : (
                       <>
-                        <ShoppingBag className="h-4 w-4" /> Add To Cart
+                        Add To Cart
                       </>
                     )}
                   </button>
@@ -775,20 +733,15 @@ function ProductDetailPageInner({ slug }: { slug: string }) {
                   <button
                     type="button"
                     onClick={() => product && toggleItem(product)}
-                    className="mt-3 w-full h-12 rounded-full text-sm font-semibold transition-colors inline-flex items-center justify-center gap-2"
+                    className="mt-2.5 w-full h-11 rounded-full text-sm font-semibold transition-colors inline-flex items-center justify-center gap-2 bg-white hover:bg-neutral-50"
                     style={{
-                      background: wishlisted ? "#FFF1E2" : "white",
                       color: WINE,
-                      border: `1px solid ${PEACH_BORDER}`,
+                      border: `1px solid #E5E7EB`,
                     }}
                   >
-                    <Heart
-                      className="h-4 w-4"
-                      style={{
-                        color: WINE,
-                        fill: wishlisted ? WINE : "transparent",
-                      }}
-                    />
+                    {wishlisted ? (
+                      <Heart className="h-4 w-4" style={{ color: WINE, fill: WINE }} />
+                    ) : null}
                     {wishlisted ? "Added To Wish List" : "Add To Wish List"}
                   </button>
 
@@ -887,30 +840,12 @@ function ProductDetailPageInner({ slug }: { slug: string }) {
 
                 {/* Tab content — white, no card styling */}
                 <div className="pt-6 pb-8"  style={{ background: "white" }}>
-                  {/* ── Overview ── */}
+                  {/* ── Overview ── plain paragraph layout matching reference */}
                   {activeTab === "overview" && (
-                    <div>
-                      <p className="text-sm leading-relaxed text-neutral-700 max-w-3xl">
+                    <div className="max-w-4xl">
+                      <p className="text-[14px] leading-[1.7] text-neutral-700 whitespace-pre-line">
                         {product.description}
                       </p>
-                      {product.tags.length > 0 && (
-                        <div className="mt-6">
-                          <p className="text-xs font-bold uppercase tracking-widest mb-2" style={{ color: WINE_SOFT }}>Tags</p>
-                          <div className="flex flex-wrap gap-1.5">
-                            {product.tags.map((tag) => (
-                              <span key={tag} className="text-[11px] px-2.5 py-1 rounded-full" style={{ color: WINE_SOFT, background: "#FFF1E2", border: `1px solid ${PEACH_BORDER}` }}>
-                                #{tag}
-                              </span>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                      <div className="mt-6 flex items-start gap-2.5 p-4 rounded-xl" style={{ background: "#FFF7E6", border: "1px solid #F4E1B8" }}>
-                        <Shield className="h-4 w-4 mt-0.5 shrink-0" style={{ color: ACCENT_AMBER }} />
-                        <p className="text-xs text-neutral-600 leading-relaxed">
-                          Always read the label and use only as directed. Consult a pharmacist or doctor before use if you are pregnant, breastfeeding, or taking other medication.
-                        </p>
-                      </div>
                     </div>
                   )}
 
@@ -1081,8 +1016,9 @@ function ProductDetailPageInner({ slug }: { slug: string }) {
                           </button>
                           <button
                             type="button"
-                            className="ml-auto text-sm font-semibold hover:underline"
-                            style={{ color: WINE_SOFT }}
+                            onClick={() => setReviewModalOpen(true)}
+                            className="ml-auto text-sm font-semibold underline underline-offset-2 hover:opacity-80"
+                            style={{ color: "#0EA5E9" }}
                           >
                             Write a Review
                           </button>
@@ -1216,6 +1152,185 @@ function ProductDetailPageInner({ slug }: { slug: string }) {
           onClose={() => setLightboxOpen(false)}
         />
       )}
+
+      {/* Write Review modal */}
+      {reviewModalOpen && (
+        <WriteReviewModal
+          productName={product.name}
+          onClose={() => setReviewModalOpen(false)}
+        />
+      )}
+    </div>
+  )
+}
+
+// ─── Write Review Modal ──────────────────────────────────────────────────────
+function WriteReviewModal({
+  productName,
+  onClose,
+}: {
+  productName: string
+  onClose: () => void
+}) {
+  const [rating, setRating] = useState(0)
+  const [hover, setHover] = useState(0)
+  const [description, setDescription] = useState("")
+  const [file, setFile] = useState<File | null>(null)
+  const [submitting, setSubmitting] = useState(false)
+  const [submitted, setSubmitted] = useState(false)
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose() }
+    document.addEventListener("keydown", onKey)
+    return () => document.removeEventListener("keydown", onKey)
+  }, [onClose])
+
+  const ratingLabels = ["", "Poor", "Fair", "Good", "Very Good", "Excellent"]
+  const activeRating = hover || rating
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!rating || !description.trim()) return
+    setSubmitting(true)
+    // Stub: simulate submit. Wire to API later.
+    await new Promise((r) => setTimeout(r, 600))
+    setSubmitting(false)
+    setSubmitted(true)
+    setTimeout(onClose, 1200)
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-[9998] flex items-center justify-center p-4"
+      style={{ background: "rgba(15,5,10,0.55)" }}
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-md bg-white rounded-2xl shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-5 border-b" style={{ borderColor: "#F3F4F6" }}>
+          <h3 className="text-lg font-bold" style={{ color: "#111827" }}>
+            Product Review
+          </h3>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close"
+            className="text-neutral-400 hover:text-neutral-700 transition-colors"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        {submitted ? (
+          <div className="px-6 py-10 text-center">
+            <div className="w-12 h-12 rounded-full mx-auto flex items-center justify-center" style={{ background: "#E6F4EE" }}>
+              <Check className="h-6 w-6" style={{ color: SUCCESS }} />
+            </div>
+            <p className="mt-4 text-sm font-semibold text-neutral-800">Thank you for your review!</p>
+            <p className="text-xs text-neutral-500 mt-1">It will appear after moderation.</p>
+          </div>
+        ) : (
+          <form onSubmit={handleSubmit} className="px-6 py-5 space-y-5">
+            {/* Rate this product */}
+            <div>
+              <label className="block text-[13px] font-medium text-neutral-700 mb-2">
+                Rate This Product
+              </label>
+              <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1">
+                  {[1, 2, 3, 4, 5].map((n) => (
+                    <button
+                      key={n}
+                      type="button"
+                      onClick={() => setRating(n)}
+                      onMouseEnter={() => setHover(n)}
+                      onMouseLeave={() => setHover(0)}
+                      aria-label={`${n} star${n > 1 ? "s" : ""}`}
+                      className="transition-transform hover:scale-110"
+                    >
+                      <Star
+                        className="h-6 w-6"
+                        style={{
+                          color: n <= activeRating ? "#F59E0B" : "#E5E7EB",
+                          fill: n <= activeRating ? "#F59E0B" : "transparent",
+                        }}
+                      />
+                    </button>
+                  ))}
+                </div>
+                {activeRating > 0 && (
+                  <span className="text-sm font-medium text-neutral-700 ml-1">
+                    {ratingLabels[activeRating]}
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {/* Review description */}
+            <div>
+              <label htmlFor="review-desc" className="block text-[13px] font-medium text-neutral-700 mb-2">
+                Review This Product
+              </label>
+              <textarea
+                id="review-desc"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="Description"
+                rows={4}
+                className="w-full px-3 py-2 text-sm rounded-md border outline-none focus:border-neutral-400 transition-colors resize-none"
+                style={{ borderColor: "#E5E7EB" }}
+                required
+              />
+            </div>
+
+            {/* Upload image */}
+            <div>
+              <label htmlFor="review-file" className="block text-[13px] font-medium text-neutral-700 mb-2">
+                Upload Image of Product
+              </label>
+              <div
+                className="flex items-center rounded-md border overflow-hidden"
+                style={{ borderColor: "#E5E7EB" }}
+              >
+                <label
+                  htmlFor="review-file"
+                  className="px-3 py-2 text-sm font-medium cursor-pointer border-r whitespace-nowrap"
+                  style={{ background: "#F9FAFB", color: "#111827", borderColor: "#E5E7EB" }}
+                >
+                  Choose Files
+                </label>
+                <span className="px-3 py-2 text-sm text-neutral-500 truncate flex-1">
+                  {file ? file.name : "No file chosen"}
+                </span>
+                <input
+                  id="review-file"
+                  type="file"
+                  accept="image/*"
+                  className="sr-only"
+                  onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+                />
+              </div>
+            </div>
+
+            {/* Submit */}
+            <div className="flex justify-end pt-1">
+              <button
+                type="submit"
+                disabled={submitting || !rating || !description.trim()}
+                className="px-7 h-10 rounded-md text-sm font-semibold text-white transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
+                style={{ background: "#111827" }}
+              >
+                {submitting ? "Submitting..." : "Submit"}
+              </button>
+            </div>
+
+            <p className="sr-only">Reviewing: {productName}</p>
+          </form>
+        )}
+      </div>
     </div>
   )
 }
