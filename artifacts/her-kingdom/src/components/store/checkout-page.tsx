@@ -7,6 +7,7 @@ import {
   ChevronRight, Minus, Plus, X, Truck, Loader2, CheckCircle, Package,
   MapPin, ChevronDown, Clock, Navigation, Home, Briefcase, MoreHorizontal,
   Phone, User, Building2, Map, ArrowRight, ArrowLeft, Search, Calendar, Zap,
+  Smartphone, CreditCard, Banknote, Lock, ShieldCheck, MessageSquare,
 } from "lucide-react"
 import L from "leaflet"
 import "leaflet/dist/leaflet.css"
@@ -484,6 +485,7 @@ export function CheckoutPage() {
   const [shippingType,     setShippingType]     = useState<"ondemand" | "scheduled">("ondemand")
   const [scheduledDate,    setScheduledDate]    = useState("")
   const [scheduledTime,    setScheduledTime]    = useState("")
+  const [paymentMethod,    setPaymentMethod]    = useState<"mpesa" | "paystack" | "cod">("mpesa")
 
   /* ── Payment / order ── */
   const [orderResult,     setOrderResult]     = useState<{ orderNumber: string; paymentMethod?: string } | null>(null)
@@ -933,38 +935,11 @@ export function CheckoutPage() {
         </>
       )}
 
-      {/* Step 3 → Pay buttons */}
+      {/* Step 3 → no pay buttons in summary; main column owns the CTA */}
       {step === 3 && (
-        <div className="space-y-3">
-          {formError && <p className="text-xs text-red-500">{formError}</p>}
-          <button
-            onClick={() => setShowMpesa(true)}
-            disabled={isSubmitting}
-            className="w-full h-12 rounded-2xl font-bold text-white flex items-center justify-center gap-2.5 disabled:opacity-50 transition-opacity hover:opacity-90"
-            style={{ background: "#4CAF50" }}
-          >
-            <svg viewBox="0 0 24 24" fill="currentColor" className="h-5 w-5">
-              <path d="M17 2H7c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h10c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 18H7V4h10v16z" />
-              <path d="M11 17.5c0-.83.67-1.5 1.5-1.5s1.5.67 1.5 1.5-.67 1.5-1.5 1.5-1.5-.67-1.5-1.5z" />
-            </svg>
-            Pay with M-PESA
-          </button>
-          <button
-            onClick={() => setShowCardPayment(true)}
-            disabled={isSubmitting}
-            className="w-full h-12 rounded-2xl font-bold text-white flex items-center justify-center gap-2.5 disabled:opacity-50 transition-opacity hover:opacity-90"
-            style={{ background: "#1a1f36" }}
-          >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-5 w-5">
-              <rect x="1" y="4" width="22" height="16" rx="2" />
-              <line x1="1" y1="10" x2="23" y2="10" />
-            </svg>
-            Pay with Card (Paystack)
-          </button>
-          <p className="text-xs text-center" style={{ color: "#9ca3af" }}>
-            Receipt sent to your email &amp; WhatsApp after confirmation.
-          </p>
-        </div>
+        <p className="text-xs text-center flex items-center justify-center gap-1.5" style={{ color: "#9ca3af" }}>
+          <Lock className="h-3 w-3" /> Choose payment on the left to confirm your order.
+        </p>
       )}
     </div>
   )
@@ -1174,21 +1149,6 @@ export function CheckoutPage() {
                           </div>
                         )}
 
-                        {/* Delivery instructions */}
-                        {savedAddress && (
-                          <div className="mt-5">
-                            <p className="text-sm font-semibold mb-2" style={{ color: WINE }}>Delivery Instructions</p>
-                            <textarea
-                              rows={3}
-                              value={deliveryNote}
-                              onChange={e => setDeliveryNote(e.target.value)}
-                              placeholder="Any specific delivery instructions…"
-                              className="w-full px-4 py-3 rounded-2xl border text-sm resize-none outline-none"
-                              style={{ borderColor: PEACH_MED, color: WINE }}
-                            />
-                          </div>
-                        )}
-
                         {/* Shipping type — glassmorphism cards */}
                         {savedAddress && (
                           <div className="mt-6">
@@ -1347,20 +1307,6 @@ export function CheckoutPage() {
                           ))}
                         </div>
 
-                        {/* Delivery instructions for pickup */}
-                        {deliveryLocation && (
-                          <div className="mt-5">
-                            <p className="text-sm font-semibold mb-2" style={{ color: WINE }}>Pickup Contact / Notes</p>
-                            <textarea
-                              rows={3}
-                              value={deliveryNote}
-                              onChange={e => setDeliveryNote(e.target.value)}
-                              placeholder="Who will collect? Any notes for the station…"
-                              className="w-full px-4 py-3 rounded-2xl border text-sm resize-none outline-none"
-                              style={{ borderColor: PEACH_MED, color: WINE }}
-                            />
-                          </div>
-                        )}
                       </div>
                     )}
                   </div>
@@ -1377,54 +1323,108 @@ export function CheckoutPage() {
                     <h1 className="text-2xl font-bold" style={{ color: WINE }}>Payment</h1>
                   </div>
 
-                  <div className="rounded-2xl p-6 border" style={{ borderColor: PEACH_MED }}>
-                    <p className="text-sm font-semibold mb-5" style={{ color: WINE }}>How would you like to pay?</p>
-
-                    {/* MPesa */}
-                    <button
-                      onClick={() => setShowMpesa(true)}
-                      disabled={isSubmitting}
-                      className="w-full h-14 rounded-2xl font-bold text-white flex items-center justify-center gap-3 mb-3 disabled:opacity-50 transition-opacity hover:opacity-90 text-base"
-                      style={{ background: "#4CAF50" }}
-                    >
-                      <svg viewBox="0 0 24 24" fill="currentColor" className="h-6 w-6">
-                        <path d="M17 2H7c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h10c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 18H7V4h10v16z" />
-                        <path d="M11 17.5c0-.83.67-1.5 1.5-1.5s1.5.67 1.5 1.5-.67 1.5-1.5 1.5-1.5-.67-1.5-1.5z" />
-                      </svg>
-                      Pay with M-PESA
-                    </button>
-
-                    {/* Divider */}
-                    <div className="flex items-center gap-3 my-4">
-                      <div className="flex-1 h-px" style={{ background: PEACH_MED }} />
-                      <span className="text-xs" style={{ color: "#9ca3af" }}>or pay with card</span>
-                      <div className="flex-1 h-px" style={{ background: PEACH_MED }} />
+                  {/* Method picker — single selection, glassy cards */}
+                  <div
+                    className="rounded-2xl p-5 border backdrop-blur-xl"
+                    style={{ background: "rgba(255,251,245,0.7)", borderColor: "rgba(242,220,200,0.8)" }}
+                  >
+                    <p className="text-sm font-semibold mb-4" style={{ color: WINE }}>Choose a payment method</p>
+                    <div className="space-y-2.5">
+                      {([
+                        { key: "mpesa",    icon: Smartphone, title: "M-PESA",            desc: "Pay via STK push to your Safaricom number.",            tint: "#4CAF50" },
+                        { key: "paystack", icon: CreditCard, title: "Card · Paystack",   desc: "Visa, Mastercard or Verve via secure Paystack window.", tint: "#0EA5E9" },
+                        { key: "cod",      icon: Banknote,   title: "Cash on Delivery",  desc: "Pay the rider in cash when your order arrives.",        tint: "#F97316" },
+                      ] as const).map(opt => {
+                        const active = paymentMethod === opt.key
+                        return (
+                          <button
+                            key={opt.key}
+                            type="button"
+                            onClick={() => setPaymentMethod(opt.key)}
+                            className="w-full flex items-center gap-3 p-3.5 rounded-xl border-2 transition-all text-left bg-white/80 backdrop-blur-md"
+                            style={{
+                              borderColor: active ? WINE_CARD : "rgba(242,220,200,0.7)",
+                              boxShadow:   active ? "0 8px 24px -12px rgba(122,37,53,0.25)" : "none",
+                            }}
+                          >
+                            <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: active ? opt.tint : "#F3F4F6" }}>
+                              <opt.icon className="h-5 w-5" style={{ color: active ? "#fff" : opt.tint }} />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-bold" style={{ color: WINE }}>{opt.title}</p>
+                              <p className="text-xs mt-0.5 truncate" style={{ color: "#6b7280" }}>{opt.desc}</p>
+                            </div>
+                            <div className="w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0" style={{ borderColor: active ? WINE_CARD : "#d1d5db" }}>
+                              {active && <div className="w-2.5 h-2.5 rounded-full" style={{ background: WINE_CARD }} />}
+                            </div>
+                          </button>
+                        )
+                      })}
                     </div>
-
-                    {/* Card */}
-                    <button
-                      onClick={() => setShowCardPayment(true)}
-                      disabled={isSubmitting}
-                      className="w-full h-14 rounded-2xl font-bold text-white flex items-center justify-center gap-3 disabled:opacity-50 transition-opacity hover:opacity-90 text-base"
-                      style={{ background: "#1a1f36" }}
-                    >
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-6 w-6">
-                        <rect x="1" y="4" width="22" height="16" rx="2" />
-                        <line x1="1" y1="10" x2="23" y2="10" />
-                      </svg>
-                      Pay with Card (Paystack)
-                    </button>
-
-                    <p className="text-xs text-center mt-4" style={{ color: "#9ca3af" }}>
-                      Secured by Paystack · SSL encrypted
-                    </p>
                   </div>
 
-                  {/* Security badges */}
-                  <div className="flex items-center justify-center gap-6 text-xs" style={{ color: "#9ca3af" }}>
-                    <span>🔒 SSL Secure</span>
-                    <span>✓ M-PESA Verified</span>
-                    <span>✓ Paystack</span>
+                  {/* Special instructions */}
+                  <div
+                    className="rounded-2xl p-5 border backdrop-blur-xl"
+                    style={{ background: "rgba(255,251,245,0.7)", borderColor: "rgba(242,220,200,0.8)" }}
+                  >
+                    <label className="text-sm font-semibold mb-2 flex items-center gap-2" style={{ color: WINE }}>
+                      <MessageSquare className="h-4 w-4" />
+                      Special Instructions <span className="text-xs font-normal" style={{ color: "#9ca3af" }}>(optional)</span>
+                    </label>
+                    <textarea
+                      rows={3}
+                      value={deliveryNote}
+                      onChange={e => setDeliveryNote(e.target.value)}
+                      placeholder="Allergies, gate code, leave at reception, call on arrival…"
+                      className="w-full px-4 py-3 rounded-xl border text-sm resize-none outline-none bg-white/80"
+                      style={{ borderColor: PEACH_MED, color: WINE }}
+                    />
+                  </div>
+
+                  {/* Single primary CTA */}
+                  {formError && <p className="text-xs text-red-500">{formError}</p>}
+                  <button
+                    onClick={() => {
+                      setFormError("")
+                      if (paymentMethod === "mpesa")    { setShowMpesa(true);       return }
+                      if (paymentMethod === "paystack") { setShowCardPayment(true); return }
+                      /* COD: place order directly */
+                      ;(async () => {
+                        try {
+                          setIsSubmitting(true)
+                          const payload = { ...buildOrderPayload("website"), paymentMethod: "cod", status: "pending" }
+                          const res  = await fetch("/api/orders", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) })
+                          const data = await res.json().catch(() => ({}))
+                          if (!res.ok || !data?.orderNumber) {
+                            setFormError(data?.error || "We couldn't place the order. Please try again.")
+                            return
+                          }
+                          setOrderResult({ orderNumber: data.orderNumber, paymentMethod: "cod" })
+                          clearCart(); resetGiftSelection()
+                        } catch (err) {
+                          setFormError(err instanceof Error ? err.message : "Network error")
+                        } finally { setIsSubmitting(false) }
+                      })()
+                    }}
+                    disabled={isSubmitting}
+                    className="w-full h-14 rounded-2xl font-bold text-white flex items-center justify-center gap-2.5 disabled:opacity-50 transition-opacity hover:opacity-90 text-base"
+                    style={{ background: `linear-gradient(135deg, ${WINE_CARD}, ${WINE})` }}
+                  >
+                    {isSubmitting ? (
+                      <><Loader2 className="h-5 w-5 animate-spin" /> Placing order…</>
+                    ) : paymentMethod === "cod" ? (
+                      <>Place Order · {formatPrice(grandTotal)}</>
+                    ) : (
+                      <>Pay {formatPrice(grandTotal)} <ArrowRight className="h-5 w-5" /></>
+                    )}
+                  </button>
+
+                  {/* Trust row */}
+                  <div className="flex items-center justify-center gap-5 text-xs" style={{ color: "#9ca3af" }}>
+                    <span className="flex items-center gap-1.5"><ShieldCheck className="h-3.5 w-3.5" /> SSL Secure</span>
+                    <span className="flex items-center gap-1.5"><CheckCircle className="h-3.5 w-3.5" /> M-PESA Verified</span>
+                    <span className="flex items-center gap-1.5"><Lock className="h-3.5 w-3.5" /> Paystack</span>
                   </div>
                 </div>
               )}
