@@ -66,17 +66,17 @@ export function DeliveryPage() {
           style={{
             background: "linear-gradient(120deg, #FFF6EB 0%, #FAE0C8 60%, #F5CDB8 100%)",
             borderBottom: `1px solid ${PEACH_BORDER}`,
-            minHeight: 360,
+            minHeight: 520,
           }}
         >
           {/* Soft glow behind rider */}
           <div
-            className="absolute right-0 bottom-0 w-[600px] h-[600px] pointer-events-none"
-            style={{ background: `radial-gradient(ellipse at 80% 100%, rgba(197,136,100,0.22) 0%, transparent 68%)` }}
+            className="absolute right-0 bottom-0 w-[820px] h-[820px] pointer-events-none"
+            style={{ background: `radial-gradient(ellipse at 80% 100%, rgba(197,136,100,0.28) 0%, transparent 68%)` }}
           />
 
-          <div className="mx-auto max-w-7xl px-4 relative z-10" style={{ minHeight: 360 }}>
-            <div className="flex items-center" style={{ minHeight: 360 }}>
+          <div className="mx-auto max-w-7xl px-4 relative z-10" style={{ minHeight: 520 }}>
+            <div className="flex items-center" style={{ minHeight: 520 }}>
               {/* Text — left half */}
               <div className="w-full lg:w-1/2 py-12">
                 <h1
@@ -112,10 +112,10 @@ export function DeliveryPage() {
             alt="Delivery rider on scooter"
             className="hidden lg:block absolute bottom-0 right-0 object-contain drop-shadow-2xl pointer-events-none"
             style={{
-              height: "110%",
-              maxHeight: 420,
+              height: "118%",
+              maxHeight: 640,
               width: "auto",
-              right: "4%",
+              right: "2%",
             }}
           />
         </section>
