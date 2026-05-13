@@ -140,6 +140,7 @@ export function Navbar() {
     { label: "Shop", href: "/shop" },
     { label: "Care Packs", href: "/care-packs" },
     { label: "Services", href: "/services" },
+    { label: "Who We Are", href: "/who-we-are" },
   ]
 
   const isHomeActive = location === "/"

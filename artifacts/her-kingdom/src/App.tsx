@@ -55,6 +55,7 @@ import SpeakToADoctorPage from "@/pages/speak-to-a-doctor";
 
 // Policy pages
 import PolicyPage from "@/pages/policy";
+import AboutPage from "@/pages/about";
 
 // Store layout wrappers
 import { TopBar } from "@/components/store/top-bar";
@@ -155,6 +156,8 @@ function Router() {
       <Route path="/track-order/:orderNumber">
         {(params) => <TrackOrderByCodePage orderNumber={params.orderNumber} />}
       </Route>
+      <Route path="/who-we-are">{() => <AboutPage />}</Route>
+      <Route path="/about">{() => <AboutPage />}</Route>
       <Route path="/privacy-policy">
         {() => <PolicyPage slug="privacy-policy" />}
       </Route>

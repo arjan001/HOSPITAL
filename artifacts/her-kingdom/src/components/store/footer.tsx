@@ -47,10 +47,10 @@ const DEFAULTS = {
 }
 
 const ABOUT_LINKS = [
-  { label: "Our Mission & Values", href: "/about" },
-  { label: "How Shaneed RX Works", href: "/about#how-it-works" },
-  { label: "Quality Assurance & Safety", href: "/about#quality" },
-  { label: "Our Clinical Stuff", href: "/about#team" },
+  { label: "Who We Are", href: "/who-we-are" },
+  { label: "How Shaneed RX Works", href: "/who-we-are#how-it-works" },
+  { label: "Quality Assurance & Safety", href: "/who-we-are#quality" },
+  { label: "Our Clinical Team", href: "/who-we-are#our-team" },
   { label: "Careers", href: "/careers" },
   { label: "Press & Media", href: "/press" },
 ]
