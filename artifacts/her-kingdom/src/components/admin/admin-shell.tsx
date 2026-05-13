@@ -35,6 +35,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   ScrollText,
+  Plug,
 } from "lucide-react"
 
 const COLLAPSE_KEY = "shaniidrx.admin.sidebarCollapsed"
@@ -74,6 +75,7 @@ const navItems: NavItem[] = [
   { label: "Policies",           href: "/admin/policies",           icon: FileText,        group: "Storefront CMS" },
 
   { label: "Website Settings",   href: "/admin/website-settings",   icon: Settings,        group: "System" },
+  { label: "Integrations",       href: "/admin/integrations",       icon: Plug,            group: "System" },
   { label: "Users & Roles",      href: "/admin/users",              icon: Users,           group: "System" },
   { label: "Roles & Permissions",href: "/admin/roles",              icon: Shield,          group: "System" },
   { label: "Audit Log",          href: "/admin/audit-log",          icon: ScrollText,      group: "System" },

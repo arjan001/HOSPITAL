@@ -42,6 +42,7 @@ import { AdminAnnouncementBar } from "@/components/admin/announcement-bar";
 import { AdminCustomPages } from "@/components/admin/custom-pages";
 import { AdminFooterCms } from "@/components/admin/footer-cms";
 import { AdminWebsiteSettings } from "@/components/admin/website-settings";
+import { AdminIntegrations } from "@/components/admin/integrations";
 import { AdminPopupOffer } from "@/components/admin/popup-offer";
 import { AdminProfile } from "@/components/admin/profile";
 import { AdminPrescriptions } from "@/components/admin/prescriptions";
@@ -209,6 +210,7 @@ function Router() {
       <Route path="/admin/pages" component={AdminCustomPages} />
       <Route path="/admin/footer" component={AdminFooterCms} />
       <Route path="/admin/website-settings" component={AdminWebsiteSettings} />
+      <Route path="/admin/integrations" component={AdminIntegrations} />
       <Route path="/admin/popup-offer" component={AdminPopupOffer} />
       <Route path="/admin/profile" component={AdminProfile} />
       <Route path="/admin/prescriptions" component={AdminPrescriptions} />
