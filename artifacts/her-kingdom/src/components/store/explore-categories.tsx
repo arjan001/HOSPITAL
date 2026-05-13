@@ -12,9 +12,9 @@ const ACCENT_RED = "#B91C1C"
 const BORDER_PEACH = "#F2DCC8"
 const CARD_BG = "rgba(255, 251, 245, 0.65)"
 
-// Lighter pink-peach gradient matching the figma reference for the sidebar
+// Soft pink-rose matching the figma reference for the sidebar
 const SIDEBAR_GRAD =
-  "linear-gradient(180deg, #FCE3DA 0%, #FBD5C5 45%, #F8C6B2 100%)"
+  "linear-gradient(180deg, #F1DAD2 0%, #EAC9C0 55%, #E2B9AE 100%)"
 
 type CarePack = {
   title: string
