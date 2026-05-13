@@ -48,6 +48,7 @@ import { AdminPopupOffer } from "@/components/admin/popup-offer";
 import { AdminPrescriptions } from "@/components/admin/prescriptions";
 import { AdminRolesPermissions } from "@/components/admin/roles-permissions";
 import { AdminConsultations } from "@/components/admin/consultations";
+import { AdminContactInquiries } from "@/components/admin/contact-inquiries";
 import { PopupOffer } from "@/components/store/popup-offer";
 
 // Auth pages (admin)
@@ -212,6 +213,7 @@ function Router() {
       <Route path="/admin/prescriptions" component={AdminPrescriptions} />
       <Route path="/admin/roles" component={AdminRolesPermissions} />
       <Route path="/admin/consultations" component={AdminConsultations} />
+      <Route path="/admin/inquiries" component={AdminContactInquiries} />
       <Route component={NotFound} />
     </Switch>
   );

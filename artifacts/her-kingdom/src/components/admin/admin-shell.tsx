@@ -30,6 +30,7 @@ import {
   ClipboardList,
   Stethoscope,
   Shield,
+  Inbox,
 } from "lucide-react"
 
 type NavItem = {
@@ -116,6 +117,8 @@ const navItems: NavItem[] = [
 
   { label: "Newsletter", href: "/admin/newsletter", icon: Megaphone, group: "Marketing" },
   { label: "Popup Offer", href: "/admin/popup-offer", icon: Megaphone, group: "Marketing" },
+
+  { label: "Contact Inquiries", href: "/admin/inquiries", icon: Inbox, group: "Support" },
 
   { label: "Users & Roles", href: "/admin/users", icon: Users, group: "System" },
   { label: "Roles & Permissions", href: "/admin/roles", icon: Shield, group: "System" },
