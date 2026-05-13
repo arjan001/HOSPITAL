@@ -74,11 +74,45 @@ function readSnapshot<T>(key: string, fallback: T): T {
 function writeRaw<T>(key: string, value: T) {
   if (typeof window === "undefined") return
   try {
+    // Capture the previous value for audit diff hints BEFORE we overwrite.
+    let prev: unknown = undefined
+    try {
+      const before = window.localStorage.getItem(fullKey(key))
+      if (before != null) prev = JSON.parse(before)
+    } catch { /* ignore */ }
+
     const json = JSON.stringify(value)
     window.localStorage.setItem(fullKey(key), json)
     // Update cache eagerly so the next snapshot read returns the same ref.
     snapshotCache.set(key, { raw: json, value })
     window.dispatchEvent(new CustomEvent(CHANGE_EVENT, { detail: { key } }))
+
+    // Auto-audit: record any cmsStore mutation made under /admin/*. We skip
+    // the audit-log key itself to prevent infinite recursion, and skip
+    // user-* / customer-* keys (those are storefront writes by the visitor).
+    if (
+      key !== "audit-log" &&
+      !key.startsWith("user-") &&
+      !key.startsWith("customer-") &&
+      typeof window.location !== "undefined" &&
+      window.location.pathname.startsWith("/admin")
+    ) {
+      // Lazy/async import to avoid circular dep with audit-log.
+      import("./audit-log").then((m) => {
+        const action = m.inferAction(prev, value)
+        const meta: Record<string, unknown> = {}
+        if (Array.isArray(value)) {
+          meta.size = value.length
+          if (Array.isArray(prev)) meta.delta = value.length - (prev as unknown[]).length
+        }
+        m.logActivity({
+          module: m.prettifyKey(key),
+          action,
+          target: key,
+          meta,
+        })
+      }).catch(() => { /* ignore */ })
+    }
   } catch {
     /* quota exceeded etc — silent */
   }

@@ -47,6 +47,7 @@ import { AdminPrescriptions } from "@/components/admin/prescriptions";
 import { AdminRolesPermissions } from "@/components/admin/roles-permissions";
 import { AdminConsultations } from "@/components/admin/consultations";
 import { AdminContactInquiries } from "@/components/admin/contact-inquiries";
+import { AdminAuditLog } from "@/components/admin/audit-log";
 import { PopupOffer } from "@/components/store/popup-offer";
 
 // Auth pages (admin)
@@ -214,6 +215,7 @@ function Router() {
       <Route path="/admin/popup-offer" component={AdminPopupOffer} />
       <Route path="/admin/prescriptions" component={AdminPrescriptions} />
       <Route path="/admin/roles" component={AdminRolesPermissions} />
+      <Route path="/admin/audit-log" component={AdminAuditLog} />
       <Route path="/admin/consultations" component={AdminConsultations} />
       <Route path="/admin/inquiries" component={AdminContactInquiries} />
       <Route component={NotFound} />

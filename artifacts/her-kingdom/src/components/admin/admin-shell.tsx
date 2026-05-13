@@ -34,6 +34,7 @@ import {
   Minimize2,
   PanelLeftClose,
   PanelLeftOpen,
+  ScrollText,
 } from "lucide-react"
 
 const COLLAPSE_KEY = "shaniidrx.admin.sidebarCollapsed"
@@ -75,6 +76,7 @@ const navItems: NavItem[] = [
   { label: "Website Settings",   href: "/admin/website-settings",   icon: Settings,        group: "System" },
   { label: "Users & Roles",      href: "/admin/users",              icon: Users,           group: "System" },
   { label: "Roles & Permissions",href: "/admin/roles",              icon: Shield,          group: "System" },
+  { label: "Audit Log",          href: "/admin/audit-log",          icon: ScrollText,      group: "System" },
   { label: "Settings",           href: "/admin/settings",           icon: Settings,        group: "System" },
 ]
 
@@ -266,6 +268,16 @@ export function AdminShell({ children, title }: { children: ReactNode; title: st
 
   const handleLogout = async () => {
     setLoggingOut(true)
+    try {
+      const { logActivity } = await import("@/lib/audit-log")
+      logActivity({
+        module: "Auth",
+        action: "logout",
+        target: currentUser?.email,
+        meta: { role: currentUser?.role },
+        severity: "warning",
+      })
+    } catch { /* ignore */ }
     navigate("/")
     if (typeof window !== "undefined") window.location.reload()
   }
