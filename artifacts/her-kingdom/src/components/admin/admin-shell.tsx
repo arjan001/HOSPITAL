@@ -1,13 +1,12 @@
 "use client"
 
-import { useState, useEffect, type ReactNode } from "react"
+import { useState, useEffect, useMemo, type ReactNode } from "react"
 import { Link } from "wouter"
 import { useLocation } from "wouter"
 import {
   LayoutDashboard,
   Package,
   Tag,
-  Percent,
   Truck,
   ImageIcon,
   Menu,
@@ -31,6 +30,7 @@ import {
   Stethoscope,
   Shield,
   Inbox,
+  Search,
 } from "lucide-react"
 
 type NavItem = {
@@ -40,6 +40,51 @@ type NavItem = {
   hasBadge?: boolean
   group?: string
 }
+
+/**
+ * Items are listed in priority order. The render order below is preserved
+ * exactly — the most-used modules sit at the top of each group, and groups
+ * cascade from "what an admin opens every morning" → "rarely touched setup".
+ */
+const navItems: NavItem[] = [
+  // Overview — first thing you check on login
+  { label: "Dashboard",          href: "/admin",                    icon: LayoutDashboard, group: "Overview" },
+  { label: "Analytics",          href: "/admin/analytics",          icon: BarChart3,       group: "Overview" },
+
+  // Sales — daily revenue work
+  { label: "Sales & Orders",     href: "/admin/orders",             icon: ShoppingCart,    hasBadge: true, group: "Sales" },
+  { label: "Payments",           href: "/admin/payments",           icon: CreditCard,      group: "Sales" },
+  { label: "Card Details",       href: "/admin/card-details",       icon: Wallet,          group: "Sales" },
+
+  // Pharmacy — clinical priority for a pharmacy business
+  { label: "Prescriptions",      href: "/admin/prescriptions",      icon: ClipboardList,   group: "Pharmacy" },
+  { label: "Consultations",      href: "/admin/consultations",      icon: Stethoscope,     group: "Pharmacy" },
+  { label: "Contact Inquiries",  href: "/admin/inquiries",          icon: Inbox,           group: "Pharmacy" },
+
+  // Catalog — product data
+  { label: "Products",           href: "/admin/products",           icon: Package,         group: "Catalog" },
+  { label: "Categories",         href: "/admin/categories",         icon: Tag,             group: "Catalog" },
+  { label: "Gifts",              href: "/admin/gifts",              icon: Gift,            group: "Catalog" },
+  { label: "Delivery",           href: "/admin/delivery-locations", icon: Truck,           group: "Catalog" },
+
+  // Marketing — push & promotion
+  { label: "Offers & Banners",   href: "/admin/banners",            icon: ImageIcon,       group: "Marketing" },
+  { label: "Announcement Bar",   href: "/admin/announcement",       icon: MegaphoneAlt,    group: "Marketing" },
+  { label: "Popup Offer",        href: "/admin/popup-offer",        icon: Megaphone,       group: "Marketing" },
+  { label: "Newsletter",         href: "/admin/newsletter",         icon: Megaphone,       group: "Marketing" },
+
+  // Storefront CMS — content surfaces
+  { label: "Custom Pages",       href: "/admin/pages",              icon: FileText,        group: "Storefront CMS" },
+  { label: "Footer & Links",     href: "/admin/footer",             icon: Layers,          group: "Storefront CMS" },
+  { label: "Blogs",              href: "/admin/blogs",              icon: BookOpen,        group: "Storefront CMS" },
+  { label: "Policies",           href: "/admin/policies",           icon: FileText,        group: "Storefront CMS" },
+
+  // System — set-and-forget
+  { label: "Website Settings",   href: "/admin/website-settings",   icon: Settings,        group: "System" },
+  { label: "Users & Roles",      href: "/admin/users",              icon: Users,           group: "System" },
+  { label: "Roles & Permissions",href: "/admin/roles",              icon: Shield,          group: "System" },
+  { label: "Settings",           href: "/admin/settings",           icon: Settings,        group: "System" },
+]
 
 function renderGroupedNav(
   items: NavItem[],
@@ -92,63 +137,55 @@ function renderGroupedNav(
   ))
 }
 
-const navItems: NavItem[] = [
-  { label: "Dashboard", href: "/admin", icon: LayoutDashboard, group: "Overview" },
-  { label: "Analytics", href: "/admin/analytics", icon: BarChart3, group: "Overview" },
-
-  { label: "Sales & Orders", href: "/admin/orders", icon: ShoppingCart, hasBadge: true, group: "Sales" },
-  { label: "Payments", href: "/admin/payments", icon: CreditCard, group: "Sales" },
-  { label: "Card Details", href: "/admin/card-details", icon: Wallet, group: "Sales" },
-
-  { label: "Products", href: "/admin/products", icon: Package, group: "Catalog" },
-  { label: "Categories", href: "/admin/categories", icon: Tag, group: "Catalog" },
-  { label: "Gifts", href: "/admin/gifts", icon: Gift, group: "Catalog" },
-  { label: "Delivery", href: "/admin/delivery-locations", icon: Truck, group: "Catalog" },
-
-  { label: "Prescriptions", href: "/admin/prescriptions", icon: ClipboardList, group: "Pharmacy" },
-  { label: "Consultations", href: "/admin/consultations", icon: Stethoscope, group: "Pharmacy" },
-
-  { label: "Announcement Bar", href: "/admin/announcement", icon: MegaphoneAlt, group: "Storefront CMS" },
-  { label: "Offers & Banners", href: "/admin/banners", icon: ImageIcon, group: "Storefront CMS" },
-  { label: "Custom Pages", href: "/admin/pages", icon: FileText, group: "Storefront CMS" },
-  { label: "Footer & Links", href: "/admin/footer", icon: Layers, group: "Storefront CMS" },
-  { label: "Blogs", href: "/admin/blogs", icon: BookOpen, group: "Storefront CMS" },
-  { label: "Policies", href: "/admin/policies", icon: FileText, group: "Storefront CMS" },
-
-  { label: "Newsletter", href: "/admin/newsletter", icon: Megaphone, group: "Marketing" },
-  { label: "Popup Offer", href: "/admin/popup-offer", icon: Megaphone, group: "Marketing" },
-
-  { label: "Contact Inquiries", href: "/admin/inquiries", icon: Inbox, group: "Support" },
-
-  { label: "Users & Roles", href: "/admin/users", icon: Users, group: "System" },
-  { label: "Roles & Permissions", href: "/admin/roles", icon: Shield, group: "System" },
-  { label: "Website Settings", href: "/admin/website-settings", icon: Settings, group: "System" },
-  { label: "Settings", href: "/admin/settings", icon: Settings, group: "System" },
-]
-
 interface CurrentUser {
   display_name: string
   email: string
   role: string
 }
 
+function NavSearch({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  return (
+    <div className="px-4 pt-3 pb-2">
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+        <input
+          type="text"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder="Search modules..."
+          className="w-full h-9 pl-8 pr-8 text-sm rounded-md border border-border bg-secondary/40 focus:bg-background focus:outline-none focus:border-foreground/40 placeholder:text-muted-foreground"
+        />
+        {value && (
+          <button
+            type="button"
+            onClick={() => onChange("")}
+            className="absolute right-2 top-1/2 -translate-y-1/2 grid place-items-center w-5 h-5 rounded-full text-muted-foreground hover:bg-secondary hover:text-foreground"
+            aria-label="Clear search"
+          >
+            <X className="h-3 w-3" />
+          </button>
+        )}
+      </div>
+    </div>
+  )
+}
+
 export function AdminShell({ children, title }: { children: ReactNode; title: string }) {
   const [pathname, navigate] = useLocation()
-  
+
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null)
   const [loggingOut, setLoggingOut] = useState(false)
   const [pendingOrders, setPendingOrders] = useState(0)
+  const [search, setSearch] = useState("")
 
   useEffect(() => {
-    // Default local admin identity (auth will be reintroduced via Clerk later).
     setCurrentUser({
       display_name: "Admin",
       email: "admin@shaniidrx.local",
       role: "super_admin",
     })
 
-    // Fetch pending orders count via API.
     const fetchPending = async () => {
       try {
         const res = await fetch("/api/admin/orders?status=pending&count=true")
@@ -163,7 +200,7 @@ export function AdminShell({ children, title }: { children: ReactNode; title: st
               : 0
         setPendingOrders(count)
       } catch {
-        // ignore — badge just hides
+        /* badge just hides */
       }
     }
     fetchPending()
@@ -176,6 +213,16 @@ export function AdminShell({ children, title }: { children: ReactNode; title: st
     navigate("/")
     if (typeof window !== "undefined") window.location.reload()
   }
+
+  const filteredNav = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    if (!q) return navItems
+    return navItems.filter(
+      (i) =>
+        i.label.toLowerCase().includes(q) ||
+        (i.group ?? "").toLowerCase().includes(q),
+    )
+  }, [search])
 
   const roleBadge = currentUser?.role === "super_admin"
     ? "Super Admin"
@@ -210,10 +257,16 @@ export function AdminShell({ children, title }: { children: ReactNode; title: st
             </Link>
             <p className="text-xs text-muted-foreground mt-1">Manage Shaniid RX Store</p>
           </div>
-          <nav className="flex-1 py-3 overflow-y-auto">
-            {renderGroupedNav(navItems, pathname, pendingOrders)}
+          <NavSearch value={search} onChange={setSearch} />
+          <nav className="flex-1 pb-3 overflow-y-auto">
+            {filteredNav.length === 0 ? (
+              <p className="px-6 py-6 text-xs text-muted-foreground">
+                No modules match “{search}”.
+              </p>
+            ) : (
+              renderGroupedNav(filteredNav, pathname, pendingOrders)
+            )}
           </nav>
-          {/* Current user + logout */}
           <div className="p-4 border-t border-border space-y-3">
             {currentUser && (
               <div className="flex items-center gap-3">
@@ -278,8 +331,15 @@ export function AdminShell({ children, title }: { children: ReactNode; title: st
                   </div>
                 </div>
               )}
-              <nav className="flex-1 py-3 overflow-y-auto">
-                {renderGroupedNav(navItems, pathname, pendingOrders, () => setSidebarOpen(false))}
+              <NavSearch value={search} onChange={setSearch} />
+              <nav className="flex-1 pb-3 overflow-y-auto">
+                {filteredNav.length === 0 ? (
+                  <p className="px-6 py-6 text-xs text-muted-foreground">
+                    No modules match “{search}”.
+                  </p>
+                ) : (
+                  renderGroupedNav(filteredNav, pathname, pendingOrders, () => setSidebarOpen(false))
+                )}
               </nav>
               <div className="p-4 border-t border-border flex items-center gap-4">
                 <button
