@@ -431,11 +431,13 @@ export function AdminProducts() {
   }
 
   const handleBulkDelete = async () => {
+    if (!confirm(`Delete ${selectedIds.size} product${selectedIds.size === 1 ? "" : "s"}? This cannot be undone.`)) return
     for (const id of selectedIds) {
       await apiFetch(`/api/admin/products?id=${id}`, { method: "DELETE" })
     }
     setSelectedIds(new Set())
     mutateProducts()
+    toast.success(`Deleted ${selectedIds.size} product${selectedIds.size === 1 ? "" : "s"}`)
   }
 
   const toggleSelect = (id: string) => {
@@ -569,14 +571,17 @@ export function AdminProducts() {
 
         {/* Bulk Actions */}
         {selectedIds.size > 0 && (
-          <div className="flex items-center gap-3 bg-secondary p-3 rounded-sm">
-            <span className="text-sm font-medium">{selectedIds.size} selected</span>
+          <div className="flex items-center gap-2 bg-secondary p-3 rounded-sm flex-wrap">
+            <span className="text-sm font-medium mr-2">{selectedIds.size} selected</span>
             <Button variant="outline" size="sm" onClick={handleBulkDelete} className="bg-transparent text-destructive border-destructive hover:bg-destructive hover:text-background">
               <Trash2 className="h-3.5 w-3.5 mr-1" />
               Delete Selected
             </Button>
-            <Button variant="outline" size="sm" onClick={() => setSelectedIds(new Set())} className="bg-transparent">
-              Clear Selection
+            <span className="text-[11px] text-muted-foreground">
+              For stock changes, use the per-row "Set qty" button to avoid overwriting other fields.
+            </span>
+            <Button variant="ghost" size="sm" onClick={() => setSelectedIds(new Set())} className="ml-auto">
+              Clear
             </Button>
           </div>
         )}
