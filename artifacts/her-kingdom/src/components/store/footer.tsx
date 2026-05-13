@@ -111,12 +111,12 @@ export function Footer() {
     <footer style={{ background: BG_WHITE, color: TEXT_WINE }}>
       {/* ─── Main columns ────────────────────────────────────── */}
       <div
-        className="mx-auto max-w-7xl px-4 lg:px-8 pt-14 pb-10"
+        className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 pt-10 sm:pt-14 pb-8 sm:pb-10"
         style={{ borderTop: `1px solid ${BORDER_LIGHT}` }}
       >
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-10">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-8 sm:gap-10">
           {/* Brand column */}
-          <div className="lg:col-span-4 lg:pr-8">
+          <div className="sm:col-span-2 lg:col-span-4 lg:pr-8 text-center sm:text-left">
             <Link href="/" className="inline-flex items-center">
               <img
                 src="/logo-rx.png"
@@ -126,7 +126,7 @@ export function Footer() {
                 className="h-12 w-auto object-contain"
               />
             </Link>
-            <p className="mt-5 text-sm leading-relaxed max-w-sm" style={{ color: TEXT_MUTED }}>
+            <p className="mt-4 sm:mt-5 text-sm leading-relaxed max-w-sm mx-auto sm:mx-0" style={{ color: TEXT_MUTED }}>
               Shaniid RX is Kenya's trusted online pharmacy delivering quality medicines, supplements
               and healthcare essentials right to your door — fast, safe, and discreetly.
             </p>
@@ -142,11 +142,11 @@ export function Footer() {
           <FooterColumn title="Our Services" links={SUPPORT_LINKS} />
 
           {/* Socials */}
-          <div className="lg:col-span-2">
+          <div className="sm:col-span-2 lg:col-span-2">
             <h3 className="text-base font-bold mb-4" style={{ color: TEXT_WINE }}>
               Socials
             </h3>
-            <ul className="flex flex-col gap-2.5">
+            <ul className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-1 gap-2.5">
               {socials.map((soc) => (
                 <li key={soc.label}>
                   <a
@@ -172,9 +172,9 @@ export function Footer() {
 
         {/* Legal links — kept as a slim row beneath the main grid */}
         {LEGAL_LINKS.length > 0 && (
-          <div className="mt-10 pt-6 flex flex-wrap items-center gap-x-5 gap-y-2"
+          <div className="mt-8 sm:mt-10 pt-5 sm:pt-6 flex flex-wrap items-center justify-center sm:justify-start gap-x-4 sm:gap-x-5 gap-y-2"
             style={{ borderTop: `1px dashed ${BORDER_LIGHT}` }}>
-            <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: TEXT_WINE_SOFT }}>
+            <span className="text-xs font-semibold uppercase tracking-wider w-full sm:w-auto text-center sm:text-left" style={{ color: TEXT_WINE_SOFT }}>
               Legal & Compliance
             </span>
             {LEGAL_LINKS.map((l) => (
@@ -193,11 +193,11 @@ export function Footer() {
 
       {/* ─── Payment partners ────────────────────────────────── */}
       <div style={{ borderTop: `1px solid ${BORDER_LIGHT}`, background: BG_WHITE }}>
-        <div className="mx-auto max-w-7xl px-4 lg:px-8 py-6 flex flex-wrap items-center justify-center gap-x-6 gap-y-3">
-          <span className="text-sm font-semibold" style={{ color: TEXT_WINE_SOFT }}>
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-5 sm:py-6 flex flex-col sm:flex-row sm:flex-wrap items-center justify-center gap-x-6 gap-y-3">
+          <span className="text-sm font-semibold text-center" style={{ color: TEXT_WINE_SOFT }}>
             Our Payment Partners
           </span>
-          <div className="flex items-center gap-3 flex-wrap">
+          <div className="flex items-center justify-center gap-2.5 sm:gap-3 flex-wrap">
             <PaymentLogo src="/payments/paystack.png" alt="Paystack" />
             <PaymentLogo src="/payments/mpesa-mc-visa.png" alt="M-PESA, Mastercard, Visa" wide />
             <PaymentLogo src="/payments/equity.png" alt="Equity" />
@@ -209,30 +209,13 @@ export function Footer() {
 
       {/* ─── Bottom bar ──────────────────────────────────────── */}
       <div style={{ background: BG_BAR, borderTop: `1px solid ${BORDER_LIGHT}` }}>
-        <div className="mx-auto max-w-7xl px-4 lg:px-8 py-4 flex flex-col md:flex-row items-center justify-between gap-3 relative">
-          <p className="text-xs leading-relaxed text-center md:text-left" style={{ color: TEXT_MUTED }}>
-            {copyright}
-          </p>
-
-          <nav className="flex items-center gap-5 flex-wrap justify-center">
-            {BOTTOM_LINKS.map((l) => (
-              <Link
-                key={l.label}
-                href={l.href}
-                className="text-xs font-semibold uppercase tracking-wider transition-colors hover:text-[#B91C1C]"
-                style={{ color: TEXT_WINE }}
-              >
-                {l.label}
-              </Link>
-            ))}
-          </nav>
-
-          {/* Back to top — floating circle */}
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 pt-5 pb-4 sm:py-4 flex flex-col md:flex-row items-center justify-between gap-3 relative">
+          {/* Back-to-top — floats top-right on desktop, inline above content on mobile */}
           <button
             type="button"
             onClick={handleScrollTop}
             aria-label="Back to top"
-            className="absolute -top-7 right-4 lg:right-8 w-12 h-12 rounded-full flex items-center justify-center text-white shadow-lg transition-transform hover:-translate-y-0.5"
+            className="md:absolute md:-top-7 md:right-4 lg:right-8 w-11 h-11 sm:w-12 sm:h-12 rounded-full flex items-center justify-center text-white shadow-lg transition-transform hover:-translate-y-0.5 -mt-10 md:mt-0 self-end md:self-auto mr-1 md:mr-0"
             style={{
               background: `linear-gradient(135deg, ${ACCENT_ORG} 0%, ${ACCENT_RED} 100%)`,
               boxShadow: "0 8px 20px -6px rgba(185,28,28,0.45)",
@@ -240,11 +223,28 @@ export function Footer() {
           >
             <ArrowUp className="h-5 w-5" />
           </button>
+
+          <p className="text-[11px] sm:text-xs leading-relaxed text-center md:text-left order-2 md:order-1" style={{ color: TEXT_MUTED }}>
+            {copyright}
+          </p>
+
+          <nav className="flex items-center gap-x-4 sm:gap-x-5 gap-y-2 flex-wrap justify-center order-1 md:order-2">
+            {BOTTOM_LINKS.map((l) => (
+              <Link
+                key={l.label}
+                href={l.href}
+                className="text-[11px] sm:text-xs font-semibold uppercase tracking-wider transition-colors hover:text-[#B91C1C]"
+                style={{ color: TEXT_WINE }}
+              >
+                {l.label}
+              </Link>
+            ))}
+          </nav>
         </div>
 
         {/* Compliance disclaimer — slim, last */}
-        <div className="mx-auto max-w-7xl px-4 lg:px-8 pb-4">
-          <p className="text-[11px] leading-relaxed text-center" style={{ color: TEXT_MUTED }}>
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 pb-4">
+          <p className="text-[10.5px] sm:text-[11px] leading-relaxed text-center" style={{ color: TEXT_MUTED }}>
             Shaniid RX is a licensed pharmacy regulated by the Pharmacy and Poisons Board of Kenya.
             Prescription medicines are dispensed only upon valid prescription. Information on this site
             does not replace professional medical advice.
