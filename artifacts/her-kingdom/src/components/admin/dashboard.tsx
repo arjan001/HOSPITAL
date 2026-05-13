@@ -189,7 +189,7 @@ export function AdminDashboard() {
         {/* KPI cards with sparklines */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {stats.map((stat) => (
-            <div key={stat.label} className="border border-rx-warm bg-rx-warm-soft p-5 rounded-sm">
+            <div key={stat.label} className="border border-border p-5 rounded-sm bg-card">
               <div className="flex items-center justify-between">
                 <span className="text-[11px] text-muted-foreground uppercase tracking-wider">{stat.label}</span>
                 <stat.icon className="h-4 w-4 text-muted-foreground" />

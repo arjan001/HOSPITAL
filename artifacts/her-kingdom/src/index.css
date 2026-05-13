@@ -513,15 +513,6 @@
   border-color: rgba(234,180,109,0.45);
 }
 
-/* Full-page peach canvas for admin shell (matches storefront hero warmth) */
-.bg-rx-peach-canvas {
-  background-color: #FFF4E6;
-  background-image:
-    radial-gradient(circle at 0% 0%, rgba(234,180,109,0.28) 0%, transparent 45%),
-    radial-gradient(circle at 100% 100%, rgba(221,180,176,0.22) 0%, transparent 50%);
-  background-attachment: fixed;
-}
-
 /* Wine gradient for primary admin CTAs */
 .bg-rx-wine-gradient {
   background-image: linear-gradient(135deg, #6B0F1A 0%, #3D0814 100%);
@@ -529,6 +520,16 @@
 .bg-rx-wine-gradient:hover {
   background-image: linear-gradient(135deg, #7A1521 0%, #4A0E1A 100%);
 }
+
+/* Peach→wine gradient button (Figma source of truth) — for primary admin CTAs */
+.btn-rx-peach-wine {
+  background-image: linear-gradient(135deg, #EAB46D 0%, #C0563E 55%, #6B0F1A 100%);
+  color: #fff;
+  transition: filter 0.18s ease, transform 0.18s ease;
+}
+.btn-rx-peach-wine:hover { filter: brightness(1.06); }
+.btn-rx-peach-wine:active { filter: brightness(0.95); transform: translateY(1px); }
+.btn-rx-peach-wine:disabled { filter: grayscale(0.4) brightness(0.95); cursor: not-allowed; }
 
 @keyframes rx-fade-in {
   from { opacity: 0; }
