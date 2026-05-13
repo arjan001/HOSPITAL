@@ -205,8 +205,25 @@ const TAB_GROUPS: Array<{
   },
 ]
 
+/**
+ * Shallow-merge each top-level section over defaults so older persisted docs
+ * (saved before we added `tracking` / `customCode` / extra `seo` keys) still
+ * render — missing keys fall back to defaults instead of crashing.
+ */
+function withDefaults(s: Partial<WebsiteSettings> | undefined): WebsiteSettings {
+  const src = (s ?? {}) as Partial<WebsiteSettings>
+  const out = {} as WebsiteSettings
+  ;(Object.keys(WEBSITE_DEFAULTS) as Array<keyof WebsiteSettings>).forEach((k) => {
+    const def = WEBSITE_DEFAULTS[k] as Record<string, unknown>
+    const cur = (src[k] as Record<string, unknown> | undefined) ?? {}
+    ;(out as Record<string, unknown>)[k] = { ...def, ...cur }
+  })
+  return out
+}
+
 export function AdminWebsiteSettings() {
-  const [settings, setSettings] = useCmsDoc("website-settings", WEBSITE_DEFAULTS)
+  const [rawSettings, setSettings] = useCmsDoc("website-settings", WEBSITE_DEFAULTS)
+  const settings = useMemo(() => withDefaults(rawSettings), [rawSettings])
   const [draft, setDraft] = useState<WebsiteSettings>(settings)
   const [tab, setTab] = useState<Tab>("brand")
 
