@@ -493,6 +493,34 @@
 }
 .rx-pill-float { animation: rx-pill-float 6s ease-in-out infinite; will-change: transform; }
 
+/* ─────────────────────────────────────────────
+   Shaniid RX — Figma gradient theme
+   Hero: peach (#EAB46D) → soft rose
+   Wine: brand button gradient
+   ───────────────────────────────────────────── */
+
+.bg-rx-warm-gradient {
+  background-image: linear-gradient(135deg, #EAB46D 0%, #E9C2A5 45%, #DDB4B0 100%);
+}
+
+/* Subtle version for cards / panels — keeps text fully legible */
+.bg-rx-warm-soft {
+  background-image: linear-gradient(135deg, rgba(234,180,109,0.18) 0%, rgba(233,194,165,0.10) 50%, rgba(221,180,176,0.16) 100%);
+}
+
+/* Hairline warm border to pair with bg-rx-warm-soft cards */
+.border-rx-warm {
+  border-color: rgba(234,180,109,0.45);
+}
+
+/* Wine gradient for primary admin CTAs */
+.bg-rx-wine-gradient {
+  background-image: linear-gradient(135deg, #6B0F1A 0%, #3D0814 100%);
+}
+.bg-rx-wine-gradient:hover {
+  background-image: linear-gradient(135deg, #7A1521 0%, #4A0E1A 100%);
+}
+
 @keyframes rx-fade-in {
   from { opacity: 0; }
   to { opacity: 1; }

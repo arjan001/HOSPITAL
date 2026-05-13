@@ -306,15 +306,15 @@ export function AdminShell({ children, title }: { children: ReactNode; title: st
   return (
     <div className="min-h-screen bg-background text-foreground">
       {/* Mobile Header */}
-      <header className="lg:hidden flex items-center justify-between h-14 px-4 border-b border-border bg-background sticky top-0 z-50">
-        <button type="button" onClick={() => setSidebarOpen(true)}>
+      <header className="lg:hidden flex items-center justify-between h-14 px-4 border-b border-rx-warm bg-rx-warm-gradient sticky top-0 z-50">
+        <button type="button" onClick={() => setSidebarOpen(true)} style={{ color: "#3D0814" }}>
           <Menu className="h-5 w-5" />
           <span className="sr-only">Open menu</span>
         </button>
-        <Link href="/admin" className="font-serif text-lg font-bold">
+        <Link href="/admin" className="font-serif text-lg font-bold" style={{ color: "#3D0814" }}>
           Shaniid RX Admin
         </Link>
-        <Link href="/" className="text-xs text-muted-foreground hover:text-foreground">
+        <Link href="/" className="text-xs hover:underline" style={{ color: "rgba(61,8,20,0.78)" }}>
           View Store
         </Link>
       </header>
@@ -322,18 +322,18 @@ export function AdminShell({ children, title }: { children: ReactNode; title: st
       <div className="flex">
         {/* Sidebar - Desktop */}
         <aside className={`hidden lg:flex flex-col ${sidebarWidth} h-screen border-r border-border bg-background fixed inset-y-0 left-0 transition-[width] duration-200`}>
-          <div className={`${collapsed ? "p-3" : "p-6"} border-b border-border flex items-center ${collapsed ? "justify-center" : "justify-between"} gap-2`}>
+          <div className={`${collapsed ? "p-3" : "p-6"} border-b border-rx-warm bg-rx-warm-gradient flex items-center ${collapsed ? "justify-center" : "justify-between"} gap-2`}>
             {collapsed ? (
               <Link href="/admin" className="font-serif text-lg font-bold" title="Shaniid RX Admin">
                 <span style={{ color: "#3D0814" }}>S</span>
-                <span style={{ color: "#F97316" }}>X</span>
+                <span style={{ color: "#3D0814" }}>X</span>
               </Link>
             ) : (
               <div className="min-w-0">
-                <Link href="/admin" className="font-serif text-xl font-bold block truncate">
+                <Link href="/admin" className="font-serif text-xl font-bold block truncate" style={{ color: "#3D0814" }}>
                   Shaniid RX Admin
                 </Link>
-                <p className="text-xs text-muted-foreground mt-1">Manage Shaniid RX Store</p>
+                <p className="text-xs mt-1" style={{ color: "rgba(61,8,20,0.72)" }}>Manage Shaniid RX Store</p>
               </div>
             )}
           </div>
