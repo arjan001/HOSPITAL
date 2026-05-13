@@ -34,10 +34,50 @@ function readRaw<T>(key: string, fallback: T): T {
   }
 }
 
+/**
+ * Per-key snapshot cache. `useSyncExternalStore` requires a stable reference
+ * for unchanged values — without this, every render parses JSON afresh and
+ * React re-renders forever ("Maximum update depth exceeded").
+ *
+ * We cache by raw JSON string so a real localStorage change still flows
+ * through, but identical reads return the same object.
+ */
+const snapshotCache = new Map<string, { raw: string | null; value: unknown }>()
+
+function readSnapshot<T>(key: string, fallback: T): T {
+  if (typeof window === "undefined") return fallback
+  const fk = fullKey(key)
+  let raw: string | null = null
+  try {
+    raw = window.localStorage.getItem(fk)
+  } catch {
+    return fallback
+  }
+  const cached = snapshotCache.get(key)
+  if (cached && cached.raw === raw) {
+    return cached.value as T
+  }
+  let value: T
+  if (raw == null) {
+    value = fallback
+  } else {
+    try {
+      value = JSON.parse(raw) as T
+    } catch {
+      value = fallback
+    }
+  }
+  snapshotCache.set(key, { raw, value })
+  return value
+}
+
 function writeRaw<T>(key: string, value: T) {
   if (typeof window === "undefined") return
   try {
-    window.localStorage.setItem(fullKey(key), JSON.stringify(value))
+    const json = JSON.stringify(value)
+    window.localStorage.setItem(fullKey(key), json)
+    // Update cache eagerly so the next snapshot read returns the same ref.
+    snapshotCache.set(key, { raw: json, value })
     window.dispatchEvent(new CustomEvent(CHANGE_EVENT, { detail: { key } }))
   } catch {
     /* quota exceeded etc — silent */
@@ -65,7 +105,7 @@ function subscribe(key: string, cb: () => void): () => void {
 export function useCmsDoc<T>(key: string, defaults: T): [T, (next: T | ((prev: T) => T)) => void] {
   const value = useSyncExternalStore(
     useCallback((cb) => subscribe(key, cb), [key]),
-    () => readRaw<T>(key, defaults),
+    () => readSnapshot<T>(key, defaults),
     () => defaults,
   )
   const setValue = useCallback(
