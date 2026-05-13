@@ -59,7 +59,7 @@ const BANNERS: Banner[] = [
 
 export function OfferBanner() {
   return (
-    <section className="py-8 lg:py-10" style={{ background: "#FFFBF5" }}>
+    <section className="py-8 lg:py-10" style={{ background: "#FFFFFF" }}>
       <div className="mx-auto max-w-7xl px-4 lg:px-8">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 lg:gap-7">
           {BANNERS.map((b) => (

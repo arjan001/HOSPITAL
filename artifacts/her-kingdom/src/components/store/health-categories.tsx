@@ -59,7 +59,7 @@ const CARDS: HealthCard[] = [
 
 export function HealthCategories() {
   return (
-    <section className="py-14 lg:py-20" style={{ background: "#FFFBF5" }}>
+    <section className="py-14 lg:py-20" style={{ background: "#FFFFFF" }}>
       <div className="mx-auto max-w-7xl px-4 lg:px-8">
         <div className="mb-10">
           <h2

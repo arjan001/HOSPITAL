@@ -49,7 +49,7 @@ export function OnOfferProducts() {
   if (displayed.length === 0) return null
 
   return (
-    <section className="py-14 lg:py-20 relative overflow-hidden" style={{ background: "#FFFBF5" }}>
+    <section className="py-14 lg:py-20 relative overflow-hidden" style={{ background: "#FFFFFF" }}>
       {/* Decorative blurred blobs */}
       <div
         className="absolute -top-24 -left-24 w-72 h-72 rounded-full pointer-events-none"
