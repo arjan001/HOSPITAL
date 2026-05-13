@@ -207,7 +207,7 @@ export function BlogsPage() {
               style={{ background: "rgba(249,115,22,0.25)", color: "#f97316", border: "1px solid rgba(249,115,22,0.4)" }}
             >
               <Sparkles className="h-3.5 w-3.5" />
-              The Shaniid RX Journal
+              The Health Journal
             </span>
             <h1 className="font-serif text-5xl md:text-6xl lg:text-7xl font-bold leading-[1.05] text-white text-balance" style={{ textShadow: "0 2px 24px rgba(0,0,0,0.3)" }}>
               Health insights &amp;<br />

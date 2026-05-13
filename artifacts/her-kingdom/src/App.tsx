@@ -68,7 +68,7 @@ function TrackOrderHero({ subtitle }: { subtitle?: React.ReactNode }) {
   return (
     <div className="relative overflow-hidden" style={{ minHeight: 220 }}>
       <img
-        src="/banner-wellness.png"
+        src="/track-order-banner.jpg"
         alt=""
         aria-hidden="true"
         className="absolute inset-0 w-full h-full object-cover object-center"
@@ -78,18 +78,12 @@ function TrackOrderHero({ subtitle }: { subtitle?: React.ReactNode }) {
         style={{ background: "linear-gradient(135deg, rgba(61,8,20,0.88) 0%, rgba(122,37,53,0.75) 50%, rgba(61,8,20,0.4) 100%)" }}
       />
       {/* Bottom fade into page bg */}
-      <div className="absolute bottom-0 left-0 right-0 h-12" style={{ background: "linear-gradient(to bottom, transparent, #FFFBF5)" }} />
+      <div className="absolute bottom-0 left-0 right-0 h-12" style={{ background: "linear-gradient(to bottom, transparent, #ffffff)" }} />
       <div className="relative z-10 mx-auto max-w-3xl px-4 text-center flex flex-col items-center justify-center" style={{ minHeight: 220 }}>
-        <span
-          className="inline-block text-[10px] font-bold uppercase tracking-widest mb-3 px-3 py-1 rounded-full"
-          style={{ background: "rgba(249,115,22,0.25)", color: "#f97316", border: "1px solid rgba(249,115,22,0.4)" }}
-        >
-          Shaniid RX
-        </span>
         <h1 className="font-bold text-3xl lg:text-4xl text-white" style={{ textShadow: "0 2px 12px rgba(0,0,0,0.3)" }}>
           Track My Order
         </h1>
-        <p className="mt-2 text-sm max-w-md" style={{ color: "rgba(255,251,245,0.75)" }}>
+        <p className="mt-2 text-sm max-w-md" style={{ color: "rgba(255,251,245,0.85)" }}>
           {subtitle ?? "Enter your order number or phone number to check your delivery status."}
         </p>
       </div>
@@ -102,7 +96,7 @@ function TrackOrderPage() {
     <>
       <TopBar />
       <Navbar />
-      <main className="min-h-screen" style={{ background: "#FFFBF5" }}>
+      <main className="min-h-screen bg-white">
         <TrackOrderHero />
         <div className="mx-auto max-w-3xl px-4 py-10 lg:py-14">
           <TrackOrderForm />
@@ -118,8 +112,8 @@ function TrackOrderByCodePage({ orderNumber }: { orderNumber: string }) {
     <>
       <TopBar />
       <Navbar />
-      <main className="min-h-screen" style={{ background: "#FFFBF5" }}>
-        <TrackOrderHero subtitle={<>Showing status for order <strong className="text-white">{orderNumber}</strong>.</>} />
+      <main className="min-h-screen bg-white">
+        <TrackOrderHero subtitle={<>Showing status for order <strong className="text-neutral-900">{orderNumber}</strong>.</>} />
         <div className="mx-auto max-w-3xl px-4 py-10 lg:py-14">
           <TrackOrderForm initialOrderNumber={orderNumber} />
         </div>
