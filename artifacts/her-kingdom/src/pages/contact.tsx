@@ -1,261 +1,229 @@
+import { Link } from "wouter"
+import { Phone, Mail, MapPin, ChevronRight, MessageCircle, Clock } from "lucide-react"
 import { TopBar } from "@/components/store/top-bar"
 import { Navbar } from "@/components/store/navbar"
 import { Footer } from "@/components/store/footer"
-import { Phone, MessageCircle, Mail, MapPin, Clock, ShieldCheck, Stethoscope } from "lucide-react"
 import { useStoreContact } from "@/hooks/use-store-contact"
 
-const WINE        = "#3D0814"
-const WINE_SOFT   = "#6B0F1A"
-const ACCENT_RED  = "#B91C1C"
-const ACCENT_ORANGE = "#F97316"
-const CREAM       = "#FFFBF5"
-const PEACH_BORDER= "#F2DCC8"
+const BRAND = "#3D0814"
 
 export default function ContactPage() {
-  const { phoneHref, phoneDisplay, waHref } = useStoreContact()
+  const { phoneHref, phoneDisplay, whatsappHref } = useStoreContact()
 
-  const contactChannels = [
+  const channels = [
     {
-      icon: (
-        <svg className="h-6 w-6" fill="currentColor" viewBox="0 0 24 24">
-          <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347" />
-        </svg>
-      ),
-      bg: "#25D366",
+      icon: MessageCircle,
       label: "WhatsApp",
-      headline: "Chat with a Pharmacist",
-      desc: "Fastest response — usually under 15 min",
+      value: phoneDisplay,
+      desc: "Fastest response — usually under 15 minutes during working hours.",
       cta: "Open WhatsApp",
-      href: waHref,
+      href: whatsappHref,
       external: true,
     },
     {
-      icon: <Phone className="h-6 w-6" />,
-      bg: `linear-gradient(135deg, ${ACCENT_ORANGE} 0%, ${ACCENT_RED} 100%)`,
+      icon: Phone,
       label: "Phone",
-      headline: phoneDisplay,
-      desc: "Available 8 AM – 10 PM, 7 days a week",
-      cta: "Call Now",
+      value: phoneDisplay,
+      desc: "Speak directly to a pharmacist or care representative.",
+      cta: "Call now",
       href: phoneHref,
       external: false,
     },
     {
-      icon: <Mail className="h-6 w-6" />,
-      bg: WINE,
+      icon: Mail,
       label: "Email",
-      headline: "support@shaniid.co.ke",
-      desc: "We reply within 2–4 hours on business days",
-      cta: "Send Email",
-      href: "mailto:support@shaniid.co.ke",
+      value: "support@shaniidrx.co.ke",
+      desc: "Replies within 2–4 hours on business days.",
+      cta: "Send email",
+      href: "mailto:support@shaniidrx.co.ke",
       external: false,
     },
     {
-      icon: <MapPin className="h-6 w-6" />,
-      bg: "#0A66C2",
-      label: "Visit Us",
-      headline: "Philadelphia House",
-      desc: "3rd Floor, Wing B, Room 9 — Nairobi",
-      cta: "Get Directions",
+      icon: MapPin,
+      label: "Walk-in",
+      value: "Philadelphia House, 3rd Floor, Wing B, Room 9 — Nairobi",
+      desc: "Open Monday to Saturday, 9:00 AM – 6:00 PM.",
+      cta: "Get directions",
       href: "https://maps.google.com/?q=Philadelphia+House+Nairobi",
       external: true,
     },
   ]
 
+  const hours = [
+    { day: "Monday – Friday",          hours: "8:00 AM – 10:00 PM" },
+    { day: "Saturday",                 hours: "8:00 AM – 10:00 PM" },
+    { day: "Sunday & public holidays", hours: "9:00 AM – 8:00 PM" },
+  ]
+
+  const departments = [
+    { name: "Customer support",         email: "support@shaniidrx.co.ke",       note: "Orders, deliveries, returns and account help." },
+    { name: "Clinical pharmacy",        email: "rx@shaniidrx.co.ke",            note: "Prescription queries and medication advice." },
+    { name: "Pharmacovigilance",        email: "pv@shaniidrx.co.ke",            note: "Reporting side effects or adverse events." },
+    { name: "Data Protection Officer",  email: "dpo@shaniidrx.co.ke",           note: "Privacy questions and data requests." },
+    { name: "Partnerships & wholesale", email: "partners@shaniidrx.co.ke",      note: "B2B, corporate accounts and bulk supply." },
+  ]
+
   return (
-    <div className="min-h-screen flex flex-col" style={{ background: CREAM }}>
+    <div className="min-h-screen flex flex-col bg-white text-neutral-900">
       <TopBar />
       <Navbar />
-      <main className="flex-1">
 
-        {/* ── Hero ── */}
-        <div
-          className="border-b"
-          style={{
-            background: "linear-gradient(160deg, #FFFBF5 0%, #FFF0E0 100%)",
-            borderColor: PEACH_BORDER,
-          }}
-        >
-          <div className="mx-auto max-w-4xl px-4 py-14 lg:py-18 text-center">
-            <p className="text-xs font-bold uppercase tracking-[0.3em] mb-3" style={{ color: ACCENT_RED }}>
-              Get In Touch
+      <main className="flex-1 bg-white">
+        {/* Header */}
+        <header className="border-b border-neutral-200 bg-white">
+          <div className="mx-auto max-w-5xl px-4 lg:px-6 pt-10 pb-8">
+            <nav className="flex items-center gap-1.5 text-xs text-neutral-500 mb-6">
+              <Link href="/" className="hover:text-neutral-900">Home</Link>
+              <ChevronRight className="h-3 w-3" />
+              <span className="text-neutral-900 font-medium">Contact</span>
+            </nav>
+
+            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-neutral-500 mb-2">
+              Get in touch
             </p>
             <h1
-              className="text-4xl lg:text-5xl font-black"
-              style={{ color: WINE, fontFamily: "var(--font-serif, ui-serif, Georgia, serif)" }}
+              className="font-serif text-3xl lg:text-4xl font-semibold leading-tight"
+              style={{ color: BRAND, letterSpacing: "-0.01em" }}
             >
-              Contact &amp; Support
+              Contact our pharmacy team
             </h1>
-            <p className="mt-3 text-sm lg:text-base max-w-md mx-auto leading-relaxed" style={{ color: WINE_SOFT }}>
-              Our pharmacy team is here for you — 8 AM to 10 PM, seven days a week.
+            <p className="mt-3 text-[15px] leading-relaxed text-neutral-600 max-w-2xl">
+              Our licensed pharmacists and care representatives are available seven days a week.
+              Choose the channel that suits you best — we typically respond in under fifteen minutes during working hours.
             </p>
           </div>
-        </div>
+        </header>
 
-        <div className="mx-auto max-w-5xl px-4 py-12 lg:py-16 space-y-10">
-
-          {/* ── 4 contact channel cards ── */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            {contactChannels.map((ch) => (
-              <a
-                key={ch.label}
-                href={ch.href}
-                target={ch.external ? "_blank" : undefined}
-                rel={ch.external ? "noopener noreferrer" : undefined}
-                className="group rounded-2xl p-5 flex flex-col gap-4 transition-all hover:-translate-y-1.5 hover:shadow-xl"
-                style={{
-                  background: "white",
-                  border: `1px solid ${PEACH_BORDER}`,
-                  boxShadow: "0 4px 18px -8px rgba(61,8,20,0.1)",
-                }}
-              >
-                <span
-                  className="w-12 h-12 rounded-xl flex items-center justify-center text-white flex-shrink-0 transition-transform group-hover:scale-110"
-                  style={{ background: ch.bg }}
+        {/* Body */}
+        <div className="mx-auto max-w-5xl px-4 lg:px-6 py-10 lg:py-14 space-y-12">
+          {/* Channels */}
+          <section>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-neutral-500 mb-4">
+              Channels
+            </p>
+            <div className="grid sm:grid-cols-2 gap-4">
+              {channels.map((c) => (
+                <a
+                  key={c.label}
+                  href={c.href}
+                  target={c.external ? "_blank" : undefined}
+                  rel={c.external ? "noopener noreferrer" : undefined}
+                  className="block rounded-lg border border-neutral-200 bg-white p-5 hover:border-neutral-400 transition-colors"
                 >
-                  {ch.icon}
-                </span>
-                <div className="flex-1">
-                  <p className="text-[10px] font-bold uppercase tracking-widest mb-1" style={{ color: WINE_SOFT }}>{ch.label}</p>
-                  <p className="text-sm font-extrabold leading-snug mb-1" style={{ color: WINE }}>{ch.headline}</p>
-                  <p className="text-xs leading-relaxed" style={{ color: WINE_SOFT }}>{ch.desc}</p>
-                </div>
-                <span
-                  className="text-xs font-bold inline-flex items-center gap-1 transition-colors"
-                  style={{ color: ACCENT_RED }}
-                >
-                  {ch.cta} →
-                </span>
-              </a>
-            ))}
-          </div>
+                  <div className="flex items-start gap-4">
+                    <div className="w-10 h-10 rounded-md border border-neutral-200 bg-neutral-50 grid place-items-center flex-shrink-0">
+                      <c.icon className="h-4 w-4 text-neutral-700" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-neutral-500 mb-1">
+                        {c.label}
+                      </p>
+                      <p className="text-[15px] font-semibold text-neutral-900 break-words">{c.value}</p>
+                      <p className="text-sm text-neutral-600 mt-1 leading-relaxed">{c.desc}</p>
+                      <span className="inline-flex items-center gap-1 mt-3 text-sm font-medium text-neutral-900 underline underline-offset-4">
+                        {c.cta}
+                        <ChevronRight className="h-3.5 w-3.5" />
+                      </span>
+                    </div>
+                  </div>
+                </a>
+              ))}
+            </div>
+          </section>
 
-          {/* ── Info grid: hours + response + emergency ── */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Departments */}
+          <section>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-neutral-500 mb-4">
+              Email by department
+            </p>
+            <ul className="divide-y divide-neutral-200 border-y border-neutral-200">
+              {departments.map((d) => (
+                <li key={d.name} className="grid sm:grid-cols-[200px_1fr_auto] gap-2 sm:gap-6 py-4 items-start">
+                  <p className="text-sm font-semibold text-neutral-900">{d.name}</p>
+                  <p className="text-sm text-neutral-600 leading-relaxed">{d.note}</p>
+                  <a
+                    href={`mailto:${d.email}`}
+                    className="text-sm text-neutral-900 underline underline-offset-4 hover:no-underline justify-self-start sm:justify-self-end"
+                  >
+                    {d.email}
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </section>
 
-            {/* Business Hours */}
-            <div
-              className="rounded-2xl p-6"
-              style={{ background: "white", border: `1px solid ${PEACH_BORDER}`, boxShadow: "0 4px 18px -8px rgba(61,8,20,0.1)" }}
-            >
-              <div className="flex items-center gap-2 mb-5">
-                <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: "#FFF1E2" }}>
-                  <Clock className="h-4.5 w-4.5" style={{ color: WINE }} />
-                </div>
-                <h3 className="font-extrabold" style={{ color: WINE }}>Business Hours</h3>
-              </div>
-              <div className="space-y-3">
-                {[
-                  { day: "Monday – Friday",           hours: "8:00 AM – 10:00 PM" },
-                  { day: "Saturday",                  hours: "8:00 AM – 10:00 PM" },
-                  { day: "Sunday & Public Holidays",  hours: "9:00 AM – 8:00 PM" },
-                ].map((row) => (
-                  <div key={row.day} className="flex items-center justify-between gap-2 text-sm">
-                    <span style={{ color: WINE_SOFT }}>{row.day}</span>
-                    <span className="font-bold" style={{ color: WINE }}>{row.hours}</span>
+          {/* Hours + Office */}
+          <section className="grid lg:grid-cols-2 gap-10">
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-neutral-500 mb-4">
+                Working hours
+              </p>
+              <div className="rounded-lg border border-neutral-200 bg-white">
+                {hours.map((row, i) => (
+                  <div
+                    key={row.day}
+                    className={`flex items-center justify-between gap-2 px-5 py-4 text-sm ${i > 0 ? "border-t border-neutral-200" : ""}`}
+                  >
+                    <span className="text-neutral-600 inline-flex items-center gap-2">
+                      <Clock className="h-3.5 w-3.5 text-neutral-400" />
+                      {row.day}
+                    </span>
+                    <span className="font-medium text-neutral-900">{row.hours}</span>
                   </div>
                 ))}
               </div>
-            </div>
-
-            {/* Response Times */}
-            <div
-              className="rounded-2xl p-6"
-              style={{ background: "white", border: `1px solid ${PEACH_BORDER}`, boxShadow: "0 4px 18px -8px rgba(61,8,20,0.1)" }}
-            >
-              <div className="flex items-center gap-2 mb-5">
-                <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: "#FFF1E2" }}>
-                  <ShieldCheck className="h-4.5 w-4.5" style={{ color: WINE }} />
-                </div>
-                <h3 className="font-extrabold" style={{ color: WINE }}>Response Times</h3>
-              </div>
-              <ul className="space-y-3">
-                {[
-                  { channel: "WhatsApp",    time: "Under 15 minutes",      dot: "#25D366" },
-                  { channel: "Phone",       time: "Immediate",              dot: ACCENT_ORANGE },
-                  { channel: "Email",       time: "2–4 hours (business)",   dot: WINE },
-                ].map((r) => (
-                  <li key={r.channel} className="flex items-center gap-3 text-sm">
-                    <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: r.dot }} />
-                    <span style={{ color: WINE_SOFT }}>{r.channel}</span>
-                    <span className="ml-auto font-semibold" style={{ color: WINE }}>{r.time}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-
-            {/* Emergency */}
-            <div
-              className="rounded-2xl p-6"
-              style={{
-                background: "linear-gradient(135deg, #FEF0E4 0%, #FAE2CC 100%)",
-                border: `1px solid ${PEACH_BORDER}`,
-                boxShadow: "0 4px 18px -8px rgba(61,8,20,0.1)",
-              }}
-            >
-              <div className="flex items-center gap-2 mb-3">
-                <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: "rgba(61,8,20,0.08)" }}>
-                  <Stethoscope className="h-4.5 w-4.5" style={{ color: WINE }} />
-                </div>
-                <h3 className="font-extrabold" style={{ color: WINE }}>Urgent Medication?</h3>
-              </div>
-              <p className="text-sm leading-relaxed mb-5" style={{ color: WINE_SOFT }}>
-                For urgent needs or medical emergencies, WhatsApp or call us directly for the fastest response.
+              <p className="text-xs text-neutral-500 mt-3">
+                For urgent medication needs outside working hours, please contact your nearest hospital pharmacy or emergency service.
               </p>
-              <div className="flex flex-col gap-2">
+            </div>
+
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-neutral-500 mb-4">
+                Registered office
+              </p>
+              <div className="rounded-lg border border-neutral-200 bg-white p-5">
+                <p className="text-sm font-semibold text-neutral-900">Shaniid RX Pharmacy</p>
+                <p className="text-sm text-neutral-600 mt-1 leading-relaxed">
+                  Philadelphia House, 3rd Floor, Wing B, Room 9<br />
+                  Nairobi, Kenya
+                </p>
+                <div className="mt-4 space-y-1 text-sm text-neutral-700">
+                  <p>
+                    <span className="text-neutral-500">Phone</span>{" "}
+                    <a href={phoneHref} className="text-neutral-900 underline underline-offset-4 hover:no-underline ml-2">
+                      {phoneDisplay}
+                    </a>
+                  </p>
+                  <p>
+                    <span className="text-neutral-500">Email</span>{" "}
+                    <a href="mailto:support@shaniidrx.co.ke" className="text-neutral-900 underline underline-offset-4 hover:no-underline ml-2">
+                      support@shaniidrx.co.ke
+                    </a>
+                  </p>
+                </div>
                 <a
-                  href={waHref}
+                  href="https://maps.google.com/?q=Philadelphia+House+Nairobi"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center justify-center gap-2 h-10 rounded-full font-semibold text-sm text-white transition-transform hover:scale-[1.02]"
-                  style={{ background: "#25D366" }}
+                  className="inline-flex items-center gap-1 mt-5 text-sm font-medium text-neutral-900 underline underline-offset-4"
                 >
-                  <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347" />
-                  </svg>
-                  WhatsApp Now
-                </a>
-                <a
-                  href={phoneHref}
-                  className="inline-flex items-center justify-center gap-2 h-10 rounded-full font-semibold text-sm text-white transition-transform hover:scale-[1.02]"
-                  style={{ background: `linear-gradient(135deg, ${ACCENT_ORANGE} 0%, ${ACCENT_RED} 100%)` }}
-                >
-                  <Phone className="h-4 w-4" />
-                  Call Pharmacy
+                  Get directions
+                  <ChevronRight className="h-3.5 w-3.5" />
                 </a>
               </div>
             </div>
-          </div>
+          </section>
 
-          {/* ── Physical shop banner ── */}
-          <div
-            className="rounded-2xl px-6 py-5 flex flex-col sm:flex-row items-start sm:items-center gap-4"
-            style={{
-              background: "white",
-              border: `1px solid ${PEACH_BORDER}`,
-              boxShadow: "0 4px 18px -8px rgba(61,8,20,0.1)",
-            }}
-          >
-            <div className="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: "#FFF1E2" }}>
-              <MapPin className="h-6 w-6" style={{ color: WINE }} />
-            </div>
-            <div>
-              <p className="font-extrabold" style={{ color: WINE }}>Walk-in Pharmacy</p>
-              <p className="text-sm leading-relaxed" style={{ color: WINE_SOFT }}>
-                Philadelphia House, 3rd Floor, Wing B, Room 9 · Open <strong>Mon–Sat, 9 AM – 6 PM</strong>
-              </p>
-            </div>
-            <a
-              href="https://maps.google.com/?q=Philadelphia+House+Nairobi"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="sm:ml-auto flex-shrink-0 px-5 h-10 rounded-full text-sm font-bold inline-flex items-center gap-2 text-white transition-transform hover:scale-[1.02]"
-              style={{ background: `linear-gradient(135deg, ${WINE} 0%, ${WINE_SOFT} 100%)` }}
-            >
-              <MapPin className="h-4 w-4" />
-              Get Directions
-            </a>
-          </div>
-
+          {/* Footer note */}
+          <section className="border-t border-neutral-200 pt-8">
+            <p className="text-sm text-neutral-700">
+              Looking for an answer first?{" "}
+              <Link href="/faq" className="text-neutral-900 underline underline-offset-4 hover:no-underline">
+                Browse the Help Centre
+              </Link>{" "}
+              for answers about delivery, prescriptions, payments and more.
+            </p>
+          </section>
         </div>
       </main>
       <Footer />

@@ -2,8 +2,7 @@ import { useEffect, useMemo, useState } from "react"
 import { Link } from "wouter"
 import {
   ShieldCheck, FileText, Truck, RotateCcw, ScrollText, BadgeCheck,
-  Stethoscope, AlertTriangle, BellRing, FlaskConical, Sparkles,
-  Phone, MessageCircle, ChevronRight, Clock,
+  Stethoscope, BellRing, FlaskConical, ChevronRight,
 } from "lucide-react"
 import { TopBar } from "@/components/store/top-bar"
 import { Navbar } from "@/components/store/navbar"
@@ -11,28 +10,16 @@ import { Footer } from "@/components/store/footer"
 import { sanitizeHtml } from "@/lib/sanitize-html"
 import { useStoreContact } from "@/hooks/use-store-contact"
 
-// ── Brand tokens ────────────────────────────────────────────────────────────
-const WINE         = "#3D0814"
-const WINE_SOFT    = "#6B0F1A"
-const CREAM        = "#FFFBF5"
-const PEACH_LIGHT  = "#FAE0BE"
-const PEACH_MED    = "#F2DCC8"
-const PEACH_BORDER = "#E8C9A8"
-const ORANGE       = "#F97316"
+// Single brand accent only — everything else is neutral grayscale.
+const BRAND = "#3D0814"
 
-// ── Content model ───────────────────────────────────────────────────────────
-type Section = {
-  id: string
-  heading: string
-  body?: string
-  list?: string[]
-}
+type Section = { id: string; heading: string; body?: string; list?: string[] }
 
 type Policy = {
   title: string
-  eyebrow: string
   intro: string
-  icon: React.ComponentType<{ className?: string; style?: React.CSSProperties }>
+  icon: React.ComponentType<{ className?: string }>
+  category: string
   updated: string
   sections: Section[]
 }
@@ -40,10 +27,9 @@ type Policy = {
 const UPDATED = "May 1, 2026"
 
 const POLICIES: Record<string, Policy> = {
-  // ───────────── Customer-facing policies ─────────────
   "privacy-policy": {
     title: "Privacy Policy",
-    eyebrow: "Your data, your trust",
+    category: "Customer Policies",
     icon: ShieldCheck,
     updated: UPDATED,
     intro:
@@ -52,8 +38,7 @@ const POLICIES: Record<string, Policy> = {
       {
         id: "what-we-collect",
         heading: "1. Information we collect",
-        body:
-          "We collect only the information needed to safely dispense medication, deliver your order and improve your experience.",
+        body: "We collect only the information needed to safely dispense medication, deliver your order and improve your experience.",
         list: [
           "Identity: full name, phone number, email and date of birth.",
           "Delivery: shipping address, GPS location pin and recipient contact.",
@@ -77,8 +62,7 @@ const POLICIES: Record<string, Policy> = {
       {
         id: "sharing",
         heading: "3. When we share information",
-        body:
-          "We never sell personal or health information. We only share it with vetted partners who help us serve you, and only the minimum data they need:",
+        body: "We never sell personal or health information. We only share it with vetted partners who help us serve you, and only the minimum data they need:",
         list: [
           "Licensed delivery couriers (Sendy, G4S, in-house riders) — name, phone and address only.",
           "Payment processors (Paystack, Safaricom M-PESA) — order amount and reference.",
@@ -100,8 +84,7 @@ const POLICIES: Record<string, Policy> = {
       {
         id: "retention",
         heading: "5. How long we keep your data",
-        body:
-          "Prescription and dispensing records are retained for a minimum of five (5) years as required by the Pharmacy and Poisons Board. Marketing data is kept only while your consent is active. Tokenised payment references are retained for seven (7) years for tax and audit.",
+        body: "Prescription and dispensing records are retained for a minimum of five (5) years as required by the Pharmacy and Poisons Board. Marketing data is kept only while your consent is active. Tokenised payment references are retained for seven (7) years for tax and audit.",
       },
       {
         id: "security",
@@ -116,15 +99,14 @@ const POLICIES: Record<string, Policy> = {
       {
         id: "contact-dpo",
         heading: "7. Contact our Data Protection Officer",
-        body:
-          "Email dpo@shaniidrx.co.ke or call +254 780 406 059. We will respond to any privacy request within seven (7) working days.",
+        body: "Email dpo@shaniidrx.co.ke or call +254 780 406 059. We will respond to any privacy request within seven (7) working days.",
       },
     ],
   },
 
   "terms-of-service": {
     title: "Terms & Conditions",
-    eyebrow: "The agreement between us",
+    category: "Customer Policies",
     icon: ScrollText,
     updated: UPDATED,
     intro:
@@ -133,8 +115,7 @@ const POLICIES: Record<string, Policy> = {
       {
         id: "who-we-are",
         heading: "1. Who we are",
-        body:
-          "Shaniid RX is a community pharmacy operated by Shaniid Group of Technologies Limited and licensed by the Pharmacy and Poisons Board of Kenya (License No. PPB/RX/2026/0451).",
+        body: "Shaniid RX is a community pharmacy operated by Shaniid Group of Technologies Limited and licensed by the Pharmacy and Poisons Board of Kenya (License No. PPB/RX/2026/0451).",
       },
       {
         id: "eligibility",
@@ -148,8 +129,7 @@ const POLICIES: Record<string, Policy> = {
       {
         id: "orders",
         heading: "3. Orders & acceptance",
-        body:
-          "Adding a product to your cart is an invitation to treat — your order is only confirmed once our pharmacist has reviewed it and you have received an order confirmation message. We reserve the right to cancel any order that fails clinical screening, suspected fraud or stock-out.",
+        body: "Adding a product to your cart is an invitation to treat — your order is only confirmed once our pharmacist has reviewed it and you have received an order confirmation message. We reserve the right to cancel any order that fails clinical screening, suspected fraud or stock-out.",
       },
       {
         id: "pricing",
@@ -163,8 +143,7 @@ const POLICIES: Record<string, Policy> = {
       {
         id: "delivery-tos",
         heading: "5. Delivery",
-        body:
-          "Delivery is governed by our Delivery Timing & Zones page. Risk passes to you on delivery to the address (or representative) provided at checkout.",
+        body: "Delivery is governed by our Delivery Timing & Zones page. Risk passes to you on delivery to the address (or representative) provided at checkout.",
       },
       {
         id: "user-conduct",
@@ -178,21 +157,19 @@ const POLICIES: Record<string, Policy> = {
       {
         id: "liability",
         heading: "7. Limitation of liability",
-        body:
-          "Shaniid RX is liable for the safe dispensing and delivery of products you order. We are not liable for any indirect or consequential loss arising from misuse of medication, failure to disclose allergies, or use contrary to the prescriber's instructions.",
+        body: "Shaniid RX is liable for the safe dispensing and delivery of products you order. We are not liable for any indirect or consequential loss arising from misuse of medication, failure to disclose allergies, or use contrary to the prescriber's instructions.",
       },
       {
         id: "law",
         heading: "8. Governing law",
-        body:
-          "These Terms are governed by the laws of Kenya. Any dispute will be resolved in the courts of Nairobi.",
+        body: "These Terms are governed by the laws of Kenya. Any dispute will be resolved in the courts of Nairobi.",
       },
     ],
   },
 
   "refund-policy": {
     title: "Returns & Refund Policy",
-    eyebrow: "Fair, fast and transparent",
+    category: "Customer Policies",
     icon: RotateCcw,
     updated: UPDATED,
     intro:
@@ -211,8 +188,7 @@ const POLICIES: Record<string, Policy> = {
       {
         id: "non-returnable",
         heading: "2. Items we cannot accept back",
-        body:
-          "For your safety and that of every other customer, the following cannot be returned once dispensed:",
+        body: "For your safety and that of every other customer, the following cannot be returned once dispensed:",
         list: [
           "Prescription medicines (POM) once they have left our pharmacy.",
           "Cold-chain items such as insulin, vaccines and biologics.",
@@ -223,8 +199,7 @@ const POLICIES: Record<string, Policy> = {
       {
         id: "how-to-return",
         heading: "3. How to start a return",
-        body:
-          "Contact our support team within the eligible window via WhatsApp, phone or the Help Centre. Provide your order number, the item and the reason. Our team will arrange a courier collection in Nairobi or share a drop-off label upcountry.",
+        body: "Contact our support team within the eligible window via WhatsApp, phone or the Help Centre. Provide your order number, the item and the reason. Our team will arrange a courier collection in Nairobi or share a drop-off label upcountry.",
       },
       {
         id: "refunds",
@@ -239,15 +214,14 @@ const POLICIES: Record<string, Policy> = {
       {
         id: "wrong-item",
         heading: "5. Wrong or damaged items",
-        body:
-          "If we delivered the wrong product or it arrived damaged, we will replace it at no cost or issue a full refund — your choice. Just send us a photo and your order number.",
+        body: "If we delivered the wrong product or it arrived damaged, we will replace it at no cost or issue a full refund — your choice. Just send us a photo and your order number.",
       },
     ],
   },
 
   prescription: {
     title: "Prescription Policy",
-    eyebrow: "Safe dispensing every time",
+    category: "Customer Policies",
     icon: FileText,
     updated: UPDATED,
     intro:
@@ -267,8 +241,7 @@ const POLICIES: Record<string, Policy> = {
       {
         id: "screening",
         heading: "2. Clinical screening by our pharmacists",
-        body:
-          "Every prescription is reviewed by a licensed pharmacist before dispensing. We check for:",
+        body: "Every prescription is reviewed by a licensed pharmacist before dispensing. We check for:",
         list: [
           "Drug-drug and drug-allergy interactions.",
           "Appropriate dose, frequency and duration.",
@@ -279,21 +252,19 @@ const POLICIES: Record<string, Policy> = {
       {
         id: "controlled",
         heading: "3. Controlled substances",
-        body:
-          "Schedule II–IV controlled drugs require the original signed prescription, government ID and physical pickup or supervised delivery. We may refuse dispensing if any criterion is not met — no refunds are penalised in such cases.",
+        body: "Schedule II–IV controlled drugs require the original signed prescription, government ID and physical pickup or supervised delivery. We may refuse dispensing if any criterion is not met — no refunds are penalised in such cases.",
       },
       {
         id: "refills",
         heading: "4. Refills & automatic reorders",
-        body:
-          "We keep a digital copy of your prescription on file for the duration authorised by your prescriber. Refill reminders are sent by SMS 5 days before you are due to run out. You can decline or pause refills at any time.",
+        body: "We keep a digital copy of your prescription on file for the duration authorised by your prescriber. Refill reminders are sent by SMS five days before you are due to run out. You can decline or pause refills at any time.",
       },
     ],
   },
 
   "prescription-upload-guide": {
     title: "Prescription Upload Guide",
-    eyebrow: "How to send us your Rx",
+    category: "Customer Policies",
     icon: FileText,
     updated: UPDATED,
     intro:
@@ -304,7 +275,7 @@ const POLICIES: Record<string, Policy> = {
         heading: "1. What to send",
         list: [
           "A clear photo or scan of the original prescription (front and back if hand-written on both sides).",
-          "Your full name and phone number on the order so we can match it to the Rx.",
+          "Your full name and phone number on the order so we can match it to the prescription.",
           "Any allergies or current medications you would like the pharmacist to know.",
         ],
       },
@@ -323,7 +294,7 @@ const POLICIES: Record<string, Policy> = {
         id: "where-to-upload",
         heading: "3. Where to upload",
         list: [
-          "On any product page or at checkout — tap “Upload Prescription”.",
+          "On any product page or at checkout — choose Upload Prescription.",
           "Through our WhatsApp pharmacist line — send the photo and we will create the order for you.",
           "By email to rx@shaniidrx.co.ke with your order number in the subject.",
         ],
@@ -331,16 +302,14 @@ const POLICIES: Record<string, Policy> = {
       {
         id: "what-happens-next",
         heading: "4. What happens after upload",
-        body:
-          "A licensed pharmacist will review your prescription within 30 minutes during working hours. If everything checks out, we will confirm your order by SMS. If we need clarification — for example a hand-written dose we cannot read — we will call or WhatsApp you before dispensing.",
+        body: "A licensed pharmacist will review your prescription within 30 minutes during working hours. If everything checks out, we will confirm your order by SMS. If we need clarification — for example a hand-written dose we cannot read — we will call or WhatsApp you before dispensing.",
       },
     ],
   },
 
-  // ───────────── Legal & compliance ─────────────
   license: {
     title: "License",
-    eyebrow: "Officially registered to serve you",
+    category: "Legal & Compliance",
     icon: BadgeCheck,
     updated: UPDATED,
     intro:
@@ -350,35 +319,32 @@ const POLICIES: Record<string, Policy> = {
         id: "ppb",
         heading: "1. Pharmacy and Poisons Board (PPB)",
         list: [
-          "Premises Licence Number: PPB/RX/2026/0451",
-          "Superintendent Pharmacist: Dr. ____ ____, Reg. No. PPB/PHA/____",
-          "Renewal date: 31 December 2026",
+          "Premises Licence Number: PPB/RX/2026/0451.",
+          "Superintendent Pharmacist: Dr. ____ ____, Registration No. PPB/PHA/____.",
+          "Renewal date: 31 December 2026.",
         ],
       },
       {
         id: "company",
         heading: "2. Company registration",
-        body:
-          "Shaniid Group of Technologies Limited, incorporated in Kenya under Company No. PVT-____.",
+        body: "Shaniid Group of Technologies Limited, incorporated in Kenya under Company No. PVT-____.",
       },
       {
         id: "kra",
         heading: "3. Tax registration",
-        body:
-          "KRA PIN: P051______Z. We issue ETIMS-compliant invoices for every order on request.",
+        body: "KRA PIN: P051______Z. We issue ETIMS-compliant invoices for every order on request.",
       },
       {
         id: "verify",
         heading: "4. Verifying our license",
-        body:
-          "You can verify our PPB licence at any time by visiting pharmacyboardkenya.org and entering our premises licence number above.",
+        body: "You can verify our PPB licence at any time by visiting pharmacyboardkenya.org and entering our premises licence number above.",
       },
     ],
   },
 
   regulatory: {
     title: "Regulatory Compliance",
-    eyebrow: "Operating to national standards",
+    category: "Legal & Compliance",
     icon: ShieldCheck,
     updated: UPDATED,
     intro:
@@ -398,27 +364,24 @@ const POLICIES: Record<string, Policy> = {
       {
         id: "training",
         heading: "2. Pharmacist training & competence",
-        body:
-          "Every pharmacist on the Shaniid RX team holds a current PPB practising certificate and completes at least 30 hours of CPD annually. Pharmacy technologists are PPB-registered and supervised at all times.",
+        body: "Every pharmacist on the Shaniid RX team holds a current PPB practising certificate and completes at least 30 hours of CPD annually. Pharmacy technologists are PPB-registered and supervised at all times.",
       },
       {
         id: "advertising",
         heading: "3. Advertising & promotion",
-        body:
-          "We follow the PPB Code on advertising of medicines. We never advertise prescription-only medicines to the public and all OTC promotions are reviewed by our superintendent pharmacist.",
+        body: "We follow the PPB Code on advertising of medicines. We never advertise prescription-only medicines to the public and all OTC promotions are reviewed by our superintendent pharmacist.",
       },
       {
         id: "audits",
         heading: "4. Inspections & audits",
-        body:
-          "We are inspected annually by the PPB and undergo internal compliance audits every quarter. Non-conformities are tracked to closure and reported to senior management.",
+        body: "We are inspected annually by the PPB and undergo internal compliance audits every quarter. Non-conformities are tracked to closure and reported to senior management.",
       },
     ],
   },
 
   quality: {
     title: "Quality & Safety Standards",
-    eyebrow: "From manufacturer to your door",
+    category: "Legal & Compliance",
     icon: FlaskConical,
     updated: UPDATED,
     intro:
@@ -439,7 +402,7 @@ const POLICIES: Record<string, Policy> = {
         list: [
           "Ambient stock kept at 15–25 °C, monitored 24/7 with automated alerts.",
           "Cold-chain (2–8 °C) products in calibrated medical-grade fridges with backup power.",
-          "Temperature logs reviewed daily and archived for 5 years.",
+          "Temperature logs reviewed daily and archived for five years.",
         ],
       },
       {
@@ -454,15 +417,14 @@ const POLICIES: Record<string, Policy> = {
       {
         id: "delivery-quality",
         heading: "4. Delivery",
-        body:
-          "Cold-chain deliveries use insulated pouches with validated gel packs. Delivery riders are trained on chain-of-custody and patient confidentiality.",
+        body: "Cold-chain deliveries use insulated pouches with validated gel packs. Delivery riders are trained on chain-of-custody and patient confidentiality.",
       },
     ],
   },
 
   pharmacovigilance: {
     title: "Pharmacovigilance & Adverse Events",
-    eyebrow: "Help us keep medicines safe",
+    category: "Legal & Compliance",
     icon: Stethoscope,
     updated: UPDATED,
     intro:
@@ -471,8 +433,7 @@ const POLICIES: Record<string, Policy> = {
       {
         id: "what-is-ae",
         heading: "1. What is an adverse event?",
-        body:
-          "Any unwanted or unexpected reaction to a medicine — from a mild rash to a hospital admission. Even if you are not sure whether the medicine caused it, please report it.",
+        body: "Any unwanted or unexpected reaction to a medicine — from a mild rash to a hospital admission. Even if you are not sure whether the medicine caused it, please report it.",
       },
       {
         id: "how-to-report",
@@ -481,7 +442,7 @@ const POLICIES: Record<string, Policy> = {
           "Call our Pharmacovigilance Line: +254 780 406 059 (8 AM – 10 PM).",
           "Email: pv@shaniidrx.co.ke.",
           "WhatsApp the photo of any reaction to our pharmacist line.",
-          "Use the “Report a side effect” button on your order in the customer portal.",
+          "Use the Report a side effect button on your order in the customer portal.",
         ],
       },
       {
@@ -497,15 +458,14 @@ const POLICIES: Record<string, Policy> = {
       {
         id: "ppb-direct",
         heading: "4. Reporting directly to the PPB",
-        body:
-          "You can also report directly to the Pharmacy and Poisons Board through pv.pharmacyboardkenya.org or the “Med Safety” mobile app.",
+        body: "You can also report directly to the Pharmacy and Poisons Board through pv.pharmacyboardkenya.org or the Med Safety mobile app.",
       },
     ],
   },
 
   recalls: {
     title: "Recall & Safety Notices",
-    eyebrow: "Transparency when it matters most",
+    category: "Legal & Compliance",
     icon: BellRing,
     updated: UPDATED,
     intro:
@@ -523,8 +483,7 @@ const POLICIES: Record<string, Policy> = {
       {
         id: "when-affected",
         heading: "2. If a product you ordered is affected",
-        body:
-          "We use your dispensing record to identify everyone who received the affected batch. You will be contacted within 24 hours by SMS, phone and email with:",
+        body: "We use your dispensing record to identify everyone who received the affected batch. You will be contacted within 24 hours by SMS, phone and email with:",
         list: [
           "The product name, batch number and reason for the recall.",
           "Clear instructions on whether to stop using it immediately.",
@@ -535,35 +494,30 @@ const POLICIES: Record<string, Policy> = {
       {
         id: "current-notices",
         heading: "3. Current safety notices",
-        body:
-          "There are no active recalls affecting Shaniid RX customers at this time. All historical notices are archived for 7 years and available on request.",
+        body: "There are no active recalls affecting Shaniid RX customers at this time. All historical notices are archived for seven years and available on request.",
       },
       {
         id: "report-suspect",
         heading: "4. Reporting a suspect product",
-        body:
-          "If you suspect a product is counterfeit, sub-standard or different from what you have received before, stop using it and contact us immediately. We will collect, investigate and report to the PPB on your behalf.",
+        body: "If you suspect a product is counterfeit, sub-standard or different from what you have received before, stop using it and contact us immediately. We will collect, investigate and report to the PPB on your behalf.",
       },
     ],
   },
 }
 
-// Aliases so old slugs still work
-const SLUG_ALIASES: Record<string, string> = {
-  "payments-policy": "refund-policy",
-}
+const SLUG_ALIASES: Record<string, string> = { "payments-policy": "refund-policy" }
 
-// ── Page ────────────────────────────────────────────────────────────────────
 export default function PolicyPage({ slug }: { slug: string }) {
   const resolvedSlug = SLUG_ALIASES[slug] || slug
   const local = POLICIES[resolvedSlug]
-  const { phoneHref, phoneDisplay, whatsappHref: waHref } = useStoreContact()
+  const { phoneHref, phoneDisplay } = useStoreContact()
 
-  // Optional: fetch CMS content if available, otherwise rely on local rich content.
   const [apiHtml, setApiHtml] = useState<string | null>(null)
   const [apiTitle, setApiTitle] = useState<string | null>(null)
   const [apiUpdated, setApiUpdated] = useState<string | null>(null)
   useEffect(() => {
+    // Always prefer the rich local content when we have it.
+    if (local) return
     let cancelled = false
     fetch(`/api/policies/${resolvedSlug}`)
       .then(r => (r.ok ? r.json() : null))
@@ -578,12 +532,12 @@ export default function PolicyPage({ slug }: { slug: string }) {
       })
       .catch(() => {})
     return () => { cancelled = true }
-  }, [resolvedSlug])
+  }, [resolvedSlug, local])
 
   const fallback: Policy = useMemo(
     () => ({
       title: "Policy",
-      eyebrow: "Shaniid RX Pharmacy",
+      category: "Shaniid RX",
       icon: ScrollText,
       updated: UPDATED,
       intro: "Content for this policy is being prepared. Please check back soon or contact our support team for the latest information.",
@@ -600,109 +554,70 @@ export default function PolicyPage({ slug }: { slug: string }) {
     : policy.updated
 
   return (
-    <div className="min-h-screen flex flex-col" style={{ background: CREAM }}>
+    <div className="min-h-screen flex flex-col bg-white text-neutral-900">
       <TopBar />
       <Navbar />
 
-      <main className="flex-1">
-        {/* ── Hero ── */}
-        <div className="relative overflow-hidden">
-          <div
-            className="absolute inset-0"
-            style={{ background: `linear-gradient(135deg, ${CREAM} 0%, ${PEACH_LIGHT} 55%, #F8D9B6 100%)` }}
-          />
-          <div className="absolute -top-24 -right-16 w-80 h-80 rounded-full blur-3xl opacity-50" style={{ background: "#FBD0AC" }} />
-          <div className="absolute top-10 left-1/3 w-64 h-64 rounded-full blur-3xl opacity-30" style={{ background: ORANGE }} />
-          <div className="absolute -bottom-32 -left-20 w-72 h-72 rounded-full blur-3xl opacity-40" style={{ background: "#F4C9A0" }} />
-          <div
-            className="absolute inset-0 opacity-[0.07]"
-            style={{ backgroundImage: `radial-gradient(${WINE_SOFT} 1px, transparent 1px)`, backgroundSize: "22px 22px" }}
-          />
-          <div className="absolute bottom-0 left-0 right-0 h-16" style={{ background: `linear-gradient(to bottom, transparent, ${CREAM})` }} />
-
-          <div className="relative z-10 mx-auto max-w-5xl px-4 pt-14 pb-12 lg:pt-20 lg:pb-16">
-            {/* Breadcrumb */}
-            <nav className="flex items-center gap-1.5 text-xs mb-5" style={{ color: WINE_SOFT }}>
-              <Link href="/" className="hover:underline">Home</Link>
-              <ChevronRight className="h-3 w-3 opacity-60" />
-              <span className="font-semibold" style={{ color: WINE }}>{title}</span>
+      <main className="flex-1 bg-white">
+        {/* Page header */}
+        <header className="border-b border-neutral-200 bg-white">
+          <div className="mx-auto max-w-5xl px-4 lg:px-6 pt-10 pb-8">
+            <nav className="flex items-center gap-1.5 text-xs text-neutral-500 mb-6">
+              <Link href="/" className="hover:text-neutral-900">Home</Link>
+              <ChevronRight className="h-3 w-3" />
+              <span className="text-neutral-500">{policy.category}</span>
+              <ChevronRight className="h-3 w-3" />
+              <span className="text-neutral-900 font-medium">{title}</span>
             </nav>
 
-            <div className="grid lg:grid-cols-[1fr_auto] gap-8 items-center">
-              <div>
-                <div
-                  className="inline-flex items-center gap-2 px-3 py-1 rounded-full mb-4 border backdrop-blur-md"
-                  style={{ background: "rgba(255,255,255,0.7)", borderColor: PEACH_BORDER }}
-                >
-                  <Sparkles className="h-3.5 w-3.5" style={{ color: ORANGE }} />
-                  <span className="text-[11px] font-bold uppercase tracking-widest" style={{ color: WINE_SOFT }}>
-                    {policy.eyebrow}
-                  </span>
-                </div>
+            <div className="flex items-start gap-5">
+              <div
+                className="hidden sm:flex w-12 h-12 rounded-xl items-center justify-center border border-neutral-200 bg-neutral-50 flex-shrink-0"
+              >
+                <Icon className="h-5 w-5 text-neutral-700" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-neutral-500 mb-2">
+                  {policy.category}
+                </p>
                 <h1
-                  className="font-serif text-3xl lg:text-5xl font-bold mb-3 leading-tight"
-                  style={{ color: WINE, letterSpacing: "-0.02em" }}
+                  className="font-serif text-3xl lg:text-4xl font-semibold leading-tight"
+                  style={{ color: BRAND, letterSpacing: "-0.01em" }}
                 >
                   {title}
                 </h1>
-                <p className="text-sm lg:text-base max-w-2xl mb-4" style={{ color: `${WINE_SOFT}CC` }}>
+                <p className="mt-3 text-[15px] leading-relaxed text-neutral-600 max-w-3xl">
                   {policy.intro}
                 </p>
-                <div className="inline-flex items-center gap-2 text-xs" style={{ color: WINE_SOFT }}>
-                  <Clock className="h-3.5 w-3.5" />
-                  Last updated: <span className="font-semibold" style={{ color: WINE }}>{updated}</span>
-                </div>
-              </div>
-
-              {/* Glass medallion */}
-              <div className="hidden lg:flex justify-end">
-                <div
-                  className="relative w-44 h-44 rounded-3xl flex items-center justify-center backdrop-blur-xl border"
-                  style={{
-                    background: "rgba(255,255,255,0.55)",
-                    borderColor: PEACH_BORDER,
-                    boxShadow: "0 25px 60px -25px rgba(122,37,53,0.35)",
-                  }}
-                >
-                  <div
-                    className="w-28 h-28 rounded-2xl flex items-center justify-center"
-                    style={{ background: `linear-gradient(135deg, ${ORANGE}, #ea580c)` }}
-                  >
-                    <Icon className="h-12 w-12" style={{ color: "white" }} />
-                  </div>
-                </div>
+                <p className="mt-4 text-xs text-neutral-500">
+                  Last updated <span className="text-neutral-700 font-medium">{updated}</span>
+                </p>
               </div>
             </div>
           </div>
-        </div>
+        </header>
 
-        {/* ── Body ── */}
+        {/* Body */}
         <div className="mx-auto max-w-5xl px-4 lg:px-6 py-10 lg:py-14">
           {apiHtml ? (
-            <div
-              className="prose prose-sm max-w-none rounded-2xl px-6 py-8 border"
-              style={{ background: "white", borderColor: PEACH_BORDER, color: WINE_SOFT }}
+            <article
+              className="prose prose-sm max-w-none prose-headings:font-serif prose-headings:text-neutral-900 prose-p:text-neutral-700 prose-li:text-neutral-700 prose-a:text-neutral-900"
               dangerouslySetInnerHTML={{ __html: sanitizeHtml(apiHtml) }}
             />
           ) : (
-            <div className="grid lg:grid-cols-[220px_1fr] gap-8">
-              {/* TOC */}
+            <div className="grid lg:grid-cols-[220px_1fr] gap-10 lg:gap-14">
               {policy.sections.length > 0 && (
                 <aside className="hidden lg:block">
-                  <div
-                    className="sticky top-24 rounded-2xl p-5 border backdrop-blur"
-                    style={{ background: "rgba(255,255,255,0.7)", borderColor: PEACH_BORDER }}
-                  >
-                    <p className="text-[11px] font-bold uppercase tracking-widest mb-3" style={{ color: WINE_SOFT }}>
+                  <div className="sticky top-24">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-neutral-500 mb-3">
                       On this page
                     </p>
-                    <ul className="space-y-2">
+                    <ul className="space-y-2 border-l border-neutral-200">
                       {policy.sections.map(s => (
                         <li key={s.id}>
                           <a
                             href={`#${s.id}`}
-                            className="text-xs leading-snug block hover:underline"
-                            style={{ color: WINE }}
+                            className="block text-xs text-neutral-600 hover:text-neutral-900 pl-3 -ml-px border-l border-transparent hover:border-neutral-900 leading-snug py-0.5"
                           >
                             {s.heading}
                           </a>
@@ -713,120 +628,80 @@ export default function PolicyPage({ slug }: { slug: string }) {
                 </aside>
               )}
 
-              {/* Content */}
-              <article
-                className="rounded-3xl p-6 lg:p-10 border"
-                style={{
-                  background: "white",
-                  borderColor: PEACH_BORDER,
-                  boxShadow: "0 18px 40px -28px rgba(61,8,20,0.18)",
-                }}
-              >
+              <article className="min-w-0">
                 {policy.sections.length === 0 && (
-                  <div className="flex items-start gap-3 p-4 rounded-2xl" style={{ background: PEACH_LIGHT, color: WINE }}>
-                    <AlertTriangle className="h-5 w-5 flex-shrink-0 mt-0.5" />
-                    <p className="text-sm">
-                      We're polishing the wording for this page. Meanwhile, please reach out to our team — we'll be glad to help.
-                    </p>
-                  </div>
+                  <p className="text-sm text-neutral-600">
+                    Please reach out to our team — we will be glad to help while we finalise the wording for this page.
+                  </p>
                 )}
 
                 {policy.sections.map((s, idx) => (
-                  <section key={s.id} id={s.id} className={idx === 0 ? "" : "mt-9 pt-9 border-t"} style={idx === 0 ? {} : { borderColor: PEACH_MED }}>
+                  <section
+                    key={s.id}
+                    id={s.id}
+                    className={idx === 0 ? "" : "mt-10 pt-10 border-t border-neutral-200"}
+                  >
                     <h2
-                      className="font-serif text-xl lg:text-2xl font-bold mb-3 scroll-mt-24"
-                      style={{ color: WINE, letterSpacing: "-0.01em" }}
+                      className="font-serif text-xl lg:text-2xl font-semibold mb-3 scroll-mt-24 text-neutral-900"
                     >
                       {s.heading}
                     </h2>
                     {s.body && (
-                      <p className="text-sm lg:text-[15px] leading-relaxed mb-3" style={{ color: WINE_SOFT }}>
+                      <p className="text-[15px] leading-relaxed text-neutral-700 mb-3">
                         {s.body}
                       </p>
                     )}
                     {s.list && s.list.length > 0 && (
-                      <ul className="space-y-2.5 mt-2">
+                      <ul className="space-y-2 mt-3 list-disc pl-5 marker:text-neutral-400">
                         {s.list.map((item, i) => (
-                          <li key={i} className="flex items-start gap-3 text-sm lg:text-[15px] leading-relaxed" style={{ color: WINE_SOFT }}>
-                            <span
-                              className="flex-shrink-0 w-5 h-5 rounded-full grid place-items-center mt-0.5"
-                              style={{ background: PEACH_LIGHT, color: WINE }}
-                            >
-                              <span className="w-1.5 h-1.5 rounded-full" style={{ background: ORANGE }} />
-                            </span>
-                            <span>{item}</span>
+                          <li key={i} className="text-[15px] leading-relaxed text-neutral-700">
+                            {item}
                           </li>
                         ))}
                       </ul>
                     )}
                   </section>
                 ))}
+
+                {/* In-page contact block */}
+                <div className="mt-12 pt-8 border-t border-neutral-200">
+                  <p className="text-sm text-neutral-700">
+                    Questions about this policy? Email{" "}
+                    <a href="mailto:support@shaniidrx.co.ke" className="text-neutral-900 underline underline-offset-4 hover:no-underline">
+                      support@shaniidrx.co.ke
+                    </a>{" "}
+                    or call{" "}
+                    <a href={phoneHref} className="text-neutral-900 underline underline-offset-4 hover:no-underline">
+                      {phoneDisplay}
+                    </a>.
+                  </p>
+                </div>
+
+                {/* Related */}
+                <div className="mt-10">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-neutral-500 mb-3">
+                    Related documents
+                  </p>
+                  <ul className="divide-y divide-neutral-200 border-y border-neutral-200">
+                    {relatedFor(resolvedSlug).map(r => (
+                      <li key={r.slug}>
+                        <Link
+                          href={r.href}
+                          className="flex items-center justify-between gap-4 py-3 text-sm text-neutral-700 hover:text-neutral-900 group"
+                        >
+                          <span className="flex items-center gap-3">
+                            <r.icon className="h-4 w-4 text-neutral-400 group-hover:text-neutral-700" />
+                            {r.title}
+                          </span>
+                          <ChevronRight className="h-4 w-4 text-neutral-300 group-hover:text-neutral-700" />
+                        </Link>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
               </article>
             </div>
           )}
-
-          {/* ── Help CTA ── */}
-          <div
-            className="mt-12 rounded-3xl p-8 lg:p-10 border"
-            style={{
-              background: `linear-gradient(135deg, #FEF0E4 0%, #FAE2CC 100%)`,
-              borderColor: PEACH_BORDER,
-            }}
-          >
-            <div className="grid md:grid-cols-[1fr_auto] gap-6 items-center">
-              <div>
-                <h3 className="font-serif text-xl lg:text-2xl font-bold mb-1" style={{ color: WINE }}>
-                  Have a question about this policy?
-                </h3>
-                <p className="text-sm" style={{ color: WINE_SOFT }}>
-                  Our pharmacists and care team are available 8 AM – 10 PM, 7 days a week.
-                </p>
-              </div>
-              <div className="flex flex-wrap gap-3">
-                <a
-                  href={waHref}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-2 px-5 h-11 rounded-xl font-semibold text-sm text-white"
-                  style={{ background: "#25D366" }}
-                >
-                  <MessageCircle className="h-4 w-4" />
-                  Chat on WhatsApp
-                </a>
-                <a
-                  href={phoneHref}
-                  className="inline-flex items-center gap-2 px-5 h-11 rounded-xl font-semibold text-sm border"
-                  style={{ background: "white", borderColor: PEACH_BORDER, color: WINE }}
-                >
-                  <Phone className="h-4 w-4" style={{ color: ORANGE }} />
-                  {phoneDisplay}
-                </a>
-              </div>
-            </div>
-          </div>
-
-          {/* Related policies */}
-          <div className="mt-10 grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
-            {relatedFor(resolvedSlug).map(r => (
-              <Link
-                key={r.slug}
-                href={r.href}
-                className="group rounded-2xl p-4 border transition-all hover:-translate-y-0.5"
-                style={{ background: "white", borderColor: PEACH_BORDER }}
-              >
-                <div
-                  className="w-9 h-9 rounded-xl flex items-center justify-center mb-3"
-                  style={{ background: PEACH_LIGHT }}
-                >
-                  <r.icon className="h-4 w-4" style={{ color: WINE }} />
-                </div>
-                <p className="text-sm font-bold leading-tight" style={{ color: WINE }}>{r.title}</p>
-                <p className="text-xs mt-1 inline-flex items-center gap-1 group-hover:underline" style={{ color: ORANGE }}>
-                  Read policy <ChevronRight className="h-3 w-3" />
-                </p>
-              </Link>
-            ))}
-          </div>
         </div>
       </main>
       <Footer />
@@ -834,19 +709,19 @@ export default function PolicyPage({ slug }: { slug: string }) {
   )
 }
 
-// ── Related cards selector ──────────────────────────────────────────────────
 function relatedFor(currentSlug: string) {
   const all = [
-    { slug: "privacy-policy",            href: "/privacy-policy",                       title: "Privacy Policy",            icon: ShieldCheck },
-    { slug: "terms-of-service",          href: "/terms-of-service",                     title: "Terms & Conditions",        icon: ScrollText },
-    { slug: "refund-policy",             href: "/refund-policy",                        title: "Returns & Refunds",         icon: RotateCcw },
-    { slug: "prescription",              href: "/policies/prescription",                title: "Prescription Policy",       icon: FileText },
-    { slug: "license",                   href: "/policies/license",                     title: "License",                   icon: BadgeCheck },
-    { slug: "regulatory",                href: "/policies/regulatory",                  title: "Regulatory Compliance",     icon: ShieldCheck },
-    { slug: "quality",                   href: "/policies/quality",                     title: "Quality & Safety",          icon: FlaskConical },
-    { slug: "pharmacovigilance",         href: "/policies/pharmacovigilance",           title: "Pharmacovigilance",         icon: Stethoscope },
-    { slug: "recalls",                   href: "/policies/recalls",                     title: "Recall Notices",            icon: BellRing },
-    { slug: "delivery",                  href: "/delivery",                             title: "Delivery Timing & Zones",   icon: Truck },
+    { slug: "privacy-policy",     href: "/privacy-policy",                 title: "Privacy Policy",            icon: ShieldCheck },
+    { slug: "terms-of-service",   href: "/terms-of-service",               title: "Terms & Conditions",        icon: ScrollText },
+    { slug: "refund-policy",      href: "/refund-policy",                  title: "Returns & Refund Policy",   icon: RotateCcw },
+    { slug: "prescription",       href: "/policies/prescription",          title: "Prescription Policy",       icon: FileText },
+    { slug: "license",            href: "/policies/license",               title: "License",                   icon: BadgeCheck },
+    { slug: "regulatory",         href: "/policies/regulatory",            title: "Regulatory Compliance",     icon: ShieldCheck },
+    { slug: "quality",            href: "/policies/quality",               title: "Quality & Safety Standards", icon: FlaskConical },
+    { slug: "pharmacovigilance",  href: "/policies/pharmacovigilance",     title: "Pharmacovigilance",         icon: Stethoscope },
+    { slug: "recalls",            href: "/policies/recalls",               title: "Recall & Safety Notices",   icon: BellRing },
+    { slug: "delivery",           href: "/delivery",                       title: "Delivery Timing & Zones",   icon: Truck },
   ]
-  return all.filter(p => p.slug !== currentSlug).slice(0, 4)
+  return all.filter(p => p.slug !== currentSlug).slice(0, 5)
 }
+
