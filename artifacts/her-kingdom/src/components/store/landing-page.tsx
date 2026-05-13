@@ -18,6 +18,7 @@ import { Footer } from "./footer"
 import { OfferModal } from "./offer-modal"
 import { QuickViewProvider } from "@/lib/quick-view-context"
 import { QuickViewModal } from "./quick-view-modal"
+import { Seo, organizationJsonLd, websiteJsonLd, breadcrumbJsonLd, faqJsonLd, productJsonLd } from "@/components/seo"
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
@@ -54,6 +55,13 @@ export function LandingPage({ faqs = DEFAULT_FAQS }: { faqs?: Faq[] }) {
 
   return (
     <QuickViewProvider>
+      <Seo
+        title="Trusted Online Pharmacy in Kenya — Genuine Medicine"
+        description="Order verified medicines, vitamins, baby care and medical devices from Shaniid RX. Same-day Nairobi delivery. Calm, trusted pharmacy care for every home."
+        keywords={["online pharmacy Kenya","Shaniid RX","buy medicine Nairobi","verified medicines","prescription delivery","health products Kenya","pharmacy near me"]}
+        canonicalPath="/"
+        jsonLd={[organizationJsonLd, websiteJsonLd]}
+      />
       <div className="min-h-screen flex flex-col">
         <TopBar />
         <Navbar />

@@ -1,4 +1,5 @@
 import { Link } from "wouter"
+import { Seo, organizationJsonLd, websiteJsonLd, breadcrumbJsonLd, faqJsonLd, productJsonLd } from "@/components/seo"
 import {
   ChevronRight, Building2, HeartPulse, ShieldCheck, Truck, Stethoscope,
   Phone, MessageCircle, Mail, Facebook, Instagram, Twitter, Linkedin, Youtube,
@@ -107,6 +108,13 @@ export default function AboutPage() {
 
   return (
     <div className="min-h-screen flex flex-col bg-white text-neutral-900">
+      <Seo
+        title="About Shaniid RX — Trust Layer for Medicine"
+        description="Shaniid RX is the trust layer for medicine distribution in Africa. Verified suppliers, fair pricing, dignity at every step. A Shaniid Group company."
+        keywords={["about Shaniid RX","Shaniid Group","pharmacy infrastructure Africa","trusted medicine Kenya"]}
+        canonicalPath="/about"
+        jsonLd={[organizationJsonLd, breadcrumbJsonLd([{ name: "Home", path: "/" }, { name: "About", path: "/about" }])]}
+      />
       <TopBar />
       <Navbar />
 

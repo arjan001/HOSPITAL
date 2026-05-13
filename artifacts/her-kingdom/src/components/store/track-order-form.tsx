@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react"
 import { Search, Package, Truck, CheckCircle, Clock, XCircle, Loader2, Phone, Hash, MapPin } from "lucide-react"
 import { useStoreContact } from "@/hooks/use-store-contact"
+import { Seo, organizationJsonLd, websiteJsonLd, breadcrumbJsonLd, faqJsonLd, productJsonLd } from "@/components/seo"
 
 /* Brand tokens */
 const ACCENT_RED    = "#B91C1C"
@@ -104,6 +105,11 @@ export function TrackOrderForm({ initialOrderNumber }: { initialOrderNumber?: st
 
   return (
     <div className="space-y-6">
+      <Seo
+        title="Track Your Order"
+        description="Enter your order number to follow your Shaniid RX delivery in real time — from pharmacy verification to your doorstep, transparently."
+        canonicalPath="/track-order"
+      />
 
       {/* Search card */}
       <div className="rounded-2xl border border-neutral-200 bg-white p-5 lg:p-6">

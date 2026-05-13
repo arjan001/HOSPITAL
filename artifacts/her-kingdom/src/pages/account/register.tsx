@@ -4,6 +4,7 @@ import { TopBar } from "@/components/store/top-bar"
 import { Navbar } from "@/components/store/navbar"
 import { Footer } from "@/components/store/footer"
 import { Eye, EyeOff, ArrowRight, Info, Check } from "lucide-react"
+import { Seo, organizationJsonLd, websiteJsonLd, breadcrumbJsonLd, faqJsonLd, productJsonLd } from "@/components/seo"
 
 const WINE          = "#3D0814"
 const WINE_SOFT     = "#6B0F1A"
@@ -25,6 +26,7 @@ function Field({
 }) {
   return (
     <div>
+      <Seo title="Create Your Shaniid RX Account" description="Join Shaniid RX in minutes — verified medicine, fair prices, door-to-door delivery and a calm pharmacy experience built around your family." canonicalPath="/account/register" noindex />
       <label className="text-xs font-bold uppercase tracking-wider mb-1.5 block" style={{ color: WINE_SOFT }}>
         {label} {required && <span style={{ color: ACCENT_RED }}>*</span>}
       </label>

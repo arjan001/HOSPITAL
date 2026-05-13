@@ -5,6 +5,7 @@ import { Navbar } from "@/components/store/navbar"
 import { Footer } from "@/components/store/footer"
 import { X, ArrowLeft, FileText, CheckCircle2, ShieldCheck, Phone, Clock } from "lucide-react"
 import { useStoreContact } from "@/hooks/use-store-contact"
+import { Seo, organizationJsonLd, websiteJsonLd, breadcrumbJsonLd, faqJsonLd, productJsonLd } from "@/components/seo"
 
 const WINE       = "#3D0814"
 const ACCENT_RED = "#B91C1C"
@@ -17,6 +18,12 @@ const STEPS = ["Upload Your Attachments", "Set Your Recipient", "Payment"]
 function Stepper({ current }: { current: number }) {
   return (
     <div className="flex items-center gap-0">
+      <Seo
+        title="Upload Your Prescription Securely"
+        description="Send your prescription to Shaniid RX in seconds. A verified pharmacist will review, prepare and deliver — safely, discreetly and on time."
+        keywords={["upload prescription Kenya","online prescription Nairobi","Shaniid RX prescription","secure pharmacy upload"]}
+        canonicalPath="/upload-prescription"
+      />
       {STEPS.map((label, i) => {
         const idx    = i + 1
         const done   = idx < current

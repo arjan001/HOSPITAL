@@ -2,6 +2,7 @@
 
 import { useState, useMemo, useEffect, type ReactNode } from "react"
 import { Link } from "wouter"
+import { Seo, organizationJsonLd, websiteJsonLd, breadcrumbJsonLd, faqJsonLd, productJsonLd } from "@/components/seo"
 
 import {
   SlidersHorizontal,
@@ -149,6 +150,13 @@ function SidebarGroup({ id, title, icon: Icon, open, onToggle, children }: Sideb
         boxShadow: "0 8px 22px -18px rgba(184,60,30,0.35)",
       }}
     >
+      <Seo
+        title="Shop Medicines, Vitamins & Health Essentials"
+        description="Browse Shaniid RX's full pharmacy catalogue: prescription medicines, vitamins, baby care, devices and personal care — verified suppliers, fair prices."
+        keywords={["online pharmacy shop","buy medicine online Kenya","vitamins Nairobi","baby care","medical devices Kenya","Shaniid RX shop"]}
+        canonicalPath="/shop"
+        jsonLd={breadcrumbJsonLd([{ name: "Home", path: "/" }, { name: "Shop", path: "/shop" }])}
+      />
       <button
         type="button"
         onClick={onToggle}

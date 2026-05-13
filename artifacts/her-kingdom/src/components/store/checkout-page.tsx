@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react"
 import { Link } from "wouter"
 import { useLocation } from "wouter"
+import { Seo, organizationJsonLd, websiteJsonLd, breadcrumbJsonLd, faqJsonLd, productJsonLd } from "@/components/seo"
 import {
   ChevronRight, Minus, Plus, X, Truck, Loader2, CheckCircle, Package,
   MapPin, ChevronDown, Clock, Navigation, Home, Briefcase, MoreHorizontal,
@@ -37,6 +38,12 @@ function StepBar({ step }: { step: number }) {
   const steps = ["Cart Summary", "Delivery Details", "Payment"]
   return (
     <div className="flex items-center gap-0 mb-8">
+      <Seo
+        title="Secure Checkout"
+        description="Complete your Shaniid RX order securely. M-Pesa and card payments accepted. Genuine medicine, fair pricing and integrity at every step."
+        canonicalPath="/checkout"
+        noindex
+      />
       {steps.map((label, i) => {
         const idx   = i + 1
         const done  = step > idx

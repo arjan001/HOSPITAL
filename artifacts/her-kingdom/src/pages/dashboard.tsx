@@ -9,6 +9,7 @@ import { useCmsDoc, useCmsCollection, newId, type CmsRecord } from "@/lib/cms-st
 import { useWishlist } from "@/lib/wishlist-context"
 import { useCart } from "@/lib/cart-context"
 import { notify } from "@/lib/notify"
+import { Seo, organizationJsonLd, websiteJsonLd, breadcrumbJsonLd, faqJsonLd, productJsonLd } from "@/components/seo"
 import {
   UserCircle, Package, FileText, Heart, Users, Stethoscope, Coins, MapPin, LogOut,
   ChevronUp, ChevronDown, Search, Edit3, Trash2, Plus, Check, ChevronLeft, ChevronRight,
@@ -95,6 +96,7 @@ export default function DashboardPage() {
 
   return (
     <div className="min-h-screen flex flex-col bg-white" style={{ color: TEXT }}>
+      <Seo title="Your Account" description="Manage your Shaniid RX orders, prescriptions, addresses and payment methods in one calm, secure dashboard." canonicalPath="/dashboard" noindex />
       <TopBar />
       <Navbar />
 

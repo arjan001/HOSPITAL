@@ -16,6 +16,7 @@ import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
 import { Button } from "@/components/ui/button"
 import useSWR from "swr"
 import { safeFetcher, asArray } from "@/lib/fetcher"
+import { Seo, organizationJsonLd, websiteJsonLd, breadcrumbJsonLd, faqJsonLd, productJsonLd } from "@/components/seo"
 
 function formatPrice(price: number): string {
   return `KSh ${price.toLocaleString()}`
@@ -177,6 +178,13 @@ export function CollectionPage({ collection }: { collection: string }) {
 
   return (
     <div className="min-h-screen flex flex-col">
+      <Seo
+        title={`${collection.charAt(0).toUpperCase() + collection.slice(1)} — Shop`}
+        description={`Explore the ${collection} collection on Shaniid RX. Verified medicines and health essentials from trusted suppliers, with fair pricing and door-to-door delivery in Kenya.`}
+        keywords={[collection, "Shaniid RX", "online pharmacy Kenya", "buy medicine online"]}
+        canonicalPath={`/shop/${collection}`}
+        jsonLd={breadcrumbJsonLd([{ name: "Home", path: "/" }, { name: "Shop", path: "/shop" }, { name: collection, path: `/shop/${collection}` }])}
+      />
       <TopBar />
       <Navbar />
       <main className="flex-1">

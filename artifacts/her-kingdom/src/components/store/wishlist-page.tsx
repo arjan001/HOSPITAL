@@ -10,6 +10,7 @@ import { useCart } from "@/lib/cart-context"
 import { formatPrice } from "@/lib/format"
 import { ProductImage } from "./product-image"
 import { useState } from "react"
+import { Seo, organizationJsonLd, websiteJsonLd, breadcrumbJsonLd, faqJsonLd, productJsonLd } from "@/components/seo"
 
 const WINE        = "#3D0814"
 const WINE_SOFT   = "#6B0F1A"
@@ -58,6 +59,12 @@ function WishlistCard({
         boxShadow: "0 6px 28px -8px rgba(61,8,20,0.22)",
       }}
     >
+      <Seo
+        title="Your Wishlist"
+        description="Save medicines and health essentials to come back to later. Move items to your cart anytime — Shaniid RX keeps your list ready and private."
+        canonicalPath="/wishlist"
+        noindex
+      />
       {/* Remove button */}
       <button
         type="button"

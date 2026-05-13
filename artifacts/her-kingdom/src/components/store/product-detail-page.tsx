@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react"
 import { Link } from "wouter"
+import { Seo, organizationJsonLd, websiteJsonLd, breadcrumbJsonLd, faqJsonLd, productJsonLd } from "@/components/seo"
 import {
   ChevronRight,
   Minus,
@@ -213,6 +214,13 @@ interface ProductPageData {
 export function ProductDetailPage({ slug }: { slug: string }) {
   return (
     <QuickViewProvider>
+      <Seo
+        title={`Product Details — ${slug.replace(/-/g, " ")}`}
+        description={`View product details, ingredients, pricing and stock on Shaniid RX. Verified by a licensed pharmacy and delivered to your door across Kenya.`}
+        keywords={["Shaniid RX product", slug, "buy medicine online Kenya", "verified pharmacy"]}
+        canonicalPath={`/product/${slug}`}
+        type="product"
+      />
       <ProductDetailPageInner slug={slug} />
       <QuickViewModal />
     </QuickViewProvider>

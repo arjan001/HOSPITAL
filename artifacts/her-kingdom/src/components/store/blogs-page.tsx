@@ -11,6 +11,7 @@ import { TopBar } from "./top-bar"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
+import { Seo, organizationJsonLd, websiteJsonLd, breadcrumbJsonLd, faqJsonLd, productJsonLd } from "@/components/seo"
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
@@ -54,6 +55,13 @@ function BlogCard({ post, featured = false }: { post: BlogListItem; featured?: b
         featured ? "lg:col-span-2 lg:row-span-2" : ""
       }`}
     >
+      <Seo
+        title="Health Notes & Pharmacy Articles"
+        description="Calm, evidence-led health writing from Shaniid RX. Articles on safe medication, family health, chronic care and pharmacy best practice in Kenya."
+        keywords={["Shaniid RX blog","health articles Kenya","pharmacy advice","safe medication","family health"]}
+        canonicalPath="/blogs"
+        jsonLd={breadcrumbJsonLd([{ name: "Home", path: "/" }, { name: "Health Notes", path: "/blogs" }])}
+      />
       <div
         className={`relative overflow-hidden ${featured ? "aspect-[16/10]" : "aspect-[4/3]"} bg-gradient-to-br from-pink-50 via-white to-rose-50`}
       >

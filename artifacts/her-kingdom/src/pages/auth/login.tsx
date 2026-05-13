@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Loader2, AlertCircle, Eye, EyeOff } from "lucide-react"
+import { Seo, organizationJsonLd, websiteJsonLd, breadcrumbJsonLd, faqJsonLd, productJsonLd } from "@/components/seo"
 
 export default function LoginPage() {
   const [, navigate] = useLocation()
@@ -67,6 +68,7 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-[#FFFBF5] px-4 py-12">
+      <Seo title="Sign In" description="Sign in to Shaniid RX. Manage your orders, prescriptions and pharmacy account securely." canonicalPath="/auth/login" noindex />
       <div className="w-full max-w-md">
 
         {/* Logo */}

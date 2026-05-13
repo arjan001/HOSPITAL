@@ -4,6 +4,7 @@ import { TopBar } from "./top-bar"
 import { Navbar } from "./navbar"
 import { Footer } from "./footer"
 import { Link } from "wouter"
+import { Seo, organizationJsonLd, websiteJsonLd, breadcrumbJsonLd, faqJsonLd, productJsonLd } from "@/components/seo"
 import {
   Video,
   Pill,
@@ -138,6 +139,12 @@ function ServiceCard({ service }: { service: Service }) {
 function ServicesHero() {
   return (
     <section className="px-4 pt-8 lg:pt-12">
+      <Seo
+        title="Pharmacy Services — Consultations & Care"
+        description="Speak to a pharmacist, upload a prescription, book consultations and access ongoing care from Shaniid RX. Calm, professional pharmacy support."
+        keywords={["pharmacy services Kenya","Shaniid RX consultation","upload prescription","online pharmacist"]}
+        canonicalPath="/services"
+      />
       <div className="mx-auto max-w-[1280px]">
         <div
           className="relative overflow-hidden rounded-[28px] lg:rounded-[36px]"

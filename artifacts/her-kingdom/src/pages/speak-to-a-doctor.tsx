@@ -3,6 +3,7 @@ import { Link } from "wouter"
 import { TopBar } from "@/components/store/top-bar"
 import { Navbar } from "@/components/store/navbar"
 import { Footer } from "@/components/store/footer"
+import { Seo, organizationJsonLd, websiteJsonLd, breadcrumbJsonLd, faqJsonLd, productJsonLd } from "@/components/seo"
 import {
   MessageSquare, Phone, Clock, Users, Check, Lock, ArrowLeft, ArrowRight,
   Send, Plus, ShieldCheck, Video, X, FileText, Stethoscope, Brain, Pill, HeartPulse,
@@ -35,6 +36,12 @@ const btnOutline: React.CSSProperties = {
 function Feature({ text }: { text: string }) {
   return (
     <div className="flex items-center gap-2.5 text-sm">
+      <Seo
+        title="Speak to a Doctor or Pharmacist"
+        description="Book a private consultation with a Shaniid RX pharmacist or doctor. Chat or call — confidential advice, verified prescriptions, calm care."
+        keywords={["online doctor Kenya","pharmacist consultation","tele-pharmacy","Shaniid RX doctor"]}
+        canonicalPath="/speak-to-a-doctor"
+      />
       <div className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0"
         style={{ background: PEACH_TINT }}>
         <Check className="w-3 h-3" style={{ color: ACCENT_RED }} strokeWidth={2.5} />

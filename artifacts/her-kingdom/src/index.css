@@ -140,7 +140,7 @@
   --chart-4: 0 0% 60%;
   --chart-5: 0 0% 75%;
 
-  --app-font-sans: 'Inter', sans-serif;
+  --app-font-sans: 'Poppins', system-ui, sans-serif;
   --app-font-serif: Georgia, serif;
   --app-font-mono: Menlo, monospace;
   --radius: .5rem; /* 8px */
@@ -276,8 +276,12 @@
   }
 
   body {
-    @apply font-sans antialiased bg-background text-foreground;
+    @apply font-sans font-light antialiased bg-background text-foreground;
   }
+  /* Headings keep more weight so hierarchy reads against light body copy */
+  h1, h2, h3 { @apply font-semibold; }
+  h4, h5, h6 { @apply font-medium; }
+  strong, b  { @apply font-medium; }
 }
 
 /**

@@ -14,6 +14,7 @@ import { usePagination } from "@/hooks/use-pagination"
 import { safeFetcher, asArray } from "@/lib/fetcher"
 import type { Product, Category } from "@/lib/types"
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
+import { Seo, organizationJsonLd, websiteJsonLd, breadcrumbJsonLd, faqJsonLd, productJsonLd } from "@/components/seo"
 
 // ── Brand tokens ──────────────────────────────────────────────────────────────
 const WINE        = "#3D0814"
@@ -66,6 +67,11 @@ function scoreProduct(product: Product, tokens: string[], rawQuery: string): num
 function SectionHeading({ title, count, sub }: { title: string; count?: number; sub?: string }) {
   return (
     <div className="mb-5">
+      <Seo
+        title="Search Medicines & Health Products"
+        description="Find genuine medicines, vitamins and health products across Shaniid RX. Search by name, condition or brand — verified results, transparent pricing."
+        canonicalPath="/search"
+      />
       <div className="flex items-end justify-between gap-3">
         <h2 className="font-serif text-xl font-bold" style={{ color: WINE }}>{title}</h2>
         {count !== undefined && (

@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Loader2, AlertCircle, Eye, EyeOff, CheckCircle, Lock } from "lucide-react"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Seo, organizationJsonLd, websiteJsonLd, breadcrumbJsonLd, faqJsonLd, productJsonLd } from "@/components/seo"
 
 export default function RegisterPage() {
   const [form, setForm] = useState({
@@ -106,6 +107,7 @@ export default function RegisterPage() {
   if (checking) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#FFFBF5]">
+        <Seo title="Create Account" description="Open your Shaniid RX account to access verified medicines, fair pricing and same-day delivery in Nairobi." canonicalPath="/auth/register" noindex />
         <Loader2 className="h-6 w-6 animate-spin text-neutral-400" />
       </div>
     )

@@ -7,6 +7,7 @@ import { Footer } from "./footer"
 import type { DeliveryLocation } from "@/lib/types"
 import useSWR from "swr"
 import { Link } from "wouter"
+import { Seo, organizationJsonLd, websiteJsonLd, breadcrumbJsonLd, faqJsonLd, productJsonLd } from "@/components/seo"
 
 const WINE        = "#3D0814"
 const WINE_SOFT   = "#6B0F1A"
@@ -25,6 +26,12 @@ function formatPrice(price: number): string {
 function StepTile({ icon: Icon, step, label1, label2 }: { icon: React.ElementType; step: number; label1: string; label2: string }) {
   return (
     <div className="flex flex-col items-center text-center">
+      <Seo
+        title="Delivery Across Kenya — Same-Day in Nairobi"
+        description="Door-to-door medicine delivery from Shaniid RX. Same-day Nairobi, fast countrywide dispatch. Track your order and pay on delivery or via M-Pesa."
+        keywords={["pharmacy delivery Nairobi","same day medicine delivery Kenya","Shaniid RX delivery","M-Pesa pharmacy"]}
+        canonicalPath="/delivery"
+      />
       <div
         className="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl flex items-center justify-center mb-3 sm:mb-4"
         style={{

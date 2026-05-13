@@ -3,6 +3,7 @@ import { TopBar } from "@/components/store/top-bar"
 import { Navbar } from "@/components/store/navbar"
 import { Footer } from "@/components/store/footer"
 import { useStoreContact } from "@/hooks/use-store-contact"
+import { Seo, organizationJsonLd, websiteJsonLd, breadcrumbJsonLd, faqJsonLd, productJsonLd } from "@/components/seo"
 
 const WINE          = "#3D0814"
 const WINE_SOFT     = "#6B0F1A"
@@ -16,6 +17,7 @@ export default function EmailVerifiedPage() {
 
   return (
     <div className="min-h-screen flex flex-col" style={{ background: CREAM }}>
+      <Seo title="Email Verified" description="Your Shaniid RX email is verified. You can now access your account, place orders and manage prescriptions securely." canonicalPath="/account/email-verified" noindex />
       <TopBar />
       <Navbar />
 

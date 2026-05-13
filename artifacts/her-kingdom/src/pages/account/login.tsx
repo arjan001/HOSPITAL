@@ -4,6 +4,7 @@ import { TopBar } from "@/components/store/top-bar"
 import { Navbar } from "@/components/store/navbar"
 import { Footer } from "@/components/store/footer"
 import { Eye, EyeOff, ArrowRight, ChevronDown } from "lucide-react"
+import { Seo, organizationJsonLd, websiteJsonLd, breadcrumbJsonLd, faqJsonLd, productJsonLd } from "@/components/seo"
 
 const WINE          = "#3D0814"
 const WINE_SOFT     = "#6B0F1A"
@@ -33,6 +34,7 @@ export default function AccountLoginPage() {
 
   return (
     <div className="min-h-screen flex flex-col" style={{ background: CREAM }}>
+      <Seo title="Sign In to Shaniid RX" description="Sign in to your Shaniid RX account to view orders, manage prescriptions and continue your pharmacy care." canonicalPath="/account/login" noindex />
       <TopBar />
       <Navbar />
 

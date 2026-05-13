@@ -4,6 +4,7 @@ import { useState, useMemo } from "react"
 import { AccountShell } from "@/components/account/account-shell"
 import { useCmsDoc } from "@/lib/cms-store"
 import { notify } from "@/lib/notify"
+import { Seo, organizationJsonLd, websiteJsonLd, breadcrumbJsonLd, faqJsonLd, productJsonLd } from "@/components/seo"
 import {
   User, Mail, Phone, Calendar, Globe2, Languages, Heart, ShieldCheck,
   Bell, MessageSquare, Smartphone, Save, Trash2, Lock, AlertTriangle,
@@ -119,6 +120,7 @@ export default function AccountSettingsPage() {
       subtitle="Personal information, health profile, notification preferences and security."
       user={{ name: fullName, email: profile.identity.email, phone: profile.identity.phone }}
     >
+      <Seo title="Profile & Account Settings" description="Update your Shaniid RX profile, addresses, notification preferences and account security in one calm, organized place." canonicalPath="/account/settings" noindex />
       <div className="space-y-5">
         {/* Tab pills + sticky save bar */}
         <div className="rounded-xl bg-white border p-2 flex flex-wrap gap-1.5" style={{ borderColor: PEACH_BORDER }}>

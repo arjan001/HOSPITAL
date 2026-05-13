@@ -4,6 +4,7 @@ import { Link } from "wouter"
 
 import useSWR, { mutate } from "swr"
 import { useEffect, useMemo, useState } from "react"
+import { Seo, organizationJsonLd, websiteJsonLd, breadcrumbJsonLd, faqJsonLd, productJsonLd } from "@/components/seo"
 import {
   Clock,
   Star,
@@ -309,6 +310,13 @@ export function BlogDetailPage({ slug }: { slug: string }) {
 
   return (
     <div className="min-h-screen flex flex-col bg-[#fdfaf7]">
+      <Seo
+        title={`Health Notes — ${slug.replace(/-/g, " ")}`}
+        description={`Read this Shaniid RX health note: calm, evidence-led pharmacy writing on ${slug.replace(/-/g, " ")}. Trusted advice from Kenya's pharmacy infrastructure.`}
+        keywords={["Shaniid RX article", slug, "health Kenya", "pharmacy advice"]}
+        canonicalPath={`/blogs/${slug}`}
+        type="article"
+      />
       <ReadProgressBar />
       <TopBar />
       <Navbar />

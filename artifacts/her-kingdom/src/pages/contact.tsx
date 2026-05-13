@@ -7,6 +7,7 @@ import { Footer } from "@/components/store/footer"
 import { useStoreContact } from "@/hooks/use-store-contact"
 import { cmsStore, newId } from "@/lib/cms-store"
 import type { ContactInquiry, InquiryCategory } from "@/components/admin/contact-inquiries"
+import { Seo, organizationJsonLd, websiteJsonLd, breadcrumbJsonLd, faqJsonLd, productJsonLd } from "@/components/seo"
 
 const TEAL = "#16a3a3"
 const TEAL_DARK = "#0e7e7e"
@@ -93,6 +94,12 @@ export default function ContactPage() {
 
   return (
     <div className="min-h-screen flex flex-col bg-white text-neutral-900">
+      <Seo
+        title="Contact Shaniid RX — We Are Here to Help"
+        description="Reach the Shaniid RX team for support, supplier inquiries or feedback. Calm, professional response — your message reaches a real pharmacist."
+        keywords={["contact Shaniid RX","pharmacy support Kenya","supplier inquiries","customer care"]}
+        canonicalPath="/contact"
+      />
       <TopBar />
       <Navbar />
 

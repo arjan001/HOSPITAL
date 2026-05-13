@@ -5,6 +5,7 @@ import { useRoute } from "wouter"
 import { useCmsCollection } from "@/lib/cms-store"
 import type { CustomPage } from "@/components/admin/custom-pages"
 import NotFound from "@/pages/not-found"
+import { Seo, organizationJsonLd, websiteJsonLd, breadcrumbJsonLd, faqJsonLd, productJsonLd } from "@/components/seo"
 
 const WINE = "#3D0814"
 
@@ -39,6 +40,10 @@ export default function CustomPageView() {
 
   return (
     <div className="min-h-screen bg-white">
+      <Seo
+        title="Shaniid RX"
+        description="A Shaniid RX page — calm, transparent information from Kenya's trusted pharmacy infrastructure."
+      />
       {/* Wine band header */}
       <div className="text-white" style={{ background: `linear-gradient(135deg, ${WINE} 0%, #6B0F1A 100%)` }}>
         <div className="max-w-4xl mx-auto px-6 py-12 md:py-16">

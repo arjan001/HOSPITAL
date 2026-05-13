@@ -5,6 +5,7 @@ import { Navbar } from "@/components/store/navbar"
 import { Footer } from "@/components/store/footer"
 import { CheckCircle2, ArrowRight, MessageCircle, Phone } from "lucide-react"
 import { useStoreContact } from "@/hooks/use-store-contact"
+import { Seo, organizationJsonLd, websiteJsonLd, breadcrumbJsonLd, faqJsonLd, productJsonLd } from "@/components/seo"
 
 const WINE          = "#3D0814"
 const WINE_SOFT     = "#6B0F1A"
@@ -86,6 +87,7 @@ export default function VerifyPhonePage() {
   if (verified) {
     return (
       <div className="min-h-screen flex flex-col" style={{ background: CREAM }}>
+        <Seo title="Verify Your Phone" description="Confirm your phone number to secure your Shaniid RX account and receive delivery updates from a verified pharmacy." canonicalPath="/account/verify-phone" noindex />
         <TopBar />
         <Navbar />
         <main

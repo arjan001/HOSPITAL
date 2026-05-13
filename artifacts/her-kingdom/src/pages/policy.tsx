@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react"
 import { Link } from "wouter"
+import { Seo, organizationJsonLd, websiteJsonLd, breadcrumbJsonLd, faqJsonLd, productJsonLd } from "@/components/seo"
 import {
   ShieldCheck, FileText, Truck, RotateCcw, ScrollText, BadgeCheck,
   Stethoscope, BellRing, FlaskConical, ChevronRight,
@@ -555,6 +556,11 @@ export default function PolicyPage({ slug }: { slug: string }) {
 
   return (
     <div className="min-h-screen flex flex-col bg-white text-neutral-900">
+      <Seo
+        title={`${slug.split("-").map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ")}`}
+        description={`Read the Shaniid RX ${slug.replace(/-/g, " ")} — clear, transparent terms that protect patients, pharmacies and the integrity of medicine delivery in Kenya.`}
+        canonicalPath={`/${slug}`}
+      />
       <TopBar />
       <Navbar />
 

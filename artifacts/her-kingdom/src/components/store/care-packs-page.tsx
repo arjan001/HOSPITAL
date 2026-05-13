@@ -2,6 +2,7 @@
 
 import { useState, useMemo, useRef } from "react"
 import { Link } from "wouter"
+import { Seo, organizationJsonLd, websiteJsonLd, breadcrumbJsonLd, faqJsonLd, productJsonLd } from "@/components/seo"
 import {
   ChevronDown, ChevronUp, ChevronLeft, ChevronRight,
   Heart, ShoppingBag, Check,
@@ -133,6 +134,12 @@ function PackCard({ packDef, product }: { packDef: PackDef; product: Product | n
         boxShadow: "0 8px 22px -14px rgba(184,60,30,0.3)",
       }}
     >
+      <Seo
+        title="Care Packs — Curated Medicine Bundles"
+        description="Thoughtfully curated medicine and wellness packs for families, chronic care and recovery. Verified ingredients, fair prices, delivered to your door."
+        keywords={["care packs Kenya","medicine bundles","family health pack","chronic care pack","Shaniid RX"]}
+        canonicalPath="/care-packs"
+      />
       {/* Heart */}
       {product && (
         <button
