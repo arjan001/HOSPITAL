@@ -10,6 +10,7 @@ import { FeaturedProducts } from "./featured-products"
 import { OfferBanner } from "./offer-banner"
 import { OnOfferProducts } from "./on-offer-products"
 import { HowToOrder } from "./how-to-order"
+import { PopularProducts } from "./popular-products"
 import { Newsletter } from "./newsletter"
 import type { Faq } from "./faq-section"
 
@@ -64,7 +65,9 @@ export function LandingPage({ faqs = DEFAULT_FAQS }: { faqs?: Faq[] }) {
           <OfferBanner />
           <OnOfferProducts />
           <HowToOrder />
-          {showNewsletter && <Newsletter />}
+          <PopularProducts />
+          {/* Newsletter / "Stay Updated" hidden for now — kept for later use */}
+          {false && showNewsletter && <Newsletter />}
         </main>
         <Footer />
         <OfferModal />
