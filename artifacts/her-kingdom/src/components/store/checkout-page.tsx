@@ -140,6 +140,8 @@ function AddressModal({
   const [suggestions, setSuggestions] = useState<{ lat: number; lng: number; label: string }[]>([])
   const [showSugg, setShowSugg] = useState(false)
   const [searching, setSearching] = useState(false)
+  const [locating, setLocating] = useState(false)
+  const [locateError, setLocateError] = useState("")
 
   /* Init map when modal opens */
   useEffect(() => {
@@ -184,6 +186,44 @@ function AddressModal({
     }
     if (addr) setSearch(addr)
   }
+
+  /* Request browser/phone GPS location */
+  const requestLocation = () => {
+    setLocateError("")
+    if (!navigator.geolocation) {
+      setLocateError("Your browser doesn't support location access.")
+      return
+    }
+    setLocating(true)
+    navigator.geolocation.getCurrentPosition(
+      async pos => {
+        const { latitude, longitude } = pos.coords
+        const addr = await reverseGeocode(latitude, longitude)
+        moveTo(latitude, longitude, addr || `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`)
+        setLocating(false)
+      },
+      err => {
+        setLocating(false)
+        if (err.code === err.PERMISSION_DENIED) {
+          setLocateError("Location access was blocked. Please enable it in your browser settings, or pin your address on the map below.")
+        } else if (err.code === err.POSITION_UNAVAILABLE) {
+          setLocateError("Couldn't get your location right now. Try again or pin your address on the map.")
+        } else if (err.code === err.TIMEOUT) {
+          setLocateError("Location request timed out. Please try again.")
+        } else {
+          setLocateError("We couldn't get your location. Please pin your address on the map.")
+        }
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
+    )
+  }
+
+  /* Auto-prompt for location once when modal first opens (only if no address yet) */
+  useEffect(() => {
+    if (!open || initial?.address) return
+    const t = setTimeout(() => requestLocation(), 350)
+    return () => clearTimeout(t)
+  }, [open]) // eslint-disable-line react-hooks/exhaustive-deps
 
   /* Debounced search suggestions */
   useEffect(() => {
@@ -264,25 +304,23 @@ function AddressModal({
               </div>
               <button
                 type="button"
-                className="h-11 px-4 rounded-xl text-xs font-semibold flex items-center gap-1.5 flex-shrink-0 border transition-colors hover:bg-gray-50"
-                style={{ borderColor: PEACH_MED, color: WINE_CARD }}
-                onClick={() => {
-                  if (navigator.geolocation) {
-                    navigator.geolocation.getCurrentPosition(
-                      async pos => {
-                        const { latitude, longitude } = pos.coords
-                        const addr = await reverseGeocode(latitude, longitude)
-                        moveTo(latitude, longitude, addr || `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`)
-                      },
-                      () => {}
-                    )
-                  }
-                }}
+                disabled={locating}
+                className="h-11 px-4 rounded-xl text-xs font-semibold flex items-center gap-1.5 flex-shrink-0 text-white transition-opacity hover:opacity-90 disabled:opacity-60"
+                style={{ background: `linear-gradient(135deg, #F97316 0%, #B91C1C 100%)` }}
+                onClick={requestLocation}
               >
-                <Navigation className="h-3.5 w-3.5" />
-                Use My Location
+                {locating
+                  ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  : <Navigation className="h-3.5 w-3.5" />}
+                {locating ? "Locating…" : "Use My Location"}
               </button>
             </div>
+            {locateError && (
+              <p className="mt-2 text-xs flex items-start gap-1.5" style={{ color: "#B91C1C" }}>
+                <span aria-hidden>⚠</span>
+                <span>{locateError}</span>
+              </p>
+            )}
           </div>
 
           {/* Real interactive map (Leaflet + OpenStreetMap) */}
