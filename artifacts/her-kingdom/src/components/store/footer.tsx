@@ -101,9 +101,9 @@ export function Footer() {
               <img
                 src="/logo-rx.png"
                 alt="Shaniid RX"
-                width={64}
-                height={64}
-                className="h-14 w-14 object-contain"
+                width={160}
+                height={160}
+                className="h-28 w-auto object-contain"
               />
             </Link>
             <p className="mt-4 text-sm leading-relaxed" style={{ color: TEXT_WINE_SOFT }}>
