@@ -8,11 +8,25 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 
 router.get("/", async (req, res) => {
   const supabase = createClient()
+  const statusFilter = typeof req.query.status === "string" ? req.query.status : undefined
+  const countOnly = req.query.count === "true"
 
-  const { data: orders, error } = await supabase
+  // Lightweight count-only branch — used by the admin shell pending-orders badge.
+  if (countOnly) {
+    let q = supabase.from("orders").select("*", { count: "exact", head: true })
+    if (statusFilter) q = q.eq("status", statusFilter)
+    const { count, error: countError } = await q
+    if (countError) return res.status(500).json({ error: countError.message })
+    return res.json({ count: count ?? 0 })
+  }
+
+  let ordersQuery = supabase
     .from("orders")
     .select("*, delivery_locations(name)")
     .order("created_at", { ascending: false })
+  if (statusFilter) ordersQuery = ordersQuery.eq("status", statusFilter)
+
+  const { data: orders, error } = await ordersQuery
 
   if (error) return res.status(500).json({ error: error.message })
 

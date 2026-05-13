@@ -3,7 +3,6 @@
 import { useState, useEffect, type ReactNode } from "react"
 import { Link } from "wouter"
 import { useLocation } from "wouter"
-import { createClient } from "@/lib/supabase/client"
 import {
   LayoutDashboard,
   Package,
@@ -61,40 +60,39 @@ export function AdminShell({ children, title }: { children: ReactNode; title: st
   const [pendingOrders, setPendingOrders] = useState(0)
 
   useEffect(() => {
-    const supabase = createClient()
-    supabase.auth.getUser().then(async ({ data: { user } }) => {
-      if (user) {
-        const { data } = await supabase
-          .from("admin_users")
-          .select("display_name, email, role")
-          .eq("email", user.email)
-          .single()
-        if (data) setCurrentUser(data)
-        else setCurrentUser({ display_name: user.email || "Admin", email: user.email || "", role: "admin" })
-      }
+    // Default local admin identity (auth will be reintroduced via Clerk later).
+    setCurrentUser({
+      display_name: "Admin",
+      email: "admin@shaniidrx.local",
+      role: "super_admin",
     })
 
-    // Fetch pending orders count
+    // Fetch pending orders count via API.
     const fetchPending = async () => {
-      const { count } = await supabase
-        .from("orders")
-        .select("*", { count: "exact", head: true })
-        .eq("status", "pending")
-      setPendingOrders(count || 0)
+      try {
+        const res = await fetch("/api/admin/orders?status=pending&count=true")
+        if (!res.ok) return
+        const data = await res.json()
+        const count = typeof data?.count === "number"
+          ? data.count
+          : Array.isArray(data?.orders)
+            ? data.orders.length
+            : Array.isArray(data)
+              ? data.length
+              : 0
+        setPendingOrders(count)
+      } catch {
+        // ignore — badge just hides
+      }
     }
     fetchPending()
-
-    // Poll every 30 seconds for new orders
     const interval = setInterval(fetchPending, 30000)
     return () => clearInterval(interval)
   }, [])
 
   const handleLogout = async () => {
     setLoggingOut(true)
-    const supabase = createClient()
-    await supabase.auth.signOut()
-    navigate("/auth/login")
-    // Force a full reload so any cached SWR / auth state is cleared.
+    navigate("/")
     if (typeof window !== "undefined") window.location.reload()
   }
 
