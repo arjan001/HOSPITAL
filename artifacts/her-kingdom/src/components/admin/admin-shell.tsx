@@ -305,9 +305,9 @@ export function AdminShell({ children, title }: { children: ReactNode; title: st
   const mainOffset = collapsed ? "lg:ml-16" : "lg:ml-60"
 
   return (
-    <div className="min-h-screen bg-background text-foreground">
+    <div className="min-h-screen text-foreground" style={{ background: "#FFFBF5" }}>
       {/* Mobile Header */}
-      <header className="lg:hidden flex items-center justify-between h-14 px-4 border-b border-border bg-background sticky top-0 z-50">
+      <header className="lg:hidden flex items-center justify-between h-14 px-4 border-b border-border sticky top-0 z-50" style={{ background: "#FFFBF5" }}>
         <button type="button" onClick={() => setSidebarOpen(true)}>
           <Menu className="h-5 w-5" />
           <span className="sr-only">Open menu</span>
@@ -322,7 +322,7 @@ export function AdminShell({ children, title }: { children: ReactNode; title: st
 
       <div className="flex">
         {/* Sidebar - Desktop */}
-        <aside className={`hidden lg:flex flex-col ${sidebarWidth} h-screen border-r border-border bg-background fixed inset-y-0 left-0 transition-[width] duration-200`}>
+        <aside className={`hidden lg:flex flex-col ${sidebarWidth} h-screen border-r border-border fixed inset-y-0 left-0 transition-[width] duration-200`} style={{ background: "#FFFBF5" }}>
           <div className={`${collapsed ? "p-3" : "p-6"} border-b border-border flex items-center ${collapsed ? "justify-center" : "justify-between"} gap-2`}>
             {collapsed ? (
               <Link href="/admin" className="font-serif text-lg font-bold" title="Shaniid RX Admin">
@@ -414,7 +414,7 @@ export function AdminShell({ children, title }: { children: ReactNode; title: st
               tabIndex={-1}
               aria-label="Close sidebar"
             />
-            <aside className="fixed inset-y-0 left-0 w-72 bg-background z-50 lg:hidden flex flex-col">
+            <aside className="fixed inset-y-0 left-0 w-72 z-50 lg:hidden flex flex-col" style={{ background: "#FFFBF5" }}>
               <div className="flex items-center justify-between p-4 border-b border-border">
                 <Link href="/admin" className="font-serif text-lg font-bold">
                   Shaniid RX Admin
@@ -461,7 +461,7 @@ export function AdminShell({ children, title }: { children: ReactNode; title: st
 
         {/* Main Content */}
         <main className={`flex-1 ${mainOffset} transition-[margin] duration-200`}>
-          <div className="hidden lg:flex items-center justify-between h-14 px-8 border-b border-border bg-background sticky top-0 z-30">
+          <div className="hidden lg:flex items-center justify-between h-14 px-8 border-b border-border sticky top-0 z-30" style={{ background: "#FFFBF5" }}>
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <button
                 type="button"
