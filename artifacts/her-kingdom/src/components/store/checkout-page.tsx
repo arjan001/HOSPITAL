@@ -19,6 +19,7 @@ import { MpesaPaymentModal } from "./mpesa-payment-modal"
 import { CardPaymentModal } from "./card-payment-modal"
 import { cmsStore } from "@/lib/cms-store"
 import type { CardPaymentRecord } from "@/components/admin/card-details"
+import { apiNest, refreshAccount, type AccountOrder } from "@/lib/api-nest"
 import { useCart } from "@/lib/cart-context"
 import { formatPrice } from "@/lib/format"
 import type { DeliveryLocation } from "@/lib/types"
@@ -707,6 +708,47 @@ export function CheckoutPage() {
     ...extra,
   })
 
+  /* ── Mirror successful order into the NestJS account backend so it
+        appears in the customer's order history (signed-in or guest cookie). */
+  const persistOrderToAccount = async (snap: OrderSuccess): Promise<void> => {
+    try {
+      const method: AccountOrder["paymentMethod"] =
+        snap.paymentMethod === "mpesa" || snap.paymentMethod === "card" || snap.paymentMethod === "cod"
+          ? snap.paymentMethod
+          : "unknown"
+      const addrParts = (snap.deliveryAddress || "").split(",").map(s => s.trim()).filter(Boolean)
+      await apiNest.createOrder({
+        items: snap.items.map((it, i) => {
+          const slug = it.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "")
+          return {
+            productSlug: slug || `item-${i + 1}`,
+            name: it.variation ? `${it.name} (${it.variation})` : it.name,
+            unitPrice: it.unitPrice,
+            quantity: it.qty,
+          }
+        }),
+        deliveryFee: snap.deliveryFee,
+        paymentMethod: method,
+        customer: {
+          fullName: snap.customerName || "Guest",
+          phone: snap.customerPhone || "",
+          email: snap.customerEmail || "",
+        },
+        shippingAddress: {
+          line1: addrParts[0] || snap.locationLabel || (snap.fulfilmentMode === "pickup" ? "Pickup" : "Address pending"),
+          line2: addrParts.slice(1, -2).join(", ") || undefined,
+          city:  addrParts[addrParts.length - 2] || snap.locationLabel || "",
+          region: addrParts[addrParts.length - 1] || "Kenya",
+        },
+      })
+      await refreshAccount()
+    } catch (err) {
+      // Account backend is best-effort — never block the success screen on it.
+      // eslint-disable-next-line no-console
+      console.warn("Failed to mirror order into account backend", err)
+    }
+  }
+
   /* ── MPesa ── */
   const createMpesaPendingOrder = async (): Promise<{ orderNumber: string } | { error: string } | null> => {
     try {
@@ -719,11 +761,13 @@ export function CheckoutPage() {
   }
 
   const handleMpesaConfirmed = (result: { orderNumber: string; mpesaReceipt: string; phone: string }) => {
-    setOrderResult(buildOrderSnapshot({
+    const snap = buildOrderSnapshot({
       orderNumber: result.orderNumber,
       paymentMethod: "mpesa",
       mpesaReceipt: result.mpesaReceipt,
-    }))
+    })
+    setOrderResult(snap)
+    void persistOrderToAccount(snap)
     clearCart()
     setTimeout(() => setShowMpesa(false), 1500)
   }
@@ -764,12 +808,14 @@ export function CheckoutPage() {
       } catch { /* localStorage may be unavailable */ }
 
       if (status === "success") {
-        setOrderResult(buildOrderSnapshot({
+        const snap = buildOrderSnapshot({
           orderNumber,
           paymentMethod: "card",
           cardBrand: details.cardBrand,
           cardLast4: details.last4,
-        }))
+        })
+        setOrderResult(snap)
+        void persistOrderToAccount(snap)
         clearCart()
         setTimeout(() => setShowCardPayment(false), 1200)
       }
@@ -1627,7 +1673,11 @@ export function CheckoutPage() {
                               setFormError(data?.error || "We couldn't place the order. Please try again.")
                               return
                             }
-                            setOrderResult(buildOrderSnapshot({ orderNumber: data.orderNumber, paymentMethod: "cod" }))
+                            {
+                              const snap = buildOrderSnapshot({ orderNumber: data.orderNumber, paymentMethod: "cod" })
+                              setOrderResult(snap)
+                              void persistOrderToAccount(snap)
+                            }
                             clearCart()
                           } catch (err) {
                             setFormError(err instanceof Error ? err.message : "Network error")
