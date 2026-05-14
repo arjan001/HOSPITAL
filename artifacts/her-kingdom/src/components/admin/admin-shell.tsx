@@ -37,6 +37,7 @@ import {
   PanelLeftOpen,
   ScrollText,
   Plug,
+  PackageSearch,
 } from "lucide-react"
 
 const COLLAPSE_KEY = "shaniidrx.admin.sidebarCollapsed"
@@ -64,6 +65,7 @@ const navItems: NavItem[] = [
 
   { label: "Products",           href: "/admin/products",           icon: Package,         group: "Catalog" },
   { label: "Categories",         href: "/admin/categories",         icon: Tag,             group: "Catalog" },
+  { label: "Sourcing",           href: "/admin/sourcing",           icon: PackageSearch,   group: "Catalog" },
   { label: "Delivery",           href: "/admin/delivery-locations", icon: Truck,           group: "Catalog" },
 
   { label: "Offers & Banners",   href: "/admin/banners",            icon: ImageIcon,       group: "Marketing" },

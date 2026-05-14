@@ -40,6 +40,7 @@ import { AdminOrders } from "@/components/admin/orders";
 import { AdminPayments } from "@/components/admin/payments";
 import { AdminPolicies } from "@/components/admin/policies";
 import { AdminProducts } from "@/components/admin/products";
+import { AdminSourcing } from "@/components/admin/sourcing";
 import { AdminSettings } from "@/components/admin/settings";
 import { UsersManagement } from "@/components/admin/users";
 import { AdminCustomers } from "@/components/admin/customers";
@@ -359,6 +360,7 @@ function Router() {
       <Route path="/admin/payments">{() => <AdminPayments />}</Route>
       <Route path="/admin/policies" component={AdminPolicies} />
       <Route path="/admin/products" component={AdminProducts} />
+      <Route path="/admin/sourcing" component={AdminSourcing} />
       <Route path="/admin/settings" component={AdminSettings} />
       <Route path="/admin/users" component={UsersManagement} />
       <Route path="/admin/customers" component={AdminCustomers} />
