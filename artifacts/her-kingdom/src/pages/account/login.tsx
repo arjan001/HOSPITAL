@@ -1,6 +1,15 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Link, useLocation } from "wouter"
-import { useSignIn, useUser } from "@clerk/react"
+import { useUser } from "@clerk/react"
+/* The default `@clerk/react` `useSignIn` returns the new "signals" API
+   (no `isLoaded` / `authenticateWithRedirect` / `setActive`). This page
+   uses the legacy resource API which still ships at `/legacy`. */
+import { useSignIn } from "@clerk/react/legacy"
+
+/* App is mounted under a base path on Replit (e.g. /her-kingdom). Clerk does
+   a full window.location redirect, so OAuth round-trip URLs must include the
+   prefix or the browser lands on the wrong origin path. */
+const BASE_PATH = import.meta.env.BASE_URL.replace(/\/$/, "")
 import { TopBar } from "@/components/store/top-bar"
 import { Navbar } from "@/components/store/navbar"
 import { Footer } from "@/components/store/footer"
@@ -29,10 +38,13 @@ export default function AccountLoginPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError]     = useState("")
 
-  if (isSignedIn) {
-    navigate("/user")
-    return null
-  }
+  /* Avoid calling navigate during render — that triggers a setState-in-render
+     warning and can deadlock the component. */
+  useEffect(() => {
+    if (isSignedIn) navigate("/user")
+  }, [isSignedIn, navigate])
+
+  if (isSignedIn) return null
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -64,16 +76,26 @@ export default function AccountLoginPage() {
   }
 
   const handleGoogle = async () => {
-    if (!isLoaded || !signIn) return
+    if (!isLoaded || !signIn) {
+      setError("Sign-in is still loading — please wait a moment and try again.")
+      return
+    }
     setError("")
     try {
+      /* Clerk performs a real browser redirect, so prefix the artifact base
+         path or the OAuth callback lands on the wrong URL on Replit. */
       await signIn.authenticateWithRedirect({
         strategy: "oauth_google",
-        redirectUrl: "/account/sso-callback",
-        redirectUrlComplete: "/user",
+        redirectUrl: `${BASE_PATH}/account/sso-callback`,
+        redirectUrlComplete: `${BASE_PATH}/user`,
       })
     } catch (err) {
-      setError("Could not start Google sign-in. Please try again.")
+      const msg =
+        (err as { errors?: Array<{ longMessage?: string; message?: string }> })?.errors?.[0]
+          ?.longMessage ||
+        (err as { errors?: Array<{ message?: string }> })?.errors?.[0]?.message ||
+        "Could not start Google sign-in. Please try again."
+      setError(msg)
     }
   }
 
