@@ -92,8 +92,31 @@ type ConsultationRow = CmsRecord & {
 
 /* ---------- Page ---------- */
 
+const VALID_TABS: TabId[] = [
+  "profile", "orders", "prescriptions", "wishlist",
+  "beneficiaries", "consultations", "loyalty", "addresses",
+]
+
+function readInitialTab(): TabId {
+  if (typeof window === "undefined") return "profile"
+  try {
+    const t = new URLSearchParams(window.location.search).get("tab") as TabId | null
+    if (t && VALID_TABS.includes(t)) return t
+  } catch { /* ignore */ }
+  return "profile"
+}
+
 export default function DashboardPage() {
-  const [tab, setTab] = useState<TabId>("profile")
+  const [tab, setTab] = useState<TabId>(readInitialTab)
+
+  // Keep ?tab= in sync without adding history entries.
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    const url = new URL(window.location.href)
+    if (tab === "profile") url.searchParams.delete("tab")
+    else url.searchParams.set("tab", tab)
+    window.history.replaceState(null, "", url.toString())
+  }, [tab])
 
   return (
     <div className="min-h-screen flex flex-col bg-white" style={{ color: TEXT }}>

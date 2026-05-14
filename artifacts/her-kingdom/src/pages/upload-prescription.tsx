@@ -3,9 +3,21 @@ import { Link, useLocation } from "wouter"
 import { TopBar } from "@/components/store/top-bar"
 import { Navbar } from "@/components/store/navbar"
 import { Footer } from "@/components/store/footer"
-import { X, ArrowLeft, FileText, CheckCircle2, ShieldCheck, Phone, Clock } from "lucide-react"
+import { X, ArrowLeft, FileText, ShieldCheck, Phone, Clock, ArrowRight, MessageCircle } from "lucide-react"
 import { useStoreContact } from "@/hooks/use-store-contact"
 import { Seo, organizationJsonLd, websiteJsonLd, breadcrumbJsonLd, faqJsonLd, productJsonLd } from "@/components/seo"
+import { cmsStore, newId } from "@/lib/cms-store"
+import type { Prescription } from "@/components/admin/prescriptions"
+
+type UserPrescriptionRow = {
+  id: string
+  rxNumber: string
+  name: string
+  date: string
+  total: number
+  recipient: string
+  status: "Pending" | "Verified" | "Dispensed" | "Cancelled"
+}
 
 const WINE       = "#3D0814"
 const ACCENT_RED = "#B91C1C"
@@ -85,6 +97,29 @@ function FileRow({ file, onRemove }: { file: File; onRemove: () => void }) {
   )
 }
 
+/* ── Next-step row (used in success modal) ────────────────── */
+function NextRow({
+  icon: Icon,
+  children,
+}: {
+  icon: React.ComponentType<{ className?: string; strokeWidth?: number }>
+  children: React.ReactNode
+}) {
+  return (
+    <li className="flex items-start gap-3">
+      <span
+        className="w-7 h-7 flex items-center justify-center flex-shrink-0 border"
+        style={{ borderColor: "#E5E7EB", color: WINE, background: "#fff" }}
+      >
+        <Icon className="h-3.5 w-3.5" strokeWidth={1.8} />
+      </span>
+      <span className="text-sm leading-snug pt-0.5" style={{ color: "#374151" }}>
+        {children}
+      </span>
+    </li>
+  )
+}
+
 /* ── Upload icon SVG ──────────────────────────────────────── */
 function UploadIcon() {
   return (
@@ -105,6 +140,7 @@ export default function UploadPrescriptionPage() {
   /* step state */
   const [step, setStep]    = useState(1)
   const [showModal, setShowModal] = useState(false)
+  const [submittedRx, setSubmittedRx] = useState<{ rxNumber: string; name: string } | null>(null)
 
   /* step 1 */
   const [files, setFiles]         = useState<File[]>([])
@@ -126,6 +162,49 @@ export default function UploadPrescriptionPage() {
   }
 
   const removeFile = (i: number) => setFiles((p) => p.filter((_,j) => j !== i))
+
+  const handleSubmit = () => {
+    const now = new Date()
+    const isoDate = now.toISOString().slice(0, 10)
+    const fullName = `${firstName} ${lastName}`.trim() || "Customer"
+    const id = newId("rx")
+    const rxNumber = id.slice(-8).toUpperCase()
+    const fileNames = files.map((f) => f.name).join(", ") || "No file"
+    const displayName = files[0]?.name ?? "Prescription"
+
+    const adminRec: Prescription = {
+      id,
+      patientName: fullName,
+      phone: "",
+      dob,
+      imageUrl: "",
+      notes:
+        `Submitted via storefront. Files: ${fileNames}. ` +
+        `Payment: ${paymentMethod === "insurance" ? "Insurance" : "Cash"}.`,
+      status: "pending",
+      pharmacistNote: "",
+      recommendedDrugs: [],
+      createdAt: now.toISOString(),
+      updatedAt: now.toISOString(),
+    }
+    const adminList = cmsStore.get<Prescription[]>("prescriptions", [])
+    cmsStore.set("prescriptions", [adminRec, ...adminList])
+
+    const userRec: UserPrescriptionRow = {
+      id,
+      rxNumber,
+      name: displayName.length > 60 ? displayName.slice(0, 57) + "…" : displayName,
+      date: isoDate,
+      total: 0,
+      recipient: fullName,
+      status: "Pending",
+    }
+    const userList = cmsStore.get<UserPrescriptionRow[]>("user-prescriptions", [])
+    cmsStore.set("user-prescriptions", [userRec, ...userList])
+
+    setSubmittedRx({ rxNumber, name: displayName })
+    setShowModal(true)
+  }
 
   /* ── Action buttons shared style ── */
   const btnGreen = {
@@ -395,7 +474,7 @@ export default function UploadPrescriptionPage() {
         </button>
         <button
           type="button"
-          onClick={() => setShowModal(true)}
+          onClick={handleSubmit}
           className="h-11 px-10 rounded-full text-sm font-semibold hover:opacity-90 transition-opacity"
           style={btnGreen}
         >
@@ -405,110 +484,176 @@ export default function UploadPrescriptionPage() {
     </div>
   )
 
-  /* ──────────── Success modal ──────────── */
+  /* ──────────── Success modal — flat, sharp, professional ──────────── */
   const SuccessModal = () => {
     const reset = () => {
       setShowModal(false)
+      setSubmittedRx(null)
       setStep(1)
       setFiles([])
       setFirstName(""); setLastName(""); setGender(""); setDob("")
       setPaymentMethod("cash")
     }
+    const close = () => setShowModal(false)
     return (
       <div
-        className="fixed inset-0 z-50 flex items-center justify-center px-4"
-        style={{ background: "rgba(15,23,42,0.55)", backdropFilter: "blur(4px)" }}
-        onClick={reset}
+        className="fixed inset-0 z-50 flex items-center justify-center px-4 py-6"
+        style={{ background: "rgba(15,23,42,0.55)" }}
+        onClick={close}
       >
         <div
-          className="bg-white rounded-2xl w-full max-w-md shadow-2xl relative overflow-hidden border border-neutral-200"
-          onClick={e => e.stopPropagation()}
+          className="bg-white w-full max-w-md relative border"
+          style={{ borderColor: "#E5E7EB", borderRadius: 4 }}
+          onClick={(e) => e.stopPropagation()}
           role="dialog"
           aria-modal="true"
           aria-labelledby="rx-success-title"
         >
-          {/* Close */}
-          <button
-            type="button"
-            onClick={reset}
-            className="absolute top-3 right-3 w-8 h-8 rounded-full flex items-center justify-center text-neutral-500 hover:bg-neutral-100 transition-colors"
-            aria-label="Close"
-          >
-            <X className="h-4 w-4" />
-          </button>
+          {/* Top accent bar */}
+          <div style={{ height: 3, background: WINE }} />
 
-          {/* Header with success icon */}
-          <div className="px-7 pt-8 pb-5 text-center">
-            <div className="inline-flex items-center justify-center w-16 h-16 rounded-full mx-auto mb-4" style={{ background: "#ECFDF5" }}>
-              <div className="inline-flex items-center justify-center w-12 h-12 rounded-full" style={{ background: "#10B981" }}>
-                <CheckCircle2 className="h-7 w-7 text-white" strokeWidth={2.5} />
+          {/* Header */}
+          <div
+            className="flex items-start justify-between gap-4 px-6 py-5 border-b"
+            style={{ borderColor: "#E5E7EB" }}
+          >
+            <div className="flex items-start gap-3 min-w-0">
+              <div
+                className="w-10 h-10 flex items-center justify-center flex-shrink-0"
+                style={{ background: WINE, color: "#fff" }}
+              >
+                <FileText className="h-5 w-5" strokeWidth={1.8} />
+              </div>
+              <div className="min-w-0">
+                <p
+                  className="text-[10.5px] font-semibold uppercase tracking-[0.16em]"
+                  style={{ color: "#6B7280" }}
+                >
+                  Prescription · Received
+                </p>
+                <h2
+                  id="rx-success-title"
+                  className="text-[17px] font-semibold leading-tight mt-0.5"
+                  style={{ color: WINE }}
+                >
+                  Submitted to our pharmacy team
+                </h2>
               </div>
             </div>
-            <h2 id="rx-success-title" className="text-xl font-bold text-neutral-900">
-              Prescription received
-            </h2>
-            <p className="text-sm leading-relaxed mt-2 text-neutral-600">
-              Thanks{firstName ? `, ${firstName}` : ""} — your prescription is now with our pharmacist team for review.
+            <button
+              type="button"
+              onClick={close}
+              className="w-8 h-8 flex items-center justify-center text-neutral-500 hover:text-neutral-900 hover:bg-neutral-100 transition-colors flex-shrink-0"
+              aria-label="Close"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+
+          {/* Reference + summary */}
+          <div className="px-6 py-5 border-b" style={{ borderColor: "#E5E7EB" }}>
+            <p className="text-sm leading-relaxed" style={{ color: "#374151" }}>
+              Thank you{firstName ? `, ${firstName}` : ""}. A licensed pharmacist will review
+              your prescription and reach out to confirm dosage, payment and delivery.
             </p>
+
+            <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-2.5 text-sm">
+              <dt className="text-[11px] uppercase tracking-wider font-semibold" style={{ color: "#6B7280" }}>
+                Reference
+              </dt>
+              <dd className="font-mono text-[13px] text-right" style={{ color: WINE }}>
+                RX-{submittedRx?.rxNumber ?? "————"}
+              </dd>
+
+              <dt className="text-[11px] uppercase tracking-wider font-semibold" style={{ color: "#6B7280" }}>
+                Files
+              </dt>
+              <dd className="text-right truncate" style={{ color: "#111827" }}>
+                {files.length} {files.length === 1 ? "document" : "documents"}
+              </dd>
+
+              <dt className="text-[11px] uppercase tracking-wider font-semibold" style={{ color: "#6B7280" }}>
+                Payment
+              </dt>
+              <dd className="text-right capitalize" style={{ color: "#111827" }}>
+                {paymentMethod}
+              </dd>
+            </dl>
           </div>
 
           {/* What happens next */}
-          <div className="mx-6 mb-6 rounded-xl border border-neutral-200 bg-neutral-50 p-4 space-y-3">
-            <p className="text-[11px] font-bold uppercase tracking-wider text-neutral-500">What happens next</p>
-            <div className="flex items-start gap-3">
-              <div className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: "#FEE2E2", color: ACCENT_RED }}>
-                <Phone className="h-3.5 w-3.5" />
-              </div>
-              <p className="text-sm text-neutral-700 leading-snug">
-                A licensed pharmacist will <span className="font-semibold text-neutral-900">call you</span> to confirm dosage and delivery.
-              </p>
-            </div>
-            <div className="flex items-start gap-3">
-              <div className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: "#FEF3C7", color: "#92400e" }}>
-                <Clock className="h-3.5 w-3.5" />
-              </div>
-              <p className="text-sm text-neutral-700 leading-snug">
-                Usually within <span className="font-semibold text-neutral-900">15 minutes</span> during pharmacy hours (8 AM – 10 PM).
-              </p>
-            </div>
-            <div className="flex items-start gap-3">
-              <div className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: "#DCFCE7", color: "#166534" }}>
-                <ShieldCheck className="h-3.5 w-3.5" />
-              </div>
-              <p className="text-sm text-neutral-700 leading-snug">
-                Your details are kept <span className="font-semibold text-neutral-900">private and secure</span>.
-              </p>
-            </div>
+          <div className="px-6 py-5 border-b" style={{ borderColor: "#E5E7EB" }}>
+            <p
+              className="text-[10.5px] font-semibold uppercase tracking-[0.16em] mb-3"
+              style={{ color: "#6B7280" }}
+            >
+              What happens next
+            </p>
+            <ul className="space-y-3">
+              <NextRow icon={Phone}>
+                A licensed pharmacist will <strong className="font-semibold" style={{ color: WINE }}>call you</strong> to
+                confirm dosage and delivery.
+              </NextRow>
+              <NextRow icon={Clock}>
+                Usually within <strong className="font-semibold" style={{ color: WINE }}>15 minutes</strong> during pharmacy
+                hours (8&nbsp;AM – 10&nbsp;PM).
+              </NextRow>
+              <NextRow icon={ShieldCheck}>
+                Your details are kept <strong className="font-semibold" style={{ color: WINE }}>private and secure</strong>.
+              </NextRow>
+            </ul>
           </div>
 
           {/* Actions */}
-          <div className="px-6 pb-6 flex flex-col sm:flex-row gap-2.5">
+          <div className="px-6 py-4 flex flex-col sm:flex-row gap-2.5 bg-white">
             <button
               type="button"
               onClick={reset}
-              className="flex-1 h-11 rounded-full text-sm font-semibold border border-neutral-300 text-neutral-700 hover:bg-neutral-50 transition-colors"
+              className="flex-1 h-11 px-5 text-sm font-semibold border transition-colors hover:bg-neutral-50"
+              style={{ borderColor: "#D1D5DB", color: WINE, borderRadius: 4 }}
             >
-              Upload Another
+              Upload another
+            </button>
+            <button
+              type="button"
+              onClick={() => { close(); navigate("/user?tab=prescriptions") }}
+              className="flex-1 h-11 px-5 text-sm font-semibold inline-flex items-center justify-center gap-2 border transition-colors hover:bg-neutral-50"
+              style={{ borderColor: "#D1D5DB", color: WINE, borderRadius: 4 }}
+            >
+              View my prescriptions
+              <ArrowRight className="h-4 w-4" />
             </button>
             <Link
               href="/shop"
-              className="flex-1 h-11 rounded-full text-sm font-bold text-white flex items-center justify-center hover:opacity-90 transition-opacity"
-              style={{ background: `linear-gradient(135deg, ${ACCENT_ORG} 0%, ${ACCENT_RED} 100%)` }}
+              onClick={close}
+              className="flex-1 h-11 px-5 text-sm font-semibold text-white inline-flex items-center justify-center gap-2 transition-opacity hover:opacity-90"
+              style={{
+                background: `linear-gradient(135deg, ${ACCENT_ORG} 0%, ${ACCENT_RED} 100%)`,
+                borderRadius: 4,
+              }}
             >
-              Continue Shopping
+              Continue shopping
+              <ArrowRight className="h-4 w-4" />
             </Link>
           </div>
 
-          {/* WhatsApp footer link */}
-          <div className="px-6 pb-5 text-center border-t border-neutral-100 pt-4">
+          {/* Footer help */}
+          <div
+            className="px-6 py-3 border-t flex items-center justify-between gap-3"
+            style={{ borderColor: "#E5E7EB", background: "#F9FAFB" }}
+          >
+            <span className="text-[11px]" style={{ color: "#6B7280" }}>
+              Need help right now?
+            </span>
             <a
               href={whatsappHref}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 text-xs font-semibold text-neutral-600 hover:text-neutral-900"
+              className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider transition-colors"
+              style={{ color: WINE }}
             >
-              Need help?
-              <span className="font-bold" style={{ color: "#25D366" }}>Chat on WhatsApp</span>
+              <MessageCircle className="h-3.5 w-3.5" />
+              Chat on WhatsApp
             </a>
           </div>
         </div>
