@@ -317,7 +317,10 @@ export function Navbar() {
                                 navigate("/")
                               }}
                               className="w-full h-12 rounded-full text-white font-semibold text-sm inline-flex items-center justify-center gap-2 transition-opacity hover:opacity-90"
-                              style={{ background: "#EC4899" }}
+                              style={{
+                                background: `linear-gradient(135deg, ${ACCENT_ORANGE} 0%, ${ACCENT_RED} 100%)`,
+                                boxShadow: "0 6px 18px -6px rgba(185,28,28,0.45)",
+                              }}
                             >
                               Sign Out
                               <ArrowRight className="h-4 w-4" />
