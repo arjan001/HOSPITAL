@@ -41,7 +41,7 @@ export function upsertCustomer(input: Partial<CustomerRecord> & { id: string }):
     source: input.source ?? existing?.source ?? "unknown",
     createdAt: existing?.createdAt ?? input.createdAt ?? now,
     lastSeenAt: now,
-    signupCount: existing?.signupCount ?? 1,
+    signupCount: (existing?.signupCount ?? 0) + 1,
   }
   const others = all.filter((c) => c.id !== input.id)
   writeCustomers([next, ...others])
@@ -62,7 +62,12 @@ export function useCustomerMirror(): void {
   const lastIdRef = useRef<string | null>(null)
 
   useEffect(() => {
-    if (!isSignedIn || !user) return
+    // Reset the dedupe ref when the user signs out so the next sign-in
+    // re-mirrors and refreshes lastSeenAt.
+    if (!isSignedIn || !user) {
+      lastIdRef.current = null
+      return
+    }
     if (lastIdRef.current === user.id) return
     lastIdRef.current = user.id
 
