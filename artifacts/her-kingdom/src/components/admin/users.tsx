@@ -374,7 +374,7 @@ export function UsersManagement() {
               </div>
               <div>
                 <Label className="text-sm font-medium mb-1.5 block">Email Address</Label>
-                <Input type="email" value={inviteForm.email} onChange={(e) => setInviteForm({ ...inviteForm, email: e.target.value })} placeholder="jane@herkingdom.co.ke" className="h-10" required />
+                <Input type="email" value={inviteForm.email} onChange={(e) => setInviteForm({ ...inviteForm, email: e.target.value })} placeholder="jane@shaniidrx.com" className="h-10" required />
               </div>
               <div>
                 <Label className="text-sm font-medium mb-1.5 block">Temporary Password</Label>

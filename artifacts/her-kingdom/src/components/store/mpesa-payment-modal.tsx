@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 
-const BUSINESS_NAME = "HER KINGDOM"
+const BUSINESS_NAME = "SHANIID RX"
 
 type Step = "prompt" | "pushing" | "waiting" | "success" | "failed"
 

@@ -32,7 +32,7 @@ export function FaqSection({ faqs }: { faqs: Faq[] }) {
             Everything you need to know about ordering medications, vitamins
             and medical supplies from{" "}
             <Link href="/" className="underline underline-offset-4">
-              herkingdom.shop
+              shaniidrx.com
             </Link>
             . Still have questions? WhatsApp us on {phoneDisplay}.
           </p>

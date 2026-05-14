@@ -20,7 +20,7 @@ const fallbackPosts: SocialPost[] = [
     platform: "instagram",
     thumbnailUrl: "",
     caption: "New wellness arrivals just dropped!",
-    url: "https://www.instagram.com/herkingdom_pharmacy/",
+    url: "https://www.instagram.com/shaniidrx/",
     authorName: "@rxpharmacy_ke",
   },
   {
@@ -28,7 +28,7 @@ const fallbackPosts: SocialPost[] = [
     platform: "tiktok",
     thumbnailUrl: "",
     caption: "How to read your prescription label like a pro",
-    url: "https://www.tiktok.com/@herkingdom_pharmacy",
+    url: "https://www.tiktok.com/@shaniidrx",
     authorName: "@rxpharmacy_ke",
   },
   {
@@ -36,7 +36,7 @@ const fallbackPosts: SocialPost[] = [
     platform: "instagram",
     thumbnailUrl: "",
     caption: "Elegant pieces for every occasion",
-    url: "https://www.instagram.com/herkingdom_pharmacy/",
+    url: "https://www.instagram.com/shaniidrx/",
     authorName: "@rxpharmacy_ke",
   },
   {
@@ -44,7 +44,7 @@ const fallbackPosts: SocialPost[] = [
     platform: "tiktok",
     thumbnailUrl: "",
     caption: "Wellness essentials from Shaniid RX",
-    url: "https://www.tiktok.com/@herkingdom_pharmacy",
+    url: "https://www.tiktok.com/@shaniidrx",
     authorName: "@rxpharmacy_ke",
   },
 ]
@@ -118,7 +118,7 @@ export function SocialFeed() {
         {/* Social handles */}
         <div className="flex items-center justify-center gap-6 mb-8">
           <a
-            href="https://www.instagram.com/herkingdom_pharmacy/"
+            href="https://www.instagram.com/shaniidrx/"
             target="_blank"
             rel="noopener noreferrer"
             className="flex items-center gap-2 text-sm font-medium text-foreground hover:underline underline-offset-2"
@@ -132,7 +132,7 @@ export function SocialFeed() {
             <ExternalLink className="h-3 w-3 text-muted-foreground" />
           </a>
           <a
-            href="https://www.tiktok.com/@herkingdom_pharmacy"
+            href="https://www.tiktok.com/@shaniidrx"
             target="_blank"
             rel="noopener noreferrer"
             className="flex items-center gap-2 text-sm font-medium text-foreground hover:underline underline-offset-2"

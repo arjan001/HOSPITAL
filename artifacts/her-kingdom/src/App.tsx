@@ -196,6 +196,7 @@ function Router() {
       <Route path="/speak-to-a-doctor" component={SpeakToADoctorPage} />
       {/* Admin */}
       <Route path="/admin" component={AdminDashboard} />
+      <Route path="/admin/dashboard" component={AdminDashboard} />
       <Route path="/admin/analytics" component={AdminAnalytics} />
       <Route path="/admin/banners" component={AdminBanners} />
       <Route path="/admin/blogs" component={AdminBlogs} />

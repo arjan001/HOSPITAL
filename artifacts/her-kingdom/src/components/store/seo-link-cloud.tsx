@@ -32,7 +32,7 @@ export function SeoLinkCloud({ count = 50 }: { count?: number }) {
       }}
     >
       <h2 id="seo-cluster-heading">
-        Shop by Need — Popular Pharmacy Searches on herkingdom.shop
+        Shop by Need — Popular Pharmacy Searches on shaniidrx.com
       </h2>
       <ul>
         {keywords.map((k) => (

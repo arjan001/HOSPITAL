@@ -269,16 +269,16 @@ export function AdminProducts() {
 
   const downloadTemplate = () => {
     const sampleRows = [
-      ['"Classic Slim Fit Jeans"', '3500', '5000', 'jeans', '"Premium denim slim-fit jeans, comfortable stretch fabric."', '"https://example.com/img1.jpg|https://example.com/img2.jpg"', '"thrift, vintage, slim-fit"', 'yes', 'yes', '30', 'yes', '"28, 30, 32, 34"', '"Blue, Black"'],
-      ['"Denim Jacket Oversized"', '4200', '', 'jackets', '"Oversized denim jacket with button closure."', '"https://example.com/jacket1.jpg"', '"jacket, oversized"', 'yes', 'no', '', 'yes', '"S, M, L, XL"', '"Washed Blue"'],
-      ['"High Waist Dungarees"', '3800', '4500', 'dungarees', '"Vintage-style high waist dungarees."', '"https://example.com/dung1.jpg"', '"dungaree, vintage"', 'no', 'yes', '15', 'yes', '"S, M, L"', '""'],
+      ['"Paracetamol 500mg (24 tablets)"', '280', '350', 'pain-relief', '"Effective relief for headaches, fever and mild pain. Pack of 24 tablets."', '"https://example.com/paracetamol.jpg"', '"pain relief, fever, headache"', 'yes', 'yes', '20', 'yes', '""', '""'],
+      ['"Vitamin C 1000mg (60 tablets)"', '320', '', 'vitamins', '"Daily immune support, 1000mg per tablet, 60-day supply."', '"https://example.com/vitc.jpg"', '"vitamin, immunity, supplement"', 'yes', 'no', '', 'yes', '""', '""'],
+      ['"Digital Blood Pressure Monitor"', '300', '420', 'medical-devices', '"Upper-arm digital BP monitor with memory and irregular-heartbeat detection."', '"https://example.com/bp-monitor.jpg"', '"bp, hypertension, device"', 'no', 'yes', '15', 'yes', '""', '""'],
     ]
     const csv = [CSV_HEADERS.join(","), ...sampleRows.map(r => r.join(","))].join("\n")
     const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8" })
     const url = URL.createObjectURL(blob)
     const a = document.createElement("a")
     a.href = url
-    a.download = "classy-collections-product-import-template.csv"
+    a.download = "shaniid-rx-product-import-template.csv"
     a.click()
     URL.revokeObjectURL(url)
   }
@@ -425,7 +425,7 @@ export function AdminProducts() {
     const url = URL.createObjectURL(blob)
     const a = document.createElement("a")
     a.href = url
-    a.download = "classy-collections-products.csv"
+    a.download = "shaniid-rx-products.csv"
     a.click()
     URL.revokeObjectURL(url)
   }
