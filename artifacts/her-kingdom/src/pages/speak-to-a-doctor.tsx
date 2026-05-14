@@ -8,6 +8,7 @@ import {
   MessageSquare, Phone, Clock, Users, Check, Lock, ArrowLeft, ArrowRight,
   Send, Plus, ShieldCheck, Video, X, FileText, Stethoscope, Brain, Pill, HeartPulse,
 } from "lucide-react"
+import { DailyCall } from "@/components/video/daily-call"
 
 /* ── Palette (aligned with upload-prescription) ──────────── */
 const WINE       = "#3D0814"
@@ -627,56 +628,14 @@ export default function SpeakToADoctorPage() {
 
   /* ══════════════════ VIDEO CALL ══════════════════════════ */
   if (screen === "videocall") return (
-    <div className="fixed inset-0 flex flex-col" style={{ background: CALL_BG }}>
-      <div className="flex items-start justify-between p-5 z-10">
-        <div className="rounded-xl bg-white px-4 py-2.5 shadow-lg">
-          <p className="font-bold text-sm" style={{ color: WINE }}>Dr. Salad Khalif</p>
-          <p className="text-xs flex items-center gap-1.5 mt-0.5" style={{ color: "#6b7280" }}>
-            <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block" /> General Practice
-          </p>
-        </div>
-        <div className="rounded-xl bg-white px-4 py-2.5 font-bold text-sm shadow-lg" style={{ color: WINE }}>
-          {fmtTime(callTimer)}
-        </div>
-      </div>
-
-      <div className="absolute top-4 right-5 z-20" style={{ marginTop: 70 }}>
-        <div className="w-32 h-24 rounded-xl overflow-hidden bg-gray-800 border-2 border-white/20 flex items-center justify-center">
-          <Users className="h-6 w-6 text-white/40" />
-        </div>
-      </div>
-
-      <div className="flex-1 flex items-center justify-center">
-        <div
-          className="w-52 h-52 rounded-full flex items-center justify-center"
-          style={{
-            background: `linear-gradient(135deg, ${ACCENT_ORG} 0%, ${ACCENT_RED} 100%)`,
-            border: "4px solid rgba(255,255,255,0.2)",
-            boxShadow: "0 0 80px rgba(249,115,22,0.25)",
-          }}
-        >
-          <span className="text-white font-extrabold text-5xl">SK</span>
-        </div>
-      </div>
-
-      <div className="pb-12 flex items-center justify-center gap-4">
-        {[
-          { icon: <Video className="h-5 w-5" />,         action: () => {} },
-          { icon: <Phone className="h-5 w-5" />,         action: () => {} },
-          { icon: <MessageSquare className="h-5 w-5" />, action: () => setScreen("chat") },
-          { icon: <X className="h-5 w-5 text-white" />,  action: () => setScreen("summary"), dark: true },
-        ].map((btn, i) => (
-          <button
-            key={i}
-            onClick={btn.action}
-            className="w-14 h-14 rounded-full flex items-center justify-center transition-transform hover:scale-105 active:scale-95 shadow-lg"
-            style={{ background: btn.dark ? ACCENT_RED : "#fff", color: btn.dark ? "#fff" : WINE }}
-          >
-            {btn.icon}
-          </button>
-        ))}
-      </div>
-    </div>
+    <DailyCall
+      roomName={`consult-${(category || "general").toLowerCase().replace(/\s+/g, "-").slice(0, 20)}-${Math.floor(Date.now() / 1000 / 600)}`}
+      userName="Patient"
+      title="Dr. Salad Khalif"
+      subtitle="General Practice · Connected"
+      onSwitchToChat={() => setScreen("chat")}
+      onLeave={() => setScreen("summary")}
+    />
   )
 
   /* ══════════════════ CHAT ════════════════════════════════ */

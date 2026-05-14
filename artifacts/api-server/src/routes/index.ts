@@ -70,5 +70,6 @@ router.use("/admin/analytics", adminAnalyticsRouter);
 router.use("/admin/users", adminUsersRouter);
 router.use("/auth", authRouter);
 router.use("/payments/payhero", payheroRouter);
+router.use("/video", videoDailyRouter);
 
 export default router;

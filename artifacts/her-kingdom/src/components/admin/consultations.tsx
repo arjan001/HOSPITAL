@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import { AdminShell } from "./admin-shell"
 import { useCmsDoc, newId } from "@/lib/cms-store"
+import { DailyCall } from "@/components/video/daily-call"
 import {
   MessageSquare,
   Phone,
@@ -99,6 +100,7 @@ export function AdminConsultations() {
   const [filter, setFilter] = useState<ConsultStatus | "all">("all")
   const [search, setSearch] = useState("")
   const [activeId, setActiveId] = useState<string | null>(items[0]?.id || null)
+  const [videoOpen, setVideoOpen] = useState(false)
   const messageEndRef = useRef<HTMLDivElement>(null)
 
   const filtered = useMemo(() => {
@@ -313,9 +315,18 @@ export function AdminConsultations() {
                   {/* Chat */}
                   <div className="flex flex-col border-r border-border min-h-0">
                     {active.mode !== "chat" && active.status === "live" && (
-                      <div className="bg-emerald-600/10 border-b border-emerald-600/30 px-4 py-3 text-emerald-700 text-xs font-semibold inline-flex items-center gap-2">
-                        <span className="w-2 h-2 rounded-full bg-emerald-600 animate-pulse" />
-                        {active.mode === "video" ? "Video" : "Voice"} call in progress (placeholder)
+                      <div className="bg-emerald-600/10 border-b border-emerald-600/30 px-4 py-3 flex items-center justify-between gap-2">
+                        <span className="text-emerald-700 text-xs font-semibold inline-flex items-center gap-2">
+                          <span className="w-2 h-2 rounded-full bg-emerald-600 animate-pulse" />
+                          {active.mode === "video" ? "Video" : "Voice"} consultation ready
+                        </span>
+                        <button
+                          onClick={() => setVideoOpen(true)}
+                          className="h-8 px-3 rounded-full text-xs font-bold text-white inline-flex items-center gap-1.5 hover:opacity-90"
+                          style={{ background: "#B91C1C" }}
+                        >
+                          {active.mode === "video" ? "Join video call" : "Start voice call"}
+                        </button>
                       </div>
                     )}
                     <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-muted/10 max-h-[55vh]">
@@ -381,6 +392,16 @@ export function AdminConsultations() {
 
       <style>{`.cinput{width:100%;height:2rem;padding:0 0.6rem;border-radius:0.375rem;border:1px solid hsl(var(--border));background:hsl(var(--background));font-size:0.8125rem;}
         textarea.cinput{height:auto;padding:0.4rem 0.6rem;font-family:inherit;}`}</style>
+    {videoOpen && active && (
+        <DailyCall
+          roomName={`consult-${active.id}`}
+          userName={active.doctorName || "Doctor"}
+          isOwner
+          title={`Patient: ${active.patientName}`}
+          subtitle={active.topic || "Live consultation"}
+          onLeave={() => setVideoOpen(false)}
+        />
+      )}
     </AdminShell>
   )
 }
