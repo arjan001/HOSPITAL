@@ -3,7 +3,12 @@
 import { useMemo, useState } from "react"
 import { AdminShell } from "./admin-shell"
 import { useCmsDoc, newId } from "@/lib/cms-store"
-import { Shield, Plus, Trash2, UserPlus, Pencil, X, Lock } from "lucide-react"
+import {
+  useEffectivePermissions,
+  setViewAsRoleId,
+  setCurrentUserId,
+} from "@/lib/permissions"
+import { Shield, Plus, Trash2, UserPlus, Pencil, X, Lock, Eye, RotateCcw } from "lucide-react"
 
 export type Role = {
   id: string
@@ -62,10 +67,30 @@ const PERMISSION_GROUPS: { group: string; perms: { id: string; label: string; de
     ],
   },
   {
+    group: "Operations",
+    perms: [
+      { id: "inventory.view", label: "View inventory" },
+      { id: "inventory.edit", label: "Edit stock & safety levels" },
+      { id: "sourcing.view", label: "View sourcing & suppliers" },
+      { id: "sourcing.manage", label: "Create POs / approve quotes" },
+      { id: "delivery.manage", label: "Manage delivery zones & vendors" },
+    ],
+  },
+  {
+    group: "Communications",
+    perms: [
+      { id: "video.host", label: "Host video consultations", desc: "Allows joining a Daily room as the call owner." },
+      { id: "chat.respond", label: "Respond to live chat" },
+      { id: "whatsapp.send", label: "Send WhatsApp messages" },
+      { id: "marketing.broadcast", label: "Send email / SMS broadcasts" },
+    ],
+  },
+  {
     group: "System",
     perms: [
       { id: "users.manage", label: "Manage staff users" },
       { id: "roles.manage", label: "Manage roles & permissions", desc: "Owner-level access" },
+      { id: "integrations.manage", label: "Manage integrations & API keys" },
       { id: "analytics.view", label: "View analytics" },
     ],
   },
@@ -94,6 +119,8 @@ const SEED_ROLES: Role[] = [
       "consult.handle",
       "products.view",
       "orders.view",
+      "inventory.view",
+      "chat.respond",
     ],
   },
   {
@@ -101,14 +128,29 @@ const SEED_ROLES: Role[] = [
     name: "Doctor",
     description: "Conducts patient consultations and writes recommendations.",
     color: "#15803D",
-    permissions: ["consult.handle", "rx.view", "rx.recommend", "products.view"],
+    permissions: [
+      "consult.handle",
+      "rx.view",
+      "rx.recommend",
+      "products.view",
+      "video.host",
+      "chat.respond",
+    ],
   },
   {
     id: "role-fulfillment",
     name: "Fulfillment",
     description: "Manages orders, dispatches, and inventory updates.",
     color: "#B45309",
-    permissions: ["orders.view", "orders.update", "products.view", "products.edit"],
+    permissions: [
+      "orders.view",
+      "orders.update",
+      "products.view",
+      "products.edit",
+      "inventory.view",
+      "inventory.edit",
+      "delivery.manage",
+    ],
   },
   {
     id: "role-marketing",
@@ -131,6 +173,7 @@ export function AdminRolesPermissions() {
   const [activeRoleId, setActiveRoleId] = useCmsDoc<string>("roles.activeId", SEED_ROLES[0].id)
   const [editingUser, setEditingUser] = useState<StaffUser | null>(null)
   const [showNewUser, setShowNewUser] = useState(false)
+  const eff = useEffectivePermissions()
 
   const active = useMemo(() => roles.find((r) => r.id === activeRoleId) || roles[0], [roles, activeRoleId])
 
@@ -196,6 +239,52 @@ export function AdminRolesPermissions() {
           <p className="text-sm text-muted-foreground mt-1">
             Define what each staff member can access. Built-in <strong>Owner</strong> role is locked.
           </p>
+        </div>
+
+        {/* Dev tool: preview the panel as another role without losing super-admin access. */}
+        <div className="rounded-lg border border-border bg-secondary/30 p-3 sm:p-4 flex items-start gap-3 flex-wrap">
+          <div className="flex items-center gap-2">
+            <div className="h-9 w-9 rounded-md grid place-items-center bg-background border border-border">
+              <Eye className="h-4 w-4" />
+            </div>
+            <div>
+              <p className="text-sm font-semibold">Preview panel as another role</p>
+              <p className="text-[11px] text-muted-foreground">
+                Dev only — overrides UI gating in your browser. Super-admin actions remain available.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 ml-auto">
+            <select
+              value={eff.viewAsRoleId || ""}
+              onChange={(e) => setViewAsRoleId(e.target.value || null)}
+              className="h-9 px-2 text-sm rounded-md border border-border bg-background"
+              disabled={!eff.isSuperAdmin}
+            >
+              <option value="">— My own role ({eff.role?.name || "—"}) —</option>
+              {roles.map((r) => (
+                <option key={r.id} value={r.id}>{r.name}</option>
+              ))}
+            </select>
+            <select
+              value={eff.user?.id || ""}
+              onChange={(e) => setCurrentUserId(e.target.value || null)}
+              className="h-9 px-2 text-sm rounded-md border border-border bg-background"
+              title="Switch the active staff identity"
+            >
+              {users.map((u) => (
+                <option key={u.id} value={u.id}>{u.name} · {roles.find((r) => r.id === u.roleId)?.name || "—"}</option>
+              ))}
+            </select>
+            {eff.viewAsRoleId && (
+              <button
+                onClick={() => setViewAsRoleId(null)}
+                className="h-9 px-3 rounded-md text-xs font-semibold border border-border hover:bg-secondary inline-flex items-center gap-1.5"
+              >
+                <RotateCcw className="h-3 w-3" /> Reset
+              </button>
+            )}
+          </div>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-[260px_1fr] gap-5">

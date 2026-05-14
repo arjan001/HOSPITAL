@@ -1,8 +1,12 @@
 "use client"
 
 import { useMemo, useState } from "react"
+import { Link } from "wouter"
 import { AdminShell } from "./admin-shell"
-import { useCmsDoc, newId } from "@/lib/cms-store"
+import { useCmsDoc, newId, cmsStore } from "@/lib/cms-store"
+import { usePermission } from "@/lib/permissions"
+import { notify } from "@/lib/notify"
+import type { Consultation } from "./consultations"
 import {
   ClipboardList,
   Search,
@@ -23,12 +27,30 @@ import {
   ShieldCheck,
   AlertTriangle,
   Send,
+  Lock,
+  Video,
 } from "lucide-react"
 
 const WINE = "#3D0814"
 const ACCENT = "#F97316"
 
 export type PrescriptionStatus = "pending" | "verified" | "dispensed" | "rejected"
+
+export type VerificationCheck = {
+  imageClear: boolean
+  signaturePresent: boolean
+  patientIdMatches: boolean
+  drugsLegible: boolean
+  refillStatusChecked: boolean
+}
+
+export const EMPTY_VERIFICATION: VerificationCheck = {
+  imageClear: false,
+  signaturePresent: false,
+  patientIdMatches: false,
+  drugsLegible: false,
+  refillStatusChecked: false,
+}
 
 export type Prescription = {
   id: string
@@ -40,9 +62,19 @@ export type Prescription = {
   status: PrescriptionStatus
   pharmacistNote: string
   recommendedDrugs: { name: string; dosage: string; instructions: string }[]
+  verification?: VerificationCheck
+  consultationId?: string  // backref when this Rx was issued from a consultation
   createdAt: string
   updatedAt: string
 }
+
+const VERIFICATION_ITEMS: Array<{ key: keyof VerificationCheck; label: string; help: string }> = [
+  { key: "imageClear",          label: "Prescription image is clear and legible",     help: "Reject if blurry or cropped." },
+  { key: "signaturePresent",    label: "Prescriber signature / stamp is present",     help: "Required for controlled substances." },
+  { key: "patientIdMatches",    label: "Patient name & phone match the order",        help: "Match against the order shipping details." },
+  { key: "drugsLegible",        label: "Drug names, dosages and quantities are clear", help: "All recommended drugs must match the script." },
+  { key: "refillStatusChecked", label: "Refill / repeat status checked",              help: "Confirm with prescriber if unclear." },
+]
 
 const SEED: Prescription[] = [
   {
@@ -101,6 +133,8 @@ export function AdminPrescriptions() {
   const [zoomImage, setZoomImage] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [imageBroken, setImageBroken] = useState(false)
+  const canVerify = usePermission("rx.verify")
+  const canConsult = usePermission("consult.handle")
   const closeModal = () => {
     setZoomImage(false)
     setConfirmDelete(false)
@@ -138,7 +172,56 @@ export function AdminPrescriptions() {
     setItems((arr) => arr.map((p) => (p.id === updated.id ? updated : p)))
   }
 
-  const setStatus = (status: PrescriptionStatus) => updateActive({ status })
+  const verification = active?.verification || EMPTY_VERIFICATION
+  const verifiedCount = Object.values(verification).filter(Boolean).length
+  const fullyChecked = verifiedCount === VERIFICATION_ITEMS.length
+  const toggleCheck = (key: keyof VerificationCheck) =>
+    updateActive({ verification: { ...verification, [key]: !verification[key] } })
+
+  const setStatus = (status: PrescriptionStatus) => {
+    if (status === "verified" && !fullyChecked) {
+      notify.warning("Complete the verification checklist before approving.")
+      return
+    }
+    if ((status === "verified" || status === "dispensed" || status === "rejected") && !canVerify) {
+      notify.warning("You don't have permission to change this status.")
+      return
+    }
+    updateActive({ status })
+  }
+
+  // Cross-module: spin up a video consultation pre-filled with this Rx so the
+  // pharmacist can clarify with the patient before dispensing.
+  const openConsultation = () => {
+    if (!active) return
+    const list = cmsStore.get<Consultation[]>("consultations", [])
+    const existing = list.find((c) => c.phone === active.phone && c.status !== "completed" && c.status !== "missed")
+    if (existing) {
+      notify.info(`Existing ${existing.status} consultation for this patient — opening it.`)
+      window.location.assign("/admin/consultations")
+      return
+    }
+    const c: Consultation = {
+      id: newId("c"),
+      patientName: active.patientName || "Patient",
+      phone: active.phone,
+      doctorName: "Dr. on call",
+      mode: "video",
+      status: "queued",
+      topic: `Clarify Rx ${active.id}`,
+      startedAt: new Date().toISOString(),
+      messages: [
+        { id: newId("m"), from: "system", text: `Opened from prescription ${active.id} for clarification.`, at: new Date().toISOString() },
+      ],
+      doctorNote: active.pharmacistNote,
+      recommendedDrugs: active.recommendedDrugs.map((r) => ({ ...r })),
+    }
+    cmsStore.set("consultations", [c, ...list])
+    // Backref so the prescription card can deep-link to the clarifying call.
+    updateActive({ consultationId: c.id })
+    notify.saved(`Consultation ${c.id} created — opening`)
+    window.location.assign("/admin/consultations")
+  }
 
   const addRecommendation = () =>
     updateActive({
@@ -442,6 +525,65 @@ export function AdminPrescriptions() {
                   </div>
                 </div>
 
+                {/* Verification checklist */}
+                <div>
+                  <h3 className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold mb-2 inline-flex items-center gap-1.5">
+                    <ShieldCheck className="h-3.5 w-3.5" /> Verification checklist
+                    <span
+                      className="ml-auto text-[10px] font-bold px-1.5 py-0.5 rounded-full"
+                      style={fullyChecked
+                        ? { background: "#DCFCE7", color: "#166534" }
+                        : { background: "#FEF3C7", color: "#92400E" }}
+                    >
+                      {verifiedCount}/{VERIFICATION_ITEMS.length}
+                    </span>
+                  </h3>
+                  <div className="space-y-1.5 rounded-md border p-2.5" style={{ borderColor: "rgba(0,0,0,0.08)" }}>
+                    {VERIFICATION_ITEMS.map((it) => {
+                      const on = !!verification[it.key]
+                      return (
+                        <label
+                          key={it.key}
+                          className={`flex items-start gap-2 px-2 py-1.5 rounded-md cursor-pointer transition-colors ${
+                            on ? "bg-emerald-50" : "hover:bg-muted/40"
+                          } ${!canVerify ? "opacity-60 cursor-not-allowed" : ""}`}
+                          title={canVerify ? it.help : "Requires rx.verify permission"}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={on}
+                            disabled={!canVerify}
+                            onChange={() => toggleCheck(it.key)}
+                            className="mt-0.5 flex-shrink-0"
+                          />
+                          <div className="min-w-0">
+                            <p className={`text-xs font-medium ${on ? "text-emerald-800" : ""}`}>{it.label}</p>
+                            <p className="text-[10px] text-muted-foreground">{it.help}</p>
+                          </div>
+                        </label>
+                      )
+                    })}
+                  </div>
+                  <button
+                    onClick={openConsultation}
+                    disabled={!canConsult}
+                    className="mt-2 w-full h-8 rounded-md text-[11px] font-semibold border border-dashed inline-flex items-center justify-center gap-1.5 hover:bg-secondary disabled:opacity-40 disabled:cursor-not-allowed"
+                    style={{ borderColor: "#3D0814", color: "#3D0814" }}
+                    title={canConsult ? "Open a video consultation with this patient" : "Requires consult.handle permission"}
+                  >
+                    <Video className="h-3.5 w-3.5" />
+                    Clarify with patient (video)
+                  </button>
+                  {active.consultationId && (
+                    <Link
+                      href="/admin/consultations"
+                      className="mt-1 block text-[11px] text-center text-muted-foreground hover:text-foreground underline"
+                    >
+                      Open source consultation {active.consultationId} →
+                    </Link>
+                  )}
+                </div>
+
                 {/* Pharmacist note */}
                 <div>
                   <h3 className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold mb-2 inline-flex items-center gap-1.5">
@@ -503,23 +645,32 @@ export function AdminPrescriptions() {
                 <Trash2 className="h-4 w-4" /> Delete
               </button>
               <div className="flex items-center gap-2 flex-wrap justify-end">
+                {!canVerify && (
+                  <span className="text-[11px] text-muted-foreground inline-flex items-center gap-1 mr-2" title="Requires rx.verify permission">
+                    <Lock className="h-3 w-3" /> Read-only
+                  </span>
+                )}
                 <button
                   onClick={() => setStatus("rejected")}
-                  className="h-10 px-4 rounded-lg text-sm font-semibold border inline-flex items-center gap-1.5 hover:bg-red-50"
+                  disabled={!canVerify}
+                  className="h-10 px-4 rounded-lg text-sm font-semibold border inline-flex items-center gap-1.5 hover:bg-red-50 disabled:opacity-40 disabled:cursor-not-allowed"
                   style={{ borderColor: "#FCA5A5", color: "#991B1B" }}
                 >
                   <XCircle className="h-4 w-4" /> Reject
                 </button>
                 <button
                   onClick={() => setStatus("dispensed")}
-                  className="h-10 px-4 rounded-lg text-sm font-semibold border inline-flex items-center gap-1.5 hover:bg-blue-50"
+                  disabled={!canVerify}
+                  className="h-10 px-4 rounded-lg text-sm font-semibold border inline-flex items-center gap-1.5 hover:bg-blue-50 disabled:opacity-40 disabled:cursor-not-allowed"
                   style={{ borderColor: "#93C5FD", color: "#1E40AF" }}
                 >
                   <Send className="h-4 w-4" /> Mark dispensed
                 </button>
                 <button
                   onClick={() => setStatus("verified")}
-                  className="h-10 px-5 rounded-lg text-sm font-bold text-white inline-flex items-center gap-1.5 shadow-sm hover:opacity-90"
+                  disabled={!canVerify || !fullyChecked}
+                  title={!fullyChecked ? "Complete every verification check first" : undefined}
+                  className="h-10 px-5 rounded-lg text-sm font-bold text-white inline-flex items-center gap-1.5 shadow-sm hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed"
                   style={{ background: WINE }}
                 >
                   <ShieldCheck className="h-4 w-4" /> Approve

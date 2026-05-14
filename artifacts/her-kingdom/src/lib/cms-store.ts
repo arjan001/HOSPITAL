@@ -209,6 +209,7 @@ export const cmsStore = {
   get: readRaw,
   set: writeRaw,
   has: hasRaw,
+  subscribe,
 }
 
 /* ---------- Utilities ---------- */

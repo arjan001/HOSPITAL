@@ -1,9 +1,13 @@
 "use client"
 
 import { useEffect, useMemo, useRef, useState } from "react"
+import { Link } from "wouter"
 import { AdminShell } from "./admin-shell"
-import { useCmsDoc, newId } from "@/lib/cms-store"
+import { useCmsDoc, newId, cmsStore } from "@/lib/cms-store"
 import { DailyCall } from "@/components/video/daily-call"
+import { usePermission } from "@/lib/permissions"
+import { notify } from "@/lib/notify"
+import type { Prescription } from "./prescriptions"
 import {
   MessageSquare,
   Phone,
@@ -17,6 +21,11 @@ import {
   Clock,
   CheckCircle2,
   PhoneCall,
+  ClipboardList,
+  ShieldCheck,
+  AlertTriangle,
+  History,
+  Lock,
 } from "lucide-react"
 
 export type ConsultStatus = "queued" | "live" | "completed" | "missed"
@@ -103,6 +112,10 @@ export function AdminConsultations() {
   const [videoOpen, setVideoOpen] = useState(false)
   const messageEndRef = useRef<HTMLDivElement>(null)
 
+  const canHandle = usePermission("consult.handle")
+  const canHostVideo = usePermission("video.host")
+  const canRecommend = usePermission("rx.recommend")
+
   const filtered = useMemo(() => {
     return items
       .filter((c) => filter === "all" || c.status === filter)
@@ -178,6 +191,48 @@ export function AdminConsultations() {
     items.forEach((c) => out[c.status]++)
     return out
   }, [items])
+
+  // Cross-module: turn the active consultation's recommendations into a
+  // pending prescription record so the pharmacist can verify and dispense.
+  const pushToPrescriptions = () => {
+    if (!active) return
+    if (active.recommendedDrugs.length === 0) {
+      notify.warning("Add at least one recommended drug before pushing to the pharmacist.")
+      return
+    }
+    const list = cmsStore.get<Prescription[]>("prescriptions", [])
+    const rx: Prescription = {
+      id: newId("rx"),
+      patientName: active.patientName,
+      phone: active.phone,
+      imageUrl: "",
+      notes: `From consultation ${active.id} (${active.topic || "no topic"}).`,
+      status: "pending",
+      pharmacistNote: `Issued by ${active.doctorName} during a ${active.mode} consultation. ${active.doctorNote || ""}`.trim(),
+      recommendedDrugs: active.recommendedDrugs.map((r) => ({ ...r })),
+      consultationId: active.id,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    }
+    cmsStore.set("prescriptions", [rx, ...list])
+    notify.saved(`Sent to pharmacist queue · ${rx.id}`)
+  }
+
+  // Quick patient context — uses prior consultations + linked prescriptions.
+  const patientHistory = useMemo(() => {
+    if (!active) return null
+    const prior = items.filter(
+      (c) => c.id !== active.id && c.phone === active.phone && c.status === "completed",
+    )
+    const allRx = cmsStore.get<Prescription[]>("prescriptions", [])
+    const linkedRx = allRx.filter((r) => r.phone === active.phone)
+    return {
+      visits: prior.length,
+      lastVisit: prior[0]?.startedAt,
+      pendingRx: linkedRx.filter((r) => r.status === "pending").length,
+      verifiedRx: linkedRx.filter((r) => r.status === "verified" || r.status === "dispensed").length,
+    }
+  }, [active, items])
 
   return (
     <AdminShell title="Consultations">
@@ -291,12 +346,12 @@ export function AdminConsultations() {
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
-                    {active.status === "queued" && (
+                    {active.status === "queued" && canHandle && (
                       <button onClick={startCall} className="h-8 px-3 rounded-md text-xs font-semibold bg-emerald-600 text-white inline-flex items-center gap-1.5">
                         <PhoneCall className="h-3.5 w-3.5" /> Start
                       </button>
                     )}
-                    {active.status === "live" && (
+                    {active.status === "live" && canHandle && (
                       <button onClick={endCall} className="h-8 px-3 rounded-md text-xs font-semibold bg-red-600 text-white inline-flex items-center gap-1.5">
                         End call
                       </button>
@@ -307,8 +362,42 @@ export function AdminConsultations() {
                         {active.durationSec ? `${Math.round(active.durationSec / 60)} min` : "Completed"}
                       </span>
                     )}
+                    {!canHandle && active.status !== "completed" && (
+                      <span className="text-[11px] text-muted-foreground inline-flex items-center gap-1" title="Requires consult.handle permission">
+                        <Lock className="h-3 w-3" /> View only
+                      </span>
+                    )}
                   </div>
                 </div>
+
+                {/* Patient context strip */}
+                {patientHistory && (
+                  <div className="px-5 py-2.5 border-b border-border bg-muted/20 flex items-center gap-3 flex-wrap text-[11px]">
+                    <span className="inline-flex items-center gap-1.5 text-muted-foreground">
+                      <History className="h-3 w-3" />
+                      <strong className="text-foreground">{patientHistory.visits}</strong> prior visit{patientHistory.visits === 1 ? "" : "s"}
+                    </span>
+                    {patientHistory.lastVisit && (
+                      <span className="text-muted-foreground">
+                        Last: <strong className="text-foreground">{timeAgo(patientHistory.lastVisit)}</strong>
+                      </span>
+                    )}
+                    <span className="inline-flex items-center gap-1.5 text-muted-foreground">
+                      <ClipboardList className="h-3 w-3" />
+                      <strong className="text-foreground">{patientHistory.pendingRx}</strong> pending Rx · <strong className="text-foreground">{patientHistory.verifiedRx}</strong> verified
+                    </span>
+                    {active.recommendedDrugs.length > 0 && canRecommend && (
+                      <button
+                        onClick={pushToPrescriptions}
+                        className="ml-auto h-7 px-3 rounded-full text-[11px] font-semibold text-white inline-flex items-center gap-1.5 hover:opacity-90"
+                        style={{ background: "#3D0814" }}
+                      >
+                        <ShieldCheck className="h-3 w-3" />
+                        Push to pharmacist queue
+                      </button>
+                    )}
+                  </div>
+                )}
 
                 {/* Body: chat + side panel */}
                 <div className="flex-1 grid grid-cols-1 lg:grid-cols-[1fr_300px] min-h-0">
@@ -319,10 +408,16 @@ export function AdminConsultations() {
                         <span className="text-emerald-700 text-xs font-semibold inline-flex items-center gap-2">
                           <span className="w-2 h-2 rounded-full bg-emerald-600 animate-pulse" />
                           {active.mode === "video" ? "Video" : "Voice"} consultation ready
+                          {!canHostVideo && (
+                            <span className="text-amber-700 inline-flex items-center gap-1">
+                              <AlertTriangle className="h-3 w-3" /> Hosting requires video.host
+                            </span>
+                          )}
                         </span>
                         <button
                           onClick={() => setVideoOpen(true)}
-                          className="h-8 px-3 rounded-full text-xs font-bold text-white inline-flex items-center gap-1.5 hover:opacity-90"
+                          disabled={!canHostVideo}
+                          className="h-8 px-3 rounded-full text-xs font-bold text-white inline-flex items-center gap-1.5 hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed"
                           style={{ background: "#B91C1C" }}
                         >
                           {active.mode === "video" ? "Join video call" : "Start voice call"}
@@ -335,7 +430,7 @@ export function AdminConsultations() {
                       ))}
                       <div ref={messageEndRef} />
                     </div>
-                    <Composer onSend={sendDoctor} disabled={active.status === "completed" || active.status === "missed"} />
+                    <Composer onSend={sendDoctor} disabled={!canHandle || active.status === "completed" || active.status === "missed"} />
                   </div>
 
                   {/* Side panel: notes + recommendations */}
@@ -358,10 +453,28 @@ export function AdminConsultations() {
                           <Pill className="h-3.5 w-3.5" />
                           Recommended drugs
                         </label>
-                        <button onClick={addRec} className="text-xs font-semibold inline-flex items-center gap-1 hover:underline">
-                          <Plus className="h-3 w-3" /> Add
-                        </button>
+                        {canRecommend && (
+                          <button onClick={addRec} className="text-xs font-semibold inline-flex items-center gap-1 hover:underline">
+                            <Plus className="h-3 w-3" /> Add
+                          </button>
+                        )}
                       </div>
+                      {active.recommendedDrugs.length > 0 && canRecommend && (
+                        <button
+                          onClick={pushToPrescriptions}
+                          className="w-full mb-2 h-8 rounded-md text-xs font-semibold border border-dashed inline-flex items-center justify-center gap-1.5 hover:bg-secondary"
+                          style={{ borderColor: "#3D0814", color: "#3D0814" }}
+                        >
+                          <ClipboardList className="h-3.5 w-3.5" />
+                          Send to pharmacist as Rx
+                        </button>
+                      )}
+                      <Link
+                        href="/admin/prescriptions"
+                        className="block text-[11px] text-center text-muted-foreground hover:text-foreground underline mb-2"
+                      >
+                        Open prescription queue →
+                      </Link>
                       {active.recommendedDrugs.length === 0 && (
                         <p className="text-[11px] text-muted-foreground text-center py-3 border border-dashed border-border rounded-md">
                           None yet.
