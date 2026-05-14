@@ -57,7 +57,10 @@ export function isValidEmail(email: string): boolean {
 
 export function isValidPhone(phone: string): boolean {
   const cleaned = phone.replace(/[\s\-()]/g, "")
-  return /^(\+?254[17]\d{8}|0[17]\d{8}|011\d{7})$/.test(cleaned)
+  // Strict Kenyan formats:
+  if (/^(\+?254[17]\d{8}|0[17]\d{8}|011\d{7})$/.test(cleaned)) return true
+  // Generic international: optional +, then 9-15 digits
+  return /^\+?\d{9,15}$/.test(cleaned)
 }
 
 export function sanitizePhoneSearch(phone: string): string {

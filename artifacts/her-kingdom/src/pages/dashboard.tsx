@@ -1,6 +1,7 @@
 "use client"
 
-import { useState, useMemo, type ReactNode } from "react"
+import { useState, useMemo, useEffect, type ReactNode } from "react"
+import { useUser } from "@clerk/react"
 import { Link } from "wouter"
 import { TopBar } from "@/components/store/top-bar"
 import { Navbar } from "@/components/store/navbar"
@@ -197,9 +198,35 @@ function Sidebar({ tab, onChange }: { tab: TabId; onChange: (t: TabId) => void }
 
 function ProfileTab() {
   const [profile, setProfile] = useCmsDoc<Profile>("customer-profile", PROFILE_DEFAULTS)
+  const { user, isSignedIn } = useUser()
   const [draft, setDraft] = useState<Profile["identity"]>(profile.identity ?? PROFILE_DEFAULTS.identity)
   const [openProfile, setOpenProfile] = useState(true)
   const [openPassword, setOpenPassword] = useState(false)
+
+  // Hydrate profile from Clerk on first sign-in. Only fills empty / default
+  // placeholder fields so we never overwrite anything the user has typed.
+  useEffect(() => {
+    if (!isSignedIn || !user) return
+    const id = profile.identity ?? PROFILE_DEFAULTS.identity
+    const def = PROFILE_DEFAULTS.identity
+    const clerkEmail = user.primaryEmailAddress?.emailAddress ?? ""
+    const clerkPhone = user.primaryPhoneNumber?.phoneNumber ?? ""
+    const clerkFirst = user.firstName ?? ""
+    const clerkLast  = user.lastName ?? ""
+    const isPlaceholder = (v: string, d: string) => !v.trim() || v === d
+    const next: Profile["identity"] = {
+      ...id,
+      firstName: isPlaceholder(id.firstName, def.firstName) && clerkFirst ? clerkFirst : id.firstName,
+      lastName:  isPlaceholder(id.lastName,  def.lastName)  && clerkLast  ? clerkLast  : id.lastName,
+      email:     isPlaceholder(id.email,     def.email)     && clerkEmail ? clerkEmail : id.email,
+      phone:     isPlaceholder(id.phone,     def.phone)     && clerkPhone ? clerkPhone.replace(/^\+/, "") : id.phone,
+    }
+    if (JSON.stringify(next) !== JSON.stringify(id)) {
+      setProfile({ ...profile, identity: next })
+      setDraft(next)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isSignedIn, user?.id])
 
   const dirty = useMemo(
     () => JSON.stringify(draft) !== JSON.stringify(profile.identity),

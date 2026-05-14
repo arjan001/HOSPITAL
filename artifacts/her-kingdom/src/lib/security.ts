@@ -108,11 +108,13 @@ export function isValidEmail(email: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) && email.length <= 320
 }
 
-/** Validate Kenyan phone number - accepts +254, 254, 07, 01, 011 formats */
+/** Validate phone number - accepts Kenyan formats and any international 9-15 digit number with optional + prefix */
 export function isValidPhone(phone: string): boolean {
   const cleaned = phone.replace(/[\s\-()]/g, "")
-  // Accept: +254XXXXXXXXX, 254XXXXXXXXX, 07XXXXXXXX, 01XXXXXXXX, 011XXXXXXX
-  return /^(\+?254[17]\d{8}|0[17]\d{8}|011\d{7})$/.test(cleaned)
+  // Strict Kenyan formats:
+  if (/^(\+?254[17]\d{8}|0[17]\d{8}|011\d{7})$/.test(cleaned)) return true
+  // Generic international: optional +, then 9-15 digits
+  return /^\+?\d{9,15}$/.test(cleaned)
 }
 
 /** Validate M-PESA transaction code format */
