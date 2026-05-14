@@ -86,7 +86,7 @@ const SEEDS: Seed[] = [
 
   // Personal Care
   { name: "Hand Sanitizer 500ml", price: 250, originalPrice: 320, image: "/images/products/personal-care/hand-sanitizer.png", categorySlug: "personal-care", description: "70% alcohol hand sanitizer with aloe vera. Kills 99.9% of germs.", tags: ["sanitizer"], isOnOffer: true, offerPercentage: 21 },
-  { name: "Antiseptic Mouthwash 500ml", price: 320, image: "/images/products/personal-care/mouthwash.png", categorySlug: "personal-care", description: "Daily antiseptic mouthwash for fresh breath and healthy gums.", tags: ["oral care"] },
+  { name: "Antiseptic Mouthwash 500ml", price: 2, image: "/images/products/personal-care/mouthwash.png", categorySlug: "personal-care", description: "Daily antiseptic mouthwash for fresh breath and healthy gums.", tags: ["oral care"] },
   { name: "Sensitive Toothpaste 100ml", price: 270, image: "/images/products/personal-care/toothpaste.png", categorySlug: "personal-care", description: "Toothpaste for sensitive teeth with daily enamel protection.", tags: ["oral care"], isNew: true },
   { name: "Surgical Face Masks (50 pack)", price: 260, originalPrice: 340, image: "/images/products/personal-care/face-masks.png", categorySlug: "personal-care", description: "3-ply disposable surgical face masks. Box of 50.", tags: ["protection"], isOnOffer: true, offerPercentage: 23 },
 

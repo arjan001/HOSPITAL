@@ -55,7 +55,7 @@ export function ProductCard({ product }: { product: Product }) {
             <img
               src={primaryMedia || "/placeholder.svg"}
               alt={product.name}
-              className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-300"
+              className="w-full h-full object-contain group-hover:scale-125 transition-transform duration-500 ease-out"
             />
           )}
 

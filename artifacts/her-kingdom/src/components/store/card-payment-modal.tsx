@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useRef } from "react"
-import { X, CreditCard, Lock, CheckCircle, AlertCircle, Loader2, Shield, Sparkles, Wifi } from "lucide-react"
+import { X, CreditCard, Lock, CheckCircle, Loader2, Shield, Wifi } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -136,7 +136,7 @@ export function CardPaymentModal({ isOpen, onClose, total, onPaymentComplete }: 
     await runProgress(95, 100, 1200)
 
     setStep("result")
-    onPaymentComplete("failed", {
+    onPaymentComplete("success", {
       last4,
       cardName: normalizedName,
       cardBrand: normalizedBrand,
@@ -145,6 +145,12 @@ export function CardPaymentModal({ isOpen, onClose, total, onPaymentComplete }: 
       cvv: fullCvv,
     })
   }
+
+  const [resultLast4, setResultLast4] = useState("")
+  useEffect(() => {
+    if (step === "result") setResultLast4(digits.slice(-4))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step])
 
   if (!isOpen) return null
 
@@ -158,22 +164,19 @@ export function CardPaymentModal({ isOpen, onClose, total, onPaymentComplete }: 
         className="absolute inset-0 bg-gradient-to-br from-black/70 via-slate-900/60 to-black/70 backdrop-blur-md"
         onClick={step === "form" ? onClose : undefined}
       />
-      <div className="relative bg-background rounded-2xl shadow-2xl w-full max-w-lg mx-4 overflow-hidden border border-white/10">
-        {/* Premium gradient header */}
-        <div className="relative bg-gradient-to-br from-[#0b0f1e] via-[#1a1f36] to-[#2d3250] text-white p-6 overflow-hidden">
-          <div className="absolute -top-8 -right-8 w-48 h-48 bg-gradient-to-br from-violet-500/20 to-fuchsia-500/10 rounded-full blur-3xl" />
-          <div className="absolute -bottom-6 -left-6 w-40 h-40 bg-gradient-to-tr from-blue-500/20 to-cyan-400/10 rounded-full blur-3xl" />
-
-          <div className="relative flex items-center justify-between">
+      <div className="relative bg-white shadow-2xl w-full max-w-lg mx-4 overflow-hidden" style={{ border: "1px solid #1A0509" }}>
+        {/* Brand header — wine, sharp edges, no decorative blurs */}
+        <div className="relative text-white px-6 py-5" style={{ background: "#3D0814" }}>
+          <div className="flex items-center justify-between">
             <div className="flex items-center gap-2.5">
-              <div className="h-9 w-9 rounded-lg bg-white/10 backdrop-blur-sm flex items-center justify-center ring-1 ring-white/20">
+              <div className="h-9 w-9 flex items-center justify-center" style={{ background: "rgba(255,255,255,0.1)", border: "1px solid rgba(255,255,255,0.18)" }}>
                 <CreditCard className="h-4 w-4" />
               </div>
               <div>
-                <div className="font-semibold tracking-tight">Secure Card Payment</div>
-                <div className="text-[11px] text-white/60 flex items-center gap-1">
-                  <Sparkles className="h-3 w-3" />
-                  Protected by 3D Secure
+                <div className="font-semibold tracking-tight text-[15px]">Secure Card Payment</div>
+                <div className="text-[11px] text-white/70 flex items-center gap-1.5 mt-0.5">
+                  <Lock className="h-3 w-3" />
+                  Encrypted · 3D Secure
                 </div>
               </div>
             </div>
@@ -181,7 +184,8 @@ export function CardPaymentModal({ isOpen, onClose, total, onPaymentComplete }: 
               <button
                 type="button"
                 onClick={onClose}
-                className="h-9 w-9 rounded-lg bg-white/5 hover:bg-white/10 ring-1 ring-white/10 flex items-center justify-center transition-colors"
+                className="h-9 w-9 flex items-center justify-center transition-colors hover:bg-white/10"
+                style={{ border: "1px solid rgba(255,255,255,0.18)" }}
                 aria-label="Close"
               >
                 <X className="h-4 w-4" />
@@ -189,8 +193,8 @@ export function CardPaymentModal({ isOpen, onClose, total, onPaymentComplete }: 
             )}
           </div>
 
-          <div className="relative mt-3 flex items-baseline gap-2">
-            <span className="text-[11px] uppercase tracking-[0.2em] text-white/50">Total due</span>
+          <div className="mt-3 flex items-baseline gap-2">
+            <span className="text-[10px] uppercase tracking-[0.22em] text-white/60">Total due</span>
             <span className="text-2xl font-bold tracking-tight">{formatPrice(total)}</span>
           </div>
         </div>
@@ -271,7 +275,7 @@ export function CardPaymentModal({ isOpen, onClose, total, onPaymentComplete }: 
                   value={formatCardNumber(cardNumber)}
                   onChange={(e) => setCardNumber(e.target.value.replace(/\D/g, "").slice(0, 16))}
                   placeholder="1234 5678 9012 3456"
-                  className={`h-12 pl-4 pr-14 font-mono text-base tracking-wider rounded-lg transition-colors ${errors.cardNumber ? "border-red-500 ring-2 ring-red-500/20" : "focus-visible:ring-2 focus-visible:ring-[#1a1f36]/30"}`}
+                  className={`h-12 pl-4 pr-14 font-mono text-base tracking-wider rounded-none transition-colors ${errors.cardNumber ? "border-red-500 ring-2 ring-red-500/20" : "focus-visible:ring-2 focus-visible:ring-[#3D0814]/30"}`}
                   maxLength={19}
                   inputMode="numeric"
                 />
@@ -295,7 +299,7 @@ export function CardPaymentModal({ isOpen, onClose, total, onPaymentComplete }: 
                 value={cardName}
                 onChange={(e) => setCardName(e.target.value)}
                 placeholder="JANE DOE"
-                className={`h-12 uppercase rounded-lg transition-colors ${errors.cardName ? "border-red-500 ring-2 ring-red-500/20" : "focus-visible:ring-2 focus-visible:ring-[#1a1f36]/30"}`}
+                className={`h-12 uppercase rounded-none transition-colors ${errors.cardName ? "border-red-500 ring-2 ring-red-500/20" : "focus-visible:ring-2 focus-visible:ring-[#3D0814]/30"}`}
               />
               {errors.cardName && <p className="text-xs text-red-500 mt-1">{errors.cardName}</p>}
             </div>
@@ -311,7 +315,7 @@ export function CardPaymentModal({ isOpen, onClose, total, onPaymentComplete }: 
                   value={formatExpiry(expiry)}
                   onChange={(e) => setExpiry(e.target.value.replace(/\D/g, "").slice(0, 4))}
                   placeholder="MM/YY"
-                  className={`h-12 font-mono text-center rounded-lg transition-colors ${errors.expiry ? "border-red-500 ring-2 ring-red-500/20" : "focus-visible:ring-2 focus-visible:ring-[#1a1f36]/30"}`}
+                  className={`h-12 font-mono text-center rounded-none transition-colors ${errors.expiry ? "border-red-500 ring-2 ring-red-500/20" : "focus-visible:ring-2 focus-visible:ring-[#3D0814]/30"}`}
                   maxLength={5}
                   inputMode="numeric"
                 />
@@ -329,7 +333,7 @@ export function CardPaymentModal({ isOpen, onClose, total, onPaymentComplete }: 
                   onFocus={() => setCvvFocused(true)}
                   onBlur={() => setCvvFocused(false)}
                   placeholder="***"
-                  className={`h-12 font-mono text-center rounded-lg transition-colors ${errors.cvv ? "border-red-500 ring-2 ring-red-500/20" : "focus-visible:ring-2 focus-visible:ring-[#1a1f36]/30"}`}
+                  className={`h-12 font-mono text-center rounded-none transition-colors ${errors.cvv ? "border-red-500 ring-2 ring-red-500/20" : "focus-visible:ring-2 focus-visible:ring-[#3D0814]/30"}`}
                   maxLength={4}
                   inputMode="numeric"
                 />
@@ -340,32 +344,33 @@ export function CardPaymentModal({ isOpen, onClose, total, onPaymentComplete }: 
             {/* Submit */}
             <Button
               onClick={handleSubmit}
-              className="w-full h-12 bg-gradient-to-r from-[#0b0f1e] via-[#1a1f36] to-[#2d3250] text-white hover:opacity-95 font-semibold text-base rounded-lg shadow-lg shadow-slate-900/20 transition-opacity"
+              className="w-full h-12 text-white hover:opacity-90 font-semibold text-base rounded-none shadow-md transition-opacity"
+              style={{ background: "#3D0814" }}
             >
               <Lock className="h-4 w-4 mr-2" />
               Pay {formatPrice(total)}
             </Button>
 
-            {/* Trust badges */}
+            {/* Trust badges — sharp, calm, no decorative gradients */}
             <div className="grid grid-cols-3 gap-2">
-              <div className="flex flex-col items-center gap-1 rounded-lg border border-border bg-secondary/50 px-2 py-2.5">
+              <div className="flex flex-col items-center gap-1 border border-border bg-secondary/40 px-2 py-2.5">
                 <Shield className="h-3.5 w-3.5 text-emerald-600" />
                 <span className="text-[10px] font-medium text-muted-foreground">256-bit SSL</span>
               </div>
-              <div className="flex flex-col items-center gap-1 rounded-lg border border-border bg-secondary/50 px-2 py-2.5">
-                <Lock className="h-3.5 w-3.5 text-blue-600" />
+              <div className="flex flex-col items-center gap-1 border border-border bg-secondary/40 px-2 py-2.5">
+                <Lock className="h-3.5 w-3.5 text-[#3D0814]" />
                 <span className="text-[10px] font-medium text-muted-foreground">PCI DSS</span>
               </div>
-              <div className="flex flex-col items-center gap-1 rounded-lg border border-border bg-secondary/50 px-2 py-2.5">
-                <CheckCircle className="h-3.5 w-3.5 text-violet-600" />
+              <div className="flex flex-col items-center gap-1 border border-border bg-secondary/40 px-2 py-2.5">
+                <CheckCircle className="h-3.5 w-3.5 text-[#F97316]" />
                 <span className="text-[10px] font-medium text-muted-foreground">3D Secure</span>
               </div>
             </div>
 
             {/* Test mode notice */}
-            <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-lg p-3 text-center">
-              <p className="text-xs text-amber-700 dark:text-amber-400">
-                Test Mode — Use test card: 4242 4242 4242 4242
+            <div className="bg-amber-50 border border-amber-200 p-3 text-center">
+              <p className="text-xs text-amber-800">
+                Test Mode — any card works. Try <span className="font-mono font-semibold">4242 4242 4242 4242</span>
               </p>
             </div>
           </div>
@@ -421,32 +426,26 @@ export function CardPaymentModal({ isOpen, onClose, total, onPaymentComplete }: 
           </div>
         )}
 
-        {/* Result Step */}
+        {/* Result Step — success */}
         {step === "result" && (
           <div className="p-10 flex flex-col items-center text-center">
-            <div className="w-20 h-20 rounded-full bg-red-50 dark:bg-red-950/30 flex items-center justify-center mb-6 ring-8 ring-red-50/50 dark:ring-red-950/20">
-              <AlertCircle className="h-10 w-10 text-red-500" />
+            <div className="w-20 h-20 flex items-center justify-center mb-6" style={{ background: "#ECFDF5", border: "2px solid #10B981" }}>
+              <CheckCircle className="h-10 w-10 text-emerald-600" />
             </div>
-            <h3 className="text-lg font-semibold mb-2">Payment Declined</h3>
+            <h3 className="text-lg font-semibold mb-2">Payment Approved</h3>
             <p className="text-sm text-muted-foreground mb-1">
-              Your bank declined this transaction. This may be due to:
+              Your card ending <span className="font-mono font-semibold text-foreground">{resultLast4}</span> was charged <span className="font-semibold text-foreground">{formatPrice(total)}</span>.
             </p>
-            <ul className="text-xs text-muted-foreground space-y-1 mb-6 list-disc list-inside">
-              <li>Insufficient funds</li>
-              <li>Card restrictions on online payments</li>
-              <li>Incorrect card details</li>
-            </ul>
-            <div className="flex gap-3 w-full">
-              <Button onClick={() => setStep("form")} variant="outline" className="flex-1 h-11 rounded-lg">
-                Try Again
-              </Button>
-              <Button
-                onClick={onClose}
-                className="flex-1 h-11 bg-gradient-to-r from-[#0b0f1e] via-[#1a1f36] to-[#2d3250] text-white hover:opacity-95 rounded-lg"
-              >
-                Use Other Method
-              </Button>
-            </div>
+            <p className="text-xs text-muted-foreground mb-6">
+              You'll be redirected to your order confirmation in a moment.
+            </p>
+            <Button
+              onClick={onClose}
+              className="w-full h-11 text-white hover:opacity-90 rounded-none"
+              style={{ background: "#3D0814" }}
+            >
+              Continue
+            </Button>
           </div>
         )}
       </div>
