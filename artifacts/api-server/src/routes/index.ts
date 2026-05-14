@@ -30,6 +30,7 @@ import adminPoliciesRouter from "./api/admin/policies.js";
 import adminAnalyticsRouter from "./api/admin/analytics.js";
 import adminUsersRouter from "./api/admin/users.js";
 import authRouter from "./api/auth.js";
+import payheroRouter from "./api/payments/payhero.js";
 
 const router: IRouter = Router();
 
@@ -67,5 +68,6 @@ router.use("/admin/policies", adminPoliciesRouter);
 router.use("/admin/analytics", adminAnalyticsRouter);
 router.use("/admin/users", adminUsersRouter);
 router.use("/auth", authRouter);
+router.use("/payments/payhero", payheroRouter);
 
 export default router;

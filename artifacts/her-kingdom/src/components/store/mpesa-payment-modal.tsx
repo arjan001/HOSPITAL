@@ -191,20 +191,23 @@ export function MpesaPaymentModal({
           <X className="h-5 w-5" />
         </button>
 
-        <div className="bg-[#00843D] px-6 pt-8 pb-6 text-center relative overflow-hidden">
+        <div
+          className="px-6 pt-8 pb-6 text-center relative overflow-hidden"
+          style={{ background: "linear-gradient(135deg, #3D0814 0%, #6B0F1A 100%)" }}
+        >
           <h2 className="text-white font-extrabold text-2xl tracking-tight">
             M-PESA Payment
           </h2>
           <p className="text-white/80 text-xs mt-1">Secure STK Push via PayHero</p>
           <div className="flex justify-center mt-2">
-            <div className="w-16 h-1 bg-[#E4002B] rounded-full" />
+            <div className="w-16 h-1 rounded-full" style={{ background: "#F97316" }} />
           </div>
         </div>
 
         <div className="px-6 pb-6">
-          <div className="mt-4 bg-[#00843D]/5 border border-[#00843D]/15 rounded-sm p-4 flex items-center justify-between">
+          <div className="mt-4 bg-[#3D0814]/5 border border-[#3D0814]/15 rounded-sm p-4 flex items-center justify-between">
             <span className="text-sm font-medium text-muted-foreground">Amount to Pay:</span>
-            <span className="text-xl font-bold text-[#00843D]">{formatPrice(total)}</span>
+            <span className="text-xl font-bold" style={{ color: "#3D0814" }}>{formatPrice(total)}</span>
           </div>
 
           <p className="text-[11px] text-center text-muted-foreground mt-2 uppercase tracking-wider">
@@ -242,7 +245,8 @@ export function MpesaPaymentModal({
               <Button
                 onClick={handlePay}
                 disabled={!isPhoneValid}
-                className="w-full h-12 bg-[#00843D] text-white hover:bg-[#006B32] text-sm font-semibold disabled:opacity-40"
+                className="w-full h-12 text-white hover:opacity-90 text-sm font-semibold disabled:opacity-40"
+                style={{ background: "linear-gradient(135deg, #F97316 0%, #B91C1C 100%)" }}
               >
                 Pay {formatPrice(total)} with M-PESA
               </Button>
@@ -251,8 +255,8 @@ export function MpesaPaymentModal({
 
           {(step === "pushing" || step === "waiting") && (
             <div className="mt-6 text-center space-y-4">
-              <div className="inline-flex items-center justify-center w-14 h-14 rounded-full bg-[#00843D]/10 mx-auto">
-                <Loader2 className="h-7 w-7 text-[#00843D] animate-spin" />
+              <div className="inline-flex items-center justify-center w-14 h-14 rounded-full bg-[#3D0814]/10 mx-auto">
+                <Loader2 className="h-7 w-7 animate-spin" style={{ color: "#3D0814" }} />
               </div>
               <div>
                 <p className="text-sm font-semibold">
@@ -274,10 +278,10 @@ export function MpesaPaymentModal({
 
           {step === "success" && (
             <div className="mt-6 text-center space-y-3">
-              <div className="inline-flex items-center justify-center w-14 h-14 rounded-full bg-[#00843D]/10 mx-auto">
-                <CheckCircle2 className="h-7 w-7 text-[#00843D]" />
+              <div className="inline-flex items-center justify-center w-14 h-14 rounded-full bg-emerald-50 mx-auto">
+                <CheckCircle2 className="h-7 w-7 text-emerald-600" />
               </div>
-              <p className="text-sm font-semibold text-[#00843D]">Payment Received</p>
+              <p className="text-sm font-semibold text-emerald-700">Payment Received</p>
               {statusMessage && (
                 <p className="text-xs text-muted-foreground">{statusMessage}</p>
               )}
@@ -292,7 +296,8 @@ export function MpesaPaymentModal({
               </div>
               <Button
                 onClick={resetAll}
-                className="w-full h-11 bg-[#00843D] text-white hover:bg-[#006B32] text-sm font-semibold"
+                className="w-full h-11 text-white hover:opacity-90 text-sm font-semibold"
+                style={{ background: "linear-gradient(135deg, #F97316 0%, #B91C1C 100%)" }}
               >
                 Try Again
               </Button>

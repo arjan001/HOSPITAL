@@ -1,12 +1,16 @@
-import { Switch, Route, Router as WouterRouter } from "wouter";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { useEffect, useRef } from "react";
+import { Switch, Route, Redirect, useLocation, Router as WouterRouter } from "wouter";
+import { QueryClient, QueryClientProvider, useQueryClient } from "@tanstack/react-query";
+import { ClerkProvider, SignIn, SignUp, Show, useClerk } from "@clerk/react";
+import { publishableKeyFromHost } from "@clerk/react/internal";
+import { shadcn } from "@clerk/themes";
 import { Toaster } from "@/components/ui/sonner";
 import NotFound from "@/pages/not-found";
 import { CartProvider } from "@/lib/cart-context";
 import { WishlistProvider } from "@/lib/wishlist-context";
 import { PageViewTracker } from "@/components/page-view-tracker";
 
-// Store pages (lazy via direct imports)
+// Store pages
 import { LandingPage } from "@/components/store/landing-page";
 import { ShopPage } from "@/components/store/shop-page";
 import { CollectionPage } from "@/components/store/collection-page";
@@ -52,13 +56,7 @@ import { AdminContactInquiries } from "@/components/admin/contact-inquiries";
 import { AdminAuditLog } from "@/components/admin/audit-log";
 import { PopupOffer } from "@/components/store/popup-offer";
 
-// Auth pages (admin)
-
 // Account pages (customer-facing)
-import AccountLoginPage from "@/pages/account/login";
-import AccountRegisterPage from "@/pages/account/register";
-import VerifyPhonePage from "@/pages/account/verify-phone";
-import EmailVerifiedPage from "@/pages/account/email-verified";
 import AccountSettingsPage from "@/pages/account/settings";
 import AccountDashboard from "@/pages/account/dashboard";
 import DashboardPage from "@/pages/dashboard";
@@ -77,6 +75,68 @@ import { Footer } from "@/components/store/footer";
 
 const queryClient = new QueryClient();
 
+const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
+
+const clerkPubKey = publishableKeyFromHost(
+  window.location.hostname,
+  import.meta.env.VITE_CLERK_PUBLISHABLE_KEY,
+);
+
+const clerkProxyUrl = import.meta.env.VITE_CLERK_PROXY_URL;
+
+if (!clerkPubKey) {
+  throw new Error("Missing VITE_CLERK_PUBLISHABLE_KEY");
+}
+
+function stripBase(path: string): string {
+  return basePath && path.startsWith(basePath)
+    ? path.slice(basePath.length) || "/"
+    : path;
+}
+
+const clerkAppearance = {
+  theme: shadcn,
+  cssLayerName: "clerk",
+  options: {
+    logoPlacement: "inside" as const,
+    logoLinkUrl: basePath || "/",
+    logoImageUrl: `${window.location.origin}${basePath}/logo.svg`,
+  },
+  variables: {
+    colorPrimary: "#3D0814",
+    colorForeground: "#1f1115",
+    colorMutedForeground: "#6b5a60",
+    colorDanger: "#B91C1C",
+    colorBackground: "#FFFBF5",
+    colorInput: "#ffffff",
+    colorInputForeground: "#1f1115",
+    colorNeutral: "#F2DCC8",
+    fontFamily: "Inter, system-ui, sans-serif",
+    borderRadius: "0.75rem",
+  },
+  elements: {
+    rootBox: "w-full flex justify-center",
+    cardBox:
+      "bg-white rounded-2xl w-[440px] max-w-full overflow-hidden shadow-xl border border-[#F2DCC8]",
+    card: "!shadow-none !border-0 !bg-transparent !rounded-none",
+    footer: "!shadow-none !border-0 !bg-transparent !rounded-none",
+    headerTitle: "text-[#3D0814] font-bold",
+    headerSubtitle: "text-[#6b5a60]",
+    socialButtonsBlockButton:
+      "border border-[#F2DCC8] bg-white hover:bg-[#FFF7EE] text-[#3D0814]",
+    socialButtonsBlockButtonText: "text-[#3D0814] font-medium",
+    formFieldLabel: "text-[#3D0814] font-semibold",
+    formFieldInput:
+      "bg-white border border-[#F2DCC8] text-[#1f1115] focus:border-[#3D0814]",
+    formButtonPrimary:
+      "!bg-gradient-to-br !from-[#F97316] !to-[#B91C1C] !text-white hover:opacity-90",
+    footerActionLink: "text-[#B91C1C] font-semibold hover:text-[#F97316]",
+    footerActionText: "text-[#6b5a60]",
+    dividerLine: "bg-[#F2DCC8]",
+    dividerText: "text-[#6b5a60]",
+  },
+};
+
 function TrackOrderHero({ subtitle }: { subtitle?: React.ReactNode }) {
   return (
     <div className="relative overflow-hidden" style={{ minHeight: 220 }}>
@@ -90,7 +150,6 @@ function TrackOrderHero({ subtitle }: { subtitle?: React.ReactNode }) {
         className="absolute inset-0"
         style={{ background: "linear-gradient(135deg, rgba(61,8,20,0.88) 0%, rgba(122,37,53,0.75) 50%, rgba(61,8,20,0.4) 100%)" }}
       />
-      {/* Bottom fade into page bg */}
       <div className="absolute bottom-0 left-0 right-0 h-12" style={{ background: "linear-gradient(to bottom, transparent, #ffffff)" }} />
       <div className="relative z-10 mx-auto max-w-3xl px-4 text-center flex flex-col items-center justify-center" style={{ minHeight: 220 }}>
         <h1 className="font-bold text-3xl lg:text-4xl text-white" style={{ textShadow: "0 2px 12px rgba(0,0,0,0.3)" }}>
@@ -134,6 +193,81 @@ function TrackOrderByCodePage({ orderNumber }: { orderNumber: string }) {
       <Footer />
     </>
   );
+}
+
+function SignInPage() {
+  return (
+    <>
+      <TopBar />
+      <Navbar />
+      <main
+        className="min-h-[70vh] flex items-center justify-center px-4 py-14"
+        style={{ background: "linear-gradient(160deg, #FFFBF5 0%, #FFF0DE 55%, #FFE4C8 100%)" }}
+      >
+        <SignIn
+          routing="path"
+          path={`${basePath}/sign-in`}
+          signUpUrl={`${basePath}/sign-up`}
+          fallbackRedirectUrl={`${basePath}/account`}
+        />
+      </main>
+      <Footer />
+    </>
+  );
+}
+
+function SignUpPage() {
+  return (
+    <>
+      <TopBar />
+      <Navbar />
+      <main
+        className="min-h-[70vh] flex items-center justify-center px-4 py-14"
+        style={{ background: "linear-gradient(160deg, #FFFBF5 0%, #FFF0DE 55%, #FFE4C8 100%)" }}
+      >
+        <SignUp
+          routing="path"
+          path={`${basePath}/sign-up`}
+          signInUrl={`${basePath}/sign-in`}
+          fallbackRedirectUrl={`${basePath}/account`}
+        />
+      </main>
+      <Footer />
+    </>
+  );
+}
+
+function ProtectedAccount({ children }: { children: React.ReactNode }) {
+  return (
+    <>
+      <Show when="signed-in">{children}</Show>
+      <Show when="signed-out">
+        <Redirect to="/sign-in" />
+      </Show>
+    </>
+  );
+}
+
+function ClerkQueryClientCacheInvalidator() {
+  const { addListener } = useClerk();
+  const qc = useQueryClient();
+  const prevUserIdRef = useRef<string | null | undefined>(undefined);
+
+  useEffect(() => {
+    const unsubscribe = addListener(({ user }) => {
+      const userId = user?.id ?? null;
+      if (
+        prevUserIdRef.current !== undefined &&
+        prevUserIdRef.current !== userId
+      ) {
+        qc.clear();
+      }
+      prevUserIdRef.current = userId;
+    });
+    return unsubscribe;
+  }, [addListener, qc]);
+
+  return null;
 }
 
 function Router() {
@@ -181,17 +315,30 @@ function Router() {
       <Route path="/policies/:slug">
         {(params) => <PolicyPage slug={params.slug} />}
       </Route>
-      {/* Auth (admin) */}
-      {/* Account (customer-facing) */}
-      <Route path="/account/login" component={AccountLoginPage} />
-      <Route path="/account/register" component={AccountRegisterPage} />
-      <Route path="/account/verify-phone" component={VerifyPhonePage} />
-      <Route path="/account/email-verified" component={EmailVerifiedPage} />
-      <Route path="/account/settings" component={AccountSettingsPage} />
-      <Route path="/account" component={AccountDashboard} />
-      <Route path="/account/dashboard" component={AccountDashboard} />
-      <Route path="/dashboard" component={DashboardPage} />
-      <Route path="/user" component={DashboardPage} />
+      {/* Clerk auth (customer-facing) */}
+      <Route path="/sign-in/*?" component={SignInPage} />
+      <Route path="/sign-up/*?" component={SignUpPage} />
+      {/* Legacy aliases → forward to Clerk */}
+      <Route path="/account/login">{() => <Redirect to="/sign-in" />}</Route>
+      <Route path="/account/register">{() => <Redirect to="/sign-up" />}</Route>
+      <Route path="/account/verify-phone">{() => <Redirect to="/sign-in" />}</Route>
+      <Route path="/account/email-verified">{() => <Redirect to="/sign-in" />}</Route>
+      {/* Account (signed-in only — guests must sign in to view orders) */}
+      <Route path="/account/settings">
+        {() => <ProtectedAccount><AccountSettingsPage /></ProtectedAccount>}
+      </Route>
+      <Route path="/account">
+        {() => <ProtectedAccount><AccountDashboard /></ProtectedAccount>}
+      </Route>
+      <Route path="/account/dashboard">
+        {() => <ProtectedAccount><AccountDashboard /></ProtectedAccount>}
+      </Route>
+      <Route path="/dashboard">
+        {() => <ProtectedAccount><DashboardPage /></ProtectedAccount>}
+      </Route>
+      <Route path="/user">
+        {() => <ProtectedAccount><DashboardPage /></ProtectedAccount>}
+      </Route>
       <Route path="/upload-prescription" component={UploadPrescriptionPage} />
       <Route path="/speak-to-a-doctor" component={SpeakToADoctorPage} />
       {/* Admin */}
@@ -231,20 +378,53 @@ function GlobalOverlays() {
   return <PopupOffer />;
 }
 
-function App() {
+function ClerkProviderWithRoutes() {
+  const [, setLocation] = useLocation();
+
   return (
-    <QueryClientProvider client={queryClient}>
-      <WishlistProvider>
-        <CartProvider>
-          <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
+    <ClerkProvider
+      publishableKey={clerkPubKey}
+      proxyUrl={clerkProxyUrl}
+      appearance={clerkAppearance}
+      signInUrl={`${basePath}/sign-in`}
+      signUpUrl={`${basePath}/sign-up`}
+      localization={{
+        signIn: {
+          start: {
+            title: "Welcome back to Shaniid RX",
+            subtitle: "Sign in to track orders and manage your prescriptions",
+          },
+        },
+        signUp: {
+          start: {
+            title: "Create your Shaniid RX account",
+            subtitle: "Genuine medicine, fair pricing, delivered with integrity",
+          },
+        },
+      }}
+      routerPush={(to) => setLocation(stripBase(to))}
+      routerReplace={(to) => setLocation(stripBase(to), { replace: true })}
+    >
+      <QueryClientProvider client={queryClient}>
+        <ClerkQueryClientCacheInvalidator />
+        <WishlistProvider>
+          <CartProvider>
             <Router />
             <GlobalOverlays />
             <PageViewTracker />
-          </WouterRouter>
-          <Toaster position="top-right" richColors closeButton />
-        </CartProvider>
-      </WishlistProvider>
-    </QueryClientProvider>
+          </CartProvider>
+        </WishlistProvider>
+        <Toaster position="top-right" richColors closeButton />
+      </QueryClientProvider>
+    </ClerkProvider>
+  );
+}
+
+function App() {
+  return (
+    <WouterRouter base={basePath}>
+      <ClerkProviderWithRoutes />
+    </WouterRouter>
   );
 }
 
