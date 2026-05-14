@@ -6,6 +6,7 @@ import { Navbar } from "@/components/store/navbar"
 import { Footer } from "@/components/store/footer"
 import { Eye, EyeOff, ArrowRight, ChevronDown } from "lucide-react"
 import { Seo } from "@/components/seo"
+import logoShaniid from "@assets/image_1778744075874.png"
 
 const WINE          = "#3D0814"
 const WINE_SOFT     = "#6B0F1A"
@@ -48,8 +49,7 @@ export default function AccountLoginPage() {
         await setActive({ session: attempt.createdSessionId })
         navigate("/user")
       } else {
-        setError("Additional verification required. Please use the secure sign-in flow.")
-        setTimeout(() => navigate("/sign-in"), 1200)
+        setError("Additional verification required. Please check your email or try Google sign-in below.")
       }
     } catch (err) {
       const msg =
@@ -69,7 +69,7 @@ export default function AccountLoginPage() {
     try {
       await signIn.authenticateWithRedirect({
         strategy: "oauth_google",
-        redirectUrl: "/sign-in/sso-callback",
+        redirectUrl: "/account/sso-callback",
         redirectUrlComplete: "/user",
       })
     } catch (err) {
@@ -119,17 +119,17 @@ export default function AccountLoginPage() {
             {/* Logo mark */}
             <div className="flex justify-center mb-4">
               <div
-                className="h-14 w-14 rounded-2xl flex items-center justify-center"
+                className="h-16 w-16 rounded-2xl flex items-center justify-center overflow-hidden"
                 style={{
-                  background: "white",
-                  boxShadow: "0 8px 20px -8px rgba(61,8,20,0.25), inset 0 1px 0 rgba(255,255,255,0.9)",
+                  background: "#0B0B0B",
+                  boxShadow: "0 10px 24px -8px rgba(61,8,20,0.28), inset 0 1px 0 rgba(255,255,255,0.06)",
                   border: `1px solid ${PEACH_BORDER}`,
                 }}
               >
                 <img
-                  src="/logo.svg"
+                  src={logoShaniid}
                   alt="Shaniid RX"
-                  className="h-9 w-9"
+                  className="h-14 w-14 object-contain"
                   draggable={false}
                 />
               </div>
@@ -264,7 +264,7 @@ export default function AccountLoginPage() {
                 <span className="text-xs font-medium" style={{ color: WINE_SOFT }}>Keep me signed in</span>
               </label>
               <Link
-                href="/sign-in"
+                href="/account/login"
                 className="text-xs font-semibold hover:underline"
                 style={{ color: ACCENT_RED }}
               >

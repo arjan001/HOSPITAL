@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import { Switch, Route, Redirect, useLocation, Router as WouterRouter } from "wouter";
 import { QueryClient, QueryClientProvider, useQueryClient } from "@tanstack/react-query";
-import { ClerkProvider, SignIn, SignUp, Show, useClerk } from "@clerk/react";
+import { ClerkProvider, AuthenticateWithRedirectCallback, Show, useClerk } from "@clerk/react";
 import { publishableKeyFromHost } from "@clerk/react/internal";
 import { shadcn } from "@clerk/themes";
 import { Toaster } from "@/components/ui/sonner";
@@ -198,45 +198,32 @@ function TrackOrderByCodePage({ orderNumber }: { orderNumber: string }) {
   );
 }
 
-function SignInPage() {
+/**
+ * Single source of truth for OAuth round-trips. Google (and any future
+ * provider) returns to `/account/sso-callback`, which finalises the Clerk
+ * session and forwards the user to their dashboard.
+ */
+function SsoCallbackPage() {
   return (
-    <>
-      <TopBar />
-      <Navbar />
-      <main
-        className="min-h-[70vh] flex items-center justify-center px-4 py-14"
-        style={{ background: "linear-gradient(160deg, #FFFBF5 0%, #FFF0DE 55%, #FFE4C8 100%)" }}
-      >
-        <SignIn
-          routing="path"
-          path={`${basePath}/sign-in`}
-          signUpUrl={`${basePath}/sign-up`}
-          fallbackRedirectUrl={`${basePath}/user`}
+    <main
+      className="min-h-screen flex items-center justify-center px-4 py-14 bg-white"
+      role="status"
+      aria-live="polite"
+    >
+      <div className="text-center">
+        <div
+          className="mx-auto mb-5 h-12 w-12 rounded-full border-4 border-neutral-200 border-t-[#B91C1C] animate-spin"
+          aria-hidden="true"
         />
-      </main>
-      <Footer />
-    </>
-  );
-}
-
-function SignUpPage() {
-  return (
-    <>
-      <TopBar />
-      <Navbar />
-      <main
-        className="min-h-[70vh] flex items-center justify-center px-4 py-14"
-        style={{ background: "linear-gradient(160deg, #FFFBF5 0%, #FFF0DE 55%, #FFE4C8 100%)" }}
-      >
-        <SignUp
-          routing="path"
-          path={`${basePath}/sign-up`}
-          signInUrl={`${basePath}/sign-in`}
-          fallbackRedirectUrl={`${basePath}/user`}
-        />
-      </main>
-      <Footer />
-    </>
+        <p className="text-sm font-semibold" style={{ color: "#3D0814" }}>
+          Finishing sign-in…
+        </p>
+      </div>
+      <AuthenticateWithRedirectCallback
+        signInFallbackRedirectUrl={`${basePath}/user`}
+        signUpFallbackRedirectUrl={`${basePath}/user`}
+      />
+    </main>
   );
 }
 
@@ -245,7 +232,7 @@ function ProtectedAccount({ children }: { children: React.ReactNode }) {
     <>
       <Show when="signed-in">{children}</Show>
       <Show when="signed-out">
-        <Redirect to="/sign-in" />
+        <Redirect to="/account/login" />
       </Show>
     </>
   );
@@ -320,14 +307,17 @@ function Router() {
       <Route path="/policies/:slug">
         {(params) => <PolicyPage slug={params.slug} />}
       </Route>
-      {/* Clerk auth (customer-facing) */}
-      <Route path="/sign-in/*?" component={SignInPage} />
-      <Route path="/sign-up/*?" component={SignUpPage} />
-      {/* Legacy aliases → forward to Clerk */}
+      {/* Customer auth — single source of truth */}
       <Route path="/account/login" component={AccountLoginPage} />
       <Route path="/account/register" component={AccountRegisterPage} />
-      <Route path="/account/verify-phone">{() => <Redirect to="/sign-in" />}</Route>
-      <Route path="/account/email-verified">{() => <Redirect to="/sign-in" />}</Route>
+      <Route path="/account/sso-callback" component={SsoCallbackPage} />
+      {/* Legacy aliases → forward to the canonical pages */}
+      <Route path="/sign-in/sso-callback" component={SsoCallbackPage} />
+      <Route path="/sign-up/sso-callback" component={SsoCallbackPage} />
+      <Route path="/sign-in/*?">{() => <Redirect to="/account/login" />}</Route>
+      <Route path="/sign-up/*?">{() => <Redirect to="/account/register" />}</Route>
+      <Route path="/account/verify-phone">{() => <Redirect to="/account/login" />}</Route>
+      <Route path="/account/email-verified">{() => <Redirect to="/account/login" />}</Route>
       {/* Account (signed-in only — guests must sign in to view orders) */}
       <Route path="/account/settings">
         {() => <ProtectedAccount><AccountSettingsPage /></ProtectedAccount>}
@@ -391,8 +381,8 @@ function ClerkProviderWithRoutes() {
       publishableKey={clerkPubKey}
       proxyUrl={clerkProxyUrl}
       appearance={clerkAppearance}
-      signInUrl={`${basePath}/sign-in`}
-      signUpUrl={`${basePath}/sign-up`}
+      signInUrl={`${basePath}/account/login`}
+      signUpUrl={`${basePath}/account/register`}
       localization={{
         signIn: {
           start: {

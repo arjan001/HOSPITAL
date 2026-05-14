@@ -1,5 +1,5 @@
 import { Redirect } from "wouter";
 
 export default function AccountEmailVerifiedPage() {
-  return <Redirect to="/sign-in" />;
+  return <Redirect to="/account/login" />;
 }
