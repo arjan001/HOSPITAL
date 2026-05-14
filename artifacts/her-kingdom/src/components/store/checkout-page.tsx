@@ -533,7 +533,26 @@ export function CheckoutPage() {
   const [mpesaPhone,       setMpesaPhone]       = useState("")
 
   /* ── Payment / order ── */
-  const [orderResult,     setOrderResult]     = useState<{ orderNumber: string; paymentMethod?: string } | null>(null)
+  type OrderSuccess = {
+    orderNumber: string
+    paymentMethod: "mpesa" | "card" | "cod" | "whatsapp"
+    customerName: string
+    customerPhone: string
+    customerEmail?: string
+    deliveryAddress?: string
+    locationLabel?: string
+    estimatedDays?: string
+    fulfilmentMode: "delivery" | "pickup"
+    items: { name: string; qty: number; unitPrice: number; image?: string; variation?: string }[]
+    subtotal: number
+    deliveryFee: number
+    total: number
+    mpesaReceipt?: string
+    cardBrand?: string
+    cardLast4?: string
+    placedAt: string
+  }
+  const [orderResult,     setOrderResult]     = useState<OrderSuccess | null>(null)
   const [showMpesa,       setShowMpesa]       = useState(false)
   const [showCardPayment, setShowCardPayment] = useState(false)
   const [isSubmitting,    setIsSubmitting]    = useState(false)
@@ -663,6 +682,31 @@ export function CheckoutPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  /* ── Snapshot helper: capture order details before clearCart() empties them ── */
+  const buildOrderSnapshot = (extra: Pick<OrderSuccess, "orderNumber" | "paymentMethod"> & Partial<OrderSuccess>): OrderSuccess => ({
+    customerName:   formData.name || savedAddress?.name || "",
+    customerPhone:  formData.phone || savedAddress?.phone || "",
+    customerEmail:  formData.email || undefined,
+    deliveryAddress: formData.address || undefined,
+    locationLabel:  selectedDelivery?.name,
+    estimatedDays:  selectedDelivery?.estimatedDays,
+    fulfilmentMode,
+    items: items.map(it => ({
+      name:      it.product.name,
+      qty:       it.quantity,
+      unitPrice: it.product.price,
+      image:     it.product.images?.[0],
+      variation: it.selectedVariations
+        ? Object.entries(it.selectedVariations).map(([k, v]) => `${k}: ${v}`).join(", ")
+        : undefined,
+    })),
+    subtotal:    totalPrice,
+    deliveryFee: freeShipping ? 0 : deliveryFee,
+    total:       grandTotal,
+    placedAt:    new Date().toISOString(),
+    ...extra,
+  })
+
   /* ── MPesa ── */
   const createMpesaPendingOrder = async (): Promise<{ orderNumber: string } | { error: string } | null> => {
     try {
@@ -675,7 +719,11 @@ export function CheckoutPage() {
   }
 
   const handleMpesaConfirmed = (result: { orderNumber: string; mpesaReceipt: string; phone: string }) => {
-    setOrderResult({ orderNumber: result.orderNumber, paymentMethod: "mpesa" })
+    setOrderResult(buildOrderSnapshot({
+      orderNumber: result.orderNumber,
+      paymentMethod: "mpesa",
+      mpesaReceipt: result.mpesaReceipt,
+    }))
     clearCart()
     setTimeout(() => setShowMpesa(false), 1500)
   }
@@ -716,7 +764,12 @@ export function CheckoutPage() {
       } catch { /* localStorage may be unavailable */ }
 
       if (status === "success") {
-        setOrderResult({ orderNumber, paymentMethod: "card" })
+        setOrderResult(buildOrderSnapshot({
+          orderNumber,
+          paymentMethod: "card",
+          cardBrand: details.cardBrand,
+          cardLast4: details.last4,
+        }))
         clearCart()
         setTimeout(() => setShowCardPayment(false), 1200)
       }
@@ -748,116 +801,279 @@ export function CheckoutPage() {
     const isWhatsApp = orderResult.orderNumber === "WhatsApp"
     const isMpesa    = orderResult.paymentMethod === "mpesa"
     const isCard     = orderResult.paymentMethod === "card"
+    const isCod      = orderResult.paymentMethod === "cod"
     const trackUrl   = isWhatsApp ? "/track-order" : `/track-order/${orderResult.orderNumber}`
 
+    /* Heading + sub varies by payment method */
+    const heading = isWhatsApp
+      ? "Order Sent to WhatsApp"
+      : isCod
+        ? "Order Placed"
+        : "Payment Approved"
+    const subheading = isWhatsApp
+      ? "We'll confirm your order on WhatsApp shortly."
+      : isCod
+        ? "We'll call to confirm before dispatch. Pay on delivery in cash or M-PESA."
+        : "Thank you. Your payment was received and your order is now being prepared."
+
+    /* Estimated delivery copy: same-day if before 8 PM, else next morning */
+    const placedDate = new Date(orderResult.placedAt)
+    const placedHour = placedDate.getHours()
+    const sameDayCutoff = placedHour < 20
+    const etaCopy = orderResult.fulfilmentMode === "pickup"
+      ? `Ready for pickup ${sameDayCutoff ? "today" : "tomorrow morning"}${orderResult.locationLabel ? ` at ${orderResult.locationLabel}` : ""}.`
+      : orderResult.estimatedDays
+        ? `Estimated delivery: ${orderResult.estimatedDays}.`
+        : sameDayCutoff
+          ? "Delivery today between 8 AM and 8 PM."
+          : "Delivery first thing tomorrow morning."
+
+    /* Payment label / badge text */
+    const paymentLabel = isMpesa ? "M-PESA" : isCard ? `${orderResult.cardBrand || "Card"} •••• ${orderResult.cardLast4 || "----"}` : isCod ? "Cash on Delivery" : "WhatsApp"
+    const paymentRef   = isMpesa ? orderResult.mpesaReceipt : undefined
+
+    /* Status timeline — 4 steps, first one done */
+    const timeline = [
+      { key: "placed",     label: "Order Placed", icon: CheckCircle, done: true },
+      { key: "confirmed",  label: "Confirmed",    icon: Package,     done: false },
+      { key: "dispatched", label: "Dispatched",   icon: Truck,       done: false },
+      { key: "delivered",  label: "Delivered",    icon: Home,        done: false },
+    ]
+
     return (
-      <div className="min-h-screen flex flex-col" style={{ background: CREAM }}>
+      <div className="min-h-screen flex flex-col bg-white">
         <TopBar /><Navbar />
 
-        <main className="flex-1 flex flex-col items-center justify-center py-12 px-4">
+        <main className="flex-1 py-10 px-4">
+          <div className="max-w-3xl mx-auto">
 
-          {/* Hero gradient card */}
-          <div
-            className="w-full max-w-md rounded-3xl overflow-hidden shadow-2xl"
-            style={{ background: `linear-gradient(160deg, ${WINE} 0%, ${WINE_CARD} 55%, #9B3A4A 100%)` }}
-          >
-            {/* Top glow band */}
-            <div className="h-1 w-full" style={{ background: `linear-gradient(90deg, ${ORANGE}, ${PEACH_MED}, ${ORANGE})` }} />
+            {/* ── Hero header ───────────────────────────────────── */}
+            <div className="border border-neutral-200 bg-white">
+              {/* Wine accent band */}
+              <div className="h-1 w-full" style={{ background: WINE }} />
 
-            <div className="px-8 py-10 text-center">
-              {/* Pulsing check icon */}
-              <div className="relative w-24 h-24 mx-auto mb-6">
+              <div className="px-6 sm:px-10 py-10 text-center">
                 <div
-                  className="absolute inset-0 rounded-full animate-ping opacity-30"
-                  style={{ background: PEACH_LIGHT, animationDuration: "2s" }}
-                />
-                <div
-                  className="relative w-24 h-24 rounded-full flex items-center justify-center"
-                  style={{ background: "rgba(255,251,245,0.15)", border: "2px solid rgba(255,251,245,0.3)" }}
+                  className="w-16 h-16 mx-auto mb-5 flex items-center justify-center"
+                  style={{ background: WINE, color: "#fff" }}
                 >
-                  <CheckCircle className="h-12 w-12" style={{ color: PEACH_LIGHT }} />
+                  <CheckCircle className="h-8 w-8" strokeWidth={2.25} />
                 </div>
-              </div>
 
-              <h1 className="text-3xl font-bold text-white mb-1">Order Confirmed!</h1>
-              <p className="text-sm mb-5" style={{ color: "rgba(255,251,245,0.7)" }}>
-                Thank you for shopping with Shaniid RX
-              </p>
+                <h1 className="text-2xl sm:text-3xl font-bold mb-2" style={{ color: WINE }}>
+                  {heading}
+                </h1>
+                <p className="text-sm text-neutral-600 max-w-md mx-auto">{subheading}</p>
 
-              {/* Order number pill */}
-              {!isWhatsApp && (
-                <div
-                  className="inline-flex items-center gap-2 px-5 py-2 rounded-full mb-5"
-                  style={{ background: "rgba(255,251,245,0.15)", border: "1px solid rgba(255,251,245,0.25)" }}
-                >
-                  <span className="text-xs" style={{ color: "rgba(255,251,245,0.6)" }}>Order No</span>
-                  <span className="text-sm font-bold text-white tracking-wide">{orderResult.orderNumber}</span>
-                </div>
-              )}
-
-              {/* Payment status row */}
-              <div
-                className="flex items-center justify-center gap-2 px-4 py-3 rounded-2xl mb-6"
-                style={{ background: "rgba(255,251,245,0.1)" }}
-              >
-                {isMpesa && (
-                  <>
-                    <div className="w-5 h-5 rounded-full bg-green-400 flex items-center justify-center flex-shrink-0">
-                      <CheckCircle className="h-3 w-3 text-white" />
+                {/* Order number + payment chip row */}
+                {!isWhatsApp && (
+                  <div className="flex flex-wrap items-center justify-center gap-3 mt-6">
+                    <div className="px-4 py-2 border border-neutral-200 bg-neutral-50">
+                      <p className="text-[10px] uppercase tracking-wider text-neutral-500 mb-0.5">Order No</p>
+                      <p className="font-mono text-sm font-bold tracking-wider" style={{ color: WINE }}>
+                        {orderResult.orderNumber}
+                      </p>
                     </div>
-                    <p className="text-sm text-white font-medium">M-PESA payment received</p>
-                  </>
-                )}
-                {isCard && (
-                  <>
-                    <div className="w-5 h-5 rounded-full bg-blue-400 flex items-center justify-center flex-shrink-0">
-                      <CheckCircle className="h-3 w-3 text-white" />
+                    <div className="px-4 py-2 border border-neutral-200 bg-neutral-50">
+                      <p className="text-[10px] uppercase tracking-wider text-neutral-500 mb-0.5">Payment</p>
+                      <p className="text-sm font-bold text-neutral-900">{paymentLabel}</p>
                     </div>
-                    <p className="text-sm text-white font-medium">Card payment processed</p>
-                  </>
+                    {paymentRef && (
+                      <div className="px-4 py-2 border border-neutral-200 bg-neutral-50">
+                        <p className="text-[10px] uppercase tracking-wider text-neutral-500 mb-0.5">M-PESA Ref</p>
+                        <p className="font-mono text-sm font-bold text-neutral-900">{paymentRef}</p>
+                      </div>
+                    )}
+                  </div>
                 )}
-                {isWhatsApp && (
-                  <>
-                    <div className="w-5 h-5 rounded-full bg-green-400 flex items-center justify-center flex-shrink-0">
-                      <CheckCircle className="h-3 w-3 text-white" />
-                    </div>
-                    <p className="text-sm text-white font-medium">Complete on WhatsApp</p>
-                  </>
-                )}
-                {!isMpesa && !isCard && !isWhatsApp && (
-                  <p className="text-sm text-white font-medium">We'll contact you to confirm delivery</p>
-                )}
-              </div>
-
-              {/* Action buttons */}
-              <div className="flex flex-col gap-3">
-                <button
-                  onClick={() => navigate(trackUrl)}
-                  className="w-full h-12 rounded-2xl font-bold flex items-center justify-center gap-2 transition-opacity hover:opacity-90"
-                  style={{ background: `linear-gradient(135deg, ${ORANGE} 0%, #ea580c 100%)`, color: "#fff" }}
-                >
-                  <Truck className="h-4 w-4" />
-                  Track My Order
-                </button>
-                <Link href="/shop" className="w-full">
-                  <button
-                    className="w-full h-12 rounded-2xl font-semibold transition-colors hover:opacity-80"
-                    style={{ background: "rgba(255,251,245,0.15)", border: "1px solid rgba(255,251,245,0.3)", color: CREAM }}
-                  >
-                    Continue Shopping
-                  </button>
-                </Link>
               </div>
             </div>
 
-            {/* Bottom peach gradient band */}
-            <div className="h-1.5 w-full" style={{ background: `linear-gradient(90deg, ${WINE}, ${ORANGE}, ${WINE})` }} />
-          </div>
+            {/* ── Status timeline ───────────────────────────────── */}
+            <div className="border-x border-b border-neutral-200 bg-white px-6 sm:px-10 py-8">
+              <p className="text-[11px] font-bold uppercase tracking-wider text-neutral-500 mb-5">Order Status</p>
+              <div className="flex items-start justify-between relative">
+                {/* Track line (grey) */}
+                <div className="absolute top-5 left-[10%] right-[10%] h-px bg-neutral-200" />
+                {/* Track line (wine progress — 1 of 4 done) */}
+                <div
+                  className="absolute top-5 left-[10%] h-px"
+                  style={{ width: `${Math.max(0, (1 / 3) * 80)}%`, background: WINE }}
+                />
+                {timeline.map(step => {
+                  const StepIcon = step.icon
+                  return (
+                    <div key={step.key} className="flex flex-col items-center relative z-10 flex-1">
+                      <div
+                        className="w-10 h-10 flex items-center justify-center"
+                        style={{
+                          background: step.done ? WINE : "#fff",
+                          border: step.done ? `1px solid ${WINE}` : "1px solid #e5e7eb",
+                          color: step.done ? "#fff" : "#9ca3af",
+                        }}
+                      >
+                        <StepIcon className="h-4 w-4" />
+                      </div>
+                      <span
+                        className="text-[11px] mt-2 font-semibold text-center"
+                        style={{ color: step.done ? WINE : "#9ca3af" }}
+                      >
+                        {step.label}
+                      </span>
+                    </div>
+                  )
+                })}
+              </div>
 
-          {/* Below-card note */}
-          <p className="mt-6 text-xs text-center max-w-xs" style={{ color: "#9ca3af" }}>
-            A receipt will be sent to your phone via SMS &amp; WhatsApp after confirmation by our team.
-          </p>
+              {/* ETA callout */}
+              <div className="mt-6 flex items-start gap-3 p-4 border border-neutral-200 bg-neutral-50">
+                <Clock className="h-4 w-4 mt-0.5 flex-shrink-0" style={{ color: WINE }} />
+                <div className="text-sm">
+                  <p className="font-semibold text-neutral-900">{etaCopy}</p>
+                  <p className="text-xs text-neutral-600 mt-0.5">
+                    Track this order any time using the button below or your order number on the Track Order page.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* ── Two-column: Items + Summary ──────────────────── */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-px bg-neutral-200 border-x border-b border-neutral-200">
+              {/* Items */}
+              <div className="lg:col-span-2 bg-white px-6 sm:px-8 py-6">
+                <div className="flex items-center gap-2 mb-4">
+                  <Package className="h-4 w-4" style={{ color: WINE }} />
+                  <p className="text-[11px] font-bold uppercase tracking-wider text-neutral-500">
+                    Items ({orderResult.items.reduce((n, it) => n + it.qty, 0)})
+                  </p>
+                </div>
+                {orderResult.items.length === 0 ? (
+                  <p className="text-sm text-neutral-500">No item details available.</p>
+                ) : (
+                  <div className="divide-y divide-neutral-100">
+                    {orderResult.items.map((it, i) => (
+                      <div key={i} className="flex items-center gap-3 py-3 first:pt-0 last:pb-0">
+                        {it.image ? (
+                          <div className="w-14 h-14 overflow-hidden flex-shrink-0 border border-neutral-200 bg-white">
+                            <img src={it.image} alt={it.name} className="w-full h-full object-cover" />
+                          </div>
+                        ) : (
+                          <div className="w-14 h-14 flex items-center justify-center flex-shrink-0 bg-neutral-100 border border-neutral-200">
+                            <Package className="h-5 w-5 text-neutral-400" />
+                          </div>
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-semibold text-neutral-900 truncate">{it.name}</p>
+                          {it.variation && <p className="text-xs text-neutral-500 mt-0.5">{it.variation}</p>}
+                          <p className="text-xs text-neutral-400 mt-0.5">Qty: {it.qty} · {formatPrice(it.unitPrice)}</p>
+                        </div>
+                        <p className="text-sm font-bold text-neutral-900 flex-shrink-0">
+                          {formatPrice(it.unitPrice * it.qty)}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Delivery / pickup info */}
+                {(orderResult.locationLabel || orderResult.deliveryAddress) && (
+                  <div className="mt-5 pt-5 border-t border-neutral-100">
+                    <p className="text-[11px] font-bold uppercase tracking-wider text-neutral-500 mb-2">
+                      {orderResult.fulfilmentMode === "pickup" ? "Pickup From" : "Deliver To"}
+                    </p>
+                    <div className="flex items-start gap-2">
+                      <MapPin className="h-4 w-4 mt-0.5 flex-shrink-0 text-neutral-500" />
+                      <div className="text-sm text-neutral-800">
+                        <p className="font-semibold">{orderResult.customerName}</p>
+                        {orderResult.locationLabel && <p className="text-neutral-600">{orderResult.locationLabel}</p>}
+                        {orderResult.deliveryAddress && <p className="text-neutral-600">{orderResult.deliveryAddress}</p>}
+                        <p className="text-neutral-600 mt-0.5">{orderResult.customerPhone}</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Summary */}
+              <div className="bg-white px-6 sm:px-8 py-6">
+                <p className="text-[11px] font-bold uppercase tracking-wider text-neutral-500 mb-4">Summary</p>
+                <div className="space-y-2 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-neutral-600">Subtotal</span>
+                    <span className="font-semibold text-neutral-900">{formatPrice(orderResult.subtotal)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-neutral-600">{orderResult.fulfilmentMode === "pickup" ? "Pickup" : "Delivery"}</span>
+                    <span className="font-semibold text-neutral-900">
+                      {orderResult.deliveryFee > 0 ? formatPrice(orderResult.deliveryFee) : <span className="text-green-700">Free</span>}
+                    </span>
+                  </div>
+                  <div className="h-px bg-neutral-200 my-2" />
+                  <div className="flex justify-between text-base font-bold">
+                    <span style={{ color: WINE }}>Total</span>
+                    <span style={{ color: WINE }}>{formatPrice(orderResult.total)}</span>
+                  </div>
+                </div>
+
+                {/* CTAs */}
+                <div className="mt-6 flex flex-col gap-2">
+                  <button
+                    onClick={() => navigate(trackUrl)}
+                    className="w-full h-11 font-bold text-white flex items-center justify-center gap-2 transition-opacity hover:opacity-90 text-sm"
+                    style={{ background: WINE }}
+                  >
+                    <Truck className="h-4 w-4" />
+                    Track My Order
+                  </button>
+                  <Link href="/shop" className="w-full">
+                    <button
+                      className="w-full h-11 font-semibold text-sm border border-neutral-300 bg-white hover:bg-neutral-50 transition-colors"
+                      style={{ color: WINE }}
+                    >
+                      Continue Shopping
+                    </button>
+                  </Link>
+                </div>
+
+                {/* WhatsApp helper for non-card */}
+                {!isCard && whatsappNumber && (
+                  <a
+                    href={`https://wa.me/${whatsappNumber}?text=Hi%2C%20I%20just%20placed%20order%20${encodeURIComponent(orderResult.orderNumber)}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="mt-3 inline-flex items-center justify-center gap-2 w-full h-10 text-xs font-semibold text-white"
+                    style={{ background: "#25D366" }}
+                  >
+                    <MessageSquare className="h-3.5 w-3.5" />
+                    Chat with Pharmacist
+                  </a>
+                )}
+              </div>
+            </div>
+
+            {/* ── What happens next ───────────────────────────── */}
+            <div className="mt-8 grid grid-cols-1 sm:grid-cols-3 gap-px bg-neutral-200 border border-neutral-200">
+              {[
+                { icon: ShieldCheck, title: "Verification",     body: "Our pharmacist verifies prescription items and stock availability." },
+                { icon: Package,     title: "Packed & Sealed",  body: "Medicines are packed in tamper-evident bags with the trust seal." },
+                { icon: Truck,       title: "On The Way",       body: "A rider is dispatched and you'll get an SMS with the tracking link." },
+              ].map(step => {
+                const Icon = step.icon
+                return (
+                  <div key={step.title} className="bg-white p-5">
+                    <Icon className="h-5 w-5 mb-3" style={{ color: WINE }} />
+                    <p className="text-sm font-bold text-neutral-900 mb-1">{step.title}</p>
+                    <p className="text-xs text-neutral-600 leading-relaxed">{step.body}</p>
+                  </div>
+                )
+              })}
+            </div>
+
+            {/* Receipt note */}
+            <p className="mt-6 text-xs text-center text-neutral-500">
+              A receipt has been logged. We'll send confirmation via SMS{orderResult.customerEmail ? " and email" : ""} once the pharmacy team accepts the order.
+            </p>
+          </div>
         </main>
 
         <Footer />
@@ -1570,7 +1786,7 @@ export function CheckoutPage() {
                               setFormError(data?.error || "We couldn't place the order. Please try again.")
                               return
                             }
-                            setOrderResult({ orderNumber: data.orderNumber, paymentMethod: "cod" })
+                            setOrderResult(buildOrderSnapshot({ orderNumber: data.orderNumber, paymentMethod: "cod" }))
                             clearCart()
                           } catch (err) {
                             setFormError(err instanceof Error ? err.message : "Network error")
