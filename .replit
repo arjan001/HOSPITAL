@@ -54,6 +54,3 @@ externalPort = 80
 [userenv]
 
 [userenv.shared]
-PAYHERO_CHANNEL_ID = "7246"
-PAYHERO_WALLET_ID = "7850"
-PAYHERO_CALLBACK_URL = "https://rx-pharmacy.replit.app/api/payments/payhero/callback"
