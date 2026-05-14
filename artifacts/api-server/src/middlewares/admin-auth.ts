@@ -8,19 +8,27 @@ export interface AuthedRequest extends Request {
   }
 }
 
-/**
- * Admin-auth gate — currently a pass-through.
- *
- * Supabase-based auth has been removed because the project uses its own admin
- * panel. Customer auth will be reintroduced via Clerk later. Any inbound
- * request is treated as the default super-admin so existing routes that read
- * `req.authUser` continue to work.
- */
-export async function requireAdmin(req: AuthedRequest, _res: Response, next: NextFunction) {
-  req.authUser = {
-    id: "local-admin",
-    email: "admin@shaniidrx.local",
-    role: "super_admin",
+const DEV_USER = {
+  id: "local-admin",
+  email: "admin@shaniidrx.local",
+  role: "super_admin",
+}
+
+export async function requireAdmin(req: AuthedRequest, res: Response, next: NextFunction) {
+  const expected = process.env.ADMIN_API_TOKEN?.trim()
+  const provided =
+    (req.header("x-admin-token") || "").trim() ||
+    (req.header("authorization") || "").replace(/^Bearer\s+/i, "").trim()
+
+  if (expected && provided && provided === expected) {
+    req.authUser = { ...DEV_USER, id: "api-token" }
+    return next()
   }
-  next()
+
+  if (process.env.NODE_ENV !== "production") {
+    req.authUser = DEV_USER
+    return next()
+  }
+
+  return res.status(401).json({ error: "Unauthorized" })
 }

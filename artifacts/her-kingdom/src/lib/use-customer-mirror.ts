@@ -52,11 +52,6 @@ export function deleteCustomer(id: string): void {
   writeCustomers(readCustomers().filter((c) => c.id !== id))
 }
 
-/**
- * Mirrors the signed-in Clerk user into the cmsStore "customers" doc so admins
- * can see every registered customer (Email/password, Google OAuth, etc.) in
- * /admin/customers without depending on a backend yet.
- */
 export function useCustomerMirror(): void {
   const { isSignedIn, user } = useUser()
   const lastIdRef = useRef<string | null>(null)

@@ -44,11 +44,6 @@ async function postJson<T>(path: string, body: unknown): Promise<T> {
   return (await r.json()) as T
 }
 
-/**
- * Zoom/Meet-style video call backed by Daily.co. Self-contained component:
- * mints a room + token, joins it, exposes mute/camera/screen-share/leave,
- * and offers a "Switch to chat" handoff to keep the patient experience smooth.
- */
 export function DailyCall({
   roomName,
   userName,

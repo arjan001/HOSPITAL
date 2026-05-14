@@ -1,23 +1,6 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { logger } from "../../../lib/logger.js";
 
-/**
- * Daily.co video room minting for Shaniid RX consultations.
- *
- * Routes mounted at /api/video:
- *   POST /room      — create (or reuse) a short-lived Daily room
- *   POST /token     — mint a meeting token (owner privileges, custom name)
- *
- * Required env:
- *   DAILY_API_KEY   — server API key from https://dashboard.daily.co/developers
- *
- * Optional env:
- *   DAILY_DOMAIN    — your Daily subdomain; if unset we let Daily pick one.
- *
- * Storage: in-memory map keyed by room name. Rooms are time-limited so memory
- * cleanup is not critical, but we still expire entries after 6h.
- */
-
 const router: IRouter = Router();
 
 const API_BASE = "https://api.daily.co/v1";
