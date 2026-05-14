@@ -1,10 +1,10 @@
 "use client"
 
 import React from "react"
-import { apiFetch, authedFetcher as fetcher } from "@/lib/api-client"
 import { useState } from "react"
 import { toast } from "sonner"
-import { Shield, ShieldCheck, Eye, Pencil, UserX, MoreHorizontal, UserCircle, UserPlus, Loader2, AlertCircle, Mail, Trash2 } from "lucide-react"
+import { useCmsDoc, newId } from "@/lib/cms-store"
+import { Shield, ShieldCheck, Eye, Pencil, MoreHorizontal, UserCircle, UserPlus, Loader2, AlertCircle, Mail, Trash2 } from "lucide-react"
 import { usePagination } from "@/hooks/use-pagination"
 import { PaginationControls } from "@/components/pagination-controls"
 import { AdminShell } from "./admin-shell"
@@ -16,8 +16,6 @@ import { Label } from "@/components/ui/label"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Switch } from "@/components/ui/switch"
-import useSWR from "swr"
-
 
 interface AdminUser {
   id: string
@@ -42,9 +40,22 @@ function getRoleBadge(role: string) {
   return <Badge className={`text-[10px] border ${r.color}`}>{r.label}</Badge>
 }
 
+const DEFAULT_USERS: AdminUser[] = [
+  {
+    id: "u_super",
+    display_name: "Super Admin",
+    email: "admin@shaniidrx.local",
+    role: "super_admin",
+    is_active: true,
+    last_login: null,
+    created_at: new Date(0).toISOString(),
+  },
+]
+
 export function UsersManagement() {
-  const { data: users = [], mutate } = useSWR<AdminUser[]>("/api/admin/users", fetcher)
-  const [currentUserRole, setCurrentUserRole] = React.useState<string | null>(null)
+  const [users, setUsers] = useCmsDoc<AdminUser[]>("admin-users", DEFAULT_USERS)
+  const mutate = () => {}
+  const [currentUserRole, setCurrentUserRole] = React.useState<string | null>("super_admin")
   const [editUser, setEditUser] = useState<AdminUser | null>(null)
   const [editForm, setEditForm] = useState({ display_name: "", role: "", is_active: true })
   const [saving, setSaving] = useState(false)
@@ -55,81 +66,60 @@ export function UsersManagement() {
   const [inviteError, setInviteError] = useState("")
   const [inviteSuccess, setInviteSuccess] = useState(false)
 
-  // Fetch current user's role
-  React.useEffect(() => {
-    apiFetch("/api/auth/me")
-      .then((r) => r.json())
-      .then((data) => setCurrentUserRole(data.role || null))
-      .catch(() => setCurrentUserRole(null))
-  }, [])
-
   const openEdit = (u: AdminUser) => {
     setEditUser(u)
     setEditForm({ display_name: u.display_name, role: u.role, is_active: u.is_active })
   }
 
-  const handleSave = async () => {
+  const handleSave = () => {
     if (!editUser) return
     setSaving(true)
-    const res = await apiFetch("/api/admin/users", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id: editUser.id, ...editForm }),
-    })
+    setUsers((prev) => prev.map((u) => u.id === editUser.id ? { ...u, ...editForm } : u))
     setSaving(false)
     setEditUser(null)
-    mutate()
-    if (res.ok) toast.success("User updated successfully")
-    else toast.error("Failed to update user")
+    toast.success("User updated successfully")
   }
 
-  const handleToggleActive = async (u: AdminUser) => {
-    // Note: Database has no is_active column for admin_users
-    // This is a placeholder - all admin users are active
-    toast.info("Admin users cannot be deactivated - use Delete instead")
+  const handleToggleActive = (_u: AdminUser) => {
+    toast.info("Use Edit to toggle active status")
   }
 
-  const handleDelete = async (id: string) => {
+  const handleDelete = (id: string) => {
     if (!confirm("Are you sure you want to permanently remove this user?")) return
-    const res = await apiFetch(`/api/admin/users?id=${id}`, { method: "DELETE" })
-    mutate()
-    if (res.ok) toast.success("User removed successfully")
-    else toast.error("Failed to remove user")
+    setUsers((prev) => prev.filter((u) => u.id !== id))
+    toast.success("User removed successfully")
   }
 
-  const handleInvite = async (e: React.FormEvent) => {
+  const handleInvite = (e: React.FormEvent) => {
     e.preventDefault()
     setInviteError("")
     if (inviteForm.password.length < 6) {
       setInviteError("Password must be at least 6 characters")
       return
     }
-    setInviting(true)
-    try {
-      const res = await apiFetch("/api/admin/users/invite", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(inviteForm),
-      })
-      const data = await res.json()
-      if (!res.ok) {
-        setInviteError(data.error || "Failed to create user")
-        toast.error(data.error || "Failed to create user")
-      } else {
-        setInviteSuccess(true)
-        mutate()
-        toast.success(`${inviteForm.displayName} added successfully`)
-        setTimeout(() => {
-          setShowInvite(false)
-          setInviteSuccess(false)
-          setInviteForm({ email: "", displayName: "", password: "", role: "admin" })
-        }, 2000)
-      }
-    } catch {
-      setInviteError("Network error")
-    } finally {
-      setInviting(false)
+    if (users.some((u) => u.email.toLowerCase() === inviteForm.email.toLowerCase())) {
+      setInviteError("A user with that email already exists")
+      return
     }
+    setInviting(true)
+    const created: AdminUser = {
+      id: newId("usr"),
+      display_name: inviteForm.displayName,
+      email: inviteForm.email,
+      role: inviteForm.role,
+      is_active: true,
+      last_login: null,
+      created_at: new Date().toISOString(),
+    }
+    setUsers((prev) => [...prev, created])
+    setInviteSuccess(true)
+    setInviting(false)
+    toast.success(`${inviteForm.displayName} added successfully`)
+    setTimeout(() => {
+      setShowInvite(false)
+      setInviteSuccess(false)
+      setInviteForm({ email: "", displayName: "", password: "", role: "admin" })
+    }, 2000)
   }
 
   const activeUsers = users.filter((u) => u.is_active)

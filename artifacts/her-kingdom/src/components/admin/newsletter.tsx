@@ -1,15 +1,13 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { apiFetch, authedFetcher as fetcher } from "@/lib/api-client"
 import { Trash2, Download, Mail } from "lucide-react"
+import { useCmsDoc } from "@/lib/cms-store"
 import { usePagination } from "@/hooks/use-pagination"
 import { PaginationControls } from "@/components/pagination-controls"
 import { AdminShell } from "./admin-shell"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import useSWR from "swr"
-
 
 interface Subscriber {
   id: string
@@ -19,8 +17,7 @@ interface Subscriber {
 }
 
 export function NewsletterComponent() {
-  const { data: subscribers = [], mutate } = useSWR<Subscriber[]>("/api/admin/newsletter", fetcher)
-  const [deleting, setDeleting] = useState(false)
+  const [subscribers, setSubscribers] = useCmsDoc<Subscriber[]>("newsletter-subscribers", [])
   const [search, setSearch] = useState("")
 
   const filtered = subscribers.filter((s) =>
@@ -31,28 +28,13 @@ export function NewsletterComponent() {
 
   useEffect(() => { resetPage() }, [search])
 
-  const handleDelete = async (id: string) => {
+  const handleDelete = (id: string) => {
     if (!confirm("Remove this subscriber?")) return
-    setDeleting(true)
-    try {
-      await apiFetch(`/api/admin/newsletter?id=${id}`, { method: "DELETE" })
-      mutate()
-    } finally {
-      setDeleting(false)
-    }
+    setSubscribers((prev) => prev.filter((s) => s.id !== id))
   }
 
-  const handleToggleActive = async (subscriber: Subscriber) => {
-    try {
-      await apiFetch("/api/admin/newsletter", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: subscriber.id, isActive: !subscriber.is_active }),
-      })
-      mutate()
-    } catch (err) {
-      console.error("Failed to update subscriber:", err)
-    }
+  const handleToggleActive = (sub: Subscriber) => {
+    setSubscribers((prev) => prev.map((s) => s.id === sub.id ? { ...s, is_active: !s.is_active } : s))
   }
 
   const handleExport = () => {
@@ -144,7 +126,6 @@ export function NewsletterComponent() {
                           size="icon"
                           className="h-8 w-8 text-destructive"
                           onClick={() => handleDelete(subscriber.id)}
-                          disabled={deleting}
                         >
                           <Trash2 className="h-3.5 w-3.5" />
                         </Button>

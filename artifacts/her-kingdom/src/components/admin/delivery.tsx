@@ -1,8 +1,8 @@
 "use client"
 
 import { useMemo, useState } from "react"
-import { apiFetch, authedFetcher as fetcher } from "@/lib/api-client"
 import { Plus, Pencil, Trash2, MapPin, Package, Truck } from "lucide-react"
+import { useCmsDoc, newId } from "@/lib/cms-store"
 import { usePagination } from "@/hooks/use-pagination"
 import { PaginationControls } from "@/components/pagination-controls"
 import { AdminShell } from "./admin-shell"
@@ -13,8 +13,6 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import useSWR from "swr"
-
 
 type LocationType = "delivery" | "pickup"
 type LocationRegion = "nairobi" | "outside_nairobi"
@@ -56,8 +54,14 @@ const DEFAULT_FORM: FormState = {
   isActive: true,
 }
 
+const DEFAULT_LOCATIONS: AdminDelivery[] = [
+  { id: "loc_nairobi_cbd", name: "Nairobi CBD", fee: 200, estimatedDays: "Same day", isActive: true, type: "delivery", region: "nairobi", sortOrder: 10 },
+  { id: "loc_westlands", name: "Westlands / Parklands", fee: 250, estimatedDays: "Same day", isActive: true, type: "delivery", region: "nairobi", sortOrder: 20 },
+  { id: "loc_outside", name: "Outside Nairobi (Courier)", fee: 450, estimatedDays: "1-3 days", isActive: true, type: "delivery", region: "outside_nairobi", sortOrder: 60 },
+]
+
 export function AdminDelivery() {
-  const { data: locations = [], mutate } = useSWR<AdminDelivery[]>("/api/admin/delivery", fetcher)
+  const [locations, setLocations] = useCmsDoc<AdminDelivery[]>("delivery-locations", DEFAULT_LOCATIONS)
   const [isOpen, setIsOpen] = useState(false)
   const [editId, setEditId] = useState<string | null>(null)
   const [form, setForm] = useState<FormState>(DEFAULT_FORM)
@@ -77,11 +81,7 @@ export function AdminDelivery() {
   const { paginatedItems, currentPage, totalPages, totalItems, itemsPerPage, goToPage, changePerPage } =
     usePagination(filtered, { defaultPerPage: 10 })
 
-  const openNew = () => {
-    setEditId(null)
-    setForm(DEFAULT_FORM)
-    setIsOpen(true)
-  }
+  const openNew = () => { setEditId(null); setForm(DEFAULT_FORM); setIsOpen(true) }
 
   const openEdit = (loc: AdminDelivery) => {
     setEditId(loc.id)
@@ -99,40 +99,34 @@ export function AdminDelivery() {
     setIsOpen(true)
   }
 
-  const handleSave = async () => {
-    await apiFetch("/api/admin/delivery", {
-      method: editId ? "PUT" : "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        id: editId,
-        name: form.name,
-        fee: Number.parseFloat(form.fee) || 0,
-        estimatedDays: form.estimatedDays,
-        type: form.type,
-        region: form.region,
-        city: form.city,
-        description: form.description,
-        sortOrder: Number.parseInt(form.sortOrder, 10) || 50,
-        isActive: form.isActive,
-      }),
+  const handleSave = () => {
+    const record: AdminDelivery = {
+      id: editId || newId("loc"),
+      name: form.name,
+      fee: Number.parseFloat(form.fee) || 0,
+      estimatedDays: form.estimatedDays,
+      type: form.type,
+      region: form.region,
+      city: form.city,
+      description: form.description,
+      sortOrder: Number.parseInt(form.sortOrder, 10) || 50,
+      isActive: form.isActive,
+    }
+    setLocations((prev) => {
+      const idx = prev.findIndex((l) => l.id === record.id)
+      if (idx === -1) return [...prev, record]
+      const next = prev.slice(); next[idx] = record; return next
     })
-    mutate()
     setIsOpen(false)
   }
 
-  const handleDelete = async (id: string) => {
+  const handleDelete = (id: string) => {
     if (!confirm("Delete this location? This cannot be undone.")) return
-    await apiFetch(`/api/admin/delivery?id=${id}`, { method: "DELETE" })
-    mutate()
+    setLocations((prev) => prev.filter((l) => l.id !== id))
   }
 
-  const toggleActive = async (loc: AdminDelivery) => {
-    await apiFetch("/api/admin/delivery", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...loc, isActive: !loc.isActive }),
-    })
-    mutate()
+  const toggleActive = (loc: AdminDelivery) => {
+    setLocations((prev) => prev.map((l) => l.id === loc.id ? { ...l, isActive: !l.isActive } : l))
   }
 
   return (
@@ -152,14 +146,10 @@ export function AdminDelivery() {
 
         <div className="flex gap-1 p-1 rounded-sm bg-secondary w-fit">
           {(["all", "delivery", "pickup"] as const).map((tab) => (
-            <button
-              key={tab}
-              type="button"
-              onClick={() => setActiveTab(tab)}
+            <button key={tab} type="button" onClick={() => setActiveTab(tab)}
               className={`px-4 py-1.5 text-xs uppercase tracking-wide rounded-sm transition-colors ${
                 activeTab === tab ? "bg-background shadow-sm font-semibold" : "text-muted-foreground"
-              }`}
-            >
+              }`}>
               {tab === "all" ? `All (${counts.all})` : tab === "delivery" ? `Delivery (${counts.delivery})` : `Pickup (${counts.pickup})`}
             </button>
           ))}
@@ -205,13 +195,10 @@ export function AdminDelivery() {
                     <td className="px-4 py-3">{loc.fee > 0 ? formatPrice(loc.fee) : <span className="text-muted-foreground">Free</span>}</td>
                     <td className="px-4 py-3 text-muted-foreground hidden sm:table-cell">{loc.estimatedDays}</td>
                     <td className="px-4 py-3">
-                      <button
-                        type="button"
-                        onClick={() => toggleActive(loc)}
+                      <button type="button" onClick={() => toggleActive(loc)}
                         className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium transition-opacity hover:opacity-80 ${
                           loc.isActive ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"
-                        }`}
-                      >
+                        }`}>
                         {loc.isActive ? "Active" : "Hidden"}
                       </button>
                     </td>
@@ -220,12 +207,7 @@ export function AdminDelivery() {
                         <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openEdit(loc)}>
                           <Pencil className="h-3.5 w-3.5" />
                         </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8 text-destructive"
-                          onClick={() => handleDelete(loc.id)}
-                        >
+                        <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => handleDelete(loc.id)}>
                           <Trash2 className="h-3.5 w-3.5" />
                         </Button>
                       </div>
@@ -234,23 +216,17 @@ export function AdminDelivery() {
                 )
               })}
               {paginatedItems.length === 0 && (
-                <tr>
-                  <td colSpan={8} className="px-4 py-10 text-center text-sm text-muted-foreground">
-                    No locations match this filter. Add one with the button above.
-                  </td>
-                </tr>
+                <tr><td colSpan={8} className="px-4 py-10 text-center text-sm text-muted-foreground">
+                  No locations match this filter. Add one with the button above.
+                </td></tr>
               )}
             </tbody>
           </table>
         </div>
 
         <PaginationControls
-          currentPage={currentPage}
-          totalPages={totalPages}
-          totalItems={totalItems}
-          itemsPerPage={itemsPerPage}
-          onPageChange={goToPage}
-          onItemsPerPageChange={changePerPage}
+          currentPage={currentPage} totalPages={totalPages} totalItems={totalItems}
+          itemsPerPage={itemsPerPage} onPageChange={goToPage} onItemsPerPageChange={changePerPage}
           perPageOptions={[10, 20, 50]}
         />
       </div>
@@ -286,88 +262,53 @@ export function AdminDelivery() {
 
             <div>
               <Label className="text-sm font-medium mb-1.5 block">Location Name *</Label>
-              <Input
-                value={form.name}
-                onChange={(e) => setForm({ ...form, name: e.target.value })}
-                placeholder={form.type === "pickup" ? "e.g. Pickup: Afya Centre Matatu Stage" : "e.g. Westlands / Parklands"}
-              />
+              <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })}
+                placeholder={form.type === "pickup" ? "e.g. Pickup: Afya Centre Matatu Stage" : "e.g. Westlands / Parklands"} />
             </div>
 
             {form.region === "outside_nairobi" && (
               <div>
                 <Label className="text-sm font-medium mb-1.5 block">Town / City *</Label>
-                <Input
-                  value={form.city}
-                  onChange={(e) => setForm({ ...form, city: e.target.value })}
-                  placeholder="e.g. Mombasa, Kisumu, Nakuru"
-                />
-                <p className="text-[11px] text-muted-foreground mt-1">
-                  Required for outside-Nairobi locations so customers know where the parcel goes.
-                </p>
+                <Input value={form.city} onChange={(e) => setForm({ ...form, city: e.target.value })}
+                  placeholder="e.g. Mombasa, Kisumu, Nakuru" />
               </div>
             )}
 
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <Label className="text-sm font-medium mb-1.5 block">Delivery Fee (KSh) *</Label>
-                <Input
-                  type="number"
-                  value={form.fee}
-                  onChange={(e) => setForm({ ...form, fee: e.target.value })}
-                  placeholder="200"
-                />
+                <Input type="number" value={form.fee} onChange={(e) => setForm({ ...form, fee: e.target.value })} placeholder="200" />
               </div>
               <div>
                 <Label className="text-sm font-medium mb-1.5 block">Estimated Days *</Label>
-                <Input
-                  value={form.estimatedDays}
-                  onChange={(e) => setForm({ ...form, estimatedDays: e.target.value })}
-                  placeholder="1-2 days"
-                />
+                <Input value={form.estimatedDays} onChange={(e) => setForm({ ...form, estimatedDays: e.target.value })} placeholder="1-2 days" />
               </div>
             </div>
 
             <div>
               <Label className="text-sm font-medium mb-1.5 block">Description / Notes</Label>
-              <Textarea
-                value={form.description}
-                onChange={(e) => setForm({ ...form, description: e.target.value })}
-                rows={2}
-                placeholder={form.type === "pickup" ? "e.g. Collect at the Akamba counter — ask for Shaniid RX parcel" : "Optional notes shown at checkout"}
-              />
+              <Textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} rows={2} />
             </div>
 
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <Label className="text-sm font-medium mb-1.5 block">Sort order</Label>
-                <Input
-                  type="number"
-                  value={form.sortOrder}
-                  onChange={(e) => setForm({ ...form, sortOrder: e.target.value })}
-                />
+                <Input type="number" value={form.sortOrder} onChange={(e) => setForm({ ...form, sortOrder: e.target.value })} />
               </div>
               <div className="flex items-end">
                 <label className="flex items-center gap-2 text-sm cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={form.isActive}
-                    onChange={(e) => setForm({ ...form, isActive: e.target.checked })}
-                    className="h-4 w-4 rounded border-border"
-                  />
+                  <input type="checkbox" checked={form.isActive} onChange={(e) => setForm({ ...form, isActive: e.target.checked })}
+                    className="h-4 w-4 rounded border-border" />
                   Show at checkout
                 </label>
               </div>
             </div>
 
             <div className="flex justify-end gap-3 pt-4 border-t border-border">
-              <Button variant="outline" onClick={() => setIsOpen(false)} className="bg-transparent">
-                Cancel
-              </Button>
-              <Button
-                onClick={handleSave}
+              <Button variant="outline" onClick={() => setIsOpen(false)} className="bg-transparent">Cancel</Button>
+              <Button onClick={handleSave}
                 disabled={!form.name || !form.fee || !form.estimatedDays}
-                className="bg-foreground text-background hover:bg-foreground/90"
-              >
+                className="bg-foreground text-background hover:bg-foreground/90">
                 {editId ? "Update" : "Add"} Location
               </Button>
             </div>

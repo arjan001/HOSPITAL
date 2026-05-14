@@ -1,15 +1,14 @@
 "use client"
 
 import { useState, useEffect, useRef, useCallback } from "react"
-import { apiFetch, authedFetcher as fetcher } from "@/lib/api-client"
 import { Save, Loader2, Eye, FileText, Bold, Italic, Underline, List, ListOrdered, Link2, Heading2, Undo2, Redo2, Code, Plus, Trash2, AlertCircle, CheckCircle2 } from "lucide-react"
+import { useCmsDoc, newId } from "@/lib/cms-store"
 import { AdminShell } from "./admin-shell"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import useSWR from "swr"
 import { sanitizeHtml } from "@/lib/sanitize-html"
 
 interface Policy {
@@ -24,7 +23,6 @@ interface Policy {
   created_at: string
   updated_at: string
 }
-
 
 const TOOLBAR_ACTIONS = [
   { cmd: "bold", icon: Bold, label: "Bold" },
@@ -99,8 +97,23 @@ function RichEditor({ value, onChange }: { value: string; onChange: (html: strin
 
 const emptyForm = { slug: "", title: "", content: "", meta_title: "", meta_description: "", meta_keywords: "", is_published: true }
 
+const DEFAULT_POLICIES: Policy[] = [
+  {
+    id: "pol_privacy",
+    slug: "privacy-policy",
+    title: "Privacy Policy",
+    content: "<h2>Privacy Policy</h2><p>Shaniid RX respects your privacy. Replace this with your full policy.</p>",
+    meta_title: "Privacy Policy — Shaniid RX",
+    meta_description: "How Shaniid RX collects, uses, and protects your data.",
+    meta_keywords: "privacy, policy",
+    is_published: true,
+    created_at: new Date(0).toISOString(),
+    updated_at: new Date(0).toISOString(),
+  },
+]
+
 export function AdminPolicies() {
-  const { data: policies = [], mutate } = useSWR<Policy[]>("/api/admin/policies", fetcher)
+  const [policies, setPolicies] = useCmsDoc<Policy[]>("policies", DEFAULT_POLICIES)
   const [selected, setSelected] = useState<Policy | null>(null)
   const [saving, setSaving] = useState(false)
   const [showPreview, setShowPreview] = useState(false)
@@ -126,57 +139,60 @@ export function AdminPolicies() {
     setError("")
   }
 
-  const handleSave = async () => {
+  const handleSave = () => {
     if (!form.slug || !form.title || !form.content) { setError("Slug, title, and content are required"); return }
     setSaving(true); setError("")
     try {
-      const payload = selected ? { id: selected.id, ...form } : form
-      const res = await apiFetch("/api/admin/policies", { method: selected ? "PUT" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) })
-      if (!res.ok) { const err = await res.json(); throw new Error(err.error || "Failed to save") }
-      await mutate()
+      const now = new Date().toISOString()
+      if (selected) {
+        const updated: Policy = { ...selected, ...form, updated_at: now }
+        setPolicies((prev) => prev.map((p) => p.id === selected.id ? updated : p))
+        setSelected(updated)
+      } else {
+        const created: Policy = { id: newId("pol"), ...form, created_at: now, updated_at: now }
+        setPolicies((prev) => [...prev, created])
+        setSelected(created)
+      }
       setSuccess("Policy saved successfully")
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "An error occurred")
     } finally { setSaving(false) }
   }
 
-  const handleDelete = async (id: string) => {
+  const handleDelete = (id: string) => {
     if (!confirm("Delete this policy permanently?")) return
     setError("")
-    try {
-      const res = await apiFetch(`/api/admin/policies?id=${id}`, { method: "DELETE" })
-      if (!res.ok) { const err = await res.json(); throw new Error(err.error || "Failed to delete") }
-      if (selected?.id === id) { setSelected(null); setForm(emptyForm) }
-      await mutate()
-      setSuccess("Policy deleted")
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "An error occurred")
-    }
+    setPolicies((prev) => prev.filter((p) => p.id !== id))
+    if (selected?.id === id) { setSelected(null); setForm(emptyForm) }
+    setSuccess("Policy deleted")
   }
 
-  const handleCreateNew = async () => {
+  const handleCreateNew = () => {
     if (!newForm.title || !newForm.slug) return
     setError("")
-    try {
-      const res = await apiFetch("/api/admin/policies", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...newForm, content: `<h2>${newForm.title}</h2><p>Write your policy content here...</p>`, meta_title: newForm.title, meta_description: "", meta_keywords: "", is_published: false }),
-      })
-      if (!res.ok) { const err = await res.json(); throw new Error(err.error || "Failed to create") }
-      await mutate()
-      setShowNewModal(false)
-      setNewForm({ title: "", slug: "" })
-      setSuccess("Policy created")
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "An error occurred")
+    const now = new Date().toISOString()
+    const created: Policy = {
+      id: newId("pol"),
+      slug: newForm.slug,
+      title: newForm.title,
+      content: `<h2>${newForm.title}</h2><p>Write your policy content here...</p>`,
+      meta_title: newForm.title,
+      meta_description: "",
+      meta_keywords: "",
+      is_published: false,
+      created_at: now,
+      updated_at: now,
     }
+    setPolicies((prev) => [...prev, created])
+    selectPolicy(created)
+    setShowNewModal(false)
+    setNewForm({ title: "", slug: "" })
+    setSuccess("Policy created")
   }
 
   return (
     <AdminShell title="Policies">
       <div className="space-y-6">
-        {/* Header */}
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div>
             <h1 className="text-2xl font-serif font-bold">Policies</h1>
@@ -187,7 +203,6 @@ export function AdminPolicies() {
           </Button>
         </div>
 
-        {/* Alerts */}
         {error && (
           <div className="flex items-center gap-2 bg-red-50 dark:bg-red-950/30 text-red-700 dark:text-red-400 text-sm p-3 rounded-sm border border-red-200 dark:border-red-800">
             <AlertCircle className="h-4 w-4 flex-shrink-0" />{error}
@@ -200,19 +215,14 @@ export function AdminPolicies() {
         )}
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          {/* Sidebar - Policy List */}
           <div className="lg:col-span-3 space-y-2">
             {policies.map((p) => (
-              <button
-                key={p.id}
-                type="button"
-                onClick={() => selectPolicy(p)}
+              <button key={p.id} type="button" onClick={() => selectPolicy(p)}
                 className={`w-full flex items-center gap-3 px-4 py-3 text-left text-sm rounded-sm border transition-colors ${
                   selected?.id === p.id
                     ? "bg-foreground text-background border-foreground"
                     : "bg-background text-foreground border-border hover:border-foreground/30"
-                }`}
-              >
+                }`}>
                 <FileText className="h-4 w-4 flex-shrink-0" />
                 <div className="min-w-0 flex-1">
                   <p className="font-medium truncate">{p.title}</p>
@@ -231,11 +241,9 @@ export function AdminPolicies() {
             )}
           </div>
 
-          {/* Editor Panel */}
           <div className="lg:col-span-9">
             {selected ? (
               <div className="space-y-5">
-                {/* Toolbar */}
                 <div className="flex items-center justify-between flex-wrap gap-3 pb-4 border-b border-border">
                   <div>
                     <h2 className="text-lg font-semibold font-serif">{form.title}</h2>
@@ -257,7 +265,6 @@ export function AdminPolicies() {
                   </div>
                 </div>
 
-                {/* Title + Slug */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <Label className="text-xs font-medium mb-1.5 block">Title</Label>
@@ -269,7 +276,6 @@ export function AdminPolicies() {
                   </div>
                 </div>
 
-                {/* Content Editor or Preview */}
                 {showPreview ? (
                   <div className="border border-border rounded-sm">
                     <div className="px-4 py-2 border-b border-border bg-secondary/30">
@@ -284,7 +290,6 @@ export function AdminPolicies() {
                   </div>
                 )}
 
-                {/* SEO & Settings */}
                 <div className="border border-border rounded-sm p-4 space-y-4">
                   <h3 className="text-sm font-semibold">SEO & Settings</h3>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -318,7 +323,6 @@ export function AdminPolicies() {
         </div>
       </div>
 
-      {/* New Policy Modal */}
       <Dialog open={showNewModal} onOpenChange={setShowNewModal}>
         <DialogContent className="max-w-sm bg-background text-foreground">
           <DialogHeader><DialogTitle className="font-serif">New Policy</DialogTitle></DialogHeader>

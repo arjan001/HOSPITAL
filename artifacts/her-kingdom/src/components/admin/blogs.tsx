@@ -1,10 +1,10 @@
 "use client"
 
 import { useState, useEffect, useRef, useCallback, useMemo } from "react"
-import { apiFetch, authedFetcher as fetcher } from "@/lib/api-client"
+import { apiFetch } from "@/lib/api-client"
+import { useCmsDoc, newId } from "@/lib/cms-store"
 
 import { Link } from "wouter"
-import useSWR from "swr"
 import { sanitizeHtml } from "@/lib/sanitize-html"
 import {
   Save,
@@ -633,7 +633,9 @@ function BlogPreview({ form }: { form: FormState }) {
 /* ------------------------------------------------------------------ */
 
 export function AdminBlogs() {
-  const { data: blogs = [], mutate, isLoading } = useSWR<BlogPost[]>("/api/admin/blogs", fetcher)
+  const [blogs, setBlogs] = useCmsDoc<BlogPost[]>("blogs", [])
+  const isLoading = false
+  const mutate = async () => {}
   const [view, setView] = useState<"list" | "edit">("list")
   const [selected, setSelected] = useState<BlogPost | null>(null)
   const [form, setForm] = useState<FormState>(emptyForm)
@@ -804,20 +806,17 @@ export function AdminBlogs() {
     }
 
     try {
-      const res = await apiFetch("/api/admin/blogs", {
-        method: selected ? "PUT" : "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+      const now = new Date().toISOString()
+      const data: BlogPost = selected
+        ? { ...selected, ...payload, updated_at: now } as BlogPost
+        : { id: newId("blog"), views: 0, created_at: now, updated_at: now, ...payload } as BlogPost
+      setBlogs((prev) => {
+        const idx = prev.findIndex((b) => b.id === data.id)
+        if (idx === -1) return [data, ...prev]
+        const next = prev.slice(); next[idx] = data; return next
       })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error || "Failed to save")
-      await mutate()
       setSuccess(selected ? "Blog updated" : "Blog created")
-      if (!selected) {
-        setSelected(data)
-      } else {
-        setSelected(data)
-      }
+      setSelected(data)
       if (typeof publishedOverride === "boolean") {
         setForm((f) => ({ ...f, is_published: publishedOverride }))
       }
@@ -828,53 +827,16 @@ export function AdminBlogs() {
     }
   }
 
-  const handleDelete = async (id: string) => {
+  const handleDelete = (id: string) => {
     if (!confirm("Delete this blog post permanently? This cannot be undone.")) return
-    try {
-      const res = await apiFetch(`/api/admin/blogs?id=${id}`, { method: "DELETE" })
-      if (!res.ok) {
-        const data = await res.json()
-        throw new Error(data.error || "Delete failed")
-      }
-      await mutate()
-      if (selected?.id === id) backToList()
-      setSuccess("Blog deleted")
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Delete failed")
-    }
+    setBlogs((prev) => prev.filter((b) => b.id !== id))
+    if (selected?.id === id) backToList()
+    setSuccess("Blog deleted")
   }
 
-  const togglePublish = async (b: BlogPost) => {
-    try {
-      const res = await apiFetch("/api/admin/blogs", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          id: b.id,
-          slug: b.slug,
-          title: b.title,
-          excerpt: b.excerpt,
-          content: b.content,
-          cover_image: b.cover_image,
-          author: b.author,
-          author_role: b.author_role,
-          author_avatar: b.author_avatar,
-          tags: b.tags || [],
-          category: b.category,
-          read_time_minutes: b.read_time_minutes,
-          is_published: !b.is_published,
-          is_featured: b.is_featured,
-        }),
-      })
-      if (!res.ok) {
-        const data = await res.json()
-        throw new Error(data.error || "Update failed")
-      }
-      await mutate()
-      setSuccess(b.is_published ? "Unpublished" : "Published")
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Update failed")
-    }
+  const togglePublish = (b: BlogPost) => {
+    setBlogs((prev) => prev.map((p) => p.id === b.id ? { ...p, is_published: !b.is_published, updated_at: new Date().toISOString() } : p))
+    setSuccess(b.is_published ? "Unpublished" : "Published")
   }
 
   /* ----------------------- List View ----------------------- */
