@@ -1383,7 +1383,7 @@ export function CheckoutPage() {
                         key: "mpesa",
                         icon: Smartphone,
                         title: "M-PESA",
-                        badge: "Powered by Paystack",
+                        badge: "Powered by PayHero",
                         desc: "Receive an STK push on your Safaricom phone to complete the payment securely.",
                         iconBg: "#ECFDF5",
                         iconFg: "#059669",
@@ -1523,7 +1523,7 @@ export function CheckoutPage() {
                   {/* Trust row */}
                   <div className="flex items-center justify-center gap-5 text-xs text-gray-400 pt-2">
                     <span className="flex items-center gap-1.5"><ShieldCheck className="h-3.5 w-3.5" /> SSL Secure</span>
-                    <span className="flex items-center gap-1.5"><Lock className="h-3.5 w-3.5" /> Paystack Protected</span>
+                    <span className="flex items-center gap-1.5"><Lock className="h-3.5 w-3.5" /> PayHero Protected</span>
                   </div>
                 </div>
               )}

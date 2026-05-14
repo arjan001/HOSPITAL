@@ -437,7 +437,7 @@ export default function SpeakToADoctorPage() {
                   <span className="flex-1 text-sm font-semibold" style={{ color: WINE }}>M-PESA</span>
                   <span className="text-[10px] font-bold px-2 py-0.5 rounded-full"
                     style={{ background: "#fff", color: "#6b7280", border: `1px solid ${BORDER}` }}>
-                    Powered by Paystack
+                    Powered by PayHero
                   </span>
                 </label>
 

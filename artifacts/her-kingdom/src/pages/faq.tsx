@@ -41,7 +41,7 @@ const ALL_FAQS: Record<string, Faq[]> = {
     { q: "Do you keep my prescription on file for refills?", a: "Yes. Upload your prescription once and we will keep it on file for easy one-tap reorders. We will also send you a reminder when it is time to refill." },
   ],
   payments: [
-    { q: "What payment methods do you accept?", a: "We accept M-PESA (Paybill and Till), Visa, Mastercard, American Express, JCB, Equity Bank and Paystack online payments. All transactions are encrypted and secure." },
+    { q: "What payment methods do you accept?", a: "We accept M-PESA (Safaricom STK Push via PayHero), Visa, Mastercard, American Express, JCB, and Equity Bank online payments. All transactions are encrypted and secure." },
     { q: "What is your return and refund policy?", a: "We accept returns within 7 days for sealed, unopened items. Prescription medicines and cold-chain products are non-returnable. Contact our support team to initiate a return." },
     { q: "Is it safe to pay online on Shaniid RX?", a: "Yes. All payments are processed via PCI-DSS compliant payment gateways. We use 256-bit SSL encryption and never store your card details." },
   ],

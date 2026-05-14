@@ -66,7 +66,7 @@ const POLICIES: Record<string, Policy> = {
         body: "We never sell personal or health information. We only share it with vetted partners who help us serve you, and only the minimum data they need:",
         list: [
           "Licensed delivery couriers (Sendy, G4S, in-house riders) — name, phone and address only.",
-          "Payment processors (Paystack, Safaricom M-PESA) — order amount and reference.",
+          "Payment processors (PayHero, Safaricom M-PESA) — order amount and reference.",
           "Regulatory authorities when legally compelled (PPB, ODPC, courts).",
           "Your treating doctor, only when you have explicitly consented.",
         ],

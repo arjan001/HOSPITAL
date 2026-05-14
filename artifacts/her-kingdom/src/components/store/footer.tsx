@@ -183,7 +183,6 @@ export function Footer() {
             Our Payment Partners
           </span>
           <div className="flex items-center justify-center gap-2.5 sm:gap-3 flex-wrap">
-            <PaymentLogo src="/payments/paystack.png" alt="Paystack" />
             <PaymentLogo src="/payments/mpesa-mc-visa.png" alt="M-PESA, Mastercard, Visa" wide />
             <PaymentLogo src="/payments/equity.png" alt="Equity" />
             <PaymentLogo src="/payments/jcb.png" alt="JCB" />
