@@ -4,7 +4,8 @@ The trusted pharmaceutical infrastructure for Africa — a digital storefront an
 
 ## Run & Operate
 
-- `pnpm --filter @workspace/api-server run dev` — run the API server (port 5000)
+- `pnpm --filter @workspace/api-server run dev` — run the legacy Express API server (port 8080, mounted at `/api`)
+- `pnpm --filter @workspace/api-nest run dev` — run the NestJS user backend (port 8090, mounted at `/api/v2`)
 - `pnpm --filter @workspace/her-kingdom run dev` — run the storefront / admin
 - `pnpm run typecheck` — full typecheck across all packages
 - `pnpm run build` — typecheck + build all packages
@@ -25,7 +26,10 @@ The trusted pharmaceutical infrastructure for Africa — a digital storefront an
 ## Where things live
 
 - Storefront + admin app: `artifacts/her-kingdom/`
-- API server: `artifacts/api-server/`
+- Legacy Express API server: `artifacts/api-server/`
+- **NestJS user backend (new):** `artifacts/api-nest/` — mounted at `/api/v2`. Cookie-based guest session today (Clerk-ready); per-session in-memory repos for profile/addresses/wishlist/orders. Swap to Postgres by replacing `InMemoryRepository<T>` in `src/common/repository.ts` with a Drizzle-backed implementation — no other code changes needed.
+- Storefront client for the NestJS backend: `artifacts/her-kingdom/src/lib/api-nest.ts`
+- Customer account dashboard: `artifacts/her-kingdom/src/pages/account/dashboard.tsx` (route `/account`)
 - CMS persistence layer (single seam for future NestJS swap): `artifacts/her-kingdom/src/lib/cms-store.ts`
   - All admin-managed content (banners, categories, popup offer, website settings, custom pages, footer, audit log, etc.) goes through `cmsStore` / `useCmsDoc(...)`. Never persist CMS data directly.
 - Admin nav + routes: `artifacts/her-kingdom/src/components/admin/admin-shell.tsx` and `src/App.tsx`
@@ -33,6 +37,7 @@ The trusted pharmaceutical infrastructure for Africa — a digital storefront an
 
 ## Architecture decisions
 
+- **NestJS user backend (May 2026).** New artifact `api-nest` runs at `/api/v2` alongside the legacy Express server. Strangler migration: customer modules (profile, addresses, wishlist, orders) are served by NestJS today; legacy `/api` keeps backing the storefront catalog/banners until those modules port over. Repository layer is in-memory + Clerk-pending session — see the dedicated section below.
 - **Supabase has been fully removed (May 2026).** All admin-managed content lives in `cmsStore` (browser localStorage today, NestJS later). The legacy `/api/admin/*` and public `/api/*` routes still exist but back onto a no-op stub in `artifacts/api-server/src/lib/legacy-store.ts` that returns empty reads / soft-error writes — they're scheduled to be deleted as the NestJS port lands. Do **not** add new code that imports from the supabase stubs; persist via `cmsStore` instead.
 - **No real auth backend yet.** `requireAdmin` is a pass-through; `admin-shell.tsx` hardcodes the local super-admin. Customer auth = Clerk (planned). Admin auth = TBD with the NestJS port.
 - **One CMS seam.** Every admin module reads/writes through `cmsStore` so the entire admin can swap to a NestJS-backed API in one file later.
@@ -77,6 +82,15 @@ Admin: dashboard with KPIs/sparklines/low-stock alerts, products (with CSV impor
 - **Visual style:** clean white / Medilazar-style for product surfaces (modals, cards). Wine palette `#3D0814` / `#6B0F1A` reserved for primary brand chrome (header, hero, footer band); orange/red accent `#F97316` / `#B91C1C` for CTAs. No emojis, no "AI vibe" gradients on content surfaces.
 - **References:** MyDawa and Medilazar for pharmacy UX patterns.
 - **Brand brief is the source of truth** for positioning, voice, and visual metaphors — anchor copy and design choices to the section above, not to ad-hoc inspiration.
+
+## NestJS api-nest (`/api/v2`)
+
+- **Stack:** NestJS 11 + Express + cookie-parser, run via `tsx watch`. CommonJS module output to keep DI/decorator metadata simple.
+- **Why explicit `@Inject(ServiceClass)` on every controller constructor:** `tsx`/esbuild does NOT emit `emitDecoratorMetadata`, so Nest can't infer constructor types. Explicit `@Inject()` removes the dependency on metadata. Keep this pattern when adding new modules.
+- **Session model.** `SessionMiddleware` issues a `shaniidrx_sid` cookie per browser and writes `req.sessionId`. All services read from `req.sessionId`. When Clerk lands, replace the middleware body with a JWT verifier that sets `req.sessionId = clerkUserId` — services don't change.
+- **Database swap.** Each service uses either `Map<sid, T[]>` directly (profile) or the generic `InMemoryRepository<T>` in `src/common/repository.ts`. Postgres swap = implement the same surface against Drizzle (`packages/db`) and swap the import in each module. No controller changes.
+- **Don't add `ValidationPipe`** unless you also install `class-validator` + `class-transformer`. Today each controller validates inputs manually; future Zod DTOs go through `nestjs-zod`.
+- **Modules shipped:** `health`, `profile` (`/me`), `addresses` (`/me/addresses`), `wishlist` (`/me/wishlist`), `orders` (`/me/orders`). Cart, payments, prescriptions, consultations, and admin modules are pending.
 
 ## Gotchas
 

@@ -60,6 +60,7 @@ import AccountRegisterPage from "@/pages/account/register";
 import VerifyPhonePage from "@/pages/account/verify-phone";
 import EmailVerifiedPage from "@/pages/account/email-verified";
 import AccountSettingsPage from "@/pages/account/settings";
+import AccountDashboard from "@/pages/account/dashboard";
 import DashboardPage from "@/pages/dashboard";
 import UploadPrescriptionPage from "@/pages/upload-prescription";
 import SpeakToADoctorPage from "@/pages/speak-to-a-doctor";
@@ -187,6 +188,8 @@ function Router() {
       <Route path="/account/verify-phone" component={VerifyPhonePage} />
       <Route path="/account/email-verified" component={EmailVerifiedPage} />
       <Route path="/account/settings" component={AccountSettingsPage} />
+      <Route path="/account" component={AccountDashboard} />
+      <Route path="/account/dashboard" component={AccountDashboard} />
       <Route path="/dashboard" component={DashboardPage} />
       <Route path="/user" component={DashboardPage} />
       <Route path="/upload-prescription" component={UploadPrescriptionPage} />

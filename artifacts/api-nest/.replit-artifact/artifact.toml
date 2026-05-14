@@ -1,0 +1,31 @@
+kind = "api"
+previewPath = "/api/v2"
+title = "API Nest"
+version = "1.0.0"
+id = "Nx7ApiNestShaniidRx1"
+
+[[services]]
+localPort = 8090
+name = "API Nest"
+paths = ["/api/v2"]
+
+[services.development]
+run = "pnpm --filter @workspace/api-nest run dev"
+
+[services.production]
+
+[services.production.build]
+args = ["pnpm", "--filter", "@workspace/api-nest", "run", "build"]
+
+[services.production.build.env]
+NODE_ENV = "production"
+
+[services.production.run]
+args = ["node", "artifacts/api-nest/dist/main.js"]
+
+[services.production.run.env]
+PORT = "8090"
+NODE_ENV = "production"
+
+[services.production.health.startup]
+path = "/api/v2/healthz"
