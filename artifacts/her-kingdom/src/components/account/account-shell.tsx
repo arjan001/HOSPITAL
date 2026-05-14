@@ -16,6 +16,7 @@ import {
   Sparkles,
   LogOut,
   ChevronRight,
+  MessagesSquare,
 } from "lucide-react"
 
 const WINE = "#3D0814"
@@ -25,6 +26,7 @@ const PEACH_BORDER = "#F2DCC8"
 const NAV: Array<{ href: string; label: string; icon: typeof UserCircle; hint?: string }> = [
   { href: "/account/settings",      label: "Profile & Settings", icon: UserCircle, hint: "Personal info" },
   { href: "/account/orders",        label: "Orders",             icon: Receipt },
+  { href: "/account/chat",          label: "Talk to Pharmacist", icon: MessagesSquare, hint: "Live chat" },
   { href: "/account/prescriptions", label: "Prescriptions",      icon: Pill },
   { href: "/account/addresses",     label: "Addresses",          icon: MapPin },
   { href: "/account/wishlist",      label: "Wishlist",           icon: Heart },

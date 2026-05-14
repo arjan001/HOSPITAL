@@ -29,6 +29,7 @@ import {
   Stethoscope,
   Shield,
   Inbox,
+  MessagesSquare,
   Search,
   Maximize2,
   Minimize2,
@@ -58,6 +59,7 @@ const navItems: NavItem[] = [
 
   { label: "Prescriptions",      href: "/admin/prescriptions",      icon: ClipboardList,   group: "Pharmacy" },
   { label: "Consultations",      href: "/admin/consultations",      icon: Stethoscope,     group: "Pharmacy" },
+  { label: "Live Chat",          href: "/admin/chat",               icon: MessagesSquare,  group: "Pharmacy" },
   { label: "Contact Inquiries",  href: "/admin/inquiries",          icon: Inbox,           group: "Pharmacy" },
 
   { label: "Products",           href: "/admin/products",           icon: Package,         group: "Catalog" },

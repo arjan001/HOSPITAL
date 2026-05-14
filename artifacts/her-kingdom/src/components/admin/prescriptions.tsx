@@ -15,7 +15,18 @@ import {
   X,
   Plus,
   Stethoscope,
+  Trash2,
+  Eye,
+  Maximize2,
+  Calendar,
+  Pill,
+  ShieldCheck,
+  AlertTriangle,
+  Send,
 } from "lucide-react"
+
+const WINE = "#3D0814"
+const ACCENT = "#F97316"
 
 export type PrescriptionStatus = "pending" | "verified" | "dispensed" | "rejected"
 
@@ -76,10 +87,10 @@ const SEED: Prescription[] = [
 ]
 
 const STATUS_META: Record<PrescriptionStatus, { label: string; color: string; bg: string; icon: typeof Clock }> = {
-  pending: { label: "Pending", color: "#92400E", bg: "#FEF3C7", icon: Clock },
-  verified: { label: "Verified", color: "#166534", bg: "#DCFCE7", icon: CheckCircle2 },
-  dispensed: { label: "Dispensed", color: "#1E40AF", bg: "#DBEAFE", icon: CheckCircle2 },
-  rejected: { label: "Rejected", color: "#991B1B", bg: "#FEE2E2", icon: XCircle },
+  pending:   { label: "Awaiting review",  color: "#92400E", bg: "#FEF3C7", icon: Clock },
+  verified:  { label: "Verified",          color: "#166534", bg: "#DCFCE7", icon: ShieldCheck },
+  dispensed: { label: "Dispensed",         color: "#1E40AF", bg: "#DBEAFE", icon: CheckCircle2 },
+  rejected:  { label: "Rejected",          color: "#991B1B", bg: "#FEE2E2", icon: XCircle },
 }
 
 export function AdminPrescriptions() {
@@ -87,6 +98,15 @@ export function AdminPrescriptions() {
   const [filter, setFilter] = useState<PrescriptionStatus | "all">("all")
   const [search, setSearch] = useState("")
   const [active, setActive] = useState<Prescription | null>(null)
+  const [zoomImage, setZoomImage] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const [imageBroken, setImageBroken] = useState(false)
+  const closeModal = () => {
+    setZoomImage(false)
+    setConfirmDelete(false)
+    setImageBroken(false)
+    setActive(null)
+  }
 
   const filtered = useMemo(() => {
     return items
@@ -105,15 +125,9 @@ export function AdminPrescriptions() {
 
   const counts = useMemo(() => {
     const out: Record<PrescriptionStatus | "all", number> = {
-      all: items.length,
-      pending: 0,
-      verified: 0,
-      dispensed: 0,
-      rejected: 0,
+      all: items.length, pending: 0, verified: 0, dispensed: 0, rejected: 0,
     }
-    items.forEach((p) => {
-      out[p.status]++
-    })
+    items.forEach((p) => { out[p.status]++ })
     return out
   }, [items])
 
@@ -159,6 +173,21 @@ export function AdminPrescriptions() {
     setActive(draft)
   }
 
+  const deleteActive = () => {
+    if (!active) return
+    setItems((arr) => arr.filter((p) => p.id !== active.id))
+    setActive(null)
+    setConfirmDelete(false)
+  }
+
+  const fmtAge = (dob?: string) => {
+    if (!dob) return null
+    const d = new Date(dob)
+    if (Number.isNaN(d.getTime())) return null
+    const years = Math.floor((Date.now() - d.getTime()) / (365.25 * 86400000))
+    return years > 0 ? `${years} yrs` : null
+  }
+
   return (
     <AdminShell title="Prescriptions">
       <div className="space-y-5">
@@ -174,7 +203,8 @@ export function AdminPrescriptions() {
           </div>
           <button
             onClick={newDraft}
-            className="px-4 h-9 rounded-md text-sm font-semibold bg-foreground text-background inline-flex items-center gap-2"
+            className="px-4 h-9 rounded-md text-sm font-semibold text-white inline-flex items-center gap-2"
+            style={{ background: WINE }}
           >
             <Plus className="h-4 w-4" /> New entry
           </button>
@@ -254,9 +284,10 @@ export function AdminPrescriptions() {
                     <td className="px-4 py-2.5 text-right">
                       <button
                         onClick={() => setActive(p)}
-                        className="text-xs font-semibold text-foreground hover:underline"
+                        className="text-xs font-semibold inline-flex items-center gap-1.5 px-3 h-8 rounded-md text-white hover:opacity-90 transition-opacity"
+                        style={{ background: WINE }}
                       >
-                        Review →
+                        <Eye className="h-3.5 w-3.5" /> View
                       </button>
                     </td>
                   </tr>
@@ -267,120 +298,279 @@ export function AdminPrescriptions() {
         </div>
       </div>
 
-      {/* Drawer */}
+      {/* ── MODAL: review prescription ── */}
       {active && (
-        <div className="fixed inset-0 z-50 bg-black/40" onClick={() => setActive(null)}>
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6 overflow-y-auto" onClick={closeModal}>
           <div
-            className="absolute right-0 top-0 h-full w-full max-w-2xl bg-background shadow-2xl overflow-y-auto"
+            className="w-full max-w-5xl bg-white rounded-2xl shadow-2xl overflow-hidden my-auto flex flex-col max-h-[95vh]"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="p-5 border-b border-border flex items-center justify-between sticky top-0 bg-background z-10">
-              <div>
-                <p className="text-xs uppercase tracking-wider text-muted-foreground">Prescription</p>
-                <h2 className="text-lg font-bold font-mono">{active.id}</h2>
+            {/* Header */}
+            <div className="px-5 sm:px-6 py-4 flex items-center justify-between text-white" style={{ background: WINE }}>
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-10 h-10 rounded-full bg-white/15 flex items-center justify-center flex-shrink-0">
+                  <ClipboardList className="h-5 w-5" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-[10px] uppercase tracking-wider opacity-80">Prescription review</p>
+                  <h2 className="text-lg font-bold font-mono truncate">{active.id}</h2>
+                </div>
+                <span
+                  className="ml-2 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold flex-shrink-0"
+                  style={{ background: STATUS_META[active.status].bg, color: STATUS_META[active.status].color }}
+                >
+                  {(() => { const I = STATUS_META[active.status].icon; return <I className="h-3 w-3" /> })()}
+                  {STATUS_META[active.status].label}
+                </span>
               </div>
-              <button onClick={() => setActive(null)} className="w-8 h-8 rounded-md hover:bg-secondary flex items-center justify-center">
-                <X className="h-4 w-4" />
+              <button onClick={closeModal} className="w-9 h-9 rounded-full hover:bg-white/15 flex items-center justify-center transition-colors">
+                <X className="h-5 w-5" />
               </button>
             </div>
 
-            <div className="p-5 space-y-5">
-              {/* Patient */}
-              <section className="space-y-3">
-                <h3 className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">Patient</h3>
-                <div className="grid grid-cols-2 gap-3">
-                  <Field label="Name" icon={<User className="h-3.5 w-3.5" />}>
-                    <input className="rxinput" value={active.patientName} onChange={(e) => updateActive({ patientName: e.target.value })} />
-                  </Field>
-                  <Field label="Phone" icon={<Phone className="h-3.5 w-3.5" />}>
-                    <input className="rxinput" value={active.phone} onChange={(e) => updateActive({ phone: e.target.value })} />
-                  </Field>
-                  <Field label="Date of birth">
-                    <input type="date" className="rxinput" value={active.dob || ""} onChange={(e) => updateActive({ dob: e.target.value })} />
-                  </Field>
-                  <Field label="Image URL" icon={<FileText className="h-3.5 w-3.5" />}>
-                    <input className="rxinput" placeholder="/uploads/rx-001.jpg" value={active.imageUrl || ""} onChange={(e) => updateActive({ imageUrl: e.target.value })} />
-                  </Field>
+            {/* Body */}
+            <div className="grid grid-cols-1 md:grid-cols-[1fr_360px] gap-0 flex-1 overflow-hidden">
+              {/* Left — Image + patient note */}
+              <div className="bg-gray-50 border-r p-5 overflow-y-auto" style={{ borderColor: "rgba(0,0,0,0.06)" }}>
+                <div className="rounded-xl bg-white border overflow-hidden" style={{ borderColor: "rgba(0,0,0,0.08)" }}>
+                  <div className="relative" style={{ minHeight: 280 }}>
+                    {active.imageUrl && !imageBroken ? (
+                      <>
+                        <img
+                          key={active.imageUrl}
+                          src={active.imageUrl}
+                          alt="Prescription"
+                          className="w-full max-h-[420px] object-contain bg-white"
+                          onError={() => setImageBroken(true)}
+                          onLoad={() => setImageBroken(false)}
+                        />
+                        <button
+                          onClick={() => setZoomImage(true)}
+                          className="absolute top-3 right-3 h-8 px-2.5 rounded-md bg-black/70 text-white text-xs font-semibold inline-flex items-center gap-1.5 hover:bg-black/85"
+                        >
+                          <Maximize2 className="h-3.5 w-3.5" /> Zoom
+                        </button>
+                      </>
+                    ) : (
+                      <div className="h-[280px] flex flex-col items-center justify-center text-muted-foreground gap-2 px-6 text-center">
+                        <FileText className="h-10 w-10 opacity-30" />
+                        <p className="text-sm font-medium">No prescription image uploaded</p>
+                        <p className="text-xs">Paste an image URL below to preview it here.</p>
+                      </div>
+                    )}
+                  </div>
+                  <div className="p-3 border-t" style={{ borderColor: "rgba(0,0,0,0.06)" }}>
+                    <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Image URL</label>
+                    <input
+                      className="mt-1 w-full h-9 px-3 rounded-md border bg-white text-xs font-mono"
+                      style={{ borderColor: "rgba(0,0,0,0.1)" }}
+                      placeholder="/uploads/rx-001.jpg"
+                      value={active.imageUrl || ""}
+                      onChange={(e) => updateActive({ imageUrl: e.target.value })}
+                    />
+                  </div>
                 </div>
-                {active.imageUrl && (
-                  <img
-                    src={active.imageUrl}
-                    alt="Prescription"
-                    className="rounded-md border border-border w-full max-h-72 object-contain bg-muted/30"
-                    onError={(e) => (e.currentTarget.style.display = "none")}
+
+                {/* Patient note */}
+                <div className="mt-4 rounded-xl bg-white border p-4" style={{ borderColor: "rgba(0,0,0,0.08)" }}>
+                  <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-2 flex items-center gap-1.5">
+                    <FileText className="h-3.5 w-3.5" /> Patient note
+                  </div>
+                  <textarea
+                    rows={3}
+                    className="w-full text-sm rounded-md border px-3 py-2 focus:outline-none focus:ring-2"
+                    style={{ borderColor: "rgba(0,0,0,0.1)" }}
+                    value={active.notes}
+                    placeholder="What did the patient say about this script?"
+                    onChange={(e) => updateActive({ notes: e.target.value })}
                   />
-                )}
-                <Field label="Patient note">
-                  <textarea rows={2} className="rxinput" value={active.notes} onChange={(e) => updateActive({ notes: e.target.value })} />
-                </Field>
-              </section>
-
-              {/* Status */}
-              <section className="space-y-2">
-                <h3 className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">Status</h3>
-                <div className="flex gap-2 flex-wrap">
-                  {(Object.keys(STATUS_META) as PrescriptionStatus[]).map((s) => {
-                    const meta = STATUS_META[s]
-                    const isOn = active.status === s
-                    return (
-                      <button
-                        key={s}
-                        onClick={() => setStatus(s)}
-                        className={`px-3 h-8 rounded-md text-xs font-semibold border transition-colors ${isOn ? "border-foreground" : "border-border hover:bg-secondary"}`}
-                        style={isOn ? { background: meta.bg, color: meta.color, borderColor: meta.color } : {}}
-                      >
-                        {meta.label}
-                      </button>
-                    )
-                  })}
                 </div>
-              </section>
+              </div>
 
-              {/* Pharmacist note */}
-              <section className="space-y-2">
-                <h3 className="text-xs uppercase tracking-wider text-muted-foreground font-semibold inline-flex items-center gap-1.5">
-                  <Stethoscope className="h-3.5 w-3.5" /> Pharmacist note
-                </h3>
-                <textarea
-                  rows={3}
-                  className="rxinput"
-                  placeholder="Verification source, dispense instructions, follow-ups…"
-                  value={active.pharmacistNote}
-                  onChange={(e) => updateActive({ pharmacistNote: e.target.value })}
-                />
-              </section>
-
-              {/* Recommendations */}
-              <section className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">Recommended drugs</h3>
-                  <button onClick={addRecommendation} className="text-xs font-semibold inline-flex items-center gap-1 text-foreground hover:underline">
-                    <Plus className="h-3 w-3" /> Add
-                  </button>
+              {/* Right — Patient + status + recommendations */}
+              <div className="overflow-y-auto p-5 space-y-5">
+                {/* Patient summary card */}
+                <div className="rounded-xl border p-4 space-y-3" style={{ borderColor: "rgba(0,0,0,0.08)" }}>
+                  <div className="flex items-center gap-3">
+                    <div
+                      className="w-11 h-11 rounded-full flex items-center justify-center text-white font-bold text-sm flex-shrink-0"
+                      style={{ background: ACCENT }}
+                    >
+                      {(active.patientName || "?").split(/\s+/).filter(Boolean).slice(0, 2).map(p => p[0]?.toUpperCase()).join("") || "?"}
+                    </div>
+                    <input
+                      className="flex-1 h-9 px-3 rounded-md border text-sm font-semibold"
+                      style={{ borderColor: "rgba(0,0,0,0.1)" }}
+                      value={active.patientName}
+                      placeholder="Patient name"
+                      onChange={(e) => updateActive({ patientName: e.target.value })}
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <Field icon={<Phone className="h-3 w-3" />} label="Phone">
+                      <input className="rxinput" value={active.phone} onChange={(e) => updateActive({ phone: e.target.value })} />
+                    </Field>
+                    <Field icon={<Calendar className="h-3 w-3" />} label={`Date of birth${fmtAge(active.dob) ? ` · ${fmtAge(active.dob)}` : ""}`}>
+                      <input type="date" className="rxinput" value={active.dob || ""} onChange={(e) => updateActive({ dob: e.target.value })} />
+                    </Field>
+                  </div>
                 </div>
-                {active.recommendedDrugs.length === 0 && (
-                  <p className="text-xs text-muted-foreground py-3 text-center border border-dashed border-border rounded-md">
-                    No drugs recommended yet.
-                  </p>
-                )}
-                {active.recommendedDrugs.map((r, i) => (
-                  <div key={i} className="grid grid-cols-12 gap-2 items-start">
-                    <input className="rxinput col-span-4" placeholder="Drug" value={r.name} onChange={(e) => updateRec(i, { name: e.target.value })} />
-                    <input className="rxinput col-span-3" placeholder="Dosage" value={r.dosage} onChange={(e) => updateRec(i, { dosage: e.target.value })} />
-                    <input className="rxinput col-span-4" placeholder="Instructions" value={r.instructions} onChange={(e) => updateRec(i, { instructions: e.target.value })} />
-                    <button onClick={() => removeRec(i)} className="col-span-1 h-9 rounded-md hover:bg-destructive/10 text-destructive flex items-center justify-center">
-                      <X className="h-4 w-4" />
+
+                {/* Status pills */}
+                <div>
+                  <h3 className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold mb-2">Status</h3>
+                  <div className="grid grid-cols-2 gap-2">
+                    {(Object.keys(STATUS_META) as PrescriptionStatus[]).map((s) => {
+                      const meta = STATUS_META[s]
+                      const Icon = meta.icon
+                      const isOn = active.status === s
+                      return (
+                        <button
+                          key={s}
+                          onClick={() => setStatus(s)}
+                          className={`h-9 px-3 rounded-md text-xs font-semibold border transition-all flex items-center gap-1.5 ${
+                            isOn ? "shadow-sm scale-[1.02]" : "hover:bg-secondary"
+                          }`}
+                          style={isOn
+                            ? { background: meta.bg, color: meta.color, borderColor: meta.color }
+                            : { borderColor: "rgba(0,0,0,0.1)" }}
+                        >
+                          <Icon className="h-3.5 w-3.5" />{meta.label}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+
+                {/* Pharmacist note */}
+                <div>
+                  <h3 className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold mb-2 inline-flex items-center gap-1.5">
+                    <Stethoscope className="h-3.5 w-3.5" /> Pharmacist note
+                  </h3>
+                  <textarea
+                    rows={3}
+                    className="rxinput"
+                    placeholder="Verification source, dispense instructions, follow-ups…"
+                    value={active.pharmacistNote}
+                    onChange={(e) => updateActive({ pharmacistNote: e.target.value })}
+                  />
+                </div>
+
+                {/* Recommended drugs */}
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <h3 className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold inline-flex items-center gap-1.5">
+                      <Pill className="h-3.5 w-3.5" /> Recommended drugs
+                    </h3>
+                    <button
+                      onClick={addRecommendation}
+                      className="text-xs font-semibold inline-flex items-center gap-1 hover:underline"
+                      style={{ color: ACCENT }}
+                    >
+                      <Plus className="h-3 w-3" /> Add
                     </button>
                   </div>
-                ))}
-              </section>
+                  {active.recommendedDrugs.length === 0 ? (
+                    <p className="text-xs text-muted-foreground py-3 text-center border border-dashed rounded-md" style={{ borderColor: "rgba(0,0,0,0.15)" }}>
+                      No drugs recommended yet.
+                    </p>
+                  ) : (
+                    <div className="space-y-2">
+                      {active.recommendedDrugs.map((r, i) => (
+                        <div key={i} className="rounded-md border p-2.5 space-y-1.5" style={{ borderColor: "rgba(0,0,0,0.08)" }}>
+                          <div className="flex items-center gap-2">
+                            <input className="rxinput flex-1" placeholder="Drug name" value={r.name} onChange={(e) => updateRec(i, { name: e.target.value })} />
+                            <input className="rxinput w-24" placeholder="Dosage" value={r.dosage} onChange={(e) => updateRec(i, { dosage: e.target.value })} />
+                            <button onClick={() => removeRec(i)} className="w-8 h-8 rounded-md hover:bg-destructive/10 text-destructive flex items-center justify-center flex-shrink-0">
+                              <X className="h-4 w-4" />
+                            </button>
+                          </div>
+                          <input className="rxinput" placeholder="Instructions (e.g. 1 tab, 3x daily after meals)" value={r.instructions} onChange={(e) => updateRec(i, { instructions: e.target.value })} />
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Footer action bar */}
+            <div className="border-t bg-white px-5 py-3 flex items-center justify-between gap-3" style={{ borderColor: "rgba(0,0,0,0.08)" }}>
+              <button
+                onClick={() => setConfirmDelete(true)}
+                className="h-10 px-3.5 rounded-lg text-sm font-semibold inline-flex items-center gap-2 text-destructive hover:bg-destructive/10"
+              >
+                <Trash2 className="h-4 w-4" /> Delete
+              </button>
+              <div className="flex items-center gap-2 flex-wrap justify-end">
+                <button
+                  onClick={() => setStatus("rejected")}
+                  className="h-10 px-4 rounded-lg text-sm font-semibold border inline-flex items-center gap-1.5 hover:bg-red-50"
+                  style={{ borderColor: "#FCA5A5", color: "#991B1B" }}
+                >
+                  <XCircle className="h-4 w-4" /> Reject
+                </button>
+                <button
+                  onClick={() => setStatus("dispensed")}
+                  className="h-10 px-4 rounded-lg text-sm font-semibold border inline-flex items-center gap-1.5 hover:bg-blue-50"
+                  style={{ borderColor: "#93C5FD", color: "#1E40AF" }}
+                >
+                  <Send className="h-4 w-4" /> Mark dispensed
+                </button>
+                <button
+                  onClick={() => setStatus("verified")}
+                  className="h-10 px-5 rounded-lg text-sm font-bold text-white inline-flex items-center gap-1.5 shadow-sm hover:opacity-90"
+                  style={{ background: WINE }}
+                >
+                  <ShieldCheck className="h-4 w-4" /> Approve
+                </button>
+              </div>
             </div>
           </div>
         </div>
       )}
 
-      <style>{`.rxinput{width:100%;height:2.25rem;padding:0 0.75rem;border-radius:0.375rem;border:1px solid hsl(var(--border));background:hsl(var(--background));font-size:0.875rem;}
-        textarea.rxinput{height:auto;padding:0.5rem 0.75rem;font-family:inherit;}`}</style>
+      {/* Image zoom overlay */}
+      {active && zoomImage && active.imageUrl && (
+        <div className="fixed inset-0 z-[60] bg-black/90 flex items-center justify-center p-4" onClick={() => setZoomImage(false)}>
+          <button onClick={() => setZoomImage(false)} className="absolute top-4 right-4 w-10 h-10 rounded-full bg-white/10 text-white flex items-center justify-center hover:bg-white/20">
+            <X className="h-5 w-5" />
+          </button>
+          <img src={active.imageUrl} alt="Prescription full" className="max-w-full max-h-full object-contain" />
+        </div>
+      )}
+
+      {/* Delete confirm */}
+      {active && confirmDelete && (
+        <div className="fixed inset-0 z-[60] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setConfirmDelete(false)}>
+          <div className="bg-white rounded-2xl p-6 max-w-sm w-full shadow-2xl space-y-4" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center text-red-700">
+                <AlertTriangle className="h-5 w-5" />
+              </div>
+              <div>
+                <h3 className="font-bold">Delete this prescription?</h3>
+                <p className="text-xs text-muted-foreground">This cannot be undone.</p>
+              </div>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              Patient <strong>{active.patientName || "—"}</strong> · {active.id}
+            </p>
+            <div className="flex justify-end gap-2 pt-2">
+              <button onClick={() => setConfirmDelete(false)} className="h-9 px-4 rounded-md text-sm font-semibold border hover:bg-secondary" style={{ borderColor: "rgba(0,0,0,0.15)" }}>
+                Cancel
+              </button>
+              <button onClick={deleteActive} className="h-9 px-4 rounded-md text-sm font-bold text-white bg-red-600 hover:bg-red-700">
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <style>{`.rxinput{width:100%;height:2.25rem;padding:0 0.75rem;border-radius:0.375rem;border:1px solid rgba(0,0,0,0.1);background:#fff;font-size:0.8125rem;}
+        textarea.rxinput{height:auto;padding:0.5rem 0.75rem;font-family:inherit;line-height:1.4;}
+        .rxinput:focus{outline:none;border-color:${WINE};box-shadow:0 0 0 3px rgba(61,8,20,0.1);}`}</style>
     </AdminShell>
   )
 }
@@ -388,9 +578,8 @@ export function AdminPrescriptions() {
 function Field({ label, icon, children }: { label: string; icon?: React.ReactNode; children: React.ReactNode }) {
   return (
     <div className="space-y-1">
-      <label className="text-xs font-medium block inline-flex items-center gap-1.5 text-muted-foreground">
-        {icon}
-        {label}
+      <label className="text-[10px] font-medium block uppercase tracking-wider text-muted-foreground inline-flex items-center gap-1">
+        {icon}{label}
       </label>
       {children}
     </div>

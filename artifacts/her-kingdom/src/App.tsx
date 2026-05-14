@@ -50,6 +50,8 @@ import { AdminIntegrations } from "@/components/admin/integrations";
 import { AdminPopupOffer } from "@/components/admin/popup-offer";
 import { AdminProfile } from "@/components/admin/profile";
 import { AdminPrescriptions } from "@/components/admin/prescriptions";
+import { AdminChat } from "@/components/admin/chat";
+import AccountChatPage from "@/pages/account/chat";
 import { AdminRolesPermissions } from "@/components/admin/roles-permissions";
 import { AdminConsultations } from "@/components/admin/consultations";
 import { AdminContactInquiries } from "@/components/admin/contact-inquiries";
@@ -360,6 +362,10 @@ function Router() {
       <Route path="/admin/popup-offer" component={AdminPopupOffer} />
       <Route path="/admin/profile" component={AdminProfile} />
       <Route path="/admin/prescriptions" component={AdminPrescriptions} />
+      <Route path="/admin/chat" component={AdminChat} />
+      <Route path="/account/chat">
+        {() => <ProtectedAccount><AccountChatPage /></ProtectedAccount>}
+      </Route>
       <Route path="/admin/roles" component={AdminRolesPermissions} />
       <Route path="/admin/audit-log" component={AdminAuditLog} />
       <Route path="/admin/consultations" component={AdminConsultations} />

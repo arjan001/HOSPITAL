@@ -162,13 +162,7 @@ export type ChatThread = {
 
 export const apiChat = {
   // Patient
-  myThread: (profile?: { name?: string; phone?: string }) =>
-    profile
-      ? nestFetch<ChatMessage>("/chat/me/messages", {
-          // best-effort name update via a no-op send is awkward; just call myThread GET
-          method: "GET",
-        }).then(() => nestFetch<ChatThread>("/chat/me"))
-      : nestFetch<ChatThread>("/chat/me"),
+  myThread: () => nestFetch<ChatThread>("/chat/me"),
   myMessages: () => nestFetch<ChatMessage[]>("/chat/me/messages"),
   sendAsPatient: (text: string, profile?: { name?: string; phone?: string }) =>
     nestFetch<ChatMessage>("/chat/me/messages", {
