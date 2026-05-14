@@ -80,6 +80,9 @@
   "dependencies": {
     "@clerk/react": "^6.6.2",
     "@clerk/themes": "^2.4.57",
+    "@daily-co/daily-js": "^0.89.1",
+    "@daily-co/daily-react": "^0.25.1",
+    "jotai": "^2.20.0",
     "leaflet": "^1.9.4"
   }
 }
