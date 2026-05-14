@@ -29,7 +29,7 @@ export default function AccountLoginPage() {
   const [error, setError]     = useState("")
 
   if (isSignedIn) {
-    navigate("/account")
+    navigate("/user")
     return null
   }
 
@@ -46,7 +46,7 @@ export default function AccountLoginPage() {
       const attempt = await signIn.create({ identifier, password })
       if (attempt.status === "complete") {
         await setActive({ session: attempt.createdSessionId })
-        navigate("/account")
+        navigate("/user")
       } else {
         setError("Additional verification required. Please use the secure sign-in flow.")
         setTimeout(() => navigate("/sign-in"), 1200)
@@ -70,7 +70,7 @@ export default function AccountLoginPage() {
       await signIn.authenticateWithRedirect({
         strategy: "oauth_google",
         redirectUrl: "/sign-in/sso-callback",
-        redirectUrlComplete: "/account",
+        redirectUrlComplete: "/user",
       })
     } catch (err) {
       setError("Could not start Google sign-in. Please try again.")

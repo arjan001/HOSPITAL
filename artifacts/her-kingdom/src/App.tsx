@@ -210,7 +210,7 @@ function SignInPage() {
           routing="path"
           path={`${basePath}/sign-in`}
           signUpUrl={`${basePath}/sign-up`}
-          fallbackRedirectUrl={`${basePath}/account`}
+          fallbackRedirectUrl={`${basePath}/user`}
         />
       </main>
       <Footer />
@@ -231,7 +231,7 @@ function SignUpPage() {
           routing="path"
           path={`${basePath}/sign-up`}
           signInUrl={`${basePath}/sign-in`}
-          fallbackRedirectUrl={`${basePath}/account`}
+          fallbackRedirectUrl={`${basePath}/user`}
         />
       </main>
       <Footer />
