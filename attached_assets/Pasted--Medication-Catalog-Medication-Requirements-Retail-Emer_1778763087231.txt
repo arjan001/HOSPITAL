@@ -1,0 +1,179 @@
+
+Medication Catalog
+Medication Requirements
+Retail Emergency Fallback
+
+Order Records
+
+
+
+
+No
+Demand Forecasting
+
+Competitor Market Check
+Competitor Cheaper?
+
+Supplier Performance
+Supplier Ranking
+Supplier Performance Scoring
+
+
+
+Yes
+Device Inventory
+Stock Levels
+
+
+
+No
+Inventory Optimization
+Medication Demand Trends
+
+Lead Time Monitoring
+
+
+Procurement Source Selection
+Demand Aggregation Layer
+Consumables Inventory
+Safety Stock Alerts
+
+
+
+
+
+
+Customer Profile
+Supplier Database
+12 Suppliers
+Packaging Materials
+Stock Level Tracking
+
+
+
+
+
+Procurement Automation
+Medication Request Trigger
+Supplier Availability Check
+Supplier Available?
+
+
+
+
+
+
+
+Yes
+Prescription Data
+Order Intake & Validation
+Restocking Triggers
+
+
+
+
+
+Medication Mapping Table
+Pack Composition Editor
+Pricing Calculator
+Cost Breakdown Engine
+Margin Estimator
+Micro-Bulk Procurement Trigger
+Inventory Records
+Medication Inventory
+Expiry Monitoring
+
+
+
+
+
+
+
+
+Prescription Verification
+Medication Validation
+Eligibility Check
+Validated Medication Request
+Care Pack Library
+30 Packs
+Supplier Records
+Batch 4 - Evening
+
+
+
+
+
+
+Customer Order
+Pack Composition List
+Price History Tracking
+
+
+Supplier Price Comparison
+Supplier Tier Classification
+Batch 3 - Afternoon
+
+
+
+Order Aggregation
+Fulfillment Time
+
+
+
+
+
+Procurement Cost Trends
+Refill Prediction
+
+Medication Procurement Confirmation
+Address Resolution
+Only Left Turn rule
+
+
+
+Batch 2 - Midday
+Pack Assembly
+Dispatch Preparation
+Medication Batch Verification
+Expiry Validation
+Prescription Matching
+Storage Compliance
+Final Pack Inspection
+QA Approved
+Delivery Route Assignment
+Batch Dispatch Scheduling
+Last-Mile Tracking
+Delivery Confirmation
+
+
+
+
+
+
+
+
+
+
+
+
+Yes
+
+
+Delivery Success?
+Batch 1 - Morning
+Zoning Strategy
+
+No
+Orders per Batch
+Cold Chain Prep
+
+Failed Delivery Handling
+Batc h Planning
+
+
+
+
+Address Resolution
+SLA & Exceptions
+Cost Control
+Rider Model

@@ -18,10 +18,22 @@ import {
   FileSpreadsheet,
   Star,
   StarOff,
-  ChevronDown,
+  TrendingUp,
+  Boxes,
+  Gauge,
+  LineChart,
+  Bot,
+  CalendarClock,
 } from "lucide-react"
-import { useCmsDoc, newId } from "@/lib/cms-store"
+import { useCmsDoc, newId, cmsStore } from "@/lib/cms-store"
 import { AdminShell } from "./admin-shell"
+import { SourcingForecastTab } from "./sourcing-forecast"
+import { SourcingInventoryTab } from "./sourcing-inventory"
+import { SourcingPerformanceTab } from "./sourcing-performance"
+import { SourcingPricingTab } from "./sourcing-pricing"
+import { SourcingAutomationTab } from "./sourcing-automation"
+import type { InventoryItem, PriceHistoryEntry } from "./sourcing-shared"
+import { SOURCING_KEYS } from "./sourcing-shared"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -47,10 +59,10 @@ import { formatPrice } from "@/lib/format"
 /*  Types                                                                     */
 /* -------------------------------------------------------------------------- */
 
-type SupplierTier = "preferred" | "approved" | "trial" | "blocked"
-type SupplierVerification = "verified" | "pending" | "unverified"
+export type SupplierTier = "preferred" | "approved" | "trial" | "blocked"
+export type SupplierVerification = "verified" | "pending" | "unverified"
 
-interface Supplier {
+export interface Supplier {
   id: string
   name: string
   country: string
@@ -70,11 +82,11 @@ interface Supplier {
   createdAt: string
 }
 
-type RequestPriority = "low" | "normal" | "high" | "urgent"
-type RequestStatus = "draft" | "open" | "quoting" | "ordered" | "received" | "cancelled"
-type RequestSource = "low_stock" | "customer_request" | "prescription_gap" | "manual"
+export type RequestPriority = "low" | "normal" | "high" | "urgent"
+export type RequestStatus = "draft" | "open" | "quoting" | "ordered" | "received" | "cancelled"
+export type RequestSource = "low_stock" | "customer_request" | "prescription_gap" | "refill_prediction" | "expiry_replacement" | "manual"
 
-interface SourcingRequest {
+export interface SourcingRequest {
   id: string
   productName: string
   sku?: string
@@ -89,7 +101,7 @@ interface SourcingRequest {
   updatedAt: string
 }
 
-interface Quote {
+export interface Quote {
   id: string
   requestId: string
   supplierId: string
@@ -103,9 +115,9 @@ interface Quote {
   createdAt: string
 }
 
-type POStatus = "draft" | "sent" | "in_transit" | "received" | "cancelled"
+export type POStatus = "draft" | "sent" | "in_transit" | "received" | "cancelled"
 
-interface PurchaseOrder {
+export interface PurchaseOrder {
   id: string
   poNumber: string
   requestId: string
@@ -183,27 +195,27 @@ const DEFAULT_REQUESTS: SourcingRequest[] = [
 /*  Constants                                                                 */
 /* -------------------------------------------------------------------------- */
 
-const TIER_LABEL: Record<SupplierTier, string> = {
+export const TIER_LABEL: Record<SupplierTier, string> = {
   preferred: "Preferred",
   approved: "Approved",
   trial: "On Trial",
   blocked: "Blocked",
 }
 
-const TIER_STYLE: Record<SupplierTier, string> = {
+export const TIER_STYLE: Record<SupplierTier, string> = {
   preferred: "bg-emerald-100 text-emerald-800 border border-emerald-200",
   approved: "bg-sky-100 text-sky-800 border border-sky-200",
   trial: "bg-amber-100 text-amber-800 border border-amber-200",
   blocked: "bg-rose-100 text-rose-800 border border-rose-200",
 }
 
-const VERIFICATION_STYLE: Record<SupplierVerification, string> = {
+export const VERIFICATION_STYLE: Record<SupplierVerification, string> = {
   verified: "bg-emerald-50 text-emerald-700 border border-emerald-200",
   pending: "bg-amber-50 text-amber-700 border border-amber-200",
   unverified: "bg-gray-100 text-gray-700 border border-gray-200",
 }
 
-const REQUEST_STATUS_STYLE: Record<RequestStatus, string> = {
+export const REQUEST_STATUS_STYLE: Record<RequestStatus, string> = {
   draft: "bg-gray-100 text-gray-700",
   open: "bg-sky-100 text-sky-800",
   quoting: "bg-amber-100 text-amber-800",
@@ -212,14 +224,14 @@ const REQUEST_STATUS_STYLE: Record<RequestStatus, string> = {
   cancelled: "bg-rose-100 text-rose-800",
 }
 
-const PRIORITY_STYLE: Record<RequestPriority, string> = {
+export const PRIORITY_STYLE: Record<RequestPriority, string> = {
   low: "bg-gray-100 text-gray-700",
   normal: "bg-sky-100 text-sky-800",
   high: "bg-orange-100 text-orange-800",
   urgent: "bg-rose-100 text-rose-800",
 }
 
-const PO_STATUS_STYLE: Record<POStatus, string> = {
+export const PO_STATUS_STYLE: Record<POStatus, string> = {
   draft: "bg-gray-100 text-gray-700",
   sent: "bg-sky-100 text-sky-800",
   in_transit: "bg-amber-100 text-amber-800",
@@ -227,10 +239,12 @@ const PO_STATUS_STYLE: Record<POStatus, string> = {
   cancelled: "bg-rose-100 text-rose-800",
 }
 
-const SOURCE_LABEL: Record<RequestSource, string> = {
+export const SOURCE_LABEL: Record<RequestSource, string> = {
   low_stock: "Low stock alert",
   customer_request: "Customer requested",
   prescription_gap: "Prescription gap",
+  refill_prediction: "Refill prediction",
+  expiry_replacement: "Expiry replacement",
   manual: "Manual entry",
 }
 
@@ -238,15 +252,16 @@ const SOURCE_LABEL: Record<RequestSource, string> = {
 /*  Component                                                                 */
 /* -------------------------------------------------------------------------- */
 
-type Tab = "overview" | "requests" | "suppliers" | "quotes" | "pos"
+type Tab = "overview" | "requests" | "suppliers" | "quotes" | "pos" | "forecast" | "inventory" | "performance" | "pricing" | "automation"
 
 export function AdminSourcing() {
   const [tab, setTab] = useState<Tab>("overview")
 
-  const [suppliers, setSuppliers] = useCmsDoc<Supplier[]>("sourcing-suppliers", DEFAULT_SUPPLIERS)
-  const [requests, setRequests] = useCmsDoc<SourcingRequest[]>("sourcing-requests", DEFAULT_REQUESTS)
-  const [quotes, setQuotes] = useCmsDoc<Quote[]>("sourcing-quotes", [])
-  const [pos, setPos] = useCmsDoc<PurchaseOrder[]>("sourcing-pos", [])
+  const [suppliers, setSuppliers] = useCmsDoc<Supplier[]>(SOURCING_KEYS.suppliers, DEFAULT_SUPPLIERS)
+  const [requests, setRequests] = useCmsDoc<SourcingRequest[]>(SOURCING_KEYS.requests, DEFAULT_REQUESTS)
+  const [quotes, setQuotes] = useCmsDoc<Quote[]>(SOURCING_KEYS.quotes, [])
+  const [pos, setPos] = useCmsDoc<PurchaseOrder[]>(SOURCING_KEYS.pos, [])
+  const [inventory, setInventory] = useCmsDoc<InventoryItem[]>(SOURCING_KEYS.inventory, [])
 
   /* ---- modal state ------------------------------------------------------- */
   const [supplierModal, setSupplierModal] = useState<{ open: boolean; editing: Supplier | null }>({ open: false, editing: null })
@@ -263,8 +278,14 @@ export function AdminSourcing() {
     const openValue = pos
       .filter((p) => p.status !== "received" && p.status !== "cancelled")
       .reduce((sum, p) => sum + p.qty * p.unitCost, 0)
-    return { openReq, urgent, inTransit, verified, openValue }
-  }, [requests, pos, suppliers])
+    const belowSafety = inventory.filter((i) => i.onHand < i.safetyStock).length
+    const expiringSoon = inventory.filter((i) => {
+      if (!i.batchExpiry) return false
+      const d = Math.ceil((new Date(i.batchExpiry).getTime() - Date.now()) / 86_400_000)
+      return d >= 0 && d <= 90
+    }).length
+    return { openReq, urgent, inTransit, verified, openValue, belowSafety, expiringSoon }
+  }, [requests, pos, suppliers, inventory])
 
   /* ---------------------------------------------------------------------- */
   /*  Supplier handlers                                                     */
@@ -319,6 +340,24 @@ export function AdminSourcing() {
     })
     setRequests((prev) => prev.map((r) => r.id === q.requestId && r.status === "open"
       ? { ...r, status: "quoting", updatedAt: new Date().toISOString() } : r))
+
+    // Record price history snapshot for the price-intel tab.
+    const req = requests.find((r) => r.id === q.requestId)
+    if (req?.sku) {
+      const existing = cmsStore.get<PriceHistoryEntry[]>(SOURCING_KEYS.priceHistory, [])
+      const entry: PriceHistoryEntry = {
+        id: newId("ph"),
+        sku: req.sku,
+        productName: req.productName,
+        supplierId: q.supplierId,
+        unitCost: q.unitCost,
+        currency: q.currency,
+        source: "quote",
+        capturedAt: new Date().toISOString(),
+      }
+      cmsStore.set(SOURCING_KEYS.priceHistory, [entry, ...existing])
+    }
+
     setQuoteModal({ open: false, requestId: null, editing: null })
   }
 
@@ -357,14 +396,27 @@ export function AdminSourcing() {
   }
 
   const handlePOStatusChange = (id: string, status: POStatus) => {
+    const prevPo = pos.find((p) => p.id === id)
+    const transitionToReceived = status === "received" && prevPo?.status !== "received"
+
     setPos((prev) => prev.map((p) => p.id === id
-      ? { ...p, status, receivedAt: status === "received" ? new Date().toISOString() : p.receivedAt }
+      ? { ...p, status, receivedAt: status === "received" ? (p.receivedAt || new Date().toISOString()) : p.receivedAt }
       : p))
-    if (status === "received") {
-      const po = pos.find((p) => p.id === id)
-      if (po) {
-        setRequests((prev) => prev.map((r) => r.id === po.requestId
-          ? { ...r, status: "received", updatedAt: new Date().toISOString() } : r))
+
+    // Only fire the side effects on the first transition into "received" so toggling cannot double-count.
+    if (transitionToReceived && prevPo) {
+      setRequests((prev) => prev.map((r) => r.id === prevPo.requestId
+        ? { ...r, status: "received", updatedAt: new Date().toISOString() } : r))
+
+      const req = requests.find((r) => r.id === prevPo.requestId)
+      if (req?.sku) {
+        setInventory((prev) => {
+          const idx = prev.findIndex((i) => i.sku === req.sku)
+          if (idx === -1) return prev
+          const next = prev.slice()
+          next[idx] = { ...next[idx], onHand: next[idx].onHand + prevPo.qty, updatedAt: new Date().toISOString() }
+          return next
+        })
       }
     }
   }
@@ -431,11 +483,13 @@ export function AdminSourcing() {
         </div>
 
         {/* KPI strip */}
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
           <KpiCard label="Open requests" value={kpis.openReq} hint="Awaiting quote / decision" icon={ClipboardList} />
           <KpiCard label="Urgent" value={kpis.urgent} hint="Need action this week" icon={AlertTriangle} accent="rose" />
           <KpiCard label="In transit" value={kpis.inTransit} hint="POs sent or shipping" icon={Truck} />
           <KpiCard label="Verified suppliers" value={kpis.verified} hint={`of ${suppliers.length} total`} icon={ShieldCheck} accent="emerald" />
+          <KpiCard label="Below safety" value={kpis.belowSafety} hint="SKUs needing reorder" icon={Boxes} accent="rose" />
+          <KpiCard label="Expiring < 90d" value={kpis.expiringSoon} hint="Plan replacements" icon={CalendarClock} accent="amber" />
           <KpiCard label="Open PO value" value={formatPrice(kpis.openValue)} hint="Sum of unreceived POs" icon={Building2} />
         </div>
 
@@ -444,10 +498,15 @@ export function AdminSourcing() {
           <div className="flex gap-1 -mb-px overflow-x-auto">
             {([
               ["overview", "Overview"],
+              ["forecast", "Forecast"],
+              ["inventory", `Inventory (${inventory.length})`],
               ["requests", `Requests (${requests.length})`],
               ["suppliers", `Suppliers (${suppliers.length})`],
               ["quotes", `Quotes (${quotes.length})`],
-              ["pos", `Purchase Orders (${pos.length})`],
+              ["pos", `POs (${pos.length})`],
+              ["performance", "Performance"],
+              ["pricing", "Price intel"],
+              ["automation", "Automation"],
             ] as const).map(([k, label]) => (
               <button
                 key={k}
@@ -515,6 +574,12 @@ export function AdminSourcing() {
             onDelete={handleDeletePO}
           />
         )}
+
+        {tab === "forecast" && <SourcingForecastTab />}
+        {tab === "inventory" && <SourcingInventoryTab />}
+        {tab === "performance" && <SourcingPerformanceTab />}
+        {tab === "pricing" && <SourcingPricingTab />}
+        {tab === "automation" && <SourcingAutomationTab />}
       </div>
 
       {/* Modals */}
@@ -560,11 +625,12 @@ export function AdminSourcing() {
 
 function KpiCard({ label, value, hint, icon: Icon, accent }: {
   label: string; value: string | number; hint?: string;
-  icon: typeof ShieldCheck; accent?: "rose" | "emerald"
+  icon: typeof ShieldCheck; accent?: "rose" | "emerald" | "amber"
 }) {
   const tone =
     accent === "rose" ? "text-rose-700 bg-rose-50" :
     accent === "emerald" ? "text-emerald-700 bg-emerald-50" :
+    accent === "amber" ? "text-amber-700 bg-amber-50" :
     "text-[#3D0814] bg-[#3D0814]/5"
   return (
     <div className="border border-border rounded-sm p-4 bg-background">
