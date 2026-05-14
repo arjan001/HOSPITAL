@@ -917,20 +917,6 @@ export function CheckoutPage() {
           </div>
         </main>
 
-        {/* Floating WhatsApp bubble */}
-        {whatsappNumber && (
-          <a
-            href={`https://wa.me/${whatsappNumber}?text=Hi%2C%20I%20just%20placed%20order%20${encodeURIComponent(orderResult.orderNumber)}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            aria-label="Chat with pharmacist on WhatsApp"
-            className="fixed bottom-6 right-6 w-14 h-14 rounded-full flex items-center justify-center shadow-lg transition-transform hover:scale-105 z-50"
-            style={{ background: "#25D366" }}
-          >
-            <MessageSquare className="h-6 w-6 text-white" />
-          </a>
-        )}
-
         <Footer />
       </div>
     )

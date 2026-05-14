@@ -30,8 +30,12 @@ interface PaymentRecord {
   customerName?: string;
   mpesaReceipt?: string;
   message?: string;
+  /** PayHero CheckoutRequestID-equivalent — used to actively poll their API. */
+  reference?: string;
   createdAt: number;
   updatedAt: number;
+  /** Last time we actively queried PayHero (rate-limit guard). */
+  lastQueryAt?: number;
   rawCallback?: unknown;
 }
 
@@ -112,12 +116,18 @@ router.post("/stk", async (req: Request, res: Response) => {
     }
 
     const now = Date.now();
+    const reference =
+      (data.reference as string) ||
+      (data.CheckoutRequestID as string) ||
+      ((data.data as Record<string, unknown> | undefined)?.reference as string) ||
+      undefined;
     payments.set(String(orderNumber), {
       orderNumber: String(orderNumber),
       status: "pending",
       amount: amt,
       phone: phoneNorm,
       customerName: customerName ? String(customerName) : undefined,
+      reference,
       createdAt: now,
       updatedAt: now,
     });
@@ -130,16 +140,64 @@ router.post("/stk", async (req: Request, res: Response) => {
   }
 });
 
+/* Actively query PayHero for a record we initiated. Used as a fallback
+   when their webhook can't reach us (e.g. local dev) so the storefront
+   can still detect cancel / no-PIN within seconds. */
+async function refreshFromPayHero(rec: PaymentRecord): Promise<PaymentRecord> {
+  if (rec.status !== "pending" || !rec.reference) return rec;
+  // Rate-limit: don't hit PayHero more than once every 3s per order.
+  if (rec.lastQueryAt && Date.now() - rec.lastQueryAt < 3000) return rec;
+
+  try {
+    const auth = basicAuthHeader();
+    const url = `${PAYHERO_API_BASE}/transaction-status?reference=${encodeURIComponent(rec.reference)}`;
+    const r = await fetch(url, { headers: { Authorization: auth } });
+    const data = (await r.json().catch(() => ({}))) as Record<string, unknown>;
+    rec.lastQueryAt = Date.now();
+    if (!r.ok) return rec;
+
+    const rawStatus = String(data.status ?? "").toUpperCase();
+    const resultCode = Number(data.ResultCode ?? data.result_code ?? -1);
+    let status: PaymentStatus = "pending";
+    if (rawStatus === "SUCCESS" || resultCode === 0) status = "success";
+    else if (
+      rawStatus === "CANCELLED" ||
+      rawStatus === "CANCELED" ||
+      resultCode === 1032
+    ) status = "cancelled";
+    else if (rawStatus === "FAILED" || (resultCode > 0 && resultCode !== 1037)) status = "failed";
+    // 1037 = "DS timeout user cannot be reached" — keep as pending until our own timeout.
+
+    if (status !== "pending") {
+      rec.status = status;
+      rec.message =
+        (data.ResultDesc as string) ||
+        (data.message as string) ||
+        rec.message;
+      rec.mpesaReceipt =
+        (data.MpesaReceiptNumber as string) ||
+        (data.mpesa_receipt as string) ||
+        rec.mpesaReceipt;
+      rec.updatedAt = Date.now();
+      payments.set(rec.orderNumber, rec);
+    }
+  } catch (err) {
+    logger.warn({ err, orderNumber: rec.orderNumber }, "PayHero status query failed");
+  }
+  return rec;
+}
+
 /* ── GET /status?orderNumber=… ───────────────────────────────────── */
-router.get("/status", (req: Request, res: Response) => {
+router.get("/status", async (req: Request, res: Response) => {
   const orderNumber = String(req.query.orderNumber || "");
   if (!orderNumber) {
     return res.status(400).json({ status: "unknown", error: "orderNumber required" });
   }
-  const rec = payments.get(orderNumber);
+  let rec = payments.get(orderNumber);
   if (!rec) {
     return res.json({ status: "pending" });
   }
+  rec = await refreshFromPayHero(rec);
   return res.json({
     status: rec.status,
     mpesaReceipt: rec.mpesaReceipt,

@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
-import { X, Loader2, Smartphone, CheckCircle2, AlertCircle } from "lucide-react"
+import { X, Loader2, Smartphone, CheckCircle2, AlertCircle, RefreshCw } from "lucide-react"
 import { formatPrice } from "@/lib/format"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -38,6 +38,7 @@ interface MpesaPaymentModalProps {
 
 const POLL_INTERVAL_MS = 3000
 const MAX_POLLS = 40 // ~2 minutes
+const COUNTDOWN_SECONDS = MAX_POLLS * (POLL_INTERVAL_MS / 1000)
 
 export function MpesaPaymentModal({
   isOpen,
@@ -53,7 +54,10 @@ export function MpesaPaymentModal({
   const [phone, setPhone] = useState(defaultPhone || "")
   const [error, setError] = useState("")
   const [statusMessage, setStatusMessage] = useState("")
+  const [secondsLeft, setSecondsLeft] = useState(COUNTDOWN_SECONDS)
+  const [activeOrderNumber, setActiveOrderNumber] = useState<string | null>(null)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const pollsRef = useRef(0)
 
   useEffect(() => {
@@ -64,6 +68,7 @@ export function MpesaPaymentModal({
   useEffect(() => {
     return () => {
       if (pollRef.current) clearInterval(pollRef.current)
+      if (countdownRef.current) clearInterval(countdownRef.current)
     }
   }, [])
 
@@ -77,6 +82,10 @@ export function MpesaPaymentModal({
       clearInterval(pollRef.current)
       pollRef.current = null
     }
+    if (countdownRef.current) {
+      clearInterval(countdownRef.current)
+      countdownRef.current = null
+    }
     pollsRef.current = 0
   }
 
@@ -85,6 +94,8 @@ export function MpesaPaymentModal({
     setStep("prompt")
     setError("")
     setStatusMessage("")
+    setSecondsLeft(COUNTDOWN_SECONDS)
+    setActiveOrderNumber(null)
   }
 
   const handleClose = () => {
@@ -93,15 +104,31 @@ export function MpesaPaymentModal({
     onClose()
   }
 
+  /* User explicitly bailed out of the prompt on their phone (or never got it).
+     Tell the parent so abandoned-cart analytics fire, then surface the failed
+     state with a friendly message. */
+  const handleManualCancel = () => {
+    stopPolling()
+    setStep("failed")
+    setError("Payment cancelled. You can try again or pick a different payment method.")
+    onPaymentFailed?.("user_cancelled")
+  }
+
   const pollStatus = (orderNumber: string) => {
     stopPolling()
     pollsRef.current = 0
+    setSecondsLeft(COUNTDOWN_SECONDS)
+
+    countdownRef.current = setInterval(() => {
+      setSecondsLeft(s => (s > 0 ? s - 1 : 0))
+    }, 1000)
+
     pollRef.current = setInterval(async () => {
       pollsRef.current += 1
       if (pollsRef.current > MAX_POLLS) {
         stopPolling()
         setStep("failed")
-        setError("We did not receive confirmation in time. If you paid, your order will be confirmed shortly.")
+        setError("We did not receive confirmation in time. If you paid, your order will be confirmed shortly — check WhatsApp or contact support.")
         onPaymentFailed?.("timeout")
         return
       }
@@ -121,7 +148,10 @@ export function MpesaPaymentModal({
         } else if (data.status === "failed" || data.status === "cancelled") {
           stopPolling()
           setStep("failed")
-          setError(data.message || "Payment was cancelled or failed. Please try again.")
+          const friendly = data.status === "cancelled"
+            ? "Payment cancelled on your phone. You can try again."
+            : (data.message || "Payment did not go through. Please try again.")
+          setError(friendly)
           onPaymentFailed?.(data.status)
         }
       } catch {
@@ -170,6 +200,7 @@ export function MpesaPaymentModal({
       }
       setStep("waiting")
       setStatusMessage("Check your phone and enter your M-PESA PIN to complete payment.")
+      setActiveOrderNumber(created.orderNumber)
       pollStatus(created.orderNumber)
     } catch {
       setStep("failed")
@@ -262,6 +293,27 @@ export function MpesaPaymentModal({
                   {statusMessage}
                 </p>
               </div>
+
+              {step === "waiting" && (
+                <>
+                  {/* Countdown bar — shows the user we're actively listening */}
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+                      <span>Waiting for confirmation</span>
+                      <span className="font-mono font-semibold">
+                        {Math.floor(secondsLeft / 60)}:{String(secondsLeft % 60).padStart(2, "0")}
+                      </span>
+                    </div>
+                    <div className="h-1 w-full bg-secondary/60 rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-[#00843D] transition-all duration-1000 ease-linear"
+                        style={{ width: `${(secondsLeft / COUNTDOWN_SECONDS) * 100}%` }}
+                      />
+                    </div>
+                  </div>
+                </>
+              )}
+
               <div className="text-[11px] text-muted-foreground bg-secondary/40 rounded-sm px-3 py-2 text-left leading-relaxed">
                 <p className="font-semibold text-foreground mb-1">What to do now:</p>
                 1. Unlock your phone.<br />
@@ -269,6 +321,48 @@ export function MpesaPaymentModal({
                 3. Enter your M-PESA PIN and press OK.<br />
                 4. Wait here for confirmation.
               </div>
+
+              {step === "waiting" && (
+                <div className="flex flex-col gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      if (!activeOrderNumber) return
+                      try {
+                        const res = await fetch(`/api/payments/payhero/status?orderNumber=${encodeURIComponent(activeOrderNumber)}`)
+                        const data = await res.json()
+                        if (data.status === "success") {
+                          stopPolling()
+                          setStep("success")
+                          setStatusMessage(`Payment received (${data.mpesaReceipt || "confirmed"})`)
+                          onPaymentConfirmed({
+                            orderNumber: activeOrderNumber,
+                            mpesaReceipt: data.mpesaReceipt || "",
+                            phone: data.phone || cleanPhone,
+                          })
+                        } else if (data.status === "failed" || data.status === "cancelled") {
+                          stopPolling()
+                          setStep("failed")
+                          setError(data.message || "Payment cancelled or did not go through.")
+                          onPaymentFailed?.(data.status)
+                        }
+                      } catch {
+                        // ignore
+                      }
+                    }}
+                    className="inline-flex items-center justify-center gap-1.5 text-xs font-medium text-[#00843D] hover:underline"
+                  >
+                    <RefreshCw className="h-3 w-3" /> Check status now
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleManualCancel}
+                    className="text-xs text-muted-foreground hover:text-red-600 transition-colors"
+                  >
+                    I cancelled / didn't get the prompt
+                  </button>
+                </div>
+              )}
             </div>
           )}
 
