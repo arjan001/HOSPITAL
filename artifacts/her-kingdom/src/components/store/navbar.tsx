@@ -289,7 +289,7 @@ export function Navbar() {
                       {/* CTA buttons */}
                       <div className="px-6 py-4 flex gap-3 border-b" style={{ borderColor: "#F2DCC8" }}>
                         <Link
-                          href="/account/login"
+                          href="/sign-in"
                           className="flex-1 h-12 rounded-lg font-bold text-sm flex items-center justify-center text-white transition-opacity hover:opacity-90"
                           style={{
                             background: `linear-gradient(135deg, ${ACCENT_ORANGE} 0%, ${ACCENT_RED} 100%)`,
@@ -300,7 +300,7 @@ export function Navbar() {
                           Log In
                         </Link>
                         <Link
-                          href="/account/register"
+                          href="/sign-up"
                           className="flex-1 h-12 rounded-lg font-bold text-sm flex items-center justify-center transition-colors hover:bg-[#FFF6EE]"
                           style={{
                             border: `1.5px solid ${PILL_BORDER}`,
@@ -333,7 +333,7 @@ export function Navbar() {
                             icon: <Settings className="h-5 w-5" />,
                             label: "Account Settings",
                             desc: "Payment, contact info, addresses, password",
-                            href: "/account/login",
+                            href: "/account",
                           },
                         ].map((item, idx, arr) => (
                           <Link
