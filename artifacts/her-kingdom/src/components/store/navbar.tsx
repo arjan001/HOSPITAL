@@ -289,7 +289,7 @@ export function Navbar() {
                       {/* CTA buttons */}
                       <div className="px-6 py-4 flex gap-3 border-b" style={{ borderColor: "#F2DCC8" }}>
                         <Link
-                          href="/sign-in"
+                          href="/account/login"
                           className="flex-1 h-12 rounded-lg font-bold text-sm flex items-center justify-center text-white transition-opacity hover:opacity-90"
                           style={{
                             background: `linear-gradient(135deg, ${ACCENT_ORANGE} 0%, ${ACCENT_RED} 100%)`,
@@ -300,7 +300,7 @@ export function Navbar() {
                           Log In
                         </Link>
                         <Link
-                          href="/sign-up"
+                          href="/account/register"
                           className="flex-1 h-12 rounded-lg font-bold text-sm flex items-center justify-center transition-colors hover:bg-[#FFF6EE]"
                           style={{
                             border: `1.5px solid ${PILL_BORDER}`,

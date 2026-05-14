@@ -24,7 +24,7 @@ export const POPUP_DEFAULTS: PopupOfferSettings = {
   headline: "Get 10% off your first order",
   subhead: "Sign up for SMS or email and we'll send you a one-time code, plus health tips from our pharmacists.",
   ctaLabel: "Claim my discount",
-  ctaHref: "/sign-up",
+  ctaHref: "/account/register",
   imageUrl: "",
   bgColor: "#FFFFFF",
   textColor: "#111827",

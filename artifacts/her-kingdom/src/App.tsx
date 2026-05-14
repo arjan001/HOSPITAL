@@ -59,6 +59,8 @@ import { PopupOffer } from "@/components/store/popup-offer";
 // Account pages (customer-facing)
 import AccountSettingsPage from "@/pages/account/settings";
 import AccountDashboard from "@/pages/account/dashboard";
+import AccountLoginPage from "@/pages/account/login";
+import AccountRegisterPage from "@/pages/account/register";
 import DashboardPage from "@/pages/dashboard";
 import UploadPrescriptionPage from "@/pages/upload-prescription";
 import SpeakToADoctorPage from "@/pages/speak-to-a-doctor";
@@ -319,8 +321,8 @@ function Router() {
       <Route path="/sign-in/*?" component={SignInPage} />
       <Route path="/sign-up/*?" component={SignUpPage} />
       {/* Legacy aliases → forward to Clerk */}
-      <Route path="/account/login">{() => <Redirect to="/sign-in" />}</Route>
-      <Route path="/account/register">{() => <Redirect to="/sign-up" />}</Route>
+      <Route path="/account/login" component={AccountLoginPage} />
+      <Route path="/account/register" component={AccountRegisterPage} />
       <Route path="/account/verify-phone">{() => <Redirect to="/sign-in" />}</Route>
       <Route path="/account/email-verified">{() => <Redirect to="/sign-in" />}</Route>
       {/* Account (signed-in only — guests must sign in to view orders) */}

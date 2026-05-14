@@ -92,7 +92,7 @@ export function CartDrawer() {
             {/* Sign in / Create Account */}
             <div className="flex flex-col gap-3 max-w-xs mx-auto w-full pb-4">
               <Link
-                href="/sign-in"
+                href="/account/login"
                 onClick={() => setIsCartOpen(false)}
                 className="h-12 rounded-full text-sm font-bold text-white flex items-center justify-center transition-opacity hover:opacity-90"
                 style={{ background: WINE }}
@@ -100,7 +100,7 @@ export function CartDrawer() {
                 Sign in
               </Link>
               <Link
-                href="/sign-up"
+                href="/account/register"
                 onClick={() => setIsCartOpen(false)}
                 className="h-12 rounded-full text-sm font-bold flex items-center justify-center transition-colors hover:bg-[#FFF6EE]"
                 style={{ background: "#fff", border: `1.5px solid ${WINE}`, color: WINE }}
