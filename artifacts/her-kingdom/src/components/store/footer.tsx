@@ -50,9 +50,10 @@ const DEFAULTS = {
 }
 
 
-const BOTTOM_LINKS = [
+const BOTTOM_LINKS: { label: string; href: string; disabled?: boolean }[] = [
   { label: "About Us", href: "/about" },
   { label: "Our Stores", href: "/contact" },
+  { label: "Careers", href: "/careers", disabled: true },
   { label: "Blog", href: "/blog" },
   { label: "Contact", href: "/contact" },
 ]
@@ -213,16 +214,34 @@ export function Footer() {
           </p>
 
           <nav className="flex items-center gap-x-4 sm:gap-x-5 gap-y-2 flex-wrap justify-center order-1 md:order-2">
-            {BOTTOM_LINKS.map((l) => (
-              <Link
-                key={l.label}
-                href={l.href}
-                className="text-[11px] sm:text-xs font-semibold uppercase tracking-wider transition-colors hover:text-[#B91C1C]"
-                style={{ color: TEXT_WINE }}
-              >
-                {l.label}
-              </Link>
-            ))}
+            {BOTTOM_LINKS.map((l) =>
+              l.disabled ? (
+                <span
+                  key={l.label}
+                  aria-disabled="true"
+                  title="Coming soon"
+                  className="inline-flex items-center gap-1.5 text-[11px] sm:text-xs font-semibold uppercase tracking-wider cursor-not-allowed select-none"
+                  style={{ color: TEXT_MUTED }}
+                >
+                  {l.label}
+                  <span
+                    className="text-[9px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded-full"
+                    style={{ background: "#F2DCC8", color: TEXT_WINE_SOFT }}
+                  >
+                    Soon
+                  </span>
+                </span>
+              ) : (
+                <Link
+                  key={l.label}
+                  href={l.href}
+                  className="text-[11px] sm:text-xs font-semibold uppercase tracking-wider transition-colors hover:text-[#B91C1C]"
+                  style={{ color: TEXT_WINE }}
+                >
+                  {l.label}
+                </Link>
+              ),
+            )}
           </nav>
         </div>
 

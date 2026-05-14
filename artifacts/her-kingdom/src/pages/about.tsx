@@ -16,20 +16,60 @@ type Section = { id: string; heading: string; body?: string; list?: string[] }
 
 const SECTIONS: Section[] = [
   {
+    id: "promise",
+    heading: "1. Our promise",
+    body:
+      "If it comes through Shaniid RX, it is genuine, fairly priced, and delivered with integrity. That single sentence is the contract we sign with every patient, pharmacy, supplier and regulator we serve. Trust before scale — always.",
+  },
+  {
+    id: "positioning",
+    heading: "2. We are not another pharmacy app",
+    body:
+      "Shaniid RX is the trust layer for medicine distribution in Africa — a community-driven, globally credible infrastructure that connects verified suppliers, community pharmacies and patients. We exist to make safe, affordable and reliable medicines accessible to every household, and to bring transparency, traceability and dignity to a supply chain that has lost too much of all three.",
+    list: [
+      "Not a shop. Not just logistics.",
+      "A health-equity infrastructure for East Africa.",
+      "Affordable but dignified. Accessible but world-class.",
+      "Local roots, global standards.",
+    ],
+  },
+  {
+    id: "why-now",
+    heading: "3. Why we exist now",
+    body:
+      "Counterfeit medicines are rising. Informal supply chains still dominate. Pricing is unpredictable, stockouts are common, and trust in the ecosystem is fragile. At the same time, mobile infrastructure is mature, digital adoption is accelerating, and regulators are open to the kind of transparency tools we build. Every year of delay means more preventable harm — so we are building now.",
+  },
+  {
+    id: "values",
+    heading: "4. Our values — Kaizen + Ubuntu",
+    list: [
+      "Kaizen: continuous improvement of safety, verification and logistics. We never settle for \"good enough\" when lives are involved.",
+      "Ubuntu: humanity first. Access over margins. Designed for the underserved, respectful of cultural health behaviours.",
+      "Technology with conscience — the complex tech stays in the background; trust and human experience stay in the foreground.",
+      "Honesty, fairness and protection of life — non-negotiable.",
+    ],
+  },
+  {
+    id: "trust-seal",
+    heading: "5. The Shaniid RX Trust Seal",
+    body:
+      "Every verified supplier, every screened batch and every dispensed prescription carries our trust seal — a quiet shield that tells you a real pharmacist, a real pharmacy and a real chain of custody stand behind your medicine. The seal is not decoration. It is our brand promise made visible.",
+  },
+  {
     id: "what-we-do",
-    heading: "1. What we do",
+    heading: "6. What we do",
     body:
       "With your Shaniid RX account, you have access to thousands of original-quality medications, health, wellness and personal-care products. Browse our website or app from your phone, laptop or any internet-enabled device. Search for the products you need or upload a valid prescription from your doctor. Pay with a convenient method, drop your delivery pin, and sit back while we bring everything to your door so you can get on with living well.",
   },
   {
     id: "our-team",
-    heading: "2. Our team",
+    heading: "7. Our team",
     body:
       "We have a qualified team of pharmacists, pharmaceutical technologists and customer-care professionals ready to serve you. Enjoy convenience and peace of mind like never before — every order is screened by a licensed pharmacist, dispensed under tamper-evident seal and delivered on time and in mint condition. If you have a question about your order, our dedicated customer-care representatives are always happy to help.",
   },
   {
     id: "how-it-works",
-    heading: "3. How Shaniid RX works",
+    heading: "8. How Shaniid RX works",
     list: [
       "Browse the catalogue or upload a prescription — anytime, day or night.",
       "A registered pharmacist clinically screens every prescription before dispensing.",
@@ -40,7 +80,7 @@ const SECTIONS: Section[] = [
   },
   {
     id: "quality",
-    heading: "4. Quality you can trust",
+    heading: "9. Quality you can trust",
     list: [
       "Sourced only from manufacturers and distributors registered with the Pharmacy and Poisons Board (PPB).",
       "Every batch arrives with a Certificate of Analysis and is scanned into our system on intake.",
@@ -50,19 +90,19 @@ const SECTIONS: Section[] = [
   },
   {
     id: "delivery",
-    heading: "5. Fast, careful delivery across Kenya",
+    heading: "10. Fast, careful delivery across Kenya",
     body:
       "We deliver same-day across Nairobi and within 24–48 hours upcountry. Cold-chain orders travel in insulated pouches with validated gel packs, and our riders are trained on chain-of-custody and patient confidentiality. Free delivery on orders above KSh 5,000.",
   },
   {
     id: "contact",
-    heading: "6. Talk to us",
+    heading: "11. Talk to us",
     body:
       "Give us a call or WhatsApp us between 8 AM and 10 PM, every day. Our pharmacists are on duty for clinical questions, medication advice and refills.",
   },
   {
     id: "social",
-    heading: "7. Reach us on social media",
+    heading: "12. Reach us on social media",
     list: [
       "Facebook: @ShaniidRX",
       "Twitter / X: @ShaniidRX",
@@ -73,7 +113,7 @@ const SECTIONS: Section[] = [
   },
   {
     id: "payments",
-    heading: "8. Easy, secure payments",
+    heading: "13. Easy, secure payments",
     body:
       "Pay using M-PESA, Airtel Money, Visa, Mastercard or your health-insurance cover for medications and other covered items. Save even more — we never charge payment or transfer fees, and our delivery rates across Kenya are among the most affordable in the market.",
   },

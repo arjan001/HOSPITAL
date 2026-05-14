@@ -68,6 +68,7 @@ import SpeakToADoctorPage from "@/pages/speak-to-a-doctor";
 // Policy pages
 import PolicyPage from "@/pages/policy";
 import AboutPage from "@/pages/about";
+import CareersPage from "@/pages/careers";
 import CustomPageView from "@/pages/custom-page";
 
 // Store layout wrappers
@@ -301,6 +302,8 @@ function Router() {
       </Route>
       <Route path="/who-we-are">{() => <AboutPage />}</Route>
       <Route path="/about">{() => <AboutPage />}</Route>
+      <Route path="/careers">{() => <CareersPage />}</Route>
+      <Route path="/career">{() => <CareersPage />}</Route>
       <Route path="/privacy-policy">
         {() => <PolicyPage slug="privacy-policy" />}
       </Route>
