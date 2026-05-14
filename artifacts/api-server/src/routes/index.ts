@@ -31,6 +31,7 @@ import adminAnalyticsRouter from "./api/admin/analytics.js";
 import adminUsersRouter from "./api/admin/users.js";
 import authRouter from "./api/auth.js";
 import payheroRouter from "./api/payments/payhero.js";
+import videoDailyRouter from "./api/video/daily.js";
 
 const router: IRouter = Router();
 
