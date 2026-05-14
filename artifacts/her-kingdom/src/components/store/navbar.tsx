@@ -5,7 +5,8 @@ import { Link } from "wouter"
 
 import { useState, useRef, useEffect } from "react"
 import { useLocation } from "wouter"
-import { Search, ShoppingBag, Menu, PhoneCall, User, Package, Camera, Heart, Settings, PackageCheck } from "lucide-react"
+import { Search, ShoppingBag, Menu, PhoneCall, User, Package, Camera, Heart, Settings, PackageCheck, HandHeart, ArrowRight } from "lucide-react"
+import { useUser, useClerk } from "@clerk/react"
 import { useCart } from "@/lib/cart-context"
 import { useWishlist } from "@/lib/wishlist-context"
 import type { Product } from "@/lib/types"
@@ -70,6 +71,8 @@ type SiteSettings = {
 
 export function Navbar() {
   const [location, navigate] = useLocation()
+  const { isSignedIn } = useUser()
+  const { signOut } = useClerk()
   const { totalItems, totalPrice, setIsCartOpen } = useCart()
   const { totalItems: wishlistCount } = useWishlist()
   const { phoneHref } = useStoreContact()
@@ -268,101 +271,149 @@ export function Navbar() {
 
                 {/* Account dropdown — broad white card matching reference */}
                 {accountOpen && (
-                  <div className="absolute top-full right-0 pt-3 w-[400px] z-50">
+                  <div className="absolute top-full right-0 pt-3 w-[360px] z-50">
                     <div
-                      className="rounded-2xl overflow-hidden"
+                      className="rounded-2xl overflow-hidden bg-white"
                       style={{
-                        background: "#ffffff",
                         border: `1px solid ${PILL_BORDER}`,
                         boxShadow: "0 20px 60px -12px rgba(61,8,20,0.22), 0 6px 16px -6px rgba(61,8,20,0.10)",
                       }}
                     >
-                      {/* Header */}
-                      <div className="px-6 pt-5 pb-4 border-b" style={{ borderColor: "#F2DCC8" }}>
-                        <p className="font-extrabold text-lg leading-tight" style={{ color: TEXT_WINE }}>My Account</p>
-                        <div className="mt-2 h-px" style={{ background: "#F2DCC8" }} />
-                        <p className="text-sm mt-3 text-center" style={{ color: "#888" }}>
-                          Sign in for a more personalized experience
-                        </p>
-                      </div>
+                      {isSignedIn ? (
+                        <>
+                          {/* Signed-in: simplified menu per reference */}
+                          <div className="px-3 py-3">
+                            {[
+                              { icon: <Package className="h-5 w-5" />,    label: "My Orders",    href: "/user?tab=orders" },
+                              { icon: <User className="h-5 w-5" />,       label: "My Account",   href: "/user" },
+                              { icon: <Heart className="h-5 w-5" />,      label: "Wishlist",     href: "/wishlist" },
+                              { icon: <HandHeart className="h-5 w-5" />,  label: "Beneficiaries", href: "/user?tab=beneficiaries" },
+                            ].map((item) => {
+                              const active = location === item.href || (item.href === "/user" && location.startsWith("/user"))
+                              return (
+                                <Link
+                                  key={item.label}
+                                  href={item.href}
+                                  onClick={() => setAccountOpen(false)}
+                                  className="flex items-center gap-4 px-4 py-3 rounded-xl transition-colors"
+                                  style={{
+                                    background: active ? "#F4F4F5" : "transparent",
+                                    color: "#3F3F46",
+                                  }}
+                                >
+                                  <span className="text-[#3F3F46]">{item.icon}</span>
+                                  <span className="text-base font-medium">{item.label}</span>
+                                </Link>
+                              )
+                            })}
+                          </div>
 
-                      {/* CTA buttons */}
-                      <div className="px-6 py-4 flex gap-3 border-b" style={{ borderColor: "#F2DCC8" }}>
-                        <Link
-                          href="/account/login"
-                          className="flex-1 h-12 rounded-lg font-bold text-sm flex items-center justify-center text-white transition-opacity hover:opacity-90"
-                          style={{
-                            background: `linear-gradient(135deg, ${ACCENT_ORANGE} 0%, ${ACCENT_RED} 100%)`,
-                            boxShadow: "0 6px 18px -6px rgba(185,28,28,0.45)",
-                          }}
-                          onClick={() => setAccountOpen(false)}
-                        >
-                          Log In
-                        </Link>
-                        <Link
-                          href="/account/register"
-                          className="flex-1 h-12 rounded-lg font-bold text-sm flex items-center justify-center transition-colors hover:bg-[#FFF6EE]"
-                          style={{
-                            border: `1.5px solid ${PILL_BORDER}`,
-                            color: TEXT_WINE,
-                            background: "#fff",
-                          }}
-                          onClick={() => setAccountOpen(false)}
-                        >
-                          Create Account
-                        </Link>
-                      </div>
-
-                      {/* Quick links — with dividers like the reference */}
-                      <div>
-                        {[
-                          {
-                            icon: <PackageCheck className="h-5 w-5" />,
-                            label: "Orders",
-                            desc: "View and track online or pickup orders",
-                            href: "/track-order",
-                          },
-                          {
-                            icon: <Heart className="h-5 w-5" />,
-                            label: "Favourites",
-                            desc: "View saved products",
-                            href: "/wishlist",
-                            iconColor: ACCENT_RED,
-                          },
-                          {
-                            icon: <Settings className="h-5 w-5" />,
-                            label: "Account Settings",
-                            desc: "Payment, contact info, addresses, password",
-                            href: "/account",
-                          },
-                        ].map((item, idx, arr) => (
-                          <Link
-                            key={item.label}
-                            href={item.href}
-                            className="flex items-center gap-4 px-6 py-4 transition-colors hover:bg-[#FFF9F5]"
-                            style={{ borderBottom: idx < arr.length - 1 ? `1px solid #F2DCC8` : "none" }}
-                            onClick={() => setAccountOpen(false)}
-                          >
-                            <span
-                              className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0"
-                              style={{
-                                background: "#FFF1E6",
-                                color: item.iconColor || TEXT_WINE_SOFT,
+                          <div className="px-5 pb-5 pt-1">
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                setAccountOpen(false)
+                                await signOut()
+                                navigate("/")
                               }}
+                              className="w-full h-12 rounded-full text-white font-semibold text-sm inline-flex items-center justify-center gap-2 transition-opacity hover:opacity-90"
+                              style={{ background: "#EC4899" }}
                             >
-                              {item.icon}
-                            </span>
-                            <div>
-                              <p className="text-sm font-bold leading-tight" style={{ color: TEXT_WINE }}>
-                                {item.label}
-                              </p>
-                              <p className="text-xs mt-0.5 leading-relaxed" style={{ color: "#888" }}>
-                                {item.desc}
-                              </p>
-                            </div>
-                          </Link>
-                        ))}
-                      </div>
+                              Sign Out
+                              <ArrowRight className="h-4 w-4" />
+                            </button>
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          {/* Header */}
+                          <div className="px-6 pt-5 pb-4 border-b" style={{ borderColor: "#F2DCC8" }}>
+                            <p className="font-extrabold text-lg leading-tight" style={{ color: TEXT_WINE }}>My Account</p>
+                            <div className="mt-2 h-px" style={{ background: "#F2DCC8" }} />
+                            <p className="text-sm mt-3 text-center" style={{ color: "#888" }}>
+                              Sign in for a more personalized experience
+                            </p>
+                          </div>
+
+                          {/* CTA buttons */}
+                          <div className="px-6 py-4 flex gap-3 border-b" style={{ borderColor: "#F2DCC8" }}>
+                            <Link
+                              href="/account/login"
+                              className="flex-1 h-12 rounded-lg font-bold text-sm flex items-center justify-center text-white transition-opacity hover:opacity-90"
+                              style={{
+                                background: `linear-gradient(135deg, ${ACCENT_ORANGE} 0%, ${ACCENT_RED} 100%)`,
+                                boxShadow: "0 6px 18px -6px rgba(185,28,28,0.45)",
+                              }}
+                              onClick={() => setAccountOpen(false)}
+                            >
+                              Log In
+                            </Link>
+                            <Link
+                              href="/account/register"
+                              className="flex-1 h-12 rounded-lg font-bold text-sm flex items-center justify-center transition-colors hover:bg-[#FFF6EE]"
+                              style={{
+                                border: `1.5px solid ${PILL_BORDER}`,
+                                color: TEXT_WINE,
+                                background: "#fff",
+                              }}
+                              onClick={() => setAccountOpen(false)}
+                            >
+                              Create Account
+                            </Link>
+                          </div>
+
+                          {/* Quick links — with dividers like the reference */}
+                          <div>
+                            {[
+                              {
+                                icon: <PackageCheck className="h-5 w-5" />,
+                                label: "Orders",
+                                desc: "View and track online or pickup orders",
+                                href: "/track-order",
+                              },
+                              {
+                                icon: <Heart className="h-5 w-5" />,
+                                label: "Favourites",
+                                desc: "View saved products",
+                                href: "/wishlist",
+                                iconColor: ACCENT_RED,
+                              },
+                              {
+                                icon: <Settings className="h-5 w-5" />,
+                                label: "Account Settings",
+                                desc: "Payment, contact info, addresses, password",
+                                href: "/account",
+                              },
+                            ].map((item, idx, arr) => (
+                              <Link
+                                key={item.label}
+                                href={item.href}
+                                className="flex items-center gap-4 px-6 py-4 transition-colors hover:bg-[#FFF9F5]"
+                                style={{ borderBottom: idx < arr.length - 1 ? `1px solid #F2DCC8` : "none" }}
+                                onClick={() => setAccountOpen(false)}
+                              >
+                                <span
+                                  className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0"
+                                  style={{
+                                    background: "#FFF1E6",
+                                    color: item.iconColor || TEXT_WINE_SOFT,
+                                  }}
+                                >
+                                  {item.icon}
+                                </span>
+                                <div>
+                                  <p className="text-sm font-bold leading-tight" style={{ color: TEXT_WINE }}>
+                                    {item.label}
+                                  </p>
+                                  <p className="text-xs mt-0.5 leading-relaxed" style={{ color: "#888" }}>
+                                    {item.desc}
+                                  </p>
+                                </div>
+                              </Link>
+                            ))}
+                          </div>
+                        </>
+                      )}
                     </div>
                   </div>
                 )}
