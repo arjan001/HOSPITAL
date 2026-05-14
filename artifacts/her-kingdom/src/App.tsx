@@ -42,6 +42,8 @@ import { AdminPolicies } from "@/components/admin/policies";
 import { AdminProducts } from "@/components/admin/products";
 import { AdminSettings } from "@/components/admin/settings";
 import { UsersManagement } from "@/components/admin/users";
+import { AdminCustomers } from "@/components/admin/customers";
+import { useCustomerMirror } from "@/lib/use-customer-mirror";
 import { AdminAnnouncementBar } from "@/components/admin/announcement-bar";
 import { AdminCustomPages } from "@/components/admin/custom-pages";
 import { AdminFooterCms } from "@/components/admin/footer-cms";
@@ -240,6 +242,11 @@ function ProtectedAccount({ children }: { children: React.ReactNode }) {
   );
 }
 
+function CustomerMirror() {
+  useCustomerMirror();
+  return null;
+}
+
 function ClerkQueryClientCacheInvalidator() {
   const { addListener } = useClerk();
   const qc = useQueryClient();
@@ -354,6 +361,7 @@ function Router() {
       <Route path="/admin/products" component={AdminProducts} />
       <Route path="/admin/settings" component={AdminSettings} />
       <Route path="/admin/users" component={UsersManagement} />
+      <Route path="/admin/customers" component={AdminCustomers} />
       <Route path="/admin/announcement" component={AdminAnnouncementBar} />
       <Route path="/admin/pages" component={AdminCustomPages} />
       <Route path="/admin/footer" component={AdminFooterCms} />
@@ -408,6 +416,7 @@ function ClerkProviderWithRoutes() {
     >
       <QueryClientProvider client={queryClient}>
         <ClerkQueryClientCacheInvalidator />
+        <CustomerMirror />
         <WishlistProvider>
           <CartProvider>
             <Router />
