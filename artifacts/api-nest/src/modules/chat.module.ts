@@ -1,7 +1,9 @@
 import {
   Body,
+  CanActivate,
   Controller,
   Delete,
+  ExecutionContext,
   Get,
   HttpException,
   HttpStatus,
@@ -12,10 +14,25 @@ import {
   Post,
   Req,
   Sse,
+  UseGuards,
 } from "@nestjs/common"
 import type { Request } from "express"
 import { Observable, Subject, interval, map, merge } from "rxjs"
 import { newId } from "../common/repository"
+
+@Injectable()
+class AdminGuard implements CanActivate {
+  canActivate(ctx: ExecutionContext): boolean {
+    const req = ctx.switchToHttp().getRequest<Request>()
+    const expected = process.env.ADMIN_API_TOKEN?.trim()
+    const provided =
+      (req.header("x-admin-token") || "").trim() ||
+      (req.header("authorization") || "").replace(/^Bearer\s+/i, "").trim()
+    if (expected && provided && provided === expected) return true
+    if (process.env.NODE_ENV !== "production") return true
+    throw new HttpException("Unauthorized", HttpStatus.UNAUTHORIZED)
+  }
+}
 
 export type ChatSender = "patient" | "staff"
 export type ChatStatus = "sent" | "delivered" | "read"
@@ -233,39 +250,46 @@ class ChatController {
     return merge(events$, heartbeat$)
   }
 
-  /* ── Admin (no auth today; matches legacy admin pattern) ── */
+  /* ── Admin (gated by AdminGuard: ADMIN_API_TOKEN in prod, open in dev) ── */
+  @UseGuards(AdminGuard)
   @Get("admin/threads")
   adminThreads() {
     return this.svc.listThreads()
   }
 
+  @UseGuards(AdminGuard)
   @Get("admin/threads/:id")
   adminThread(@Param("id") id: string) {
     return this.svc.getThread(id)
   }
 
+  @UseGuards(AdminGuard)
   @Get("admin/threads/:id/messages")
   adminMessages(@Param("id") id: string) {
     return this.svc.listMessages(id)
   }
 
+  @UseGuards(AdminGuard)
   @Post("admin/threads/:id/messages")
   sendAsStaff(@Param("id") id: string, @Body() body: SendBody) {
     this.svc.getThread(id)
     return this.svc.sendMessage(id, "staff", body?.text ?? "", body?.name || "Pharmacist")
   }
 
+  @UseGuards(AdminGuard)
   @Post("admin/threads/:id/read")
   markStaffRead(@Param("id") id: string) {
     return this.svc.markRead(id, "staff")
   }
 
+  @UseGuards(AdminGuard)
   @Delete("admin/threads/:id")
   deleteThread(@Param("id") id: string) {
     this.svc.deleteThread(id)
     return { ok: true }
   }
 
+  @UseGuards(AdminGuard)
   @Sse("admin/stream")
   adminStream(): Observable<{ data: StreamEvent | { type: "ping" } }> {
     const events$ = this.svc.adminStream$().pipe(map((e) => ({ data: e })))
