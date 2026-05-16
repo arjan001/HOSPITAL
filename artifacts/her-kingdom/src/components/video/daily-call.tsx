@@ -45,7 +45,7 @@ export type DailyCallProps = {
   topic?: string
 }
 
-type ConfigState = "checking" | "ready" | "missing" | "error"
+type ConfigState = "checking" | "ready" | "missing" | "error" | "ended"
 
 const apiBase = (import.meta.env.BASE_URL || "/").replace(/\/$/, "")
 
@@ -190,8 +190,33 @@ export function DailyCall({
               } catch { /* noop */ }
             }
           })
-          .on("left-meeting", () => onLeaveRef.current())
-          .on("error", (e) => { setErrMsg(String((e as { errorMsg?: string })?.errorMsg ?? "Call error")); setConfig("error") })
+          // DO NOT auto-navigate away on left-meeting — Daily fires this for
+          // many reasons (user clicked the prejoin "Leave", connection dropped,
+          // camera permission denied in iframe, etc.) and yanking the patient
+          // off the page surprises them and loses the call context. Instead,
+          // show an "ended" overlay so they explicitly tap Close.
+          .on("left-meeting", () => {
+            console.info("[daily] left-meeting")
+            setJoined(false)
+            setConfig("ended")
+            if (!errMsg) setErrMsg("The call ended.")
+          })
+          .on("error", (e) => {
+            const detail = (e as { errorMsg?: string; error?: { msg?: string } })
+            const msg = detail?.errorMsg ?? detail?.error?.msg ?? "Call error"
+            console.warn("[daily] error", e)
+            setErrMsg(String(msg))
+            setConfig("error")
+          })
+          // Friendly diagnostics for the two most common dev/iframe pitfalls:
+          // camera/mic permission denied, or the meeting iframe was blocked.
+          .on("camera-error" as never, (e: unknown) => {
+            console.warn("[daily] camera-error", e)
+            const msg = (e as { errorMsg?: string })?.errorMsg
+              || "Camera or microphone access was blocked. Please allow access in your browser, then rejoin."
+            setErrMsg(msg)
+            setConfig("error")
+          })
           .on("participant-joined", () => setParticipants((p) => p + 1))
           .on("participant-left", () => setParticipants((p) => Math.max(1, p - 1)))
           .on("participant-updated", (e?: DailyEventObjectParticipant) => {
@@ -256,18 +281,25 @@ export function DailyCall({
     return () => window.clearInterval(t)
   }, [joined, roomName, isOwner])
 
-  // On unmount / leave, tell the server to drop the session right away so
-  // the admin monitor clears instead of waiting 90s for staleness.
+  // On unmount, tell the server to drop the session so the admin monitor
+  // clears instead of waiting 90s for staleness. Use sendBeacon when the
+  // page is unloading; fall back to keepalive fetch otherwise.
   useEffect(() => {
     return () => {
+      const url = `${apiBase}/api/video/end`
+      const payload = JSON.stringify({ name: roomName })
       try {
-        void fetch(`${apiBase}/api/video/end`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name: roomName }),
-          credentials: "include",
-          keepalive: true,
-        }).catch(() => {})
+        if (typeof navigator !== "undefined" && navigator.sendBeacon) {
+          navigator.sendBeacon(url, new Blob([payload], { type: "application/json" }))
+        } else {
+          void fetch(url, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: payload,
+            credentials: "include",
+            keepalive: true,
+          }).catch(() => {})
+        }
       } catch { /* noop */ }
     }
   }, [roomName])
@@ -385,10 +417,32 @@ export function DailyCall({
                 <AlertTriangle className="h-7 w-7 mx-auto mb-2" style={{ color: ACCENT_RED }} />
                 <p className="font-bold text-sm" style={{ color: WINE }}>Couldn't start the call</p>
                 <p className="text-xs text-gray-600 mt-1.5">{errMsg}</p>
+                <p className="text-[11px] text-gray-500 mt-2">
+                  Tip: video needs camera and microphone permission. In the workspace preview,
+                  open this page in a new tab to grant access.
+                </p>
                 <button
                   onClick={onLeave}
                   className="mt-4 h-9 px-4 rounded-full text-xs font-semibold text-white"
                   style={{ background: ACCENT_RED }}
+                >
+                  Close
+                </button>
+              </>
+            ) : config === "ended" ? (
+              <>
+                <div
+                  className="w-12 h-12 rounded-full mx-auto mb-2 flex items-center justify-center"
+                  style={{ background: "rgba(61,8,20,0.08)", color: WINE }}
+                >
+                  <X className="h-5 w-5" />
+                </div>
+                <p className="font-bold text-sm" style={{ color: WINE }}>Call ended</p>
+                <p className="text-xs text-gray-600 mt-1.5">{errMsg || "The call has ended."}</p>
+                <button
+                  onClick={onLeave}
+                  className="mt-4 h-9 px-4 rounded-full text-xs font-semibold text-white"
+                  style={{ background: `linear-gradient(135deg, ${ACCENT_ORG}, ${ACCENT_RED})` }}
                 >
                   Close
                 </button>
