@@ -105,13 +105,53 @@ const STATUS_META: Record<ConsultStatus, { label: string; color: string; bg: str
 
 const MODE_ICON = { chat: MessageSquare, voice: Phone, video: Video }
 
+type LiveSession = {
+  name: string
+  url: string
+  patientName: string
+  doctorName: string
+  topic: string
+  mode: "video" | "voice"
+  startedAt: number
+  doctorJoined: boolean
+}
+
+function liveAgo(ms: number): string {
+  const s = Math.max(0, Math.floor((Date.now() - ms) / 1000))
+  if (s < 60) return `${s}s`
+  const m = Math.floor(s / 60)
+  const rs = s % 60
+  return `${m}:${String(rs).padStart(2, "0")}`
+}
+
 export function AdminConsultations() {
   const [items, setItems] = useCmsDoc<Consultation[]>("consultations", SEED)
   const [filter, setFilter] = useState<ConsultStatus | "all">("all")
   const [search, setSearch] = useState("")
   const [activeId, setActiveId] = useState<string | null>(items[0]?.id || null)
   const [videoOpen, setVideoOpen] = useState(false)
+  const [liveSessions, setLiveSessions] = useState<LiveSession[]>([])
+  const [liveWatch, setLiveWatch] = useState<LiveSession | null>(null)
   const messageEndRef = useRef<HTMLDivElement>(null)
+
+  // Poll the active-sessions registry every 5s while the page is mounted.
+  // Cheap (in-memory map on the api-server) and lets the doctor watch any
+  // live consultation in real time.
+  useEffect(() => {
+    let cancelled = false
+    const apiBase = (import.meta.env.BASE_URL || "/").replace(/\/$/, "")
+    const load = async () => {
+      try {
+        const r = await fetch(`${apiBase}/api/video/active`, { credentials: "include" })
+        if (!r.ok) return
+        const data = (await r.json()) as { sessions: LiveSession[] }
+        if (!cancelled) setLiveSessions(data.sessions || [])
+      } catch { /* noop */ }
+    }
+    void load()
+    const t = window.setInterval(load, 5_000)
+    return () => { cancelled = true; window.clearInterval(t) }
+  }, [])
 
   const canHandle = usePermission("consult.handle")
   const canHostVideo = usePermission("video.host")
@@ -260,6 +300,71 @@ export function AdminConsultations() {
             <Plus className="h-4 w-4" /> New consultation
           </button>
         </div>
+
+        {/* Live sessions monitor — auto-updates every 5s. */}
+        {liveSessions.length > 0 && (
+          <div className="rounded-xl border border-border bg-background p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="relative inline-flex h-2 w-2">
+                  <span className="absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75 animate-ping" />
+                  <span className="relative inline-flex h-2 w-2 rounded-full bg-red-500" />
+                </span>
+                <h2 className="text-sm font-bold uppercase tracking-wider" style={{ color: "#3D0814" }}>
+                  Live now · {liveSessions.length}
+                </h2>
+              </div>
+              <p className="text-[11px] text-muted-foreground">Watching any session below joins as the doctor.</p>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+              {liveSessions.map((s) => {
+                const ModeIcon = s.mode === "voice" ? Phone : Video
+                return (
+                  <div
+                    key={s.name}
+                    className="rounded-lg border border-border bg-background p-3 flex flex-col gap-2"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold truncate">{s.patientName}</p>
+                        <p className="text-[11px] text-muted-foreground truncate">{s.topic || "Live consultation"}</p>
+                      </div>
+                      <span
+                        className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded inline-flex items-center gap-1"
+                        style={{
+                          background: s.doctorJoined ? "#DCFCE7" : "#FEF3C7",
+                          color: s.doctorJoined ? "#166534" : "#92400E",
+                        }}
+                      >
+                        <ModeIcon className="h-3 w-3" />
+                        {s.doctorJoined ? "In session" : "Awaiting doctor"}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
+                      <span className="inline-flex items-center gap-1">
+                        <Clock className="h-3 w-3" /> {liveAgo(s.startedAt)} elapsed
+                      </span>
+                      {s.doctorName && <span className="truncate">Dr. {s.doctorName}</span>}
+                    </div>
+                    <button
+                      onClick={() => {
+                        if (!canHostVideo) {
+                          notify.warning("You don't have permission to host video consultations.")
+                          return
+                        }
+                        setLiveWatch(s)
+                      }}
+                      className="h-8 rounded-md text-xs font-semibold text-white inline-flex items-center justify-center gap-1.5"
+                      style={{ background: "linear-gradient(135deg, #F97316, #B91C1C)" }}
+                    >
+                      <Video className="h-3.5 w-3.5" /> Watch live
+                    </button>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )}
 
         <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr] gap-4">
           {/* Queue */}
@@ -547,7 +652,24 @@ export function AdminConsultations() {
           title={`Patient: ${active.patientName}`}
           subtitle={active.topic || "Live consultation"}
           consultationKind="video"
+          patientName={active.patientName}
+          doctorName={active.doctorName}
+          topic={active.topic || "Live consultation"}
           onLeave={() => setVideoOpen(false)}
+        />
+      )}
+      {liveWatch && (
+        <DailyCall
+          roomName={liveWatch.name}
+          userName={liveWatch.doctorName || "Doctor"}
+          isOwner
+          title={`Live: ${liveWatch.patientName}`}
+          subtitle={liveWatch.topic || "Watching live consultation"}
+          consultationKind={liveWatch.mode}
+          patientName={liveWatch.patientName}
+          doctorName={liveWatch.doctorName}
+          topic={liveWatch.topic}
+          onLeave={() => setLiveWatch(null)}
         />
       )}
     </AdminShell>

@@ -37,6 +37,12 @@ export type DailyCallProps = {
    *  the global Consultation settings. Pass `null` to disable the timer
    *  (e.g. internal staff-to-staff calls). */
   consultationKind?: ConsultationKind | null
+  /** Patient display name (for admin live monitor). Defaults to userName. */
+  patientName?: string
+  /** Doctor display name (for admin live monitor). */
+  doctorName?: string
+  /** Short consultation topic (for admin live monitor). */
+  topic?: string
 }
 
 type ConfigState = "checking" | "ready" | "missing" | "error"
@@ -66,6 +72,9 @@ export function DailyCall({
   title,
   subtitle,
   consultationKind = "video",
+  patientName,
+  doctorName,
+  topic,
 }: DailyCallProps) {
   const [consultSettings] = useConsultationSettings()
   // Recording is gated by the admin Integrations → Video toggle. Default off so
@@ -106,7 +115,15 @@ export function DailyCall({
     ;(async () => {
       try {
         const room = await postJson<{ url: string; name: string; configured?: boolean }>(
-          "/video/room", { name: roomName, enableRecording: recordingEnabled },
+          "/video/room",
+          {
+            name: roomName,
+            enableRecording: recordingEnabled,
+            patientName: patientName || (isOwner ? undefined : userName),
+            doctorName: doctorName || (isOwner ? userName : undefined),
+            topic: topic || subtitle || title,
+            mode: consultationKind === "voice" ? "voice" : "video",
+          },
         )
         if (cancelled) return
         if (!room.url) {
@@ -207,15 +224,53 @@ export function DailyCall({
     }
   }, [roomName, userName, isOwner])
 
-  // Call duration timer (starts on join).
+  // Billable timer: only runs once a SECOND participant is in the room —
+  // i.e. the doctor has actually picked up. The patient sees "Waiting for
+  // doctor…" until then and is not charged for connection time. Owners
+  // (doctor side) see the timer immediately, since their join is "pickup".
+  const doctorPresent = isOwner || participants > 1
   useEffect(() => {
-    if (!joined) return
-    // Use wall-clock arithmetic so the timer doesn't drift when the tab is
-    // backgrounded (browsers throttle setInterval to ~1Hz or slower).
+    if (!joined || !doctorPresent) return
     const startMs = Date.now() - elapsed * 1000
     const t = window.setInterval(() => setElapsed(Math.floor((Date.now() - startMs) / 1000)), 1000)
     return () => window.clearInterval(t)
-  }, [joined])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [joined, doctorPresent])
+
+  // Heartbeat so the admin live-monitor knows this room is still active.
+  // Also flags `isOwner` so the server can mark the doctor as "joined" for
+  // patients that haven't yet seen the participant-joined event.
+  useEffect(() => {
+    if (!joined) return
+    const ping = () => {
+      void fetch(`${apiBase}/api/video/heartbeat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: roomName, isOwner }),
+        credentials: "include",
+        keepalive: true,
+      }).catch(() => {})
+    }
+    ping()
+    const t = window.setInterval(ping, 20_000)
+    return () => window.clearInterval(t)
+  }, [joined, roomName, isOwner])
+
+  // On unmount / leave, tell the server to drop the session right away so
+  // the admin monitor clears instead of waiting 90s for staleness.
+  useEffect(() => {
+    return () => {
+      try {
+        void fetch(`${apiBase}/api/video/end`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: roomName }),
+          credentials: "include",
+          keepalive: true,
+        }).catch(() => {})
+      } catch { /* noop */ }
+    }
+  }, [roomName])
 
   const toggleAudio = useCallback(async () => {
     const call = callRef.current
@@ -263,11 +318,19 @@ export function DailyCall({
         <div className="rounded-xl bg-white/95 backdrop-blur px-4 py-2.5 shadow-lg pointer-events-auto">
           <p className="font-bold text-sm" style={{ color: WINE }}>{title || "Live Consultation"}</p>
           <p className="text-xs flex items-center gap-1.5 mt-0.5 text-gray-500">
-            <span className={`w-1.5 h-1.5 rounded-full inline-block ${joined ? "bg-green-500" : "bg-amber-400"}`} />
-            {joined ? subtitle || `Connected · ${participants} in call` : "Connecting…"}
+            <span
+              className={`w-1.5 h-1.5 rounded-full inline-block ${
+                joined && doctorPresent ? "bg-green-500" : joined ? "bg-amber-400 animate-pulse" : "bg-amber-400"
+              }`}
+            />
+            {!joined
+              ? "Connecting…"
+              : !doctorPresent
+                ? "Waiting for doctor to join…"
+                : subtitle || `Connected · ${participants} in call`}
           </p>
         </div>
-        {joined && (
+        {joined && doctorPresent && (
           <div className="rounded-xl bg-white/95 backdrop-blur px-4 py-2 shadow-lg pointer-events-auto flex items-center gap-2.5" style={{ color: WINE }}>
             <span className="font-bold text-sm tabular-nums">{fmt(elapsed)}</span>
             {timerEnabled && (

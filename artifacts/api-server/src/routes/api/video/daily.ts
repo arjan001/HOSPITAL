@@ -9,6 +9,32 @@ const ONE_HOUR = 60 * 60;
 type Cached = { url: string; name: string; expiresAt: number };
 const roomCache = new Map<string, Cached>();
 
+// ── Active-session registry ────────────────────────────────────────────────
+// Tracks every video room that's currently being used so the admin live-monitor
+// panel can show who's on a call without having to crawl Daily's `/presence`
+// endpoint. Entries time out 90s after the last heartbeat from a participant.
+// In-memory today; swap to Redis / Drizzle when the orders module ports over.
+const HEARTBEAT_STALE_MS = 90 * 1000;
+type ActiveSession = {
+  name: string;        // room slug — also the join key
+  url: string;
+  patientName: string;
+  doctorName: string;
+  topic: string;
+  mode: "video" | "voice";
+  startedAt: number;   // epoch ms when the patient first opened the room
+  lastSeen: number;    // epoch ms of most recent heartbeat
+  doctorJoined: boolean;
+};
+const activeSessions = new Map<string, ActiveSession>();
+
+function pruneStale() {
+  const now = Date.now();
+  for (const [k, s] of activeSessions) {
+    if (now - s.lastSeen > HEARTBEAT_STALE_MS) activeSessions.delete(k);
+  }
+}
+
 function dailyKey(): string | null {
   return process.env.DAILY_API_KEY?.trim() || null;
 }
@@ -51,6 +77,10 @@ router.post("/room", async (req: Request, res: Response) => {
     enableChat?: boolean;
     enableScreenshare?: boolean;
     enableRecording?: boolean;
+    patientName?: string;
+    doctorName?: string;
+    topic?: string;
+    mode?: "video" | "voice";
   };
 
   const name = safeRoomName(body.name || `consult-${Date.now()}`);
@@ -59,17 +89,16 @@ router.post("/room", async (req: Request, res: Response) => {
 
   // Reuse a non-expired cached room with the same name.
   const cached = roomCache.get(name);
-  if (cached && !isExpired(cached)) {
-    return res.json({ name: cached.name, url: cached.url, expiresAt: cached.expiresAt, configured: true });
-  }
+  let url: string | null = cached && !isExpired(cached) ? cached.url : null;
 
   try {
-    // Try to fetch an existing room first; Daily returns 404 if missing.
-    let url: string | null = null;
-    const getResp = await fetch(`${API_BASE}/rooms/${encodeURIComponent(name)}`, { headers });
-    if (getResp.ok) {
-      const data = (await getResp.json()) as { url?: string };
-      url = data.url ?? null;
+    if (!url) {
+      // Try to fetch an existing room first; Daily returns 404 if missing.
+      const getResp = await fetch(`${API_BASE}/rooms/${encodeURIComponent(name)}`, { headers });
+      if (getResp.ok) {
+        const data = (await getResp.json()) as { url?: string };
+        url = data.url ?? null;
+      }
     }
 
     if (!url) {
@@ -85,8 +114,7 @@ router.post("/room", async (req: Request, res: Response) => {
             enable_screenshare: body.enableScreenshare ?? true,
             // Default OFF so accounts on the free / starter Daily plan don't
             // 400 with "property 'enable_recording' cannot be set to that
-            // value with your current plan". Pass `enableRecording: true`
-            // from the admin Integrations panel once the plan supports it.
+            // value with your current plan". Flip in Admin → Integrations.
             ...(body.enableRecording === true ? { enable_recording: "cloud" as const } : {}),
             start_video_off: false,
             start_audio_off: false,
@@ -108,6 +136,22 @@ router.post("/room", async (req: Request, res: Response) => {
     }
 
     roomCache.set(name, { name, url: url!, expiresAt: exp });
+
+    // Register / refresh active-session entry so admin live-monitor sees it.
+    pruneStale();
+    const existing = activeSessions.get(name);
+    activeSessions.set(name, {
+      name,
+      url: url!,
+      patientName: body.patientName || existing?.patientName || "Patient",
+      doctorName: body.doctorName || existing?.doctorName || "",
+      topic: body.topic || existing?.topic || "Live consultation",
+      mode: body.mode === "voice" ? "voice" : "video",
+      startedAt: existing?.startedAt ?? Date.now(),
+      lastSeen: Date.now(),
+      doctorJoined: existing?.doctorJoined ?? false,
+    });
+
     return res.json({ name, url, expiresAt: exp, configured: true });
   } catch (err) {
     logger.error({ err }, "daily.room_unexpected_error");
@@ -153,6 +197,46 @@ router.post("/token", async (req: Request, res: Response) => {
     logger.error({ err }, "daily.token_unexpected_error");
     return res.status(500).json({ error: "Unexpected error minting token." });
   }
+});
+
+// Patient / doctor pings while joined so the session stays "active" in the
+// monitor. Also marks doctorJoined when the owner pings, which the patient
+// UI uses to start its billable timer.
+router.post("/heartbeat", (req: Request, res: Response) => {
+  const body = (req.body ?? {}) as { name?: string; isOwner?: boolean };
+  if (!body.name) return res.status(400).json({ error: "name is required" });
+  const name = safeRoomName(body.name);
+  const s = activeSessions.get(name);
+  if (!s) return res.json({ ok: true, tracked: false });
+  s.lastSeen = Date.now();
+  if (body.isOwner) s.doctorJoined = true;
+  return res.json({ ok: true, tracked: true, doctorJoined: s.doctorJoined });
+});
+
+// Called by the patient client on leave / unmount so the monitor clears
+// promptly instead of waiting for the heartbeat to lapse.
+router.post("/end", (req: Request, res: Response) => {
+  const body = (req.body ?? {}) as { name?: string };
+  if (!body.name) return res.status(400).json({ error: "name is required" });
+  activeSessions.delete(safeRoomName(body.name));
+  return res.json({ ok: true });
+});
+
+router.get("/active", (_req: Request, res: Response) => {
+  pruneStale();
+  const list = Array.from(activeSessions.values())
+    .sort((a, b) => b.startedAt - a.startedAt)
+    .map((s) => ({
+      name: s.name,
+      url: s.url,
+      patientName: s.patientName,
+      doctorName: s.doctorName,
+      topic: s.topic,
+      mode: s.mode,
+      startedAt: s.startedAt,
+      doctorJoined: s.doctorJoined,
+    }));
+  return res.json({ sessions: list });
 });
 
 router.get("/status", (_req: Request, res: Response) => {

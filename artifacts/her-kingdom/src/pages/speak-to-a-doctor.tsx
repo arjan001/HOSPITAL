@@ -670,6 +670,9 @@ export default function SpeakToADoctorPage() {
       title={doc.name}
       subtitle={`${doc.specialty} · Connected`}
       consultationKind="video"
+      patientName="Patient"
+      doctorName={doc.name}
+      topic={category || doc.specialty}
       onSwitchToChat={() => setScreen("chat")}
       onLeave={() => setScreen("summary")}
     />

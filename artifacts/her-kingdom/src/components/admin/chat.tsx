@@ -276,6 +276,9 @@ export function AdminChat() {
           title={`Patient: ${active.patientName}`}
           subtitle={callMode === "video" ? "Live video call" : "Live voice call"}
           consultationKind={callMode === "video" ? "video" : "voice"}
+          patientName={active.patientName}
+          doctorName="Pharmacist"
+          topic={callMode === "video" ? "Live video call" : "Live voice call"}
           onLeave={() => setCallMode(null)}
           onSwitchToChat={() => setCallMode(null)}
         />
