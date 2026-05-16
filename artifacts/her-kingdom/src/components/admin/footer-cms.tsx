@@ -50,7 +50,6 @@ export const FOOTER_DEFAULTS: FooterSettings = {
         { id: "a1", label: "Who We Are", href: "/who-we-are" },
         { id: "a2", label: "How Shaniid RX Works", href: "/who-we-are#how-it-works" },
         { id: "a3", label: "Our Clinical Team", href: "/who-we-are#our-team" },
-        { id: "a4", label: "Careers", href: "/careers" },
       ],
     },
     care: {

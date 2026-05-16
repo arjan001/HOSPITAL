@@ -53,7 +53,6 @@ const DEFAULTS = {
 const BOTTOM_LINKS: { label: string; href: string; disabled?: boolean }[] = [
   { label: "About Us", href: "/about" },
   { label: "Our Stores", href: "/contact" },
-  { label: "Careers", href: "/careers", disabled: true },
   { label: "Blog", href: "/blog" },
   { label: "Contact", href: "/contact" },
 ]
