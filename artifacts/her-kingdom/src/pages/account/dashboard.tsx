@@ -1,6 +1,8 @@
+import { useState } from "react"
 import { Link } from "wouter"
-import { Heart, MapPin, Package, User as UserIcon, Mail, Phone, Settings, ShieldCheck, ClipboardList, Pill, Clock, CheckCheck, ChevronRight, Upload, FileText } from "lucide-react"
+import { Heart, MapPin, Package, User as UserIcon, Mail, Phone, Settings, ShieldCheck, ClipboardList, Pill, Clock, CheckCheck, ChevronRight, Upload, FileText, Eye } from "lucide-react"
 import { useMe, useAddresses, useOrders, useWishlistRemote, useMyPrescriptions } from "@/lib/api-nest"
+import { RxDetailModal } from "@/components/account/rx-detail-modal"
 
 const WINE = "#3D0814"
 const ACCENT = "#F97316"
@@ -68,6 +70,8 @@ export default function AccountDashboard() {
   const { data: wishlist } = useWishlistRemote()
   const { data: rxList } = useMyPrescriptions()
   const rxRows = rxList ?? []
+  const [openRxId, setOpenRxId] = useState<string | null>(null)
+  const openRx = openRxId ? rxRows.find((r) => r.id === openRxId) ?? null : null
   const rxPending = rxRows.filter((r) => r.status === "pending").length
   const rxVerifiedOrDispensed = rxRows.filter((r) => r.status === "verified" || r.status === "dispensed").length
   const rxApprovedMeds = rxRows.reduce((s, r) => s + r.approvedDrugs.length, 0)
@@ -133,8 +137,8 @@ export default function AccountDashboard() {
             </div>
             <Link
               href="/account/prescriptions"
-              className="inline-flex items-center gap-1 text-xs font-semibold underline-offset-4 hover:underline"
-              style={{ color: ACCENT }}
+              className="inline-flex h-9 items-center gap-1.5 rounded-md border bg-white px-3 text-xs font-semibold shadow-sm hover:shadow"
+              style={{ color: WINE, borderColor: "#E5E7EB" }}
             >
               View all <ChevronRight className="h-3.5 w-3.5" />
             </Link>
@@ -175,10 +179,7 @@ export default function AccountDashboard() {
                   const meta = STATUS_TONES[r.status]
                   return (
                     <li key={r.id}>
-                      <Link
-                        href="/account/prescriptions"
-                        className="flex items-center gap-3 py-2.5 transition hover:opacity-90"
-                      >
+                      <div className="flex items-center gap-3 py-2.5">
                         <div
                           className="grid h-9 w-9 flex-shrink-0 place-items-center rounded-lg"
                           style={{ background: meta.bg, color: meta.color }}
@@ -186,7 +187,7 @@ export default function AccountDashboard() {
                           <FileText className="h-4 w-4" />
                         </div>
                         <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-2">
+                          <div className="flex flex-wrap items-center gap-2">
                             <span className="text-sm font-semibold" style={{ color: WINE }}>
                               Rx-{r.rxNumber}
                             </span>
@@ -206,8 +207,16 @@ export default function AccountDashboard() {
                             For {r.recipient} · {r.files[0]?.name || "Prescription"}
                           </div>
                         </div>
-                        <ChevronRight className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
-                      </Link>
+                        <button
+                          type="button"
+                          onClick={() => setOpenRxId(r.id)}
+                          aria-label={`View prescription Rx-${r.rxNumber}`}
+                          className="inline-flex h-9 items-center gap-1.5 rounded-md px-3 text-xs font-bold text-white shadow-sm transition hover:shadow active:scale-[0.98]"
+                          style={{ background: `linear-gradient(135deg, ${ACCENT} 0%, #B91C1C 100%)` }}
+                        >
+                          <Eye className="h-3.5 w-3.5" /> View
+                        </button>
+                      </div>
                     </li>
                   )
                 })}
@@ -281,6 +290,7 @@ export default function AccountDashboard() {
           Postgres-ready). Sign-in with Clerk arrives in a future release.
         </div>
       </div>
+      {openRx && <RxDetailModal rx={openRx} onClose={() => setOpenRxId(null)} />}
     </div>
   )
 }
