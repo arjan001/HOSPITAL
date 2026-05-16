@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Switch } from "@/components/ui/switch"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { PosSettingsPanel } from "./pos-settings"
 
 import useSWR from "swr"
 
@@ -113,6 +114,7 @@ export function AdminSettings() {
             <TabsTrigger value="general">General</TabsTrigger>
             <TabsTrigger value="seo">SEO</TabsTrigger>
             <TabsTrigger value="footer">Footer & Social</TabsTrigger>
+            <TabsTrigger value="pos">POS & Receipt</TabsTrigger>
           </TabsList>
 
           <TabsContent value="general" className="mt-6">
@@ -168,6 +170,10 @@ export function AdminSettings() {
                 </div>
               </div>
             </div>
+          </TabsContent>
+
+          <TabsContent value="pos" className="mt-6">
+            <PosSettingsPanel />
           </TabsContent>
         </Tabs>
       </div>

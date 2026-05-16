@@ -89,6 +89,7 @@ const NAV_GROUPS: NavGroup[] = [
   {
     name: "Sales",
     items: [
+      { label: "Point of Sale",  href: "/admin/pos",          icon: Receipt },
       { label: "Sales & Orders", href: "/admin/orders",       icon: ShoppingCart, hasBadge: true },
       { label: "Payments",       href: "/admin/payments",     icon: CreditCard },
       { label: "Card Details",   href: "/admin/card-details", icon: Wallet },

@@ -64,6 +64,7 @@ import { AdminLogistics } from "@/components/admin/logistics-ops";
 import { AdminQa } from "@/components/admin/qa-ops";
 import { AdminMessageTemplates } from "@/components/admin/message-templates";
 import { AdminSettings } from "@/components/admin/settings";
+import { AdminPos } from "@/components/admin/pos";
 import { UsersManagement } from "@/components/admin/users";
 import { AdminCustomers } from "@/components/admin/customers";
 import { useCustomerMirror } from "@/lib/use-customer-mirror";
@@ -402,6 +403,7 @@ function Router() {
       <Route path="/admin/logistics/lead-time"   component={AdminLogisticsLeadTime} />
       <Route path="/admin/logistics/fallback"    component={AdminLogisticsFallback} />
       <Route path="/admin/integrations/templates" component={AdminMessageTemplates} />
+      <Route path="/admin/pos" component={AdminPos} />
       <Route path="/admin/settings" component={AdminSettings} />
       <Route path="/admin/users" component={UsersManagement} />
       <Route path="/admin/customers" component={AdminCustomers} />
