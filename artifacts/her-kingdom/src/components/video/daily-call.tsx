@@ -102,6 +102,7 @@ export function DailyCall({
   const [sharing, setSharing] = useState(false)
   const [participants, setParticipants] = useState(1)
   const [elapsed, setElapsed] = useState(0)
+  const [overlayHidden, setOverlayHidden] = useState(false)
 
   const onLeaveRef = useRef(onLeave)
   useEffect(() => { onLeaveRef.current = onLeave }, [onLeave])
@@ -395,8 +396,10 @@ export function DailyCall({
       </div>
 
       {/* Center status while bootstrapping the SDK. Once `config === "ready"`,
-          Daily's own prejoin lobby is visible and interactive — don't cover it. */}
-      {config !== "ready" && (
+          Daily's own prejoin lobby is visible and interactive — don't cover it.
+          For terminal states (error / ended) we let the user hide this card so
+          they can read whatever Daily's iframe is showing behind it. */}
+      {config !== "ready" && !overlayHidden && (
         <div className="relative z-10 flex-1 flex items-center justify-center pointer-events-none">
           <div className="bg-white/95 backdrop-blur rounded-2xl px-6 py-5 shadow-2xl max-w-sm text-center pointer-events-auto">
             {config === "missing" ? (
@@ -421,13 +424,22 @@ export function DailyCall({
                   Tip: video needs camera and microphone permission. In the workspace preview,
                   open this page in a new tab to grant access.
                 </p>
-                <button
-                  onClick={onLeave}
-                  className="mt-4 h-9 px-4 rounded-full text-xs font-semibold text-white"
-                  style={{ background: ACCENT_RED }}
-                >
-                  Close
-                </button>
+                <div className="mt-4 flex items-center justify-center gap-2">
+                  <button
+                    onClick={() => setOverlayHidden(true)}
+                    className="h-9 px-4 rounded-full text-xs font-semibold border"
+                    style={{ borderColor: "#E5E7EB", color: WINE }}
+                  >
+                    See details
+                  </button>
+                  <button
+                    onClick={onLeave}
+                    className="h-9 px-4 rounded-full text-xs font-semibold text-white"
+                    style={{ background: ACCENT_RED }}
+                  >
+                    Close
+                  </button>
+                </div>
               </>
             ) : config === "ended" ? (
               <>
@@ -439,13 +451,22 @@ export function DailyCall({
                 </div>
                 <p className="font-bold text-sm" style={{ color: WINE }}>Call ended</p>
                 <p className="text-xs text-gray-600 mt-1.5">{errMsg || "The call has ended."}</p>
-                <button
-                  onClick={onLeave}
-                  className="mt-4 h-9 px-4 rounded-full text-xs font-semibold text-white"
-                  style={{ background: `linear-gradient(135deg, ${ACCENT_ORG}, ${ACCENT_RED})` }}
-                >
-                  Close
-                </button>
+                <div className="mt-4 flex items-center justify-center gap-2">
+                  <button
+                    onClick={() => setOverlayHidden(true)}
+                    className="h-9 px-4 rounded-full text-xs font-semibold border"
+                    style={{ borderColor: "#E5E7EB", color: WINE }}
+                  >
+                    See details
+                  </button>
+                  <button
+                    onClick={onLeave}
+                    className="h-9 px-4 rounded-full text-xs font-semibold text-white"
+                    style={{ background: `linear-gradient(135deg, ${ACCENT_ORG}, ${ACCENT_RED})` }}
+                  >
+                    Close
+                  </button>
+                </div>
               </>
             ) : (
               <>
@@ -455,6 +476,27 @@ export function DailyCall({
               </>
             )}
           </div>
+        </div>
+      )}
+
+      {/* When the user hides the terminal overlay so they can read Daily's
+          iframe, give them a small floating button to bring it back. */}
+      {overlayHidden && (config === "error" || config === "ended") && (
+        <div className="absolute top-3 right-3 z-20 flex items-center gap-2 pointer-events-auto">
+          <button
+            onClick={() => setOverlayHidden(false)}
+            className="h-8 px-3 rounded-full text-[11px] font-semibold bg-white/95 backdrop-blur shadow-lg border"
+            style={{ borderColor: "#E5E7EB", color: WINE }}
+          >
+            Show message
+          </button>
+          <button
+            onClick={onLeave}
+            className="h-8 px-3 rounded-full text-[11px] font-semibold text-white shadow-lg"
+            style={{ background: ACCENT_RED }}
+          >
+            Close call
+          </button>
         </div>
       )}
 
