@@ -1,10 +1,38 @@
 import { Link } from "wouter"
-import { Heart, MapPin, Package, User as UserIcon, Mail, Phone, Settings, ShieldCheck } from "lucide-react"
+import { Heart, MapPin, Package, User as UserIcon, Mail, Phone, Settings, ShieldCheck, ClipboardList, Pill, Clock, CheckCircle2 } from "lucide-react"
 import { useMe, useAddresses, useOrders, useWishlistRemote } from "@/lib/api-nest"
+import { useCmsCollection } from "@/lib/cms-store"
+import type { Prescription } from "@/components/admin/prescriptions"
+
+type UserPrescriptionRow = {
+  id: string
+  rxNumber: string
+  name: string
+  date: string
+  total: number
+  recipient: string
+  status: "Pending" | "Verified" | "Dispensed" | "Cancelled"
+}
 
 const WINE = "#3D0814"
 const ACCENT = "#F97316"
 const CREAM = "#FFFBF5"
+
+function MiniRxStat({ icon: Icon, label, value, tone, bg }: {
+  icon: typeof Heart; label: string; value: number; tone: string; bg: string
+}) {
+  return (
+    <div className="rounded-lg border border-border p-3 flex items-center gap-3">
+      <div className="grid h-9 w-9 place-items-center rounded-lg" style={{ background: bg, color: tone }}>
+        <Icon className="h-4 w-4" />
+      </div>
+      <div>
+        <div className="text-[10px] uppercase tracking-wider text-muted-foreground">{label}</div>
+        <div className="text-lg font-bold" style={{ color: tone }}>{value}</div>
+      </div>
+    </div>
+  )
+}
 
 function StatCard({
   icon: Icon,
@@ -43,6 +71,17 @@ export default function AccountDashboard() {
   const { data: addresses } = useAddresses()
   const { data: orders } = useOrders()
   const { data: wishlist } = useWishlistRemote()
+  const { items: rxRows } = useCmsCollection<UserPrescriptionRow>("user-prescriptions", [])
+  const { items: adminRxItems } = useCmsCollection<Prescription>("prescriptions", [])
+  const adminRxById = new Map(adminRxItems.map((p) => [p.id, p]))
+  const rxPending = rxRows.filter((r) => {
+    const a = adminRxById.get(r.id)
+    return a ? a.status === "pending" : r.status === "Pending"
+  }).length
+  const rxVerified = rxRows.filter((r) => {
+    const a = adminRxById.get(r.id)
+    return a ? (a.status === "verified" || a.status === "dispensed") : (r.status === "Verified" || r.status === "Dispensed")
+  }).length
 
   const firstName = me?.fullName ? me.fullName.split(" ")[0] : ""
 
@@ -75,10 +114,46 @@ export default function AccountDashboard() {
 
         <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
           <StatCard icon={Package} label="Orders" value={orders?.length ?? 0} href="/account/orders" />
+          <StatCard icon={ClipboardList} label="Prescriptions" value={rxRows.length} href="/account/prescriptions" />
           <StatCard icon={MapPin} label="Addresses" value={addresses?.length ?? 0} href="/account/addresses" />
           <StatCard icon={Heart} label="Wishlist" value={wishlist?.length ?? 0} href="/account/wishlist" />
           <StatCard icon={UserIcon} label="Profile" value={me?.email ? "Set" : "Incomplete"} href="/account/settings" />
         </div>
+
+        {rxRows.length > 0 && (
+          <div className="space-y-3 rounded-xl border border-border bg-white p-5">
+            <div className="flex items-center justify-between">
+              <h2 className="font-semibold" style={{ color: WINE }}>Prescriptions</h2>
+              <Link href="/account/prescriptions" className="text-xs font-semibold" style={{ color: ACCENT }}>
+                View all
+              </Link>
+            </div>
+            <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
+              <MiniRxStat icon={Clock} label="Awaiting review" value={rxPending} tone="#92400E" bg="#FEF3C7" />
+              <MiniRxStat icon={CheckCircle2} label="Verified / dispensed" value={rxVerified} tone="#166534" bg="#DCFCE7" />
+              <MiniRxStat icon={Pill} label="Approved medications" value={
+                rxRows.reduce((sum, r) => sum + (adminRxById.get(r.id)?.recommendedDrugs?.length ?? 0), 0)
+              } tone="#1E40AF" bg="#DBEAFE" />
+            </div>
+            <ul className="divide-y divide-border">
+              {rxRows.slice(0, 3).map((r) => {
+                const a = adminRxById.get(r.id)
+                const status = a?.status ?? r.status.toLowerCase()
+                return (
+                  <li key={r.id}>
+                    <Link href="/account/prescriptions" className="flex items-center justify-between py-2.5">
+                      <div className="min-w-0">
+                        <div className="text-sm font-medium" style={{ color: WINE }}>Rx-{r.rxNumber}</div>
+                        <div className="text-[11px] text-muted-foreground truncate">{r.name}</div>
+                      </div>
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{status}</span>
+                    </Link>
+                  </li>
+                )
+              })}
+            </ul>
+          </div>
+        )}
 
         <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
           <div className="space-y-3 rounded-xl border border-border bg-white p-5">

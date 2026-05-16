@@ -88,6 +88,7 @@ import { PopupOffer } from "@/components/store/popup-offer";
 // Account pages (customer-facing)
 import AccountSettingsPage from "@/pages/account/settings";
 import AccountDashboard from "@/pages/account/dashboard";
+import AccountPrescriptionsPage from "@/pages/account/prescriptions";
 import AccountLoginPage from "@/pages/account/login";
 import AccountRegisterPage from "@/pages/account/register";
 import DashboardPage from "@/pages/dashboard";
@@ -361,6 +362,9 @@ function Router() {
       </Route>
       <Route path="/account/dashboard">
         {() => <ProtectedAccount><AccountDashboard /></ProtectedAccount>}
+      </Route>
+      <Route path="/account/prescriptions">
+        {() => <ProtectedAccount><AccountPrescriptionsPage /></ProtectedAccount>}
       </Route>
       <Route path="/dashboard">
         {() => <ProtectedAccount><DashboardPage /></ProtectedAccount>}
