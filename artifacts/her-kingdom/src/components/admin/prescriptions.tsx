@@ -7,6 +7,7 @@ import { useCmsDoc, newId, cmsStore } from "@/lib/cms-store"
 import { usePermission } from "@/lib/permissions"
 import { notify } from "@/lib/notify"
 import type { Consultation } from "./consultations"
+import { DrugPicker, SuggestFromNotesButton } from "./drug-picker"
 import {
   ClipboardList,
   Search,
@@ -29,6 +30,7 @@ import {
   Send,
   Lock,
   Video,
+  Sparkles,
 } from "lucide-react"
 
 const WINE = "#3D0814"
@@ -388,27 +390,73 @@ export function AdminPrescriptions() {
             className="w-full max-w-5xl bg-white rounded-2xl shadow-2xl overflow-hidden my-auto flex flex-col max-h-[95vh]"
             onClick={(e) => e.stopPropagation()}
           >
-            {/* Header */}
-            <div className="px-5 sm:px-6 py-4 flex items-center justify-between text-white" style={{ background: WINE }}>
-              <div className="flex items-center gap-3 min-w-0">
-                <div className="w-10 h-10 rounded-full bg-white/15 flex items-center justify-center flex-shrink-0">
-                  <ClipboardList className="h-5 w-5" />
+            {/* Header — brand-aligned: wine gradient, shield watermark,
+                trust ribbon and status pill. */}
+            <div
+              className="relative px-5 sm:px-6 py-5 text-white overflow-hidden"
+              style={{
+                background: `linear-gradient(135deg, ${WINE} 0%, #6B0F1A 55%, #8A1226 100%)`,
+              }}
+            >
+              {/* Decorative shield watermark — "trust layer" brand metaphor. */}
+              <ShieldCheck
+                aria-hidden
+                className="absolute -right-6 -bottom-10 h-44 w-44 text-white/[0.06] pointer-events-none"
+              />
+              {/* Thin orange accent ribbon. */}
+              <div
+                aria-hidden
+                className="absolute left-0 top-0 h-full w-1"
+                style={{ background: ACCENT }}
+              />
+              <div className="relative flex items-start justify-between gap-3">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="w-11 h-11 rounded-xl bg-white/15 backdrop-blur-sm border border-white/20 flex items-center justify-center flex-shrink-0 shadow-sm">
+                    <ShieldCheck className="h-5 w-5" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-[10px] uppercase tracking-[0.18em] font-semibold text-white/80 inline-flex items-center gap-1.5">
+                      <span className="inline-block w-1 h-1 rounded-full bg-white/70" />
+                      Trust layer · Prescription review
+                    </p>
+                    <h2 className="text-xl font-bold font-mono truncate mt-0.5 leading-tight">{active.id}</h2>
+                    {active.patientName && (
+                      <p className="text-[11px] text-white/75 mt-0.5 truncate">{active.patientName}{active.phone ? ` · ${active.phone}` : ""}</p>
+                    )}
+                  </div>
                 </div>
-                <div className="min-w-0">
-                  <p className="text-[10px] uppercase tracking-wider opacity-80">Prescription review</p>
-                  <h2 className="text-lg font-bold font-mono truncate">{active.id}</h2>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <span
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold shadow-sm"
+                    style={{ background: STATUS_META[active.status].bg, color: STATUS_META[active.status].color }}
+                  >
+                    {(() => { const I = STATUS_META[active.status].icon; return <I className="h-3 w-3" /> })()}
+                    {STATUS_META[active.status].label}
+                  </span>
+                  <button
+                    onClick={closeModal}
+                    className="w-9 h-9 rounded-full hover:bg-white/15 flex items-center justify-center transition-colors"
+                    title="Close (Esc)"
+                  >
+                    <X className="h-5 w-5" />
+                  </button>
                 </div>
-                <span
-                  className="ml-2 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold flex-shrink-0"
-                  style={{ background: STATUS_META[active.status].bg, color: STATUS_META[active.status].color }}
-                >
-                  {(() => { const I = STATUS_META[active.status].icon; return <I className="h-3 w-3" /> })()}
-                  {STATUS_META[active.status].label}
+              </div>
+              {/* Verification progress bar — at-a-glance trust signal. */}
+              <div className="relative mt-3 flex items-center gap-2">
+                <div className="flex-1 h-1.5 rounded-full bg-white/15 overflow-hidden">
+                  <div
+                    className="h-full transition-all"
+                    style={{
+                      width: `${(verifiedCount / VERIFICATION_ITEMS.length) * 100}%`,
+                      background: fullyChecked ? "#34D399" : ACCENT,
+                    }}
+                  />
+                </div>
+                <span className="text-[10px] font-bold text-white/90 tracking-wide flex-shrink-0">
+                  {verifiedCount}/{VERIFICATION_ITEMS.length} verified
                 </span>
               </div>
-              <button onClick={closeModal} className="w-9 h-9 rounded-full hover:bg-white/15 flex items-center justify-center transition-colors">
-                <X className="h-5 w-5" />
-              </button>
             </div>
 
             {/* Body */}
@@ -600,21 +648,29 @@ export function AdminPrescriptions() {
 
                 {/* Recommended drugs */}
                 <div>
-                  <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center justify-between mb-2 gap-2">
                     <h3 className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold inline-flex items-center gap-1.5">
                       <Pill className="h-3.5 w-3.5" /> Recommended drugs
                     </h3>
-                    <button
-                      onClick={addRecommendation}
-                      className="text-xs font-semibold inline-flex items-center gap-1 hover:underline"
-                      style={{ color: ACCENT }}
-                    >
-                      <Plus className="h-3 w-3" /> Add
-                    </button>
+                    <div className="flex items-center gap-1.5">
+                      <SuggestFromNotesButton
+                        clinicalContext={`${active.notes} ${active.pharmacistNote}`}
+                        existingNames={active.recommendedDrugs.map((r) => r.name)}
+                        onAdd={(rows) =>
+                          updateActive({ recommendedDrugs: [...active.recommendedDrugs, ...rows] })
+                        }
+                      />
+                      <DrugPicker
+                        clinicalContext={`${active.notes} ${active.pharmacistNote}`}
+                        onPick={(row) =>
+                          updateActive({ recommendedDrugs: [...active.recommendedDrugs, row] })
+                        }
+                      />
+                    </div>
                   </div>
                   {active.recommendedDrugs.length === 0 ? (
                     <p className="text-xs text-muted-foreground py-3 text-center border border-dashed rounded-md" style={{ borderColor: "rgba(0,0,0,0.15)" }}>
-                      No drugs recommended yet.
+                      No drugs recommended yet. <span className="inline-flex items-center gap-1"><Sparkles className="h-3 w-3" /> Use Suggest or Add drug.</span>
                     </p>
                   ) : (
                     <div className="space-y-2">

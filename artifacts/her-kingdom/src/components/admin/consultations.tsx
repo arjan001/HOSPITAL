@@ -8,6 +8,7 @@ import { DailyCall } from "@/components/video/daily-call"
 import { usePermission } from "@/lib/permissions"
 import { notify } from "@/lib/notify"
 import type { Prescription } from "./prescriptions"
+import { DrugPicker, SuggestFromNotesButton } from "./drug-picker"
 import {
   MessageSquare,
   Phone,
@@ -469,15 +470,27 @@ export function AdminConsultations() {
                       />
                     </Field>
                     <div>
-                      <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center justify-between mb-2 gap-2">
                         <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground inline-flex items-center gap-1.5">
                           <Pill className="h-3.5 w-3.5" />
                           Recommended drugs
                         </label>
                         {canRecommend && (
-                          <button onClick={addRec} className="text-xs font-semibold inline-flex items-center gap-1 hover:underline">
-                            <Plus className="h-3 w-3" /> Add
-                          </button>
+                          <div className="flex items-center gap-1.5">
+                            <SuggestFromNotesButton
+                              clinicalContext={`${active.topic} ${active.doctorNote}`}
+                              existingNames={active.recommendedDrugs.map((r) => r.name)}
+                              onAdd={(rows) =>
+                                update({ recommendedDrugs: [...active.recommendedDrugs, ...rows] })
+                              }
+                            />
+                            <DrugPicker
+                              clinicalContext={`${active.topic} ${active.doctorNote}`}
+                              onPick={(row) =>
+                                update({ recommendedDrugs: [...active.recommendedDrugs, row] })
+                              }
+                            />
+                          </div>
                         )}
                       </div>
                       {active.recommendedDrugs.length > 0 && canRecommend && (
