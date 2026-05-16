@@ -33,6 +33,10 @@ The trusted pharmaceutical infrastructure for Africa — a digital storefront an
 - CMS persistence layer (single seam for future NestJS swap): `artifacts/her-kingdom/src/lib/cms-store.ts`
   - All admin-managed content (banners, categories, popup offer, website settings, custom pages, footer, audit log, etc.) goes through `cmsStore` / `useCmsDoc(...)`. Never persist CMS data directly.
 - Admin nav + routes: `artifacts/her-kingdom/src/components/admin/admin-shell.tsx` and `src/App.tsx`
+  - Sidebar uses a tree (`NavGroup → NavNode → children?: NavNode[]`). Expandable parents persist their open/closed state in `localStorage["shaniidrx.admin.sidebarExpanded"]`. Order = visual hierarchy — Overview/Sales/Pharmacy/Catalog up top, Marketing intentionally last.
+  - Sourcing and Integrations are parent groups with their own children (sub-routes), so internal tab strips don't have to overflow horizontally.
+- Sourcing sub-routes: `/admin/sourcing/{inventory,forecast,pricing,automation,performance}` (thin wrappers in `components/admin/sourcing-pages.tsx` around the existing `Sourcing*Tab` components).
+- Marketing message templates (SMS / WhatsApp / Email): `components/admin/message-templates.tsx` at `/admin/integrations/templates`. Persists via `cmsStore("message-templates")`. Permission-gated by `integrations.manage`. Variables use `{{token}}` interpolation; sample preview built in.
 - Shared types: `artifacts/her-kingdom/src/lib/types.ts`
 
 ## Architecture decisions

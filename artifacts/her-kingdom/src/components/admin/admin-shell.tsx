@@ -13,6 +13,7 @@ import {
   X,
   LogOut,
   ChevronRight,
+  ChevronDown,
   ShoppingCart,
   BarChart3,
   Settings,
@@ -38,54 +39,140 @@ import {
   ScrollText,
   Plug,
   PackageSearch,
+  Boxes,
+  TrendingUp,
+  Bot,
+  Gauge,
+  LineChart,
+  Send,
+  Mail,
+  MessageSquare,
+  Video,
+  Building2,
 } from "lucide-react"
 
 const COLLAPSE_KEY = "shaniidrx.admin.sidebarCollapsed"
+const EXPANDED_KEY = "shaniidrx.admin.sidebarExpanded"
 
-type NavItem = {
+type NavNode = {
   label: string
-  href: string
+  href?: string
   icon: typeof LayoutDashboard
   hasBadge?: boolean
-  group?: string
+  children?: NavNode[]
 }
 
-const navItems: NavItem[] = [
-  { label: "Dashboard",          href: "/admin",                    icon: LayoutDashboard, group: "Overview" },
-  { label: "Analytics",          href: "/admin/analytics",          icon: BarChart3,       group: "Overview" },
+type NavGroup = {
+  name: string
+  items: NavNode[]
+}
 
-  { label: "Sales & Orders",     href: "/admin/orders",             icon: ShoppingCart,    hasBadge: true, group: "Sales" },
-  { label: "Payments",           href: "/admin/payments",           icon: CreditCard,      group: "Sales" },
-  { label: "Card Details",       href: "/admin/card-details",       icon: Wallet,          group: "Sales" },
-
-  { label: "Prescriptions",      href: "/admin/prescriptions",      icon: ClipboardList,   group: "Pharmacy" },
-  { label: "Consultations",      href: "/admin/consultations",      icon: Stethoscope,     group: "Pharmacy" },
-  { label: "Live Chat",          href: "/admin/chat",               icon: MessagesSquare,  group: "Pharmacy" },
-  { label: "Contact Inquiries",  href: "/admin/inquiries",          icon: Inbox,           group: "Pharmacy" },
-
-  { label: "Products",           href: "/admin/products",           icon: Package,         group: "Catalog" },
-  { label: "Categories",         href: "/admin/categories",         icon: Tag,             group: "Catalog" },
-  { label: "Sourcing",           href: "/admin/sourcing",           icon: PackageSearch,   group: "Catalog" },
-  { label: "Delivery",           href: "/admin/delivery-locations", icon: Truck,           group: "Catalog" },
-
-  { label: "Offers & Banners",   href: "/admin/banners",            icon: ImageIcon,       group: "Marketing" },
-  { label: "Announcement Bar",   href: "/admin/announcement",       icon: MegaphoneAlt,    group: "Marketing" },
-  { label: "Popup Offer",        href: "/admin/popup-offer",        icon: Megaphone,       group: "Marketing" },
-  { label: "Newsletter",         href: "/admin/newsletter",         icon: Megaphone,       group: "Marketing" },
-
-  { label: "Custom Pages",       href: "/admin/pages",              icon: FileText,        group: "Storefront CMS" },
-  { label: "Footer & Links",     href: "/admin/footer",             icon: Layers,          group: "Storefront CMS" },
-  { label: "Blogs",              href: "/admin/blogs",              icon: BookOpen,        group: "Storefront CMS" },
-  { label: "Policies",           href: "/admin/policies",           icon: FileText,        group: "Storefront CMS" },
-
-  { label: "Website Settings",   href: "/admin/website-settings",   icon: Settings,        group: "System" },
-  { label: "Integrations",       href: "/admin/integrations",       icon: Plug,            group: "System" },
-  { label: "Customers",          href: "/admin/customers",          icon: UserCircle,      group: "System" },
-  { label: "Users & Roles",      href: "/admin/users",              icon: Users,           group: "System" },
-  { label: "Roles & Permissions",href: "/admin/roles",              icon: Shield,          group: "System" },
-  { label: "Audit Log",          href: "/admin/audit-log",          icon: ScrollText,      group: "System" },
-  { label: "Settings",           href: "/admin/settings",           icon: Settings,        group: "System" },
-  { label: "My Profile",         href: "/admin/profile",            icon: UserCircle,      group: "System" },
+// Order = visual hierarchy. Most-used first, supporting/admin last.
+const NAV_GROUPS: NavGroup[] = [
+  {
+    name: "Overview",
+    items: [
+      { label: "Dashboard", href: "/admin",           icon: LayoutDashboard },
+      { label: "Analytics", href: "/admin/analytics", icon: BarChart3 },
+    ],
+  },
+  {
+    name: "Sales",
+    items: [
+      { label: "Sales & Orders", href: "/admin/orders",       icon: ShoppingCart, hasBadge: true },
+      { label: "Payments",       href: "/admin/payments",     icon: CreditCard },
+      { label: "Card Details",   href: "/admin/card-details", icon: Wallet },
+    ],
+  },
+  {
+    name: "Pharmacy",
+    items: [
+      { label: "Prescriptions",     href: "/admin/prescriptions", icon: ClipboardList },
+      { label: "Consultations",     href: "/admin/consultations", icon: Stethoscope },
+      { label: "Live Chat",         href: "/admin/chat",          icon: MessagesSquare },
+      { label: "Contact Inquiries", href: "/admin/inquiries",     icon: Inbox },
+    ],
+  },
+  {
+    name: "Catalog",
+    items: [
+      { label: "Products",   href: "/admin/products",   icon: Package },
+      { label: "Categories", href: "/admin/categories", icon: Tag },
+    ],
+  },
+  {
+    name: "Sourcing",
+    items: [
+      {
+        label: "Sourcing",
+        href: "/admin/sourcing",
+        icon: PackageSearch,
+        children: [
+          { label: "Suppliers & POs", href: "/admin/sourcing",             icon: Building2 },
+          { label: "Inventory",       href: "/admin/sourcing/inventory",   icon: Boxes },
+          { label: "Forecast",        href: "/admin/sourcing/forecast",    icon: LineChart },
+          { label: "Pricing",         href: "/admin/sourcing/pricing",     icon: TrendingUp },
+          { label: "Automation",      href: "/admin/sourcing/automation",  icon: Bot },
+          { label: "Performance",     href: "/admin/sourcing/performance", icon: Gauge },
+        ],
+      },
+    ],
+  },
+  {
+    name: "Communications",
+    items: [
+      {
+        label: "Integrations",
+        href: "/admin/integrations",
+        icon: Plug,
+        children: [
+          { label: "Channels",          href: "/admin/integrations",           icon: Plug },
+          { label: "Message Templates", href: "/admin/integrations/templates", icon: Send },
+          { label: "Email",             href: "/admin/integrations?tab=email", icon: Mail },
+          { label: "SMS",               href: "/admin/integrations?tab=sms",   icon: MessageSquare },
+          { label: "WhatsApp",          href: "/admin/integrations?tab=whatsapp", icon: MessageSquare },
+          { label: "Video (Daily.co)",  href: "/admin/integrations?tab=video", icon: Video },
+        ],
+      },
+    ],
+  },
+  {
+    name: "Operations",
+    items: [
+      { label: "Delivery Locations", href: "/admin/delivery-locations", icon: Truck },
+    ],
+  },
+  {
+    name: "Storefront CMS",
+    items: [
+      { label: "Custom Pages",   href: "/admin/pages",    icon: FileText },
+      { label: "Footer & Links", href: "/admin/footer",   icon: Layers },
+      { label: "Blogs",          href: "/admin/blogs",    icon: BookOpen },
+      { label: "Policies",       href: "/admin/policies", icon: FileText },
+    ],
+  },
+  {
+    name: "System",
+    items: [
+      { label: "Website Settings",    href: "/admin/website-settings", icon: Settings },
+      { label: "Customers",           href: "/admin/customers",        icon: UserCircle },
+      { label: "Users & Roles",       href: "/admin/users",            icon: Users },
+      { label: "Roles & Permissions", href: "/admin/roles",            icon: Shield },
+      { label: "Audit Log",           href: "/admin/audit-log",        icon: ScrollText },
+      { label: "Settings",            href: "/admin/settings",         icon: Settings },
+      { label: "My Profile",          href: "/admin/profile",          icon: UserCircle },
+    ],
+  },
+  // Marketing moved last — important brand value but lower day-to-day priority.
+  {
+    name: "Marketing",
+    items: [
+      { label: "Offers & Banners", href: "/admin/banners",      icon: ImageIcon },
+      { label: "Announcement Bar", href: "/admin/announcement", icon: MegaphoneAlt },
+      { label: "Popup Offer",      href: "/admin/popup-offer",  icon: Megaphone },
+      { label: "Newsletter",       href: "/admin/newsletter",   icon: Megaphone },
+    ],
+  },
 ]
 
 interface CurrentUser {
@@ -121,23 +208,33 @@ function NavSearch({ value, onChange }: { value: string; onChange: (v: string) =
   )
 }
 
-function NavItemRow({
-  item, isActive, showBadge, pendingOrders, collapsed, onClick,
+function isActiveHref(pathname: string, href?: string): boolean {
+  if (!href) return false
+  const [base] = href.split("?")
+  if (pathname === base) return true
+  // Treat nested routes as active for parents (e.g. /admin/sourcing/inventory under /admin/sourcing).
+  return base !== "/admin" && pathname.startsWith(base + "/")
+}
+
+function NavLeaf({
+  item, isActive, showBadge, pendingOrders, collapsed, depth, onClick,
 }: {
-  item: NavItem
+  item: NavNode
   isActive: boolean
   showBadge: boolean
   pendingOrders: number
   collapsed: boolean
+  depth: number
   onClick?: () => void
 }) {
-  const inner = (
+  const padX = collapsed ? "px-0 mx-2 justify-center" : depth === 0 ? "px-6" : "pl-10 pr-4"
+  return (
     <Link
-      href={item.href}
+      href={item.href || "#"}
       onClick={onClick}
       aria-label={collapsed ? `${item.label}${showBadge ? ` (${pendingOrders} pending)` : ""}` : undefined}
       title={collapsed ? item.label : undefined}
-      className={`group/nav relative flex items-center gap-3 ${collapsed ? "px-0 mx-2 justify-center" : "px-6"} py-2 text-sm transition-colors rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-foreground/40 ${
+      className={`group/nav relative flex items-center gap-3 ${padX} py-2 text-sm transition-colors rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-foreground/40 ${
         isActive
           ? "bg-foreground text-background font-medium"
           : "text-muted-foreground hover:text-foreground hover:bg-secondary"
@@ -165,26 +262,99 @@ function NavItemRow({
       )}
     </Link>
   )
-  return inner
+}
+
+function NavParent({
+  item, pathname, collapsed, expanded, onToggle, onClick,
+}: {
+  item: NavNode
+  pathname: string
+  collapsed: boolean
+  expanded: boolean
+  onToggle: () => void
+  onClick?: () => void
+}) {
+  const anyChildActive = !!item.children?.some((c) => isActiveHref(pathname, c.href))
+  const selfActive = isActiveHref(pathname, item.href)
+  const active = selfActive || anyChildActive
+
+  if (collapsed) {
+    // In collapsed mode show the parent icon AND each child icon as separate
+    // leaves so every sub-route stays reachable from the rail.
+    return (
+      <>
+        <NavLeaf
+          item={item}
+          isActive={active && !item.children?.some((c) => isActiveHref(pathname, c.href))}
+          showBadge={false}
+          pendingOrders={0}
+          collapsed
+          depth={0}
+          onClick={onClick}
+        />
+        {item.children?.map((c) => (
+          <NavLeaf
+            key={c.href}
+            item={c}
+            isActive={isActiveHref(pathname, c.href)}
+            showBadge={false}
+            pendingOrders={0}
+            collapsed
+            depth={0}
+            onClick={onClick}
+          />
+        ))}
+      </>
+    )
+  }
+
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={expanded}
+        className={`w-full flex items-center gap-3 px-6 py-2 text-sm rounded-md transition-colors ${
+          active
+            ? "text-foreground font-semibold"
+            : "text-muted-foreground hover:text-foreground hover:bg-secondary"
+        }`}
+      >
+        <item.icon className="h-4 w-4 flex-shrink-0" />
+        <span className="flex-1 truncate text-left">{item.label}</span>
+        <ChevronDown
+          className={`h-3.5 w-3.5 transition-transform ${expanded ? "rotate-0" : "-rotate-90"}`}
+        />
+      </button>
+      {expanded && (
+        <div className="mt-0.5 space-y-0.5 border-l border-border ml-[1.875rem]">
+          {item.children?.map((c) => (
+            <NavLeaf
+              key={c.href}
+              item={c}
+              isActive={isActiveHref(pathname, c.href)}
+              showBadge={false}
+              pendingOrders={0}
+              collapsed={false}
+              depth={1}
+              onClick={onClick}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  )
 }
 
 function renderGroupedNav(
-  items: NavItem[],
+  groups: NavGroup[],
   pathname: string,
   pendingOrders: number,
   collapsed: boolean,
+  expanded: Record<string, boolean>,
+  toggleExpanded: (label: string) => void,
   onClick?: () => void,
 ) {
-  const groups: Array<{ name: string; items: NavItem[] }> = []
-  for (const it of items) {
-    const name = it.group || ""
-    let g = groups.find((x) => x.name === name)
-    if (!g) {
-      g = { name, items: [] }
-      groups.push(g)
-    }
-    g.items.push(it)
-  }
   return groups.map((g, gi) => (
     <div key={g.name || gi} className={gi === 0 ? "" : "mt-2"}>
       {g.name && !collapsed && (
@@ -195,19 +365,54 @@ function renderGroupedNav(
       {g.name && collapsed && gi !== 0 && (
         <div className="my-2 mx-3 border-t border-border" />
       )}
-      {g.items.map((item) => (
-        <NavItemRow
-          key={item.href}
-          item={item}
-          isActive={pathname === item.href}
-          showBadge={!!item.hasBadge && pendingOrders > 0}
-          pendingOrders={pendingOrders}
-          collapsed={collapsed}
-          onClick={onClick}
-        />
-      ))}
+      {g.items.map((item) =>
+        item.children && item.children.length > 0 ? (
+          <NavParent
+            key={item.label}
+            item={item}
+            pathname={pathname}
+            collapsed={collapsed}
+            expanded={!!expanded[item.label]}
+            onToggle={() => toggleExpanded(item.label)}
+            onClick={onClick}
+          />
+        ) : (
+          <NavLeaf
+            key={item.href}
+            item={item}
+            isActive={isActiveHref(pathname, item.href)}
+            showBadge={!!item.hasBadge && pendingOrders > 0}
+            pendingOrders={pendingOrders}
+            collapsed={collapsed}
+            depth={0}
+            onClick={onClick}
+          />
+        ),
+      )}
     </div>
   ))
+}
+
+// Flat search across leaves + parents.
+function filterGroups(groups: NavGroup[], q: string): NavGroup[] {
+  if (!q) return groups
+  const needle = q.trim().toLowerCase()
+  const matches = (s: string) => s.toLowerCase().includes(needle)
+  return groups
+    .map((g) => {
+      if (matches(g.name)) return g
+      const items = g.items
+        .map((it) => {
+          const childMatches = it.children?.filter((c) => matches(c.label)) || []
+          if (matches(it.label) || childMatches.length > 0) {
+            return it.children ? { ...it, children: childMatches.length ? childMatches : it.children } : it
+          }
+          return null
+        })
+        .filter(Boolean) as NavNode[]
+      return items.length > 0 ? { ...g, items } : null
+    })
+    .filter(Boolean) as NavGroup[]
 }
 
 export function AdminShell({ children, title }: { children: ReactNode; title: string }) {
@@ -218,6 +423,21 @@ export function AdminShell({ children, title }: { children: ReactNode; title: st
     if (typeof window === "undefined") return false
     return window.localStorage.getItem(COLLAPSE_KEY) === "1"
   })
+  const [expanded, setExpanded] = useState<Record<string, boolean>>(() => {
+    if (typeof window === "undefined") return { Sourcing: true, Integrations: true }
+    try {
+      return JSON.parse(window.localStorage.getItem(EXPANDED_KEY) || '{"Sourcing":true,"Integrations":true}')
+    } catch {
+      return { Sourcing: true, Integrations: true }
+    }
+  })
+  const toggleExpanded = (label: string) =>
+    setExpanded((e) => {
+      const next = { ...e, [label]: !e[label] }
+      if (typeof window !== "undefined") window.localStorage.setItem(EXPANDED_KEY, JSON.stringify(next))
+      return next
+    })
+
   const [fullscreen, setFullscreen] = useState(false)
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null)
   const [loggingOut, setLoggingOut] = useState(false)
@@ -251,7 +471,6 @@ export function AdminShell({ children, title }: { children: ReactNode; title: st
     return () => clearInterval(interval)
   }, [])
 
-  // Persist collapse + react to fullscreen exit
   useEffect(() => {
     if (typeof window !== "undefined") {
       window.localStorage.setItem(COLLAPSE_KEY, collapsed ? "1" : "0")
@@ -290,15 +509,7 @@ export function AdminShell({ children, title }: { children: ReactNode; title: st
     if (typeof window !== "undefined") window.location.reload()
   }
 
-  const filteredNav = useMemo(() => {
-    const q = search.trim().toLowerCase()
-    if (!q) return navItems
-    return navItems.filter(
-      (i) =>
-        i.label.toLowerCase().includes(q) ||
-        (i.group ?? "").toLowerCase().includes(q),
-    )
-  }, [search])
+  const filteredGroups = useMemo(() => filterGroups(NAV_GROUPS, search), [search])
 
   const roleBadge = currentUser?.role === "super_admin"
     ? "Super Admin"
@@ -313,7 +524,6 @@ export function AdminShell({ children, title }: { children: ReactNode; title: st
 
   return (
     <div className="min-h-screen text-foreground" style={{ background: "#FFFBF5" }}>
-      {/* Mobile Header */}
       <header className="lg:hidden flex items-center justify-between h-14 px-4 border-b border-border sticky top-0 z-50" style={{ background: "#FFFBF5" }}>
         <button type="button" onClick={() => setSidebarOpen(true)}>
           <Menu className="h-5 w-5" />
@@ -328,7 +538,6 @@ export function AdminShell({ children, title }: { children: ReactNode; title: st
       </header>
 
       <div className="flex">
-        {/* Sidebar - Desktop */}
         <aside className={`hidden lg:flex flex-col ${sidebarWidth} h-screen border-r border-border fixed inset-y-0 left-0 transition-[width] duration-200`} style={{ background: "#FFFBF5" }}>
           <div className={`${collapsed ? "p-3" : "p-6"} border-b border-border flex items-center ${collapsed ? "justify-center" : "justify-between"} gap-2`}>
             {collapsed ? (
@@ -349,12 +558,19 @@ export function AdminShell({ children, title }: { children: ReactNode; title: st
           {!collapsed && <NavSearch value={search} onChange={setSearch} />}
 
           <nav className="flex-1 pb-3 overflow-y-auto overflow-x-hidden">
-            {filteredNav.length === 0 && !collapsed ? (
+            {filteredGroups.length === 0 && !collapsed ? (
               <p className="px-6 py-6 text-xs text-muted-foreground">
                 No modules match “{search}”.
               </p>
             ) : (
-              renderGroupedNav(collapsed ? navItems : filteredNav, pathname, pendingOrders, collapsed)
+              renderGroupedNav(
+                collapsed ? NAV_GROUPS : filteredGroups,
+                pathname,
+                pendingOrders,
+                collapsed,
+                expanded,
+                toggleExpanded,
+              )
             )}
           </nav>
 
@@ -411,7 +627,6 @@ export function AdminShell({ children, title }: { children: ReactNode; title: st
           </div>
         </aside>
 
-        {/* Sidebar - Mobile */}
         {sidebarOpen && (
           <>
             <div
@@ -443,12 +658,20 @@ export function AdminShell({ children, title }: { children: ReactNode; title: st
               )}
               <NavSearch value={search} onChange={setSearch} />
               <nav className="flex-1 pb-3 overflow-y-auto">
-                {filteredNav.length === 0 ? (
+                {filteredGroups.length === 0 ? (
                   <p className="px-6 py-6 text-xs text-muted-foreground">
                     No modules match “{search}”.
                   </p>
                 ) : (
-                  renderGroupedNav(filteredNav, pathname, pendingOrders, false, () => setSidebarOpen(false))
+                  renderGroupedNav(
+                    filteredGroups,
+                    pathname,
+                    pendingOrders,
+                    false,
+                    expanded,
+                    toggleExpanded,
+                    () => setSidebarOpen(false),
+                  )
                 )}
               </nav>
               <div className="p-4 border-t border-border flex items-center gap-4">
@@ -466,7 +689,6 @@ export function AdminShell({ children, title }: { children: ReactNode; title: st
           </>
         )}
 
-        {/* Main Content */}
         <main className={`flex-1 ${mainOffset} transition-[margin] duration-200`}>
           <div className="hidden lg:flex items-center justify-between h-14 px-8 border-b border-border sticky top-0 z-30" style={{ background: "#FFFBF5" }}>
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -516,4 +738,3 @@ export function AdminShell({ children, title }: { children: ReactNode; title: st
     </div>
   )
 }
-

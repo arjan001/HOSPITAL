@@ -41,6 +41,14 @@ import { AdminPayments } from "@/components/admin/payments";
 import { AdminPolicies } from "@/components/admin/policies";
 import { AdminProducts } from "@/components/admin/products";
 import { AdminSourcing } from "@/components/admin/sourcing";
+import {
+  AdminSourcingInventory,
+  AdminSourcingForecast,
+  AdminSourcingPricing,
+  AdminSourcingAutomation,
+  AdminSourcingPerformance,
+} from "@/components/admin/sourcing-pages";
+import { AdminMessageTemplates } from "@/components/admin/message-templates";
 import { AdminSettings } from "@/components/admin/settings";
 import { UsersManagement } from "@/components/admin/users";
 import { AdminCustomers } from "@/components/admin/customers";
@@ -361,6 +369,12 @@ function Router() {
       <Route path="/admin/policies" component={AdminPolicies} />
       <Route path="/admin/products" component={AdminProducts} />
       <Route path="/admin/sourcing" component={AdminSourcing} />
+      <Route path="/admin/sourcing/inventory"   component={AdminSourcingInventory} />
+      <Route path="/admin/sourcing/forecast"    component={AdminSourcingForecast} />
+      <Route path="/admin/sourcing/pricing"     component={AdminSourcingPricing} />
+      <Route path="/admin/sourcing/automation"  component={AdminSourcingAutomation} />
+      <Route path="/admin/sourcing/performance" component={AdminSourcingPerformance} />
+      <Route path="/admin/integrations/templates" component={AdminMessageTemplates} />
       <Route path="/admin/settings" component={AdminSettings} />
       <Route path="/admin/users" component={UsersManagement} />
       <Route path="/admin/customers" component={AdminCustomers} />

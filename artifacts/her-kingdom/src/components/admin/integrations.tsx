@@ -196,7 +196,13 @@ export function AdminIntegrations() {
   const [raw, setRaw] = useCmsDoc("integrations", INTEGRATIONS_DEFAULTS)
   const config = useMemo(() => withDefaults(raw), [raw])
   const [draft, setDraft] = useState<IntegrationsConfig>(config)
-  const [tab, setTab] = useState<Tab>("email")
+  const [tab, setTab] = useState<Tab>(() => {
+    if (typeof window === "undefined") return "email"
+    const q = new URLSearchParams(window.location.search).get("tab")
+    return (["email", "sms", "whatsapp", "video", "delivery"] as const).includes(q as Tab)
+      ? (q as Tab)
+      : "email"
+  })
   const [showEmailKey, setShowEmailKey] = useState(false)
   const [showSmsKey, setShowSmsKey] = useState(false)
   const [showSmsSecret, setShowSmsSecret] = useState(false)
