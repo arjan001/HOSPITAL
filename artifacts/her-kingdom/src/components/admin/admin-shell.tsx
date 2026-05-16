@@ -819,7 +819,7 @@ export function AdminShell({ children, title }: { children: ReactNode; title: st
               </button>
             </div>
           </div>
-          <div className="p-4 lg:p-8 min-w-0 max-w-full overflow-x-hidden">{children}</div>
+          <div className="p-4 lg:p-8 min-w-0 max-w-full overflow-x-clip">{children}</div>
         </main>
       </div>
     </div>
