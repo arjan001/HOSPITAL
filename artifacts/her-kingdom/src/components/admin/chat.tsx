@@ -13,7 +13,8 @@ import {
   type ChatMessage,
   type ChatThread,
 } from "@/lib/api-nest"
-import { MessagesSquare, Search, Trash2, Stethoscope, Phone, Circle } from "lucide-react"
+import { MessagesSquare, Search, Trash2, Stethoscope, Phone, Circle, Video } from "lucide-react"
+import { DailyCall } from "@/components/video/daily-call"
 
 function fmtClock(iso: string) {
   const d = new Date(iso)
@@ -38,6 +39,7 @@ export function AdminChat() {
   const { data: threads } = useAdminThreads()
   const [activeId, setActiveId] = useState<string | null>(null)
   const [search, setSearch] = useState("")
+  const [callMode, setCallMode] = useState<"video" | "voice" | null>(null)
   const { data: messages } = useAdminMessages(activeId)
 
   // Auto-select first thread
@@ -216,11 +218,27 @@ export function AdminChat() {
                     </p>
                   </div>
                   <button
+                    onClick={() => setCallMode("voice")}
+                    className="text-xs font-semibold inline-flex items-center gap-1 px-2 h-8 rounded-md hover:bg-secondary"
+                    style={{ color: "#3D0814" }}
+                    title="Start voice call"
+                  >
+                    <Phone className="h-3.5 w-3.5" />
+                  </button>
+                  <button
+                    onClick={() => setCallMode("video")}
+                    className="text-xs font-semibold text-white inline-flex items-center gap-1.5 px-3 h-8 rounded-md hover:opacity-90"
+                    style={{ background: "#B91C1C" }}
+                    title="Start video call"
+                  >
+                    <Video className="h-3.5 w-3.5" /> Video call
+                  </button>
+                  <button
                     onClick={remove}
                     className="text-xs font-semibold text-destructive inline-flex items-center gap-1 px-2 h-8 rounded-md hover:bg-destructive/10"
                     title="Delete conversation"
                   >
-                    <Trash2 className="h-3.5 w-3.5" /> Delete
+                    <Trash2 className="h-3.5 w-3.5" />
                   </button>
                 </div>
                 <div className="flex-1 min-h-0">
@@ -250,6 +268,17 @@ export function AdminChat() {
           </section>
         </div>
       </div>
+      {callMode && active && (
+        <DailyCall
+          roomName={`chat-${active.id}`}
+          userName="Pharmacist"
+          isOwner
+          title={`Patient: ${active.patientName}`}
+          subtitle={callMode === "video" ? "Live video call" : "Live voice call"}
+          onLeave={() => setCallMode(null)}
+          onSwitchToChat={() => setCallMode(null)}
+        />
+      )}
     </AdminShell>
   )
 }

@@ -144,7 +144,12 @@ export function AdminConsultations() {
     update({ messages: [...active.messages, msg] })
   }
 
-  const startCall = () => update({ status: "live" })
+  const startCall = () => {
+    update({ status: "live" })
+    if (active && (active.mode === "video" || active.mode === "voice") && canHostVideo) {
+      setVideoOpen(true)
+    }
+  }
   const endCall = () =>
     update({
       status: "completed",
@@ -347,14 +352,30 @@ export function AdminConsultations() {
                   </div>
                   <div className="flex items-center gap-2">
                     {active.status === "queued" && canHandle && (
-                      <button onClick={startCall} className="h-8 px-3 rounded-md text-xs font-semibold bg-emerald-600 text-white inline-flex items-center gap-1.5">
-                        <PhoneCall className="h-3.5 w-3.5" /> Start
+                      <button
+                        onClick={startCall}
+                        className="h-8 px-3 rounded-md text-xs font-semibold text-white inline-flex items-center gap-1.5 hover:opacity-90"
+                        style={{ background: active.mode === "chat" ? "#3D0814" : "#B91C1C" }}
+                      >
+                        <PhoneCall className="h-3.5 w-3.5" />
+                        {active.mode === "video" ? "Start video" : active.mode === "voice" ? "Start voice" : "Start"}
                       </button>
                     )}
                     {active.status === "live" && canHandle && (
-                      <button onClick={endCall} className="h-8 px-3 rounded-md text-xs font-semibold bg-red-600 text-white inline-flex items-center gap-1.5">
-                        End call
-                      </button>
+                      <>
+                        {(active.mode === "video" || active.mode === "voice") && canHostVideo && !videoOpen && (
+                          <button
+                            onClick={() => setVideoOpen(true)}
+                            className="h-8 px-3 rounded-md text-xs font-semibold text-white inline-flex items-center gap-1.5 hover:opacity-90"
+                            style={{ background: "#B91C1C" }}
+                          >
+                            <PhoneCall className="h-3.5 w-3.5" /> Re-open call
+                          </button>
+                        )}
+                        <button onClick={endCall} className="h-8 px-3 rounded-md text-xs font-semibold bg-red-600 text-white inline-flex items-center gap-1.5">
+                          End call
+                        </button>
+                      </>
                     )}
                     {active.status === "completed" && (
                       <span className="text-[11px] text-emerald-600 inline-flex items-center gap-1">

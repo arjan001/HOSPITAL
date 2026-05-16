@@ -86,7 +86,7 @@ router.post("/room", async (req: Request, res: Response) => {
             enable_recording: body.enableRecording ? "cloud" : false,
             start_video_off: false,
             start_audio_off: false,
-            enable_prejoin_ui: false,
+            enable_prejoin_ui: true,
             enable_network_ui: true,
             enable_people_ui: true,
             enable_pip_ui: true,

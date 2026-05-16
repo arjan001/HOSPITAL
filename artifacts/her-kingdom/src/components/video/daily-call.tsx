@@ -225,8 +225,9 @@ export function DailyCall({
         )}
       </div>
 
-      {/* Center status while connecting */}
-      {(config !== "ready" || !joined) && (
+      {/* Center status while bootstrapping the SDK. Once `config === "ready"`,
+          Daily's own prejoin lobby is visible and interactive — don't cover it. */}
+      {config !== "ready" && (
         <div className="relative z-10 flex-1 flex items-center justify-center pointer-events-none">
           <div className="bg-white/95 backdrop-blur rounded-2xl px-6 py-5 shadow-2xl max-w-sm text-center pointer-events-auto">
             {config === "missing" ? (
