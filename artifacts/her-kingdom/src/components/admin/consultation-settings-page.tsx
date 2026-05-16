@@ -2,12 +2,15 @@
 
 import { useMemo, useState } from "react"
 import { AdminShell } from "./admin-shell"
-import { Clock, MessagesSquare, Video, Wallet, AlertTriangle, RotateCcw, Save } from "lucide-react"
+import { Clock, MessagesSquare, Video, Wallet, AlertTriangle, RotateCcw, Save, UserRound, Image as ImageIcon } from "lucide-react"
 import {
   useConsultationSettings,
   CONSULTATION_DEFAULTS,
   formatOverageLabel,
+  deriveInitials,
+  standbyDoctorOf,
   type ConsultationSettings,
+  type StandbyDoctor,
 } from "@/lib/consultation-settings"
 import { notify } from "@/lib/notify"
 
@@ -24,6 +27,9 @@ export function AdminConsultationSettings() {
 
   const set = <K extends keyof ConsultationSettings>(k: K, v: ConsultationSettings[K]) =>
     setDraft((d) => ({ ...d, [k]: v }))
+  const setDoc = <K extends keyof StandbyDoctor>(k: K, v: StandbyDoctor[K]) =>
+    setDraft((d) => ({ ...d, standbyDoctor: { ...d.standbyDoctor, [k]: v } }))
+  const previewDoc = standbyDoctorOf(draft)
 
   const num = (v: string, min: number, max: number, fallback: number) => {
     const n = Number(v)
@@ -90,6 +96,63 @@ export function AdminConsultationSettings() {
             </button>
           </div>
         </div>
+
+        {/* Standby doctor */}
+        <Card
+          title="Standby doctor"
+          subtitle="The clinician shown on every consultation. Always on call — used as the default whenever no other doctor is assigned."
+        >
+          <div className="flex items-center gap-4 mb-3 p-3 rounded-lg bg-[#FFFBF5] border border-border">
+            {previewDoc.avatarUrl ? (
+              <img src={previewDoc.avatarUrl} alt="" className="w-14 h-14 rounded-full object-cover border-2 border-white shadow-sm" />
+            ) : (
+              <div
+                className="w-14 h-14 rounded-full flex items-center justify-center text-white font-bold text-lg shadow-sm border-2 border-white"
+                style={{ background: `linear-gradient(135deg, ${ACCENT_ORG}, ${WINE})` }}
+              >
+                {previewDoc.initials}
+              </div>
+            )}
+            <div className="min-w-0">
+              <p className="font-semibold text-sm truncate">{previewDoc.name}</p>
+              <p className="text-xs text-muted-foreground truncate">
+                {previewDoc.specialty} · {previewDoc.yearsExperience} yrs experience
+              </p>
+            </div>
+            <span className="ml-auto text-[11px] font-semibold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+              On call
+            </span>
+          </div>
+
+          <Row icon={<UserRound className="h-4 w-4" />} label="Display name">
+            <TextInput value={draft.standbyDoctor?.name ?? ""} onChange={(s) => setDoc("name", s)} placeholder="Dr. A. Ahmed" />
+          </Row>
+          <Row icon={<UserRound className="h-4 w-4" />} label="Specialty">
+            <TextInput value={draft.standbyDoctor?.specialty ?? ""} onChange={(s) => setDoc("specialty", s)} placeholder="General Practice" />
+          </Row>
+          <Row icon={<Clock className="h-4 w-4" />} label="Years of experience">
+            <NumberInput
+              value={draft.standbyDoctor?.yearsExperience ?? 0}
+              onChange={(s) => setDoc("yearsExperience", num(s, 0, 60, draft.standbyDoctor?.yearsExperience ?? 0))}
+              suffix="years"
+            />
+          </Row>
+          <Row icon={<UserRound className="h-4 w-4" />} label="Avatar initials (optional)">
+            <TextInput
+              value={draft.standbyDoctor?.initials ?? ""}
+              onChange={(s) => setDoc("initials", s.slice(0, 3).toUpperCase())}
+              placeholder={deriveInitials(draft.standbyDoctor?.name ?? "")}
+            />
+          </Row>
+          <Row icon={<ImageIcon className="h-4 w-4" />} label="Avatar URL (optional)">
+            <TextInput
+              value={draft.standbyDoctor?.avatarUrl ?? ""}
+              onChange={(s) => setDoc("avatarUrl", s)}
+              placeholder="https://…/photo.jpg"
+              wide
+            />
+          </Row>
+        </Card>
 
         {/* Free window */}
         <Card title="Free window" subtitle="Default consultation duration shown on the booking page.">
@@ -188,5 +251,19 @@ function NumberInput({
       />
       {suffix && <span className="text-xs text-muted-foreground">{suffix}</span>}
     </div>
+  )
+}
+
+function TextInput({
+  value, onChange, placeholder, wide = false,
+}: { value: string; onChange: (s: string) => void; placeholder?: string; wide?: boolean }) {
+  return (
+    <input
+      type="text"
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      placeholder={placeholder}
+      className={`${wide ? "w-72 sm:w-80" : "w-56"} h-9 px-3 rounded-md border border-border bg-white text-sm focus:outline-none focus:ring-2 focus:ring-orange-200`}
+    />
   )
 }

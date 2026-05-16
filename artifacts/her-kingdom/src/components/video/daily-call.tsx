@@ -132,25 +132,25 @@ export function DailyCall({
             width: "100%", height: "100%",
             border: "0", borderRadius: "0", background: "#0b0b0e",
           },
-          // Daily expects `theme` shaped as { light?: { colors }, dark?: { colors } }.
-          // Passing `theme.colors` directly is rejected with
+          // Daily expects `theme` shaped as { colors } OR { light, dark } —
+          // a one-sided { dark } is rejected at runtime with
           // "property 'theme': unsupported theme configuration".
-          theme: {
-            dark: {
-              colors: {
-                accent: ACCENT_ORG,
-                accentText: "#FFFFFF",
-                background: "#0b0b0e",
-                backgroundAccent: "#171924",
-                baseText: "#FFFFFF",
-                border: "rgba(255,255,255,0.12)",
-                mainAreaBg: "#0b0b0e",
-                mainAreaBgAccent: "#171924",
-                mainAreaText: "#FFFFFF",
-                supportiveText: "rgba(255,255,255,0.65)",
-              },
-            },
-          },
+          // Our UI is dark-only, so we hand the same palette to both modes.
+          theme: (() => {
+            const colors = {
+              accent: ACCENT_ORG,
+              accentText: "#FFFFFF",
+              background: "#0b0b0e",
+              backgroundAccent: "#171924",
+              baseText: "#FFFFFF",
+              border: "rgba(255,255,255,0.12)",
+              mainAreaBg: "#0b0b0e",
+              mainAreaBgAccent: "#171924",
+              mainAreaText: "#FFFFFF",
+              supportiveText: "rgba(255,255,255,0.65)",
+            }
+            return { light: { colors }, dark: { colors } }
+          })(),
         })
 
         call

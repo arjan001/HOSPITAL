@@ -764,7 +764,7 @@ export default function SpeakToADoctorPage() {
         </nav>
 
         <div className="mb-8 flex items-start gap-4">
-          <DoctorAvatar size={52} />
+          <DoctorAvatar size={52} initials={doc.initials} avatarUrl={doc.avatarUrl} />
           <div>
             <h1 className="text-2xl font-bold" style={{ color: WINE }}>Consultation Summary</h1>
             <p className="text-sm mt-1" style={{ color: "#6b7280" }}>
