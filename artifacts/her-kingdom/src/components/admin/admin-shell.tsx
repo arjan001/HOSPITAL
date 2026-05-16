@@ -177,7 +177,7 @@ const NAV_GROUPS: NavGroup[] = [
         href: "/admin/logistics",
         icon: Truck,
         children: [
-          { label: "Order Records",        href: "/admin/logistics",            icon: Receipt },
+          { label: "Delivery Operations",  href: "/admin/logistics",            icon: Truck },
           { label: "Delivery Locations",   href: "/admin/delivery-locations",   icon: Truck },
           { label: "Inventory Optimization", href: "/admin/logistics/inventory", icon: Warehouse },
           { label: "Lead Time Monitoring", href: "/admin/logistics/lead-time",  icon: Timer },

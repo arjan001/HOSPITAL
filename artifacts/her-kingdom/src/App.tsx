@@ -57,11 +57,11 @@ import {
   AdminQaBatches,
   AdminQaTrustSeal,
   AdminQaRecalls,
-  AdminLogistics,
   AdminLogisticsInventory,
   AdminLogisticsLeadTime,
   AdminLogisticsFallback,
 } from "@/components/admin/flow-pages";
+import { AdminLogistics } from "@/components/admin/logistics-ops";
 import { AdminMessageTemplates } from "@/components/admin/message-templates";
 import { AdminSettings } from "@/components/admin/settings";
 import { UsersManagement } from "@/components/admin/users";

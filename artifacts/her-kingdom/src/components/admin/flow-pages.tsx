@@ -206,22 +206,8 @@ export function AdminQaRecalls() {
 }
 
 // ============ Logistics ============
-
-export function AdminLogistics() {
-  return (
-    <FlowStage
-      title="Order Records"
-      eyebrow="Pipeline · Logistics"
-      icon={Receipt}
-      blurb="End-to-end order ledger: dispatched, in-transit, delivered, exception. Source of truth for couriers."
-      steps={[
-        { label: "Dispatch", detail: "Auto-assign courier by delivery location + SLA." },
-        { label: "Track", detail: "Live status feeds into customer order page." },
-        { label: "Reconcile", detail: "POD + COD remittance + supplier performance score." },
-      ]}
-    />
-  )
-}
+// AdminLogistics (Operations) lives in `./logistics-ops.tsx` — the
+// fully functional, CMS-backed module that replaces the old placeholder.
 
 export function AdminLogisticsInventory() {
   return (
