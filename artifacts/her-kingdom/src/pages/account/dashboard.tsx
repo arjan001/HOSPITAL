@@ -133,8 +133,8 @@ export default function AccountDashboard() {
             </div>
             <Link
               href="/account/prescriptions"
-              className="inline-flex h-9 items-center gap-1.5 rounded-md px-4 text-xs font-semibold text-white shadow-sm"
-              style={{ background: `linear-gradient(135deg, ${ACCENT} 0%, #B91C1C 100%)` }}
+              className="inline-flex items-center gap-1 text-xs font-semibold underline-offset-4 hover:underline"
+              style={{ color: ACCENT }}
             >
               View all <ChevronRight className="h-3.5 w-3.5" />
             </Link>
