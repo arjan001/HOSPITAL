@@ -257,50 +257,47 @@ export function AdminPos() {
   return (
     <AdminShell title="Point of Sale">
       <PrintStyles />
-      <div className="space-y-5 print:hidden">
-        {/* Header band */}
-        <header
-          className="relative rounded-2xl overflow-hidden bg-white border p-6"
+      <div className="print:hidden -mx-4 lg:-mx-8 -mt-4 lg:-mt-8">
+        {/* Sticky topbar — sits right under the admin shell topbar (h-14) */}
+        <div
+          className="sticky top-14 z-20 bg-white/90 backdrop-blur-md border-b"
           style={{ borderColor: PEACH_LINE }}
         >
-          <div
-            aria-hidden
-            className="absolute inset-0 pointer-events-none"
-            style={{ background: `radial-gradient(120% 80% at 100% 0%, ${PEACH_BG} 0%, transparent 55%)` }}
-          />
-          <div className="relative flex items-center justify-between gap-4 flex-wrap">
-            <div className="flex items-center gap-4 min-w-0">
+          <div className="px-4 lg:px-8 h-16 flex items-center gap-3 lg:gap-4">
+            <div className="flex items-center gap-3 min-w-0">
               <div
-                className="w-12 h-12 rounded-2xl flex items-center justify-center border"
-                style={{ background: PEACH_BG, borderColor: PEACH_LINE, color: INK }}
+                className="w-10 h-10 rounded-xl flex items-center justify-center text-white shadow-sm"
+                style={{ background: INK }}
               >
                 <ReceiptIcon className="h-5 w-5" />
               </div>
-              <div className="min-w-0">
-                <p className="text-[10px] uppercase tracking-[0.18em] font-semibold text-muted-foreground">
-                  Over-the-counter · {settings.registerName}
+              <div className="min-w-0 hidden sm:block">
+                <p className="text-[10px] uppercase tracking-[0.18em] font-semibold text-muted-foreground leading-none">
+                  POS · {settings.registerName}
                 </p>
-                <h1 className="text-2xl font-semibold leading-tight" style={{ color: INK }}>Point of Sale</h1>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  {CASHIER_NAME}
-                  {shift && (
-                    <> · Open since {new Date(shift.openedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</>
-                  )}
+                <p className="text-sm font-semibold leading-tight mt-1 truncate" style={{ color: INK }}>
+                  {shift
+                    ? `Open since ${new Date(shift.openedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`
+                    : "Shift closed"}
                 </p>
               </div>
             </div>
-            <div className="flex items-center gap-3 flex-wrap">
+
+            <div className="ml-auto flex items-center gap-2 lg:gap-3">
               {shift ? (
                 <>
-                  <Stat label="Sales today" value={fmt(todaysSales.total, settings.currency)} />
-                  <Stat label="Receipts" value={String(todaysSales.count)} />
-                  <Stat label="Float" value={fmt(shift.openingFloat, settings.currency)} />
+                  <div className="hidden md:flex items-center gap-2">
+                    <Stat label="Sales" value={fmt(todaysSales.total, settings.currency)} />
+                    <Stat label="Sold" value={String(todaysSales.count)} />
+                    <Stat label="Float" value={fmt(shift.openingFloat, settings.currency)} />
+                  </div>
                   <button
                     onClick={() => setEndShiftModal(true)}
                     className="h-10 px-4 rounded-xl text-sm font-semibold border inline-flex items-center gap-1.5 hover:bg-secondary transition-colors"
                     style={{ borderColor: PEACH_LINE, color: INK }}
                   >
-                    <Clock className="h-4 w-4" /> End shift
+                    <Clock className="h-4 w-4" />
+                    <span className="hidden sm:inline">End shift</span>
                   </button>
                 </>
               ) : (
@@ -314,357 +311,363 @@ export function AdminPos() {
               )}
             </div>
           </div>
-        </header>
+        </div>
 
-        {/* Main split */}
-        <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_460px] gap-5">
-          {/* Catalogue */}
-          <section className="bg-white rounded-2xl border p-5" style={{ borderColor: PEACH_LINE }}>
-            <div className="flex flex-col md:flex-row md:items-center gap-2 mb-3">
-              <div className="relative flex-1">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <input
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  placeholder="Search drugs, brand or category"
-                  className="w-full h-10 pl-9 pr-3 rounded-lg border bg-white text-sm outline-none focus:ring-2"
-                  style={{ borderColor: "rgba(0,0,0,0.12)" }}
-                  autoFocus
-                />
-              </div>
-              <p className="text-[11px] text-muted-foreground">
-                {filtered.length} products{query ? ` for “${query}”` : ""}
-              </p>
-            </div>
-            <div className="flex gap-1.5 overflow-x-auto pb-2 mb-3 -mx-1 px-1">
-              {categories.map((c) => (
-                <button
-                  key={c}
-                  onClick={() => setCat(c)}
-                  className={`px-3 h-8 rounded-full text-xs font-semibold whitespace-nowrap border transition-colors ${
-                    cat === c ? "text-white" : "hover:bg-secondary"
-                  }`}
-                  style={cat === c
-                    ? { background: WINE, borderColor: WINE }
-                    : { borderColor: "rgba(0,0,0,0.1)" }}
-                >
-                  {c}
-                </button>
-              ))}
-            </div>
-            <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-2.5">
-              {filtered.map((p) => (
-                <button
-                  key={p.id}
-                  onClick={() => addToCart(p)}
-                  disabled={!p.inStock}
-                  className="group text-left rounded-xl border bg-white hover:border-foreground/30 hover:shadow-md transition-all p-2.5 flex flex-col disabled:opacity-50 disabled:cursor-not-allowed"
-                  style={{ borderColor: "rgba(0,0,0,0.08)" }}
-                >
-                  <div className="aspect-square bg-secondary rounded-lg flex items-center justify-center overflow-hidden mb-2">
-                    {p.images?.[0] ? (
-                      <img src={p.images[0]} alt={p.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
-                    ) : (
-                      <Pill className="h-7 w-7" style={{ color: WINE }} />
-                    )}
-                  </div>
-                  <p className="text-xs font-semibold leading-snug line-clamp-2 min-h-[2.2em]">{p.name}</p>
-                  <div className="flex items-center justify-between mt-1">
-                    <span className="text-sm font-bold" style={{ color: WINE }}>
-                      {fmt(p.price, settings.currency)}
-                    </span>
-                    {!p.inStock ? (
-                      <span className="text-[9px] font-bold uppercase text-rose-600">Out</span>
-                    ) : typeof p.stockCount === "number" && p.stockCount <= (p.lowStockThreshold ?? 5) ? (
-                      <span className="text-[9px] font-bold uppercase text-amber-600">Low</span>
-                    ) : null}
-                  </div>
-                </button>
-              ))}
-              {filtered.length === 0 && (
-                <p className="col-span-full text-center text-sm text-muted-foreground py-10">
-                  No products match the current filter.
-                </p>
-              )}
-            </div>
-          </section>
-
-          {/* Cart / checkout */}
-          <aside className="bg-white rounded-2xl border flex flex-col max-h-[calc(100vh-180px)]" style={{ borderColor: "rgba(0,0,0,0.08)" }}>
-            <div className="p-3 border-b flex items-center justify-between" style={{ borderColor: "rgba(0,0,0,0.06)" }}>
-              <h2 className="text-sm font-bold inline-flex items-center gap-1.5">
-                <ClipboardList className="h-4 w-4" style={{ color: WINE }} /> Current sale
-                <span className="text-[10px] font-semibold text-muted-foreground">({totals.itemCount} item{totals.itemCount === 1 ? "" : "s"})</span>
-              </h2>
-              {cart.length > 0 && (
-                <button onClick={resetCart} className="text-[11px] text-muted-foreground hover:text-rose-600 inline-flex items-center gap-1">
-                  <Trash2 className="h-3 w-3" /> Clear
-                </button>
-              )}
-            </div>
-
-            {/* Lines */}
-            <div className="flex-1 overflow-y-auto p-2 space-y-1.5">
-              {cart.length === 0 ? (
-                <div className="text-center text-xs text-muted-foreground py-10 px-4">
-                  <Pill className="h-7 w-7 mx-auto mb-2 opacity-30" />
-                  Tap a product on the left to start a sale.
-                  <br />
-                  <span className="text-[10px]">Tip: use <kbd className="px-1 rounded bg-secondary">Search</kbd> to scan by name.</span>
+        {/* Main split — full-bleed, no outer card */}
+        <div className="px-4 lg:px-8 pt-4 lg:pt-6 pb-6">
+          <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_440px] gap-4 lg:gap-6 items-start">
+            {/* Catalogue */}
+            <section className="min-w-0">
+              <div className="flex flex-col md:flex-row md:items-center gap-2 mb-3">
+                <div className="relative flex-1">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <input
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    placeholder="Search drugs, brand or category"
+                    className="w-full h-11 pl-10 pr-3 rounded-xl border bg-white text-sm outline-none focus:ring-2 focus:ring-offset-0 shadow-sm"
+                    style={{ borderColor: PEACH_LINE }}
+                    autoFocus
+                  />
                 </div>
-              ) : (
-                cart.map((l) => (
-                  <div key={l.productId} className="rounded-lg border p-2" style={{ borderColor: "rgba(0,0,0,0.06)" }}>
-                    <div className="flex items-start justify-between gap-2">
-                      <p className="text-xs font-semibold flex-1 leading-snug">{l.name}</p>
-                      <button onClick={() => removeLine(l.productId)} className="text-muted-foreground hover:text-rose-600">
-                        <X className="h-3.5 w-3.5" />
-                      </button>
+                <p className="text-[11px] text-muted-foreground px-1">
+                  {filtered.length} item{filtered.length === 1 ? "" : "s"}{query ? ` for “${query}”` : ""}
+                </p>
+              </div>
+              <div className="flex gap-1.5 overflow-x-auto pb-3 -mx-1 px-1 scrollbar-thin">
+                {categories.map((c) => (
+                  <button
+                    key={c}
+                    onClick={() => setCat(c)}
+                    className={`px-3.5 h-9 rounded-full text-xs font-semibold whitespace-nowrap border transition-all ${
+                      cat === c ? "text-white shadow-sm" : "hover:bg-secondary bg-white"
+                    }`}
+                    style={cat === c
+                      ? { background: INK, borderColor: INK }
+                      : { borderColor: PEACH_LINE }}
+                  >
+                    {c}
+                  </button>
+                ))}
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-3">
+                {filtered.map((p) => (
+                  <button
+                    key={p.id}
+                    onClick={() => addToCart(p)}
+                    disabled={!p.inStock}
+                    className="group text-left rounded-2xl border bg-white hover:shadow-lg hover:-translate-y-0.5 transition-all p-3 flex flex-col disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 disabled:hover:shadow-none"
+                    style={{ borderColor: PEACH_LINE }}
+                  >
+                    <div className="aspect-square rounded-xl flex items-center justify-center overflow-hidden mb-2.5" style={{ background: PEACH_BG }}>
+                      {p.images?.[0] ? (
+                        <img src={p.images[0]} alt={p.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
+                      ) : (
+                        <Pill className="h-8 w-8" style={{ color: CORAL }} />
+                      )}
                     </div>
+                    <p className="text-xs font-semibold leading-snug line-clamp-2 min-h-[2.2em]" style={{ color: INK }}>{p.name}</p>
                     <div className="flex items-center justify-between mt-1.5">
-                      <div className="inline-flex items-center gap-1 rounded-md border" style={{ borderColor: "rgba(0,0,0,0.08)" }}>
-                        <button onClick={() => setQty(l.productId, l.quantity - 1)} className="w-7 h-7 inline-flex items-center justify-center hover:bg-secondary">
-                          <Minus className="h-3 w-3" />
-                        </button>
-                        <input
-                          type="number"
-                          min={1}
-                          value={l.quantity}
-                          onChange={(e) => setQty(l.productId, Math.max(1, Number(e.target.value)))}
-                          className="w-10 text-center text-xs font-bold outline-none bg-transparent"
-                        />
-                        <button onClick={() => setQty(l.productId, l.quantity + 1)} className="w-7 h-7 inline-flex items-center justify-center hover:bg-secondary">
-                          <Plus className="h-3 w-3" />
+                      <span className="text-sm font-bold tabular-nums" style={{ color: INK }}>
+                        {fmt(p.price, settings.currency)}
+                      </span>
+                      {!p.inStock ? (
+                        <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-md bg-rose-50 text-rose-700 border border-rose-200">Out</span>
+                      ) : typeof p.stockCount === "number" && p.stockCount <= (p.lowStockThreshold ?? 5) ? (
+                        <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-md bg-amber-50 text-amber-700 border border-amber-200">Low</span>
+                      ) : null}
+                    </div>
+                  </button>
+                ))}
+                {filtered.length === 0 && (
+                  <p className="col-span-full text-center text-sm text-muted-foreground py-16">
+                    No products match the current filter.
+                  </p>
+                )}
+              </div>
+            </section>
+
+            {/* Cart — sticky right rail */}
+            <aside
+              className="bg-white rounded-2xl border flex flex-col shadow-sm lg:sticky lg:top-[6.25rem] max-h-[calc(100vh-7.5rem)]"
+              style={{ borderColor: PEACH_LINE }}
+            >
+              <div className="px-4 py-3 border-b flex items-center justify-between" style={{ borderColor: PEACH_LINE }}>
+                <h2 className="text-sm font-bold inline-flex items-center gap-1.5" style={{ color: INK }}>
+                  <ClipboardList className="h-4 w-4" style={{ color: CORAL }} /> Current sale
+                  <span className="text-[10px] font-semibold text-muted-foreground">({totals.itemCount} item{totals.itemCount === 1 ? "" : "s"})</span>
+                </h2>
+                {cart.length > 0 && (
+                  <button onClick={resetCart} className="text-[11px] text-muted-foreground hover:text-rose-600 inline-flex items-center gap-1">
+                    <Trash2 className="h-3 w-3" /> Clear
+                  </button>
+                )}
+              </div>
+
+              {/* Lines */}
+              <div className="flex-1 overflow-y-auto p-2.5 space-y-1.5 min-h-[120px]">
+                {cart.length === 0 ? (
+                  <div className="text-center text-xs text-muted-foreground py-10 px-4">
+                    <div className="w-12 h-12 mx-auto mb-2 rounded-2xl flex items-center justify-center" style={{ background: PEACH_BG }}>
+                      <Pill className="h-6 w-6" style={{ color: CORAL }} />
+                    </div>
+                    Tap a product to start a sale.
+                    <br />
+                    <span className="text-[10px]">Use <kbd className="px-1 rounded bg-secondary">Search</kbd> to scan by name.</span>
+                  </div>
+                ) : (
+                  cart.map((l) => (
+                    <div key={l.productId} className="rounded-xl border p-2.5 bg-white hover:border-foreground/20 transition-colors" style={{ borderColor: PEACH_LINE }}>
+                      <div className="flex items-start justify-between gap-2">
+                        <p className="text-xs font-semibold flex-1 leading-snug" style={{ color: INK }}>{l.name}</p>
+                        <button onClick={() => removeLine(l.productId)} className="text-muted-foreground hover:text-rose-600 -mt-0.5 -mr-0.5">
+                          <X className="h-3.5 w-3.5" />
                         </button>
                       </div>
-                      <p className="text-xs">
-                        <span className="text-muted-foreground">{fmt(l.unitPrice, settings.currency)} ×</span>{" "}
-                        <span className="font-bold">{fmt(l.unitPrice * l.quantity, settings.currency)}</span>
-                      </p>
+                      <div className="flex items-center justify-between mt-1.5">
+                        <div className="inline-flex items-center gap-0.5 rounded-lg border bg-white" style={{ borderColor: PEACH_LINE }}>
+                          <button onClick={() => setQty(l.productId, l.quantity - 1)} className="w-7 h-7 inline-flex items-center justify-center hover:bg-secondary rounded-l-lg">
+                            <Minus className="h-3 w-3" />
+                          </button>
+                          <input
+                            type="number"
+                            min={1}
+                            value={l.quantity}
+                            onChange={(e) => setQty(l.productId, Math.max(1, Number(e.target.value)))}
+                            className="w-10 text-center text-xs font-bold outline-none bg-transparent"
+                          />
+                          <button onClick={() => setQty(l.productId, l.quantity + 1)} className="w-7 h-7 inline-flex items-center justify-center hover:bg-secondary rounded-r-lg">
+                            <Plus className="h-3 w-3" />
+                          </button>
+                        </div>
+                        <p className="text-xs tabular-nums">
+                          <span className="text-muted-foreground">{fmt(l.unitPrice, settings.currency)} ×</span>{" "}
+                          <span className="font-bold" style={{ color: INK }}>{fmt(l.unitPrice * l.quantity, settings.currency)}</span>
+                        </p>
+                      </div>
                     </div>
-                  </div>
-                ))
-              )}
-            </div>
-
-            {/* Customer (optional) */}
-            <div className="px-3 pt-2 pb-1 border-t" style={{ borderColor: "rgba(0,0,0,0.06)" }}>
-              <label className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground inline-flex items-center gap-1">
-                <UserIcon className="h-3 w-3" /> Customer (optional)
-              </label>
-              <input
-                value={customer}
-                onChange={(e) => setCustomer(e.target.value)}
-                placeholder="Walk-in"
-                className="w-full mt-0.5 h-8 px-2 rounded-md border text-xs bg-white outline-none"
-                style={{ borderColor: "rgba(0,0,0,0.1)" }}
-              />
-            </div>
-
-            {/* Totals */}
-            <div className="px-4 py-3 border-t space-y-1 text-xs" style={{ borderColor: PEACH_LINE }}>
-              <TotalRow label="Subtotal" value={fmt(totals.subtotal, settings.currency)} />
-              {totals.discountTotal > 0 && <TotalRow label="Discount" value={`− ${fmt(totals.discountTotal, settings.currency)}`} accent />}
-              <TotalRow label={`Tax (${settings.taxRate}%${settings.taxInclusive ? " incl" : ""})`} value={fmt(totals.taxTotal, settings.currency)} />
-              <div className="flex items-center justify-between pt-1 border-t mt-1" style={{ borderColor: "rgba(0,0,0,0.08)" }}>
-                <span className="text-[11px] uppercase font-bold tracking-wider">Total</span>
-                <span className="text-lg font-bold" style={{ color: WINE }}>{fmt(totals.total, settings.currency)}</span>
-              </div>
-            </div>
-
-            {/* Payment method */}
-            <div className="px-4 pt-3 border-t" style={{ borderColor: PEACH_LINE }}>
-              <div className="grid grid-cols-4 gap-1">
-                {(["cash", "mpesa", "card", "credit"] as PaymentMethod[]).map((m) => {
-                  const Icon = METHOD_META[m].icon
-                  const enabled = settings.enabledMethods.includes(m)
-                  const active = paymentMethod === m
-                  return (
-                    <button
-                      key={m}
-                      disabled={!enabled}
-                      onClick={() => setPaymentMethod(m)}
-                      className={`h-10 rounded-md text-[10px] font-bold uppercase tracking-wide inline-flex flex-col items-center justify-center gap-0.5 border transition-colors disabled:opacity-30 disabled:cursor-not-allowed ${active ? "text-white" : "hover:bg-secondary"}`}
-                      style={active
-                        ? { background: WINE, borderColor: WINE }
-                        : { borderColor: "rgba(0,0,0,0.1)" }}
-                    >
-                      <Icon className="h-3.5 w-3.5" />
-                      {METHOD_META[m].label}
-                    </button>
-                  )
-                })}
+                  ))
+                )}
               </div>
 
-              {paymentMethod === "cash" && (
-                <div className="mt-2">
-                  <div className="flex items-center justify-between">
-                    <label className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">Cash tendered</label>
-                    <button onClick={() => setTendered(String(totals.total))} className="text-[10px] underline">Exact</button>
-                  </div>
-                  <input
-                    type="number"
-                    value={tendered}
-                    onChange={(e) => setTendered(e.target.value)}
-                    placeholder="0.00"
-                    className="w-full h-9 px-2 rounded-md border text-sm font-bold bg-white outline-none"
-                    style={{ borderColor: "rgba(0,0,0,0.1)" }}
-                  />
-                  <div className="flex flex-wrap gap-1 mt-1">
-                    {QUICK_TENDER.map((amt) => (
-                      <button
-                        key={amt}
-                        onClick={() => setTendered(String((Number(tendered) || 0) + amt))}
-                        className="px-2 h-6 rounded-md border text-[10px] font-bold hover:bg-secondary"
-                        style={{ borderColor: "rgba(0,0,0,0.1)" }}
-                      >
-                        +{amt}
-                      </button>
-                    ))}
-                  </div>
-                  {tenderedNum > 0 && (
-                    <div className="flex items-center justify-between mt-1.5 text-xs">
-                      <span className="text-muted-foreground inline-flex items-center gap-1"><Calculator className="h-3 w-3" /> Change due</span>
-                      <span className="font-bold" style={{ color: change > 0 ? ACCENT : "inherit" }}>{fmt(change, settings.currency)}</span>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {paymentMethod === "mpesa" && (
-                <MpesaStkPad
-                  phone={mpesaPhone}
-                  setPhone={setMpesaPhone}
-                  amount={totals.total}
-                  customer={customer}
-                  stage={mpesaStage}
-                  message={mpesaMessage}
-                  seconds={mpesaSeconds}
-                  paidRef={paymentRef}
-                  onSend={async () => {
-                    const clean = sanitizePhone(mpesaPhone)
-                    if (!clean) {
-                      setMpesaMessage("Enter a valid Safaricom number, e.g. 0712345678")
-                      setMpesaStage("failed"); return
-                    }
-                    if (totals.total <= 0) {
-                      setMpesaMessage("Cart total must be greater than zero")
-                      setMpesaStage("failed"); return
-                    }
-                    const orderNumber = `POS-${Date.now().toString(36).toUpperCase()}`
-                    setMpesaStage("pushing"); setMpesaMessage("Sending request to your phone…")
-                    try {
-                      const res = await fetch("/api/payments/payhero/stk", {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({
-                          orderNumber, phone: clean,
-                          amount: Math.round(totals.total),
-                          customerName: customer.trim() || "Walk-in",
-                        }),
-                      })
-                      const data = await res.json().catch(() => ({}))
-                      if (!res.ok || !data?.success) {
-                        setMpesaStage("failed")
-                        setMpesaMessage(data?.error || "Could not reach M-Pesa. Try again.")
-                        return
-                      }
-                      setMpesaStage("waiting")
-                      setMpesaMessage("Check your phone and enter your M-Pesa PIN.")
-                      // Countdown + poll status
-                      let left = 60; setMpesaSeconds(left)
-                      mpesaTimers.current.tick = setInterval(() => {
-                        left -= 1; setMpesaSeconds(Math.max(0, left))
-                        if (left <= 0) {
-                          stopMpesaTimers(); setMpesaStage("failed")
-                          setMpesaMessage("No confirmation in time. Customer can try again.")
-                        }
-                      }, 1000)
-                      mpesaTimers.current.poll = setInterval(async () => {
-                        try {
-                          const r = await fetch(`/api/payments/payhero/status?orderNumber=${encodeURIComponent(orderNumber)}`)
-                          const d = await r.json().catch(() => ({}))
-                          if (!r.ok) return
-                          if (d.status === "success") {
-                            stopMpesaTimers(); setMpesaStage("paid")
-                            const ref = d.mpesaReceipt || orderNumber
-                            setPaymentRef(ref)
-                            setMpesaMessage(`Paid · ${ref}`)
-                            notify.success("M-Pesa payment received", { description: ref })
-                          } else if (d.status === "failed" || d.status === "cancelled") {
-                            stopMpesaTimers(); setMpesaStage("failed")
-                            setMpesaMessage(d.status === "cancelled" ? "Cancelled on the customer's phone." : (d.message || "Payment did not go through."))
-                          }
-                        } catch { /* keep polling */ }
-                      }, 3000)
-                    } catch {
-                      setMpesaStage("failed"); setMpesaMessage("Network error. Try again.")
-                    }
-                  }}
-                  onCancel={() => {
-                    stopMpesaTimers(); setMpesaStage("idle"); setMpesaMessage(""); setPaymentRef("")
-                  }}
+              {/* Customer (optional) */}
+              <div className="px-4 pt-2 pb-1 border-t" style={{ borderColor: PEACH_LINE }}>
+                <label className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground inline-flex items-center gap-1">
+                  <UserIcon className="h-3 w-3" /> Customer (optional)
+                </label>
+                <input
+                  value={customer}
+                  onChange={(e) => setCustomer(e.target.value)}
+                  placeholder="Walk-in"
+                  className="w-full mt-0.5 h-9 px-2.5 rounded-lg border text-xs bg-white outline-none focus:ring-2"
+                  style={{ borderColor: PEACH_LINE }}
                 />
-              )}
-
-              {paymentMethod === "card" && (
-                <div className="mt-2">
-                  <label className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">Card auth code (optional)</label>
-                  <input
-                    value={paymentRef}
-                    onChange={(e) => setPaymentRef(e.target.value)}
-                    placeholder="Last 4 / auth ref"
-                    className="w-full h-9 px-2 rounded-md border text-sm font-mono bg-white outline-none"
-                    style={{ borderColor: "rgba(0,0,0,0.1)" }}
-                  />
-                </div>
-              )}
-
-              {paymentMethod === "credit" && (
-                <p className="mt-2 text-[11px] text-muted-foreground inline-flex items-center gap-1 px-2 py-1 rounded bg-amber-50 border border-amber-200">
-                  <AlertTriangle className="h-3 w-3" /> Credit / IOU — settle at end of shift.
-                </p>
-              )}
-            </div>
-
-            {/* Actions */}
-            <div className="p-4 border-t space-y-2.5" style={{ borderColor: PEACH_LINE }}>
-              <div className="grid grid-cols-3 gap-1.5">
-                <SmallAction label="Hold" icon={Pause} onClick={() => cart.length > 0 ? setHoldModal(true) : notify.warning("Cart is empty")} />
-                <SmallAction label={`Recall${held.length ? ` (${held.length})` : ""}`} icon={Play} onClick={() => held.length ? setRecallModal(true) : notify.info("No held orders")} />
-                <SmallAction label="Discount" icon={Percent} onClick={() => cart.length > 0 ? setDiscountModal(true) : notify.warning("Cart is empty")} />
               </div>
-              <button
-                onClick={() => charge(false)}
-                disabled={!canCharge}
-                className="w-full h-12 rounded-lg text-sm font-bold text-white inline-flex items-center justify-center gap-2 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed shadow"
-                style={{ background: WINE }}
-              >
-                <CheckCircle2 className="h-4 w-4" /> Charge {fmt(totals.total, settings.currency)}
-              </button>
-              <button
-                onClick={() => charge(true)}
-                disabled={!canCharge}
-                className="w-full h-10 rounded-lg text-xs font-bold inline-flex items-center justify-center gap-2 border transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                style={{ borderColor: WINE, color: WINE }}
-              >
-                <Printer className="h-3.5 w-3.5" /> Charge & Print
-              </button>
-              {lastReceipt && (
+
+              {/* Totals */}
+              <div className="px-4 py-3 border-t space-y-1 text-xs" style={{ borderColor: PEACH_LINE }}>
+                <TotalRow label="Subtotal" value={fmt(totals.subtotal, settings.currency)} />
+                {totals.discountTotal > 0 && <TotalRow label="Discount" value={`− ${fmt(totals.discountTotal, settings.currency)}`} accent />}
+                <TotalRow label={`Tax (${settings.taxRate}%${settings.taxInclusive ? " incl" : ""})`} value={fmt(totals.taxTotal, settings.currency)} />
+                <div className="flex items-center justify-between pt-2 border-t mt-1" style={{ borderColor: PEACH_LINE }}>
+                  <span className="text-[11px] uppercase font-bold tracking-wider" style={{ color: INK }}>Total</span>
+                  <span className="text-xl font-bold tabular-nums" style={{ color: INK }}>{fmt(totals.total, settings.currency)}</span>
+                </div>
+              </div>
+
+              {/* Payment method */}
+              <div className="px-4 pt-3 border-t" style={{ borderColor: PEACH_LINE }}>
+                <div className="grid grid-cols-4 gap-1.5">
+                  {(["cash", "mpesa", "card", "credit"] as PaymentMethod[]).map((m) => {
+                    const Icon = METHOD_META[m].icon
+                    const enabled = settings.enabledMethods.includes(m)
+                    const active = paymentMethod === m
+                    return (
+                      <button
+                        key={m}
+                        disabled={!enabled}
+                        onClick={() => setPaymentMethod(m)}
+                        className={`h-11 rounded-xl text-[10px] font-bold uppercase tracking-wide inline-flex flex-col items-center justify-center gap-0.5 border transition-all disabled:opacity-30 disabled:cursor-not-allowed ${active ? "text-white shadow-sm" : "hover:bg-secondary bg-white"}`}
+                        style={active
+                          ? { background: INK, borderColor: INK }
+                          : { borderColor: PEACH_LINE }}
+                      >
+                        <Icon className="h-3.5 w-3.5" />
+                        {METHOD_META[m].label}
+                      </button>
+                    )
+                  })}
+                </div>
+
+                {paymentMethod === "cash" && (
+                  <div className="mt-3">
+                    <div className="flex items-center justify-between">
+                      <label className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">Cash tendered</label>
+                      <button onClick={() => setTendered(String(totals.total))} className="text-[10px] underline font-semibold">Exact</button>
+                    </div>
+                    <input
+                      type="number"
+                      value={tendered}
+                      onChange={(e) => setTendered(e.target.value)}
+                      placeholder="0.00"
+                      className="w-full h-10 px-2.5 rounded-lg border text-sm font-bold bg-white outline-none focus:ring-2 mt-1"
+                      style={{ borderColor: PEACH_LINE }}
+                    />
+                    <div className="flex flex-wrap gap-1 mt-1.5">
+                      {QUICK_TENDER.map((amt) => (
+                        <button
+                          key={amt}
+                          onClick={() => setTendered(String((Number(tendered) || 0) + amt))}
+                          className="px-2 h-7 rounded-lg border text-[10px] font-bold hover:bg-secondary bg-white"
+                          style={{ borderColor: PEACH_LINE }}
+                        >
+                          +{amt}
+                        </button>
+                      ))}
+                    </div>
+                    {tenderedNum > 0 && (
+                      <div className="flex items-center justify-between mt-2 text-xs">
+                        <span className="text-muted-foreground inline-flex items-center gap-1"><Calculator className="h-3 w-3" /> Change due</span>
+                        <span className="font-bold tabular-nums" style={{ color: change > 0 ? CORAL : "inherit" }}>{fmt(change, settings.currency)}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {paymentMethod === "mpesa" && (
+                  <MpesaStkPad
+                    phone={mpesaPhone}
+                    setPhone={setMpesaPhone}
+                    amount={totals.total}
+                    customer={customer}
+                    stage={mpesaStage}
+                    message={mpesaMessage}
+                    seconds={mpesaSeconds}
+                    paidRef={paymentRef}
+                    onSend={async () => {
+                      const clean = sanitizePhone(mpesaPhone)
+                      if (!clean) {
+                        setMpesaMessage("Enter a valid Kenyan number, e.g. 0712345678 or 0112345678")
+                        setMpesaStage("failed"); return
+                      }
+                      if (totals.total <= 0) {
+                        setMpesaMessage("Cart total must be greater than zero")
+                        setMpesaStage("failed"); return
+                      }
+                      const orderNumber = `POS-${Date.now().toString(36).toUpperCase()}`
+                      setMpesaStage("pushing"); setMpesaMessage("Sending request to your phone…")
+                      try {
+                        const res = await fetch("/api/payments/payhero/stk", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({
+                            orderNumber, phone: clean,
+                            amount: Math.round(totals.total),
+                            customerName: customer.trim() || "Walk-in",
+                          }),
+                        })
+                        const data = await res.json().catch(() => ({}))
+                        if (!res.ok || !data?.success) {
+                          setMpesaStage("failed")
+                          setMpesaMessage(data?.error || "Could not reach M-Pesa. Try again.")
+                          return
+                        }
+                        setMpesaStage("waiting")
+                        setMpesaMessage("Check your phone and enter your M-Pesa PIN.")
+                        let left = 60; setMpesaSeconds(left)
+                        mpesaTimers.current.tick = setInterval(() => {
+                          left -= 1; setMpesaSeconds(Math.max(0, left))
+                          if (left <= 0) {
+                            stopMpesaTimers(); setMpesaStage("failed")
+                            setMpesaMessage("No confirmation in time. Customer can try again.")
+                          }
+                        }, 1000)
+                        mpesaTimers.current.poll = setInterval(async () => {
+                          try {
+                            const r = await fetch(`/api/payments/payhero/status?orderNumber=${encodeURIComponent(orderNumber)}`)
+                            const d = await r.json().catch(() => ({}))
+                            if (!r.ok) return
+                            if (d.status === "success") {
+                              stopMpesaTimers(); setMpesaStage("paid")
+                              const ref = d.mpesaReceipt || orderNumber
+                              setPaymentRef(ref)
+                              setMpesaMessage(`Paid · ${ref}`)
+                              notify.success("M-Pesa payment received", { description: ref })
+                            } else if (d.status === "failed" || d.status === "cancelled") {
+                              stopMpesaTimers(); setMpesaStage("failed")
+                              setMpesaMessage(d.status === "cancelled" ? "Cancelled on the customer's phone." : (d.message || "Payment did not go through."))
+                            }
+                          } catch { /* keep polling */ }
+                        }, 3000)
+                      } catch {
+                        setMpesaStage("failed"); setMpesaMessage("Network error. Try again.")
+                      }
+                    }}
+                    onCancel={() => {
+                      stopMpesaTimers(); setMpesaStage("idle"); setMpesaMessage(""); setPaymentRef("")
+                    }}
+                  />
+                )}
+
+                {paymentMethod === "card" && (
+                  <div className="mt-3">
+                    <label className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">Card auth code (optional)</label>
+                    <input
+                      value={paymentRef}
+                      onChange={(e) => setPaymentRef(e.target.value)}
+                      placeholder="Last 4 / auth ref"
+                      className="w-full h-10 px-2.5 rounded-lg border text-sm font-mono bg-white outline-none focus:ring-2 mt-1"
+                      style={{ borderColor: PEACH_LINE }}
+                    />
+                  </div>
+                )}
+
+                {paymentMethod === "credit" && (
+                  <p className="mt-3 text-[11px] text-amber-800 inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-amber-50 border border-amber-200">
+                    <AlertTriangle className="h-3 w-3" /> Credit / IOU — settle at end of shift.
+                  </p>
+                )}
+              </div>
+
+              {/* Actions */}
+              <div className="p-4 border-t space-y-2.5" style={{ borderColor: PEACH_LINE }}>
+                <div className="grid grid-cols-3 gap-1.5">
+                  <SmallAction label="Hold" icon={Pause} onClick={() => cart.length > 0 ? setHoldModal(true) : notify.warning("Cart is empty")} />
+                  <SmallAction label={`Recall${held.length ? ` (${held.length})` : ""}`} icon={Play} onClick={() => held.length ? setRecallModal(true) : notify.info("No held orders")} />
+                  <SmallAction label="Discount" icon={Percent} onClick={() => cart.length > 0 ? setDiscountModal(true) : notify.warning("Cart is empty")} />
+                </div>
                 <button
-                  onClick={() => setPreviewModal(true)}
-                  className="w-full text-[11px] text-muted-foreground hover:text-foreground inline-flex items-center justify-center gap-1"
+                  onClick={() => charge(false)}
+                  disabled={!canCharge}
+                  className="w-full h-12 rounded-xl text-sm font-bold text-white inline-flex items-center justify-center gap-2 transition-all disabled:opacity-40 disabled:cursor-not-allowed shadow-sm hover:shadow-md"
+                  style={{ background: INK }}
                 >
-                  <ReceiptIcon className="h-3 w-3" /> Reprint last receipt ({lastReceipt.id})
-                  <ChevronRight className="h-3 w-3" />
+                  <CheckCircle2 className="h-4 w-4" /> Charge {fmt(totals.total, settings.currency)}
                 </button>
-              )}
-            </div>
-          </aside>
+                <button
+                  onClick={() => charge(true)}
+                  disabled={!canCharge}
+                  className="w-full h-10 rounded-xl text-xs font-bold inline-flex items-center justify-center gap-2 border transition-colors disabled:opacity-40 disabled:cursor-not-allowed hover:bg-secondary"
+                  style={{ borderColor: PEACH_LINE, color: INK }}
+                >
+                  <Printer className="h-3.5 w-3.5" /> Charge & Print
+                </button>
+                {lastReceipt && (
+                  <button
+                    onClick={() => setPreviewModal(true)}
+                    className="w-full text-[11px] text-muted-foreground hover:text-foreground inline-flex items-center justify-center gap-1"
+                  >
+                    <ReceiptIcon className="h-3 w-3" /> Reprint last receipt ({lastReceipt.id})
+                    <ChevronRight className="h-3 w-3" />
+                  </button>
+                )}
+              </div>
+            </aside>
+          </div>
         </div>
       </div>
 
-      {/* Modals */}
+            {/* Modals */}
       {openShiftModal && (
         <OpenShiftModal
           settings={settings}
