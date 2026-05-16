@@ -1,22 +1,17 @@
 import { Link } from "wouter"
-import { Heart, MapPin, Package, User as UserIcon, Mail, Phone, Settings, ShieldCheck, ClipboardList, Pill, Clock, CheckCircle2 } from "lucide-react"
-import { useMe, useAddresses, useOrders, useWishlistRemote } from "@/lib/api-nest"
-import { useCmsCollection } from "@/lib/cms-store"
-import type { Prescription } from "@/components/admin/prescriptions"
-
-type UserPrescriptionRow = {
-  id: string
-  rxNumber: string
-  name: string
-  date: string
-  total: number
-  recipient: string
-  status: "Pending" | "Verified" | "Dispensed" | "Cancelled"
-}
+import { Heart, MapPin, Package, User as UserIcon, Mail, Phone, Settings, ShieldCheck, ClipboardList, Pill, Clock, CheckCheck, ChevronRight, Upload, FileText } from "lucide-react"
+import { useMe, useAddresses, useOrders, useWishlistRemote, useMyPrescriptions } from "@/lib/api-nest"
 
 const WINE = "#3D0814"
 const ACCENT = "#F97316"
 const CREAM = "#FFFBF5"
+
+const STATUS_TONES: Record<"pending" | "verified" | "dispensed" | "rejected", { label: string; color: string; bg: string }> = {
+  pending:   { label: "Awaiting",  color: "#92400E", bg: "#FEF3C7" },
+  verified:  { label: "Verified",  color: "#166534", bg: "#DCFCE7" },
+  dispensed: { label: "Dispensed", color: "#1E40AF", bg: "#DBEAFE" },
+  rejected:  { label: "Action",    color: "#991B1B", bg: "#FEE2E2" },
+}
 
 function MiniRxStat({ icon: Icon, label, value, tone, bg }: {
   icon: typeof Heart; label: string; value: number; tone: string; bg: string
@@ -71,17 +66,12 @@ export default function AccountDashboard() {
   const { data: addresses } = useAddresses()
   const { data: orders } = useOrders()
   const { data: wishlist } = useWishlistRemote()
-  const { items: rxRows } = useCmsCollection<UserPrescriptionRow>("user-prescriptions", [])
-  const { items: adminRxItems } = useCmsCollection<Prescription>("prescriptions", [])
-  const adminRxById = new Map(adminRxItems.map((p) => [p.id, p]))
-  const rxPending = rxRows.filter((r) => {
-    const a = adminRxById.get(r.id)
-    return a ? a.status === "pending" : r.status === "Pending"
-  }).length
-  const rxVerified = rxRows.filter((r) => {
-    const a = adminRxById.get(r.id)
-    return a ? (a.status === "verified" || a.status === "dispensed") : (r.status === "Verified" || r.status === "Dispensed")
-  }).length
+  const { data: rxList } = useMyPrescriptions()
+  const rxRows = rxList ?? []
+  const rxPending = rxRows.filter((r) => r.status === "pending").length
+  const rxVerifiedOrDispensed = rxRows.filter((r) => r.status === "verified" || r.status === "dispensed").length
+  const rxApprovedMeds = rxRows.reduce((s, r) => s + r.approvedDrugs.length, 0)
+  const rxAttention = rxRows.filter((r) => r.status === "rejected").length
 
   const firstName = me?.fullName ? me.fullName.split(" ")[0] : ""
 
@@ -120,40 +110,111 @@ export default function AccountDashboard() {
           <StatCard icon={UserIcon} label="Profile" value={me?.email ? "Set" : "Incomplete"} href="/account/settings" />
         </div>
 
-        {rxRows.length > 0 && (
-          <div className="space-y-3 rounded-xl border border-border bg-white p-5">
-            <div className="flex items-center justify-between">
-              <h2 className="font-semibold" style={{ color: WINE }}>Prescriptions</h2>
-              <Link href="/account/prescriptions" className="text-xs font-semibold" style={{ color: ACCENT }}>
-                View all
-              </Link>
+        {/* Always-visible prescriptions panel — the click target the user expects
+            even before they have any uploads. */}
+        <div className="overflow-hidden rounded-2xl border border-border bg-white shadow-sm">
+          <div
+            className="flex flex-wrap items-center justify-between gap-3 px-5 py-4"
+            style={{ background: "linear-gradient(135deg, #FFF7ED 0%, #FFFBEB 100%)" }}
+          >
+            <div className="flex items-center gap-3">
+              <div
+                className="grid h-10 w-10 place-items-center rounded-xl"
+                style={{ background: `${ACCENT}1a`, color: ACCENT }}
+              >
+                <ClipboardList className="h-5 w-5" />
+              </div>
+              <div>
+                <h2 className="text-sm font-bold" style={{ color: WINE }}>My prescriptions</h2>
+                <p className="text-[11px] text-muted-foreground">
+                  Track status, approved medication and pharmacist notes.
+                </p>
+              </div>
             </div>
-            <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
-              <MiniRxStat icon={Clock} label="Awaiting review" value={rxPending} tone="#92400E" bg="#FEF3C7" />
-              <MiniRxStat icon={CheckCircle2} label="Verified / dispensed" value={rxVerified} tone="#166534" bg="#DCFCE7" />
-              <MiniRxStat icon={Pill} label="Approved medications" value={
-                rxRows.reduce((sum, r) => sum + (adminRxById.get(r.id)?.recommendedDrugs?.length ?? 0), 0)
-              } tone="#1E40AF" bg="#DBEAFE" />
-            </div>
-            <ul className="divide-y divide-border">
-              {rxRows.slice(0, 3).map((r) => {
-                const a = adminRxById.get(r.id)
-                const status = a?.status ?? r.status.toLowerCase()
-                return (
-                  <li key={r.id}>
-                    <Link href="/account/prescriptions" className="flex items-center justify-between py-2.5">
-                      <div className="min-w-0">
-                        <div className="text-sm font-medium" style={{ color: WINE }}>Rx-{r.rxNumber}</div>
-                        <div className="text-[11px] text-muted-foreground truncate">{r.name}</div>
-                      </div>
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{status}</span>
-                    </Link>
-                  </li>
-                )
-              })}
-            </ul>
+            <Link
+              href="/account/prescriptions"
+              className="inline-flex h-9 items-center gap-1.5 rounded-md px-4 text-xs font-semibold text-white shadow-sm"
+              style={{ background: `linear-gradient(135deg, ${ACCENT} 0%, #B91C1C 100%)` }}
+            >
+              View all <ChevronRight className="h-3.5 w-3.5" />
+            </Link>
           </div>
-        )}
+
+          <div className="grid grid-cols-2 gap-2 px-5 pt-4 md:grid-cols-4">
+            <MiniRxStat icon={Clock}      label="Awaiting"             value={rxPending}              tone="#92400E" bg="#FEF3C7" />
+            <MiniRxStat icon={CheckCheck} label="Verified · Dispensed" value={rxVerifiedOrDispensed}  tone="#166534" bg="#DCFCE7" />
+            <MiniRxStat icon={Pill}       label="Approved meds"        value={rxApprovedMeds}         tone="#1E40AF" bg="#DBEAFE" />
+            <MiniRxStat icon={ShieldCheck} label="Action required"     value={rxAttention}            tone="#991B1B" bg="#FEE2E2" />
+          </div>
+
+          <div className="px-5 pb-5 pt-4">
+            {rxRows.length === 0 ? (
+              <div className="space-y-2 rounded-xl border border-dashed border-border bg-muted/30 px-5 py-6 text-center">
+                <div
+                  className="mx-auto grid h-11 w-11 place-items-center rounded-full"
+                  style={{ background: `${ACCENT}1a`, color: ACCENT }}
+                >
+                  <FileText className="h-5 w-5" />
+                </div>
+                <p className="text-sm font-semibold" style={{ color: WINE }}>No prescriptions yet</p>
+                <p className="mx-auto max-w-sm text-[11px] text-muted-foreground">
+                  Upload your first prescription. A verified pharmacist will review it and
+                  approved medication will appear here.
+                </p>
+                <Link
+                  href="/upload-prescription"
+                  className="inline-flex h-9 items-center gap-1.5 rounded-md px-4 text-xs font-semibold text-white"
+                  style={{ background: `linear-gradient(135deg, ${ACCENT} 0%, #B91C1C 100%)` }}
+                >
+                  <Upload className="h-3.5 w-3.5" /> Upload prescription
+                </Link>
+              </div>
+            ) : (
+              <ul className="divide-y divide-border">
+                {rxRows.slice(0, 4).map((r) => {
+                  const meta = STATUS_TONES[r.status]
+                  return (
+                    <li key={r.id}>
+                      <Link
+                        href="/account/prescriptions"
+                        className="flex items-center gap-3 py-2.5 transition hover:opacity-90"
+                      >
+                        <div
+                          className="grid h-9 w-9 flex-shrink-0 place-items-center rounded-lg"
+                          style={{ background: meta.bg, color: meta.color }}
+                        >
+                          <FileText className="h-4 w-4" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-semibold" style={{ color: WINE }}>
+                              Rx-{r.rxNumber}
+                            </span>
+                            <span
+                              className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider"
+                              style={{ background: meta.bg, color: meta.color }}
+                            >
+                              {meta.label}
+                            </span>
+                            {r.approvedDrugs.length > 0 && (
+                              <span className="inline-flex items-center gap-1 text-[10px] font-semibold" style={{ color: ACCENT }}>
+                                <Pill className="h-2.5 w-2.5" /> {r.approvedDrugs.length}
+                              </span>
+                            )}
+                          </div>
+                          <div className="truncate text-[11px] text-muted-foreground">
+                            For {r.recipient} · {r.files[0]?.name || "Prescription"}
+                          </div>
+                        </div>
+                        <ChevronRight className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
+                      </Link>
+                    </li>
+                  )
+                })}
+              </ul>
+            )}
+          </div>
+        </div>
 
         <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
           <div className="space-y-3 rounded-xl border border-border bg-white p-5">

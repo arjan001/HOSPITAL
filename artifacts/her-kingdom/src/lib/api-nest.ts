@@ -131,6 +131,68 @@ export function useOrders() {
 }
 
 /* ────────────────────────────────────────────────────────────
+   Prescriptions — user-facing reads + write on upload.
+   Pharmacist updates (status/notes/approvedDrugs) will move
+   under /admin/prescriptions when admin auth ports to NestJS.
+─────────────────────────────────────────────────────────────*/
+
+export type ApprovedDrug = { name: string; dosage: string; instructions: string }
+export type RxStatus = "pending" | "verified" | "dispensed" | "rejected"
+export type RxTimelineEvent = {
+  at: string
+  kind: "uploaded" | "received" | "in_review" | "verified" | "dispensed" | "rejected" | "note"
+  label: string
+  by?: "system" | "pharmacist" | "patient"
+}
+export type AccountPrescription = {
+  id: string
+  rxNumber: string
+  patientName: string
+  recipient: string
+  dob?: string
+  phone: string
+  email: string
+  files: { name: string; size?: number; type?: string }[]
+  notes: string
+  status: RxStatus
+  paymentMethod: "cash" | "insurance" | "unknown"
+  pharmacistNote: string
+  approvedDrugs: ApprovedDrug[]
+  rejectedReason?: string
+  timeline: RxTimelineEvent[]
+  createdAt: string
+  updatedAt: string
+}
+
+export const apiPrescriptions = {
+  list: () => nestFetch<AccountPrescription[]>("/me/prescriptions"),
+  get: (id: string) => nestFetch<AccountPrescription>(`/me/prescriptions/${id}`),
+  create: (input: {
+    patientName?: string
+    recipient: string
+    dob?: string
+    phone?: string
+    email?: string
+    files?: Array<{ name: string; size?: number; type?: string }>
+    notes?: string
+    paymentMethod?: "cash" | "insurance"
+  }) =>
+    nestFetch<AccountPrescription>("/me/prescriptions", {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+}
+
+export function useMyPrescriptions() {
+  return useSWR<AccountPrescription[]>("/me/prescriptions", swrFetcher, {
+    refreshInterval: 20_000, // pick up pharmacist updates without manual refresh
+  })
+}
+export function refreshMyPrescriptions() {
+  return globalMutate("/me/prescriptions")
+}
+
+/* ────────────────────────────────────────────────────────────
    Chat — patient ↔ pharmacist conversations (WhatsApp-style)
    Backend: NestJS api-nest with Server-Sent Events for true push.
 ─────────────────────────────────────────────────────────────*/

@@ -8,6 +8,7 @@ import { useStoreContact } from "@/hooks/use-store-contact"
 import { Seo, organizationJsonLd, websiteJsonLd, breadcrumbJsonLd, faqJsonLd, productJsonLd } from "@/components/seo"
 import { cmsStore, newId } from "@/lib/cms-store"
 import type { Prescription } from "@/components/admin/prescriptions"
+import { apiPrescriptions, refreshMyPrescriptions } from "@/lib/api-nest"
 
 type UserPrescriptionRow = {
   id: string
@@ -163,7 +164,7 @@ export default function UploadPrescriptionPage() {
 
   const removeFile = (i: number) => setFiles((p) => p.filter((_,j) => j !== i))
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     const now = new Date()
     const isoDate = now.toISOString().slice(0, 10)
     const fullName = `${firstName} ${lastName}`.trim() || "Customer"
@@ -201,6 +202,24 @@ export default function UploadPrescriptionPage() {
     }
     const userList = cmsStore.get<UserPrescriptionRow[]>("user-prescriptions", [])
     cmsStore.set("user-prescriptions", [userRec, ...userList])
+
+    // Also persist to the NestJS api-nest backend so the customer's
+    // /account/prescriptions view has a real per-session source of truth.
+    // localStorage above keeps the legacy admin panel (still on cmsStore)
+    // working until it ports to NestJS.
+    try {
+      await apiPrescriptions.create({
+        patientName: fullName,
+        recipient: fullName,
+        dob: dob || undefined,
+        phone: "",
+        email: "",
+        files: files.map((f) => ({ name: f.name, size: f.size, type: f.type })),
+        notes: `Submitted via storefront. Payment: ${paymentMethod === "insurance" ? "Insurance" : "Cash"}.`,
+        paymentMethod: paymentMethod === "insurance" ? "insurance" : "cash",
+      })
+      void refreshMyPrescriptions()
+    } catch { /* backend optional — local copy still saved */ }
 
     setSubmittedRx({ rxNumber, name: displayName })
     setShowModal(true)

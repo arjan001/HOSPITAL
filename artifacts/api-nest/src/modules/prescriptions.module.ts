@@ -1,0 +1,205 @@
+import {
+  Body,
+  Controller,
+  Get,
+  HttpException,
+  HttpStatus,
+  Inject,
+  Injectable,
+  Module,
+  Param,
+  Patch,
+  Post,
+  Req,
+} from "@nestjs/common"
+import type { Request } from "express"
+import { InMemoryRepository, newId } from "../common/repository"
+
+export type PrescriptionStatus = "pending" | "verified" | "dispensed" | "rejected"
+export type PaymentMethod = "cash" | "insurance" | "unknown"
+
+export type ApprovedDrug = {
+  name: string
+  dosage: string
+  instructions: string
+}
+
+export type TimelineEvent = {
+  at: string
+  kind: "uploaded" | "received" | "in_review" | "verified" | "dispensed" | "rejected" | "note"
+  label: string
+  by?: "system" | "pharmacist" | "patient"
+}
+
+export type Prescription = {
+  id: string
+  rxNumber: string
+  patientName: string
+  recipient: string
+  dob?: string
+  phone: string
+  email: string
+  files: { name: string; size?: number; type?: string }[]
+  notes: string
+  status: PrescriptionStatus
+  paymentMethod: PaymentMethod
+  pharmacistNote: string
+  approvedDrugs: ApprovedDrug[]
+  rejectedReason?: string
+  timeline: TimelineEvent[]
+  createdAt: string
+  updatedAt: string
+}
+
+type CreateInput = {
+  patientName?: string
+  recipient?: string
+  dob?: string
+  phone?: string
+  email?: string
+  files?: Array<{ name?: string; size?: number; type?: string }>
+  notes?: string
+  paymentMethod?: PaymentMethod
+}
+
+type UpdateInput = Partial<Pick<Prescription,
+  "status" | "pharmacistNote" | "approvedDrugs" | "rejectedReason"
+>>
+
+function nextRxNumber(): string {
+  // Short, human-readable; uniqueness comes from `id`.
+  return `${Date.now().toString(36).toUpperCase().slice(-6)}-${Math.floor(Math.random() * 900 + 100)}`
+}
+
+@Injectable()
+class PrescriptionsService {
+  private repo = new InMemoryRepository<Prescription>()
+
+  list(sid: string): Prescription[] {
+    return [...this.repo.listFor(sid)].sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+  }
+
+  get(sid: string, id: string): Prescription {
+    const r = this.repo.findById(sid, id)
+    if (!r) throw new HttpException("Prescription not found", HttpStatus.NOT_FOUND)
+    return r
+  }
+
+  create(sid: string, data: CreateInput): Prescription {
+    const now = new Date().toISOString()
+    const recipient = String(data.recipient ?? data.patientName ?? "").trim()
+    if (!recipient) {
+      throw new HttpException("Recipient name is required", HttpStatus.BAD_REQUEST)
+    }
+    const rec: Prescription = {
+      id: newId("rx"),
+      rxNumber: nextRxNumber(),
+      patientName: String(data.patientName ?? recipient),
+      recipient,
+      dob: data.dob ? String(data.dob) : undefined,
+      phone: String(data.phone ?? ""),
+      email: String(data.email ?? ""),
+      files: (data.files ?? []).map((f) => ({
+        name: String(f?.name ?? "attachment"),
+        size: typeof f?.size === "number" ? f.size : undefined,
+        type: f?.type ? String(f.type) : undefined,
+      })),
+      notes: String(data.notes ?? ""),
+      status: "pending",
+      paymentMethod: data.paymentMethod === "insurance" ? "insurance" : data.paymentMethod === "cash" ? "cash" : "unknown",
+      pharmacistNote: "",
+      approvedDrugs: [],
+      timeline: [
+        { at: now, kind: "uploaded", label: "Prescription uploaded by you", by: "patient" },
+        { at: now, kind: "received", label: "Received by the Shaniid RX pharmacy team", by: "system" },
+      ],
+      createdAt: now,
+      updatedAt: now,
+    }
+    return this.repo.add(sid, rec)
+  }
+
+  update(sid: string, id: string, patch: UpdateInput): Prescription {
+    const current = this.get(sid, id)
+    const now = new Date().toISOString()
+    const next: Prescription = {
+      ...current,
+      ...(patch.pharmacistNote !== undefined ? { pharmacistNote: String(patch.pharmacistNote) } : {}),
+      ...(Array.isArray(patch.approvedDrugs)
+        ? { approvedDrugs: patch.approvedDrugs.map((d) => ({
+            name: String(d?.name ?? ""),
+            dosage: String(d?.dosage ?? ""),
+            instructions: String(d?.instructions ?? ""),
+          })).filter((d) => d.name) }
+        : {}),
+      ...(patch.rejectedReason !== undefined ? { rejectedReason: String(patch.rejectedReason) } : {}),
+      ...(patch.status ? { status: patch.status } : {}),
+      updatedAt: now,
+    }
+
+    if (patch.status && patch.status !== current.status) {
+      const labelMap: Record<PrescriptionStatus, string> = {
+        pending:   "Marked as awaiting review",
+        verified:  "Verified by pharmacist — approved medication added",
+        dispensed: "Medication dispensed and on its way",
+        rejected:  `Prescription rejected${(patch.rejectedReason ?? current.rejectedReason) ? ` — ${patch.rejectedReason ?? current.rejectedReason}` : ""}`,
+      }
+      const kindMap: Record<PrescriptionStatus, TimelineEvent["kind"]> = {
+        pending:   "in_review",
+        verified:  "verified",
+        dispensed: "dispensed",
+        rejected:  "rejected",
+      }
+      next.timeline = [
+        ...current.timeline,
+        { at: now, kind: kindMap[patch.status], label: labelMap[patch.status], by: "pharmacist" },
+      ]
+    } else if (patch.pharmacistNote && patch.pharmacistNote !== current.pharmacistNote) {
+      next.timeline = [
+        ...current.timeline,
+        { at: now, kind: "note", label: "Pharmacist added a note", by: "pharmacist" },
+      ]
+    }
+
+    const saved = this.repo.update(sid, id, next)
+    if (!saved) throw new HttpException("Prescription not found", HttpStatus.NOT_FOUND)
+    return saved
+  }
+}
+
+@Controller("me/prescriptions")
+class MyPrescriptionsController {
+  constructor(@Inject(PrescriptionsService) private readonly svc: PrescriptionsService) {}
+
+  @Get()
+  list(@Req() req: Request) {
+    return this.svc.list(req.sessionId)
+  }
+
+  @Get(":id")
+  get(@Req() req: Request, @Param("id") id: string) {
+    return this.svc.get(req.sessionId, id)
+  }
+
+  @Post()
+  create(@Req() req: Request, @Body() body: CreateInput) {
+    return this.svc.create(req.sessionId, body ?? {})
+  }
+
+  // Patients can update their own prescription (e.g. add a follow-up note via
+  // the rejectedReason field if they want to clarify). Status changes from
+  // patient side are limited — we only let them flip pending → pending and
+  // append notes through pharmacistNote-shaped fields server-side later.
+  @Patch(":id")
+  patch(@Req() req: Request, @Param("id") id: string, @Body() body: UpdateInput) {
+    const safe: UpdateInput = {}
+    if (typeof body?.rejectedReason === "string") safe.rejectedReason = body.rejectedReason
+    return this.svc.update(req.sessionId, id, safe)
+  }
+}
+
+@Module({
+  controllers: [MyPrescriptionsController],
+  providers: [PrescriptionsService],
+})
+export class PrescriptionsModule {}
