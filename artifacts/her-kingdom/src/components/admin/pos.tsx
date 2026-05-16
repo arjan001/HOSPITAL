@@ -32,9 +32,16 @@ import {
   type PosCartLine, type PaymentMethod, type PosSettings, type PosTransaction,
 } from "@/lib/pos-store"
 
-const WINE = "#3D0814"
-const WINE_DEEP = "#6B0F1A"
-const ACCENT = "#F97316"
+// Soft Figma palette — plain white surfaces with a subtle peach wash.
+const INK = "#1F1F1F"       // primary text + dark surfaces
+const INK_SOFT = "#2D2D2D"  // hover / pressed
+const PEACH_BG = "#FFF6F0"  // subtle peach surface tint
+const PEACH_LINE = "#F5D9C6" // hairline divider
+const CORAL = "#FF7A59"     // accent for highlights
+// Aliases kept so existing references compile.
+const WINE = INK
+const WINE_DEEP = INK_SOFT
+const ACCENT = CORAL
 const CASHIER_NAME = "Counter Cashier" // TODO swap with Clerk user when admin auth lands
 
 const METHOD_META: Record<PaymentMethod, { label: string; icon: typeof Banknote }> = {
@@ -64,6 +71,30 @@ export function AdminPos() {
   const [paymentRef, setPaymentRef] = useState("")
   const [customer, setCustomer] = useState("")
   const [cartDiscount, setCartDiscount] = useState(0)
+
+  // M-Pesa STK push state
+  const [mpesaPhone, setMpesaPhone] = useState("")
+  type MpesaStage = "idle" | "pushing" | "waiting" | "paid" | "failed"
+  const [mpesaStage, setMpesaStage] = useState<MpesaStage>("idle")
+  const [mpesaMessage, setMpesaMessage] = useState("")
+  const [mpesaSeconds, setMpesaSeconds] = useState(0)
+  const mpesaTimers = useRef<{ poll?: ReturnType<typeof setInterval>; tick?: ReturnType<typeof setInterval> }>({})
+
+  const stopMpesaTimers = () => {
+    if (mpesaTimers.current.poll) clearInterval(mpesaTimers.current.poll)
+    if (mpesaTimers.current.tick) clearInterval(mpesaTimers.current.tick)
+    mpesaTimers.current = {}
+  }
+  useEffect(() => () => stopMpesaTimers(), [])
+
+  // Reset M-Pesa flow when switching method or clearing cart.
+  useEffect(() => {
+    if (paymentMethod !== "mpesa") {
+      stopMpesaTimers()
+      setMpesaStage("idle")
+      setMpesaMessage("")
+    }
+  }, [paymentMethod])
 
   // Modals
   const [openShiftModal, setOpenShiftModal] = useState(false)
@@ -138,6 +169,10 @@ export function AdminPos() {
     setPaymentRef("")
     setCustomer("")
     setCartDiscount(0)
+    setMpesaPhone("")
+    setMpesaStage("idle")
+    setMpesaMessage("")
+    stopMpesaTimers()
   }
 
   /* ---------- totals ---------- */
@@ -150,7 +185,7 @@ export function AdminPos() {
   const canCharge =
     !!shift && cart.length > 0 &&
     (paymentMethod !== "cash" || tenderedNum >= totals.total) &&
-    (paymentMethod !== "mpesa" || paymentRef.trim().length >= 4)
+    (paymentMethod !== "mpesa" || mpesaStage === "paid")
 
   /* ---------- charge ---------- */
   const charge = (andPrint: boolean) => {
@@ -160,7 +195,7 @@ export function AdminPos() {
         paymentMethod === "cash"
           ? "Cash tendered must cover the total"
           : paymentMethod === "mpesa"
-            ? "Enter the M-Pesa confirmation code"
+            ? "Send the M-Pesa request and wait for confirmation"
             : "Cart is empty",
       )
       return
@@ -222,32 +257,39 @@ export function AdminPos() {
   return (
     <AdminShell title="Point of Sale">
       <PrintStyles />
-      <div className="space-y-4 print:hidden">
+      <div className="space-y-5 print:hidden">
         {/* Header band */}
         <header
-          className="relative rounded-2xl overflow-hidden text-white p-5"
-          style={{ background: `linear-gradient(135deg, ${WINE} 0%, ${WINE_DEEP} 60%, #8A1226 100%)` }}
+          className="relative rounded-2xl overflow-hidden bg-white border p-6"
+          style={{ borderColor: PEACH_LINE }}
         >
-          <ShieldCheck aria-hidden className="absolute -right-8 -top-8 h-44 w-44 text-white/[0.06]" />
+          <div
+            aria-hidden
+            className="absolute inset-0 pointer-events-none"
+            style={{ background: `radial-gradient(120% 80% at 100% 0%, ${PEACH_BG} 0%, transparent 55%)` }}
+          />
           <div className="relative flex items-center justify-between gap-4 flex-wrap">
-            <div className="flex items-center gap-3 min-w-0">
-              <div className="w-11 h-11 rounded-xl bg-white/15 border border-white/20 flex items-center justify-center">
+            <div className="flex items-center gap-4 min-w-0">
+              <div
+                className="w-12 h-12 rounded-2xl flex items-center justify-center border"
+                style={{ background: PEACH_BG, borderColor: PEACH_LINE, color: INK }}
+              >
                 <ReceiptIcon className="h-5 w-5" />
               </div>
               <div className="min-w-0">
-                <p className="text-[10px] uppercase tracking-[0.18em] font-semibold text-white/75">
-                  Over-the-counter sale · {settings.registerName}
+                <p className="text-[10px] uppercase tracking-[0.18em] font-semibold text-muted-foreground">
+                  Over-the-counter · {settings.registerName}
                 </p>
-                <h1 className="text-xl font-bold leading-tight">Point of Sale</h1>
-                <p className="text-[11px] text-white/75">
+                <h1 className="text-2xl font-semibold leading-tight" style={{ color: INK }}>Point of Sale</h1>
+                <p className="text-xs text-muted-foreground mt-0.5">
                   {CASHIER_NAME}
                   {shift && (
-                    <> · Shift open since {new Date(shift.openedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</>
+                    <> · Open since {new Date(shift.openedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</>
                   )}
                 </p>
               </div>
             </div>
-            <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex items-center gap-3 flex-wrap">
               {shift ? (
                 <>
                   <Stat label="Sales today" value={fmt(todaysSales.total, settings.currency)} />
@@ -255,7 +297,8 @@ export function AdminPos() {
                   <Stat label="Float" value={fmt(shift.openingFloat, settings.currency)} />
                   <button
                     onClick={() => setEndShiftModal(true)}
-                    className="h-10 px-4 rounded-lg text-sm font-semibold bg-white/15 hover:bg-white/25 border border-white/25 inline-flex items-center gap-1.5"
+                    className="h-10 px-4 rounded-xl text-sm font-semibold border inline-flex items-center gap-1.5 hover:bg-secondary transition-colors"
+                    style={{ borderColor: PEACH_LINE, color: INK }}
                   >
                     <Clock className="h-4 w-4" /> End shift
                   </button>
@@ -263,8 +306,8 @@ export function AdminPos() {
               ) : (
                 <button
                   onClick={() => setOpenShiftModal(true)}
-                  className="h-10 px-4 rounded-lg text-sm font-bold inline-flex items-center gap-1.5 shadow"
-                  style={{ background: ACCENT }}
+                  className="h-10 px-4 rounded-xl text-sm font-semibold text-white inline-flex items-center gap-1.5 shadow-sm hover:opacity-95"
+                  style={{ background: INK }}
                 >
                   <Play className="h-4 w-4" /> Open shift
                 </button>
@@ -274,9 +317,9 @@ export function AdminPos() {
         </header>
 
         {/* Main split */}
-        <div className="grid grid-cols-1 lg:grid-cols-[1fr_440px] gap-4">
+        <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_460px] gap-5">
           {/* Catalogue */}
-          <section className="bg-white rounded-2xl border p-4" style={{ borderColor: "rgba(0,0,0,0.08)" }}>
+          <section className="bg-white rounded-2xl border p-5" style={{ borderColor: PEACH_LINE }}>
             <div className="flex flex-col md:flex-row md:items-center gap-2 mb-3">
               <div className="relative flex-1">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -419,7 +462,7 @@ export function AdminPos() {
             </div>
 
             {/* Totals */}
-            <div className="px-3 py-2 border-t space-y-0.5 text-xs" style={{ borderColor: "rgba(0,0,0,0.06)" }}>
+            <div className="px-4 py-3 border-t space-y-1 text-xs" style={{ borderColor: PEACH_LINE }}>
               <TotalRow label="Subtotal" value={fmt(totals.subtotal, settings.currency)} />
               {totals.discountTotal > 0 && <TotalRow label="Discount" value={`− ${fmt(totals.discountTotal, settings.currency)}`} accent />}
               <TotalRow label={`Tax (${settings.taxRate}%${settings.taxInclusive ? " incl" : ""})`} value={fmt(totals.taxTotal, settings.currency)} />
@@ -430,7 +473,7 @@ export function AdminPos() {
             </div>
 
             {/* Payment method */}
-            <div className="px-3 pt-2 border-t" style={{ borderColor: "rgba(0,0,0,0.06)" }}>
+            <div className="px-4 pt-3 border-t" style={{ borderColor: PEACH_LINE }}>
               <div className="grid grid-cols-4 gap-1">
                 {(["cash", "mpesa", "card", "credit"] as PaymentMethod[]).map((m) => {
                   const Icon = METHOD_META[m].icon
@@ -489,16 +532,79 @@ export function AdminPos() {
               )}
 
               {paymentMethod === "mpesa" && (
-                <div className="mt-2">
-                  <label className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">M-Pesa confirmation code</label>
-                  <input
-                    value={paymentRef}
-                    onChange={(e) => setPaymentRef(e.target.value.toUpperCase())}
-                    placeholder="e.g. QXY7HJ23KP"
-                    className="w-full h-9 px-2 rounded-md border text-sm font-mono bg-white outline-none"
-                    style={{ borderColor: "rgba(0,0,0,0.1)" }}
-                  />
-                </div>
+                <MpesaStkPad
+                  phone={mpesaPhone}
+                  setPhone={setMpesaPhone}
+                  amount={totals.total}
+                  customer={customer}
+                  stage={mpesaStage}
+                  message={mpesaMessage}
+                  seconds={mpesaSeconds}
+                  paidRef={paymentRef}
+                  onSend={async () => {
+                    const clean = sanitizePhone(mpesaPhone)
+                    if (!clean) {
+                      setMpesaMessage("Enter a valid Safaricom number, e.g. 0712345678")
+                      setMpesaStage("failed"); return
+                    }
+                    if (totals.total <= 0) {
+                      setMpesaMessage("Cart total must be greater than zero")
+                      setMpesaStage("failed"); return
+                    }
+                    const orderNumber = `POS-${Date.now().toString(36).toUpperCase()}`
+                    setMpesaStage("pushing"); setMpesaMessage("Sending request to your phone…")
+                    try {
+                      const res = await fetch("/api/payments/payhero/stk", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                          orderNumber, phone: clean,
+                          amount: Math.round(totals.total),
+                          customerName: customer.trim() || "Walk-in",
+                        }),
+                      })
+                      const data = await res.json().catch(() => ({}))
+                      if (!res.ok || !data?.success) {
+                        setMpesaStage("failed")
+                        setMpesaMessage(data?.error || "Could not reach M-Pesa. Try again.")
+                        return
+                      }
+                      setMpesaStage("waiting")
+                      setMpesaMessage("Check your phone and enter your M-Pesa PIN.")
+                      // Countdown + poll status
+                      let left = 60; setMpesaSeconds(left)
+                      mpesaTimers.current.tick = setInterval(() => {
+                        left -= 1; setMpesaSeconds(Math.max(0, left))
+                        if (left <= 0) {
+                          stopMpesaTimers(); setMpesaStage("failed")
+                          setMpesaMessage("No confirmation in time. Customer can try again.")
+                        }
+                      }, 1000)
+                      mpesaTimers.current.poll = setInterval(async () => {
+                        try {
+                          const r = await fetch(`/api/payments/payhero/status?orderNumber=${encodeURIComponent(orderNumber)}`)
+                          const d = await r.json().catch(() => ({}))
+                          if (!r.ok) return
+                          if (d.status === "success") {
+                            stopMpesaTimers(); setMpesaStage("paid")
+                            const ref = d.mpesaReceipt || orderNumber
+                            setPaymentRef(ref)
+                            setMpesaMessage(`Paid · ${ref}`)
+                            notify.success("M-Pesa payment received", { description: ref })
+                          } else if (d.status === "failed" || d.status === "cancelled") {
+                            stopMpesaTimers(); setMpesaStage("failed")
+                            setMpesaMessage(d.status === "cancelled" ? "Cancelled on the customer's phone." : (d.message || "Payment did not go through."))
+                          }
+                        } catch { /* keep polling */ }
+                      }, 3000)
+                    } catch {
+                      setMpesaStage("failed"); setMpesaMessage("Network error. Try again.")
+                    }
+                  }}
+                  onCancel={() => {
+                    stopMpesaTimers(); setMpesaStage("idle"); setMpesaMessage(""); setPaymentRef("")
+                  }}
+                />
               )}
 
               {paymentMethod === "card" && (
@@ -522,7 +628,7 @@ export function AdminPos() {
             </div>
 
             {/* Actions */}
-            <div className="p-3 border-t space-y-2" style={{ borderColor: "rgba(0,0,0,0.06)" }}>
+            <div className="p-4 border-t space-y-2.5" style={{ borderColor: PEACH_LINE }}>
               <div className="grid grid-cols-3 gap-1.5">
                 <SmallAction label="Hold" icon={Pause} onClick={() => cart.length > 0 ? setHoldModal(true) : notify.warning("Cart is empty")} />
                 <SmallAction label={`Recall${held.length ? ` (${held.length})` : ""}`} icon={Play} onClick={() => held.length ? setRecallModal(true) : notify.info("No held orders")} />
@@ -640,9 +746,9 @@ export function AdminPos() {
 
 function Stat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="px-3 py-1.5 rounded-lg bg-white/10 border border-white/15 text-right">
-      <p className="text-[9px] uppercase tracking-wider text-white/70 font-semibold">{label}</p>
-      <p className="text-sm font-bold leading-tight">{value}</p>
+    <div className="px-3 py-1.5 rounded-xl border text-right min-w-[92px]" style={{ background: PEACH_BG, borderColor: PEACH_LINE }}>
+      <p className="text-[9px] uppercase tracking-wider text-muted-foreground font-semibold">{label}</p>
+      <p className="text-sm font-semibold leading-tight tabular-nums" style={{ color: INK }}>{value}</p>
     </div>
   )
 }
@@ -660,12 +766,126 @@ function SmallAction({ label, icon: Icon, onClick }: { label: string; icon: type
   return (
     <button
       onClick={onClick}
-      className="h-9 rounded-md border text-[11px] font-bold inline-flex items-center justify-center gap-1 hover:bg-secondary"
-      style={{ borderColor: "rgba(0,0,0,0.1)" }}
+      className="h-9 rounded-lg border text-[11px] font-semibold inline-flex items-center justify-center gap-1 hover:bg-secondary transition-colors"
+      style={{ borderColor: PEACH_LINE, color: INK }}
     >
       <Icon className="h-3.5 w-3.5" /> {label}
     </button>
   )
+}
+
+/* ---------- M-Pesa STK pad ---------- */
+
+function sanitizePhone(raw: string): string | null {
+  const digits = raw.replace(/\D/g, "")
+  // Accept 07XXXXXXXX, 7XXXXXXXX, 254XXXXXXXXX, +254XXXXXXXXX
+  let p = digits
+  if (p.startsWith("0") && p.length === 10) p = "254" + p.slice(1)
+  else if (p.length === 9 && p.startsWith("7")) p = "254" + p
+  else if (p.startsWith("254") && p.length === 12) { /* ok */ }
+  else return null
+  if (!/^2547\d{8}$/.test(p)) return null
+  return p
+}
+
+function MpesaStkPad(props: {
+  phone: string
+  setPhone: (v: string) => void
+  amount: number
+  customer: string
+  stage: "idle" | "pushing" | "waiting" | "paid" | "failed"
+  message: string
+  seconds: number
+  paidRef: string
+  onSend: () => void | Promise<void>
+  onCancel: () => void
+}) {
+  const { phone, setPhone, amount, stage, message, seconds, paidRef, onSend, onCancel } = props
+  const busy = stage === "pushing" || stage === "waiting"
+  const paid = stage === "paid"
+  const failed = stage === "failed"
+  const formatted = formatPhoneDisplay(phone)
+
+  return (
+    <div className="mt-3 space-y-2.5">
+      <div className="rounded-xl border p-3" style={{ background: PEACH_BG, borderColor: PEACH_LINE }}>
+        <div className="flex items-center justify-between mb-1.5">
+          <label className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">
+            Customer phone (Safaricom)
+          </label>
+          {paid && <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700">Paid</span>}
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="flex items-center px-2.5 h-10 rounded-lg border bg-white text-xs text-muted-foreground font-semibold" style={{ borderColor: PEACH_LINE }}>
+            <span className="mr-1">🇰🇪</span> +254
+          </div>
+          <input
+            inputMode="tel"
+            value={formatted}
+            onChange={(e) => setPhone(e.target.value)}
+            placeholder="0712 345 678"
+            disabled={busy || paid}
+            className="flex-1 h-10 px-3 rounded-lg border text-sm font-mono bg-white outline-none focus:ring-2 disabled:opacity-60"
+            style={{ borderColor: PEACH_LINE }}
+          />
+        </div>
+        {!busy && !paid && (
+          <button
+            onClick={() => onSend()}
+            disabled={amount <= 0}
+            className="mt-2 w-full h-10 rounded-lg text-sm font-semibold text-white inline-flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed transition-opacity"
+            style={{ background: INK }}
+          >
+            <Smartphone className="h-4 w-4" /> Send M-Pesa request
+          </button>
+        )}
+        {busy && (
+          <div className="mt-2 rounded-lg bg-white border p-2.5 flex items-center gap-2.5" style={{ borderColor: PEACH_LINE }}>
+            <span className="relative flex h-2.5 w-2.5">
+              <span className="absolute inline-flex h-full w-full rounded-full opacity-60 animate-ping" style={{ background: CORAL }} />
+              <span className="relative inline-flex h-2.5 w-2.5 rounded-full" style={{ background: CORAL }} />
+            </span>
+            <div className="flex-1 min-w-0">
+              <p className="text-[11px] font-semibold leading-tight" style={{ color: INK }}>
+                {stage === "pushing" ? "Sending request…" : "Waiting for customer confirmation"}
+              </p>
+              <p className="text-[10px] text-muted-foreground truncate">{message}</p>
+            </div>
+            {stage === "waiting" && (
+              <span className="text-[11px] tabular-nums font-semibold" style={{ color: INK }}>{seconds}s</span>
+            )}
+            <button onClick={onCancel} className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground hover:text-foreground">
+              Cancel
+            </button>
+          </div>
+        )}
+        {paid && (
+          <div className="mt-2 rounded-lg p-2.5 flex items-center gap-2 bg-emerald-50 border border-emerald-200">
+            <CheckCircle2 className="h-4 w-4 text-emerald-700" />
+            <div className="flex-1 min-w-0">
+              <p className="text-[11px] font-semibold leading-tight text-emerald-800">Confirmed · {paidRef}</p>
+              <p className="text-[10px] text-emerald-700/80">Tap Charge to finalise the sale.</p>
+            </div>
+            <button onClick={onCancel} className="text-[10px] uppercase tracking-wider font-bold text-emerald-700 hover:text-emerald-900">Redo</button>
+          </div>
+        )}
+        {failed && (
+          <div className="mt-2 rounded-lg p-2.5 flex items-start gap-2 bg-rose-50 border border-rose-200">
+            <AlertTriangle className="h-4 w-4 text-rose-700 mt-0.5 flex-shrink-0" />
+            <p className="flex-1 text-[11px] text-rose-800 leading-snug">{message || "Payment did not go through."}</p>
+            <button onClick={() => onSend()} className="text-[10px] uppercase tracking-wider font-bold text-rose-700 hover:text-rose-900">Retry</button>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function formatPhoneDisplay(raw: string): string {
+  const digits = raw.replace(/\D/g, "")
+  if (digits.length <= 4) return digits
+  if (digits.length <= 7) return `${digits.slice(0, 4)} ${digits.slice(4)}`
+  return `${digits.slice(0, 4)} ${digits.slice(4, 7)} ${digits.slice(7, 10)}`
 }
 
 /* ---------- modals ---------- */
@@ -680,16 +900,16 @@ function ModalShell({ title, subtitle, onClose, children, wide }: {
         onClick={(e) => e.stopPropagation()}
       >
         <div
-          className="relative px-5 py-3.5 text-white overflow-hidden"
-          style={{ background: `linear-gradient(135deg, ${WINE} 0%, ${WINE_DEEP} 100%)` }}
+          className="relative px-5 py-4 overflow-hidden border-b"
+          style={{ background: PEACH_BG, borderColor: PEACH_LINE }}
         >
-          <div className="absolute left-0 top-0 h-full w-1" style={{ background: ACCENT }} />
+          <div className="absolute left-0 top-0 h-full w-1" style={{ background: CORAL }} />
           <div className="flex items-start justify-between gap-3 relative">
             <div>
-              <h3 className="text-base font-bold leading-tight">{title}</h3>
-              {subtitle && <p className="text-[11px] text-white/75 mt-0.5">{subtitle}</p>}
+              <h3 className="text-base font-semibold leading-tight" style={{ color: INK }}>{title}</h3>
+              {subtitle && <p className="text-[11px] text-muted-foreground mt-0.5">{subtitle}</p>}
             </div>
-            <button onClick={onClose} className="w-8 h-8 rounded-full hover:bg-white/15 inline-flex items-center justify-center">
+            <button onClick={onClose} className="w-8 h-8 rounded-full hover:bg-white/70 inline-flex items-center justify-center text-muted-foreground">
               <X className="h-4 w-4" />
             </button>
           </div>

@@ -307,10 +307,10 @@ function IssuesTab() {
           <Search className="h-3.5 w-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
           <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search by title or error type…" className="pl-9 h-9" />
         </div>
-        <Select value={status} onChange={setStatus} options={[
+        <Select value={status} onChange={(v) => setStatus(v as IssueStatus | "")} options={[
           { v: "open", label: "Open" }, { v: "resolved", label: "Resolved" }, { v: "ignored", label: "Ignored" }, { v: "", label: "All statuses" },
         ]} />
-        <Select value={level} onChange={setLevel} options={[
+        <Select value={level} onChange={(v) => setLevel(v as EventLevel | "")} options={[
           { v: "", label: "All levels" }, { v: "fatal", label: "Fatal" }, { v: "error", label: "Error" }, { v: "warning", label: "Warning" }, { v: "info", label: "Info" },
         ]} />
       </div>
@@ -485,7 +485,7 @@ function EventsTab() {
           <Search className="h-3.5 w-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
           <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Filter by message…" className="pl-9 h-9" />
         </div>
-        <Select value={level} onChange={setLevel} options={[
+        <Select value={level} onChange={(v) => setLevel(v as EventLevel | "")} options={[
           { v: "", label: "All levels" }, { v: "fatal", label: "Fatal" }, { v: "error", label: "Error" }, { v: "warning", label: "Warning" }, { v: "info", label: "Info" }, { v: "debug", label: "Debug" },
         ]} />
         <Button variant="outline" size="sm" onClick={() => mutate()}><RefreshCw className="h-3.5 w-3.5 mr-1" /> Refresh</Button>
