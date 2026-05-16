@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useMemo, useRef, type ReactNode } from "react"
+import { createPortal } from "react-dom"
 import { Link } from "wouter"
 import { useLocation } from "wouter"
 import {
@@ -293,12 +294,15 @@ function NavLeaf({
       href={item.href || "#"}
       onClick={onClick}
       aria-label={collapsed ? `${item.label}${showBadge ? ` (${pendingOrders} pending)` : ""}` : undefined}
-      title={collapsed ? item.label : undefined}
       className={`group/nav relative flex items-center gap-3 ${padX} py-2 text-sm transition-colors rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-foreground/40 ${
         isActive
           ? "bg-foreground text-background font-medium"
           : "text-muted-foreground hover:text-foreground hover:bg-secondary"
       }`}
+      onMouseEnter={collapsed ? (e) => showNavTip(e.currentTarget, item.label, showBadge ? pendingOrders : 0, isActive) : undefined}
+      onMouseLeave={collapsed ? hideNavTip : undefined}
+      onFocus={collapsed ? (e) => showNavTip(e.currentTarget, item.label, showBadge ? pendingOrders : 0, isActive) : undefined}
+      onBlur={collapsed ? hideNavTip : undefined}
     >
       <item.icon className="h-4 w-4 flex-shrink-0" aria-hidden="true" />
       {!collapsed && <span className="flex-1 truncate">{item.label}</span>}
@@ -312,15 +316,75 @@ function NavLeaf({
           {pendingOrders > 9 ? "9+" : pendingOrders}
         </span>
       )}
-      {collapsed && (
+    </Link>
+  )
+}
+
+/* ---------- Portal-based hover tooltip for the collapsed rail ---------- */
+
+type NavTipState = { label: string; top: number; left: number; badge: number; active: boolean } | null
+let _setNavTip: ((s: NavTipState) => void) | null = null
+let _hideTimer: ReturnType<typeof setTimeout> | null = null
+
+function showNavTip(el: HTMLElement, label: string, badge: number, active: boolean) {
+  if (!_setNavTip) return
+  if (_hideTimer) { clearTimeout(_hideTimer); _hideTimer = null }
+  const r = el.getBoundingClientRect()
+  _setNavTip({ label, badge, active, top: r.top + r.height / 2, left: r.right + 10 })
+}
+function hideNavTip() {
+  if (!_setNavTip) return
+  if (_hideTimer) clearTimeout(_hideTimer)
+  _hideTimer = setTimeout(() => _setNavTip && _setNavTip(null), 60)
+}
+
+function NavTipPortal() {
+  const [tip, setTip] = useState<NavTipState>(null)
+  useEffect(() => {
+    _setNavTip = setTip
+    return () => { _setNavTip = null }
+  }, [])
+  useEffect(() => {
+    if (!tip) return
+    const onScroll = () => setTip(null)
+    window.addEventListener("scroll", onScroll, true)
+    return () => window.removeEventListener("scroll", onScroll, true)
+  }, [tip])
+  if (typeof document === "undefined" || !tip) return null
+  return createPortal(
+    <div
+      className="pointer-events-none fixed z-[100] -translate-y-1/2 select-none"
+      style={{ top: tip.top, left: tip.left }}
+      role="tooltip"
+    >
+      <div
+        className="relative flex items-center gap-2 pl-2.5 pr-3 py-1.5 rounded-lg bg-foreground text-background text-xs font-semibold shadow-lg shadow-black/20 whitespace-nowrap animate-[nav-tip-in_140ms_ease-out]"
+      >
+        <span
+          className="w-1.5 h-1.5 rounded-full"
+          style={{ background: tip.active ? "#F97316" : "rgba(255,255,255,0.55)" }}
+          aria-hidden="true"
+        />
+        <span>{tip.label}</span>
+        {tip.badge > 0 && (
+          <span className="ml-1 px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-red-500 text-white">
+            {tip.badge > 9 ? "9+" : tip.badge}
+          </span>
+        )}
         <span
           aria-hidden="true"
-          className="pointer-events-none absolute left-full ml-2 px-2 py-1 rounded-md bg-foreground text-background text-xs font-medium whitespace-nowrap opacity-0 group-hover/nav:opacity-100 group-focus-visible/nav:opacity-100 transition-opacity z-50 shadow-lg"
-        >
-          {item.label}
-        </span>
-      )}
-    </Link>
+          className="absolute right-full top-1/2 -translate-y-1/2 w-0 h-0"
+          style={{
+            borderTop: "5px solid transparent",
+            borderBottom: "5px solid transparent",
+            borderRight: "6px solid currentColor",
+            color: "var(--foreground, #0a0a0a)",
+          }}
+        />
+      </div>
+      <style>{`@keyframes nav-tip-in { from { opacity: 0; transform: translate(-4px, -50%); } to { opacity: 1; transform: translate(0, -50%); } }`}</style>
+    </div>,
+    document.body,
   )
 }
 
@@ -700,7 +764,6 @@ export function AdminShell({ children, title }: { children: ReactNode; title: st
               className={`w-full flex items-center ${collapsed ? "justify-center" : "justify-between"} gap-2 text-xs text-muted-foreground hover:text-foreground hover:bg-secondary rounded-md px-2 py-2 transition-colors`}
               aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
               aria-expanded={!collapsed}
-              title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
             >
               {collapsed ? (
                 <PanelLeftOpen className="h-4 w-4" />
@@ -822,6 +885,7 @@ export function AdminShell({ children, title }: { children: ReactNode; title: st
           <div className="p-4 lg:p-8 min-w-0 max-w-full overflow-x-clip">{children}</div>
         </main>
       </div>
+      <NavTipPortal />
     </div>
   )
 }
