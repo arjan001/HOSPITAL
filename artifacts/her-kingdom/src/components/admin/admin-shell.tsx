@@ -623,7 +623,7 @@ export function AdminShell({ children, title }: { children: ReactNode; title: st
         </Link>
       </header>
 
-      <div className="flex">
+      <div className="flex w-full overflow-x-hidden">
         <aside className={`hidden lg:flex flex-col ${sidebarWidth} h-screen border-r border-border fixed inset-y-0 left-0 transition-[width] duration-200`} style={{ background: "#FFFBF5" }}>
           <div className={`${collapsed ? "p-3" : "p-6"} border-b border-border flex items-center ${collapsed ? "justify-center" : "justify-between"} gap-2`}>
             {collapsed ? (
@@ -775,7 +775,7 @@ export function AdminShell({ children, title }: { children: ReactNode; title: st
           </>
         )}
 
-        <main className={`flex-1 ${mainOffset} transition-[margin] duration-200`}>
+        <main className={`flex-1 min-w-0 max-w-full ${mainOffset} transition-[margin] duration-200`}>
           <div className="hidden lg:flex items-center justify-between h-14 px-8 border-b border-border sticky top-0 z-30" style={{ background: "#FFFBF5" }}>
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <button
@@ -818,7 +818,7 @@ export function AdminShell({ children, title }: { children: ReactNode; title: st
               </button>
             </div>
           </div>
-          <div className="p-4 lg:p-8">{children}</div>
+          <div className="p-4 lg:p-8 min-w-0 max-w-full overflow-x-hidden">{children}</div>
         </main>
       </div>
     </div>
