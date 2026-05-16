@@ -48,6 +48,20 @@ import {
   AdminSourcingAutomation,
   AdminSourcingPerformance,
 } from "@/components/admin/sourcing-pages";
+import {
+  AdminTrading,
+  AdminTradingBids,
+  AdminTradingNegotiation,
+  AdminTradingSettlements,
+  AdminQa,
+  AdminQaBatches,
+  AdminQaTrustSeal,
+  AdminQaRecalls,
+  AdminLogistics,
+  AdminLogisticsInventory,
+  AdminLogisticsLeadTime,
+  AdminLogisticsFallback,
+} from "@/components/admin/flow-pages";
 import { AdminMessageTemplates } from "@/components/admin/message-templates";
 import { AdminSettings } from "@/components/admin/settings";
 import { UsersManagement } from "@/components/admin/users";
@@ -374,6 +388,18 @@ function Router() {
       <Route path="/admin/sourcing/pricing"     component={AdminSourcingPricing} />
       <Route path="/admin/sourcing/automation"  component={AdminSourcingAutomation} />
       <Route path="/admin/sourcing/performance" component={AdminSourcingPerformance} />
+      <Route path="/admin/trading"               component={AdminTrading} />
+      <Route path="/admin/trading/bids"          component={AdminTradingBids} />
+      <Route path="/admin/trading/negotiation"   component={AdminTradingNegotiation} />
+      <Route path="/admin/trading/settlements"   component={AdminTradingSettlements} />
+      <Route path="/admin/qa"                    component={AdminQa} />
+      <Route path="/admin/qa/batches"            component={AdminQaBatches} />
+      <Route path="/admin/qa/trust-seal"         component={AdminQaTrustSeal} />
+      <Route path="/admin/qa/recalls"            component={AdminQaRecalls} />
+      <Route path="/admin/logistics"             component={AdminLogistics} />
+      <Route path="/admin/logistics/inventory"   component={AdminLogisticsInventory} />
+      <Route path="/admin/logistics/lead-time"   component={AdminLogisticsLeadTime} />
+      <Route path="/admin/logistics/fallback"    component={AdminLogisticsFallback} />
       <Route path="/admin/integrations/templates" component={AdminMessageTemplates} />
       <Route path="/admin/settings" component={AdminSettings} />
       <Route path="/admin/users" component={UsersManagement} />

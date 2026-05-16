@@ -126,7 +126,18 @@ export function DailyCall({
         })
 
         call
-          .on("joined-meeting", () => setJoined(true))
+          .on("joined-meeting", () => {
+            setJoined(true)
+            // Owners (e.g. doctor / pharmacist) auto-start cloud recording so
+            // consultations are reviewable later. Failures are swallowed —
+            // recording is best-effort, not a hard requirement to talk.
+            if (isOwner) {
+              try {
+                ;(call as unknown as { startRecording?: () => Promise<unknown> }).startRecording?.()
+                  ?.catch?.(() => {})
+              } catch { /* noop */ }
+            }
+          })
           .on("left-meeting", () => onLeaveRef.current())
           .on("error", (e) => { setErrMsg(String((e as { errorMsg?: string })?.errorMsg ?? "Call error")); setConfig("error") })
           .on("participant-joined", () => setParticipants((p) => p + 1))

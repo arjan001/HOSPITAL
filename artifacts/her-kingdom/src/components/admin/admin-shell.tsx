@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useMemo, type ReactNode } from "react"
+import { useState, useEffect, useMemo, useRef, type ReactNode } from "react"
 import { Link } from "wouter"
 import { useLocation } from "wouter"
 import {
@@ -49,10 +49,18 @@ import {
   MessageSquare,
   Video,
   Building2,
+  HeartHandshake,
+  ShieldCheck,
+  Handshake,
+  Warehouse,
+  Timer,
+  Receipt,
+  AlertCircle,
 } from "lucide-react"
 
 const COLLAPSE_KEY = "shaniidrx.admin.sidebarCollapsed"
 const EXPANDED_KEY = "shaniidrx.admin.sidebarExpanded"
+const SCROLL_KEY = "shaniidrx.admin.sidebarScrollTop"
 
 type NavNode = {
   label: string
@@ -67,7 +75,9 @@ type NavGroup = {
   items: NavNode[]
 }
 
-// Order = visual hierarchy. Most-used first, supporting/admin last.
+// Order mirrors the Shaniid RX operations flow:
+//   Sourcing → Trading → QA & Assurance → Logistics
+// Customers is its own top-level group (was buried under System).
 const NAV_GROUPS: NavGroup[] = [
   {
     name: "Overview",
@@ -82,6 +92,13 @@ const NAV_GROUPS: NavGroup[] = [
       { label: "Sales & Orders", href: "/admin/orders",       icon: ShoppingCart, hasBadge: true },
       { label: "Payments",       href: "/admin/payments",     icon: CreditCard },
       { label: "Card Details",   href: "/admin/card-details", icon: Wallet },
+    ],
+  },
+  {
+    name: "Customers",
+    items: [
+      { label: "All Customers", href: "/admin/customers", icon: UserCircle },
+      { label: "Newsletter",    href: "/admin/newsletter", icon: Mail },
     ],
   },
   {
@@ -100,20 +117,70 @@ const NAV_GROUPS: NavGroup[] = [
       { label: "Categories", href: "/admin/categories", icon: Tag },
     ],
   },
+  // Pipeline (per brand brief): Sourcing → Trading → QA → Logistics.
   {
-    name: "Sourcing",
+    name: "Pipeline · Sourcing",
     items: [
       {
         label: "Sourcing",
         href: "/admin/sourcing",
         icon: PackageSearch,
         children: [
-          { label: "Suppliers & POs", href: "/admin/sourcing",             icon: Building2 },
-          { label: "Inventory",       href: "/admin/sourcing/inventory",   icon: Boxes },
-          { label: "Forecast",        href: "/admin/sourcing/forecast",    icon: LineChart },
-          { label: "Pricing",         href: "/admin/sourcing/pricing",     icon: TrendingUp },
-          { label: "Automation",      href: "/admin/sourcing/automation",  icon: Bot },
-          { label: "Performance",     href: "/admin/sourcing/performance", icon: Gauge },
+          { label: "Suppliers & POs",       href: "/admin/sourcing",             icon: Building2 },
+          { label: "Inventory",             href: "/admin/sourcing/inventory",   icon: Boxes },
+          { label: "Demand Forecast",       href: "/admin/sourcing/forecast",    icon: LineChart },
+          { label: "Pricing & Competitor",  href: "/admin/sourcing/pricing",     icon: TrendingUp },
+          { label: "Procurement Automation",href: "/admin/sourcing/automation",  icon: Bot },
+          { label: "Supplier Performance",  href: "/admin/sourcing/performance", icon: Gauge },
+        ],
+      },
+    ],
+  },
+  {
+    name: "Pipeline · Trading",
+    items: [
+      {
+        label: "Trading",
+        href: "/admin/trading",
+        icon: Handshake,
+        children: [
+          { label: "Deal Pipeline",       href: "/admin/trading",              icon: Handshake },
+          { label: "Bids & Quotes",       href: "/admin/trading/bids",         icon: Receipt },
+          { label: "Price Negotiation",   href: "/admin/trading/negotiation",  icon: TrendingUp },
+          { label: "Settlements",         href: "/admin/trading/settlements",  icon: Wallet },
+        ],
+      },
+    ],
+  },
+  {
+    name: "Pipeline · QA & Assurance",
+    items: [
+      {
+        label: "Quality & Assurance",
+        href: "/admin/qa",
+        icon: ShieldCheck,
+        children: [
+          { label: "Incoming QC",         href: "/admin/qa",                   icon: ShieldCheck },
+          { label: "Batch Verification",  href: "/admin/qa/batches",           icon: ClipboardList },
+          { label: "Trust Seal Registry", href: "/admin/qa/trust-seal",        icon: HeartHandshake },
+          { label: "Recalls & Compliance",href: "/admin/qa/recalls",           icon: AlertCircle },
+        ],
+      },
+    ],
+  },
+  {
+    name: "Pipeline · Logistics",
+    items: [
+      {
+        label: "Logistics",
+        href: "/admin/logistics",
+        icon: Truck,
+        children: [
+          { label: "Order Records",        href: "/admin/logistics",            icon: Receipt },
+          { label: "Delivery Locations",   href: "/admin/delivery-locations",   icon: Truck },
+          { label: "Inventory Optimization", href: "/admin/logistics/inventory", icon: Warehouse },
+          { label: "Lead Time Monitoring", href: "/admin/logistics/lead-time",  icon: Timer },
+          { label: "Retail Emergency Fallback", href: "/admin/logistics/fallback", icon: AlertCircle },
         ],
       },
     ],
@@ -137,12 +204,6 @@ const NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
-    name: "Operations",
-    items: [
-      { label: "Delivery Locations", href: "/admin/delivery-locations", icon: Truck },
-    ],
-  },
-  {
     name: "Storefront CMS",
     items: [
       { label: "Custom Pages",   href: "/admin/pages",    icon: FileText },
@@ -152,25 +213,22 @@ const NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
-    name: "System",
-    items: [
-      { label: "Website Settings",    href: "/admin/website-settings", icon: Settings },
-      { label: "Customers",           href: "/admin/customers",        icon: UserCircle },
-      { label: "Users & Roles",       href: "/admin/users",            icon: Users },
-      { label: "Roles & Permissions", href: "/admin/roles",            icon: Shield },
-      { label: "Audit Log",           href: "/admin/audit-log",        icon: ScrollText },
-      { label: "Settings",            href: "/admin/settings",         icon: Settings },
-      { label: "My Profile",          href: "/admin/profile",          icon: UserCircle },
-    ],
-  },
-  // Marketing moved last — important brand value but lower day-to-day priority.
-  {
     name: "Marketing",
     items: [
       { label: "Offers & Banners", href: "/admin/banners",      icon: ImageIcon },
       { label: "Announcement Bar", href: "/admin/announcement", icon: MegaphoneAlt },
       { label: "Popup Offer",      href: "/admin/popup-offer",  icon: Megaphone },
-      { label: "Newsletter",       href: "/admin/newsletter",   icon: Megaphone },
+    ],
+  },
+  {
+    name: "System",
+    items: [
+      { label: "Website Settings",    href: "/admin/website-settings", icon: Settings },
+      { label: "Users & Roles",       href: "/admin/users",            icon: Users },
+      { label: "Roles & Permissions", href: "/admin/roles",            icon: Shield },
+      { label: "Audit Log",           href: "/admin/audit-log",        icon: ScrollText },
+      { label: "Settings",            href: "/admin/settings",         icon: Settings },
+      { label: "My Profile",          href: "/admin/profile",          icon: UserCircle },
     ],
   },
 ]
@@ -424,11 +482,13 @@ export function AdminShell({ children, title }: { children: ReactNode; title: st
     return window.localStorage.getItem(COLLAPSE_KEY) === "1"
   })
   const [expanded, setExpanded] = useState<Record<string, boolean>>(() => {
-    if (typeof window === "undefined") return { Sourcing: true, Integrations: true }
+    const seed = { Sourcing: true, Trading: true, "Quality & Assurance": true, Logistics: true, Integrations: true }
+    if (typeof window === "undefined") return seed
     try {
-      return JSON.parse(window.localStorage.getItem(EXPANDED_KEY) || '{"Sourcing":true,"Integrations":true}')
+      const stored = window.localStorage.getItem(EXPANDED_KEY)
+      return stored ? { ...seed, ...JSON.parse(stored) } : seed
     } catch {
-      return { Sourcing: true, Integrations: true }
+      return seed
     }
   })
   const toggleExpanded = (label: string) =>
@@ -511,6 +571,31 @@ export function AdminShell({ children, title }: { children: ReactNode; title: st
 
   const filteredGroups = useMemo(() => filterGroups(NAV_GROUPS, search), [search])
 
+  // Auto-expand any parent whose children matched the search.
+  const searchAwareExpanded = useMemo(() => {
+    if (!search.trim()) return expanded
+    const merged: Record<string, boolean> = { ...expanded }
+    filteredGroups.forEach((g) => g.items.forEach((it) => {
+      if (it.children && it.children.length > 0) merged[it.label] = true
+    }))
+    return merged
+  }, [expanded, filteredGroups, search])
+
+  // Persist sidebar scroll position across page navigations so it doesn't
+  // jump back to the top whenever the user clicks a module.
+  const navRef = useRef<HTMLElement | null>(null)
+  useEffect(() => {
+    const el = navRef.current
+    if (!el || typeof window === "undefined") return
+    const saved = Number(window.sessionStorage.getItem(SCROLL_KEY) || "0")
+    if (saved > 0) el.scrollTop = saved
+    const onScroll = () => {
+      window.sessionStorage.setItem(SCROLL_KEY, String(el.scrollTop))
+    }
+    el.addEventListener("scroll", onScroll, { passive: true })
+    return () => el.removeEventListener("scroll", onScroll)
+  }, [])
+
   const roleBadge = currentUser?.role === "super_admin"
     ? "Super Admin"
     : currentUser?.role === "editor"
@@ -557,7 +642,7 @@ export function AdminShell({ children, title }: { children: ReactNode; title: st
 
           {!collapsed && <NavSearch value={search} onChange={setSearch} />}
 
-          <nav className="flex-1 pb-3 overflow-y-auto overflow-x-hidden">
+          <nav ref={navRef} className="flex-1 pb-3 overflow-y-auto overflow-x-hidden">
             {filteredGroups.length === 0 && !collapsed ? (
               <p className="px-6 py-6 text-xs text-muted-foreground">
                 No modules match “{search}”.
@@ -568,7 +653,7 @@ export function AdminShell({ children, title }: { children: ReactNode; title: st
                 pathname,
                 pendingOrders,
                 collapsed,
-                expanded,
+                searchAwareExpanded,
                 toggleExpanded,
               )
             )}
@@ -668,7 +753,7 @@ export function AdminShell({ children, title }: { children: ReactNode; title: st
                     pathname,
                     pendingOrders,
                     false,
-                    expanded,
+                    searchAwareExpanded,
                     toggleExpanded,
                     () => setSidebarOpen(false),
                   )
