@@ -470,13 +470,13 @@ export function AdminConsultations() {
                       />
                     </Field>
                     <div>
-                      <div className="flex items-center justify-between mb-2 gap-2">
+                      <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
                         <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground inline-flex items-center gap-1.5">
                           <Pill className="h-3.5 w-3.5" />
                           Recommended drugs
                         </label>
                         {canRecommend && (
-                          <div className="flex items-center gap-1.5">
+                          <div className="flex items-center gap-1.5 flex-shrink-0">
                             <SuggestFromNotesButton
                               clinicalContext={`${active.topic} ${active.doctorNote}`}
                               existingNames={active.recommendedDrugs.map((r) => r.name)}

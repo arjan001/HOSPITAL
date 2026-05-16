@@ -85,7 +85,7 @@ export function DrugPicker({ onPick, clinicalContext, triggerLabel = "Add drug",
       </button>
       {open && (
         <div
-          className={`absolute z-50 mt-1.5 w-[320px] rounded-lg border bg-white shadow-2xl overflow-hidden ${align === "end" ? "right-0" : "left-0"}`}
+          className={`absolute z-50 mt-1.5 w-[280px] max-w-[calc(100vw-2rem)] rounded-lg border bg-white shadow-2xl overflow-hidden ${align === "end" ? "right-0" : "left-0"}`}
           style={{ borderColor: "rgba(0,0,0,0.1)" }}
         >
           <div className="px-3 py-2.5 border-b flex items-center gap-2" style={{ borderColor: "rgba(0,0,0,0.08)" }}>
@@ -129,7 +129,7 @@ export function DrugPicker({ onPick, clinicalContext, triggerLabel = "Add drug",
           <div className="max-h-[260px] overflow-y-auto">
             {results.length === 0 ? (
               <p className="px-3 py-6 text-center text-xs text-muted-foreground">
-                {query ? `No drugs match "${query}".` : "Type to search the drug catalogue."}
+                {query ? `No drugs match "${query}".` : "Type a drug, brand or category to search."}
               </p>
             ) : (
               <ul className="py-1">

@@ -166,8 +166,8 @@ export function suggestDrugs(
 export function searchProducts(query: string, products: Product[], limit = 8): Product[] {
   const q = query.trim().toLowerCase()
   if (!q) {
-    // Default: show first N in-stock products.
-    return products.filter((p) => p.inStock).slice(0, limit)
+    // Empty query → no dump. Caller renders an "type to search" hint.
+    return []
   }
   const scored = products
     .map((p) => {
