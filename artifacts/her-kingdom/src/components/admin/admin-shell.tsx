@@ -161,7 +161,7 @@ const NAV_GROUPS: NavGroup[] = [
         href: "/admin/qa",
         icon: ShieldCheck,
         children: [
-          { label: "Incoming QC",         href: "/admin/qa",                   icon: ShieldCheck },
+          { label: "Stock & Dispatch QA", href: "/admin/qa",                   icon: ShieldCheck },
           { label: "Batch Verification",  href: "/admin/qa/batches",           icon: ClipboardList },
           { label: "Trust Seal Registry", href: "/admin/qa/trust-seal",        icon: HeartHandshake },
           { label: "Recalls & Compliance",href: "/admin/qa/recalls",           icon: AlertCircle },

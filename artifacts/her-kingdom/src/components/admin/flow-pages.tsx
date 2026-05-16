@@ -141,21 +141,8 @@ export function AdminTradingSettlements() {
 
 // ============ QA & Assurance ============
 
-export function AdminQa() {
-  return (
-    <FlowStage
-      title="Incoming QC"
-      eyebrow="Pipeline · QA & Assurance"
-      icon={ShieldCheck}
-      blurb="Every batch is checked before it can be sold. This is the trust layer the brand promise depends on."
-      steps={[
-        { label: "GRN intake", detail: "Goods Received Note opens a QC ticket." },
-        { label: "Sampling plan", detail: "AQL-driven sample size per batch size." },
-        { label: "Release / hold", detail: "Pass → Logistics inventory. Fail → Recalls queue." },
-      ]}
-    />
-  )
-}
+// AdminQa (Stock & Dispatch QA) lives in `./qa-ops.tsx` — the
+// fully functional, CMS-backed module that replaces the old placeholder.
 
 export function AdminQaBatches() {
   return (

@@ -53,7 +53,6 @@ import {
   AdminTradingBids,
   AdminTradingNegotiation,
   AdminTradingSettlements,
-  AdminQa,
   AdminQaBatches,
   AdminQaTrustSeal,
   AdminQaRecalls,
@@ -62,6 +61,7 @@ import {
   AdminLogisticsFallback,
 } from "@/components/admin/flow-pages";
 import { AdminLogistics } from "@/components/admin/logistics-ops";
+import { AdminQa } from "@/components/admin/qa-ops";
 import { AdminMessageTemplates } from "@/components/admin/message-templates";
 import { AdminSettings } from "@/components/admin/settings";
 import { UsersManagement } from "@/components/admin/users";
