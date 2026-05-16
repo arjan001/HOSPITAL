@@ -9,6 +9,7 @@ import {
   Send, Plus, ShieldCheck, Video, X, FileText, Stethoscope, Brain, Pill, HeartPulse,
 } from "lucide-react"
 import { DailyCall } from "@/components/video/daily-call"
+import { useConsultationSettings, standbyDoctorOf } from "@/lib/consultation-settings"
 
 /* ── Palette (aligned with upload-prescription) ──────────── */
 const WINE       = "#3D0814"
@@ -52,7 +53,22 @@ function Feature({ text }: { text: string }) {
   )
 }
 
-function DoctorAvatar({ size = 56 }: { size?: number }) {
+function DoctorAvatar({ size = 56, initials = "DR", avatarUrl }: { size?: number; initials?: string; avatarUrl?: string }) {
+  if (avatarUrl) {
+    return (
+      <img
+        src={avatarUrl}
+        alt=""
+        className="rounded-full object-cover flex-shrink-0"
+        style={{
+          width: size,
+          height: size,
+          border: "3px solid #fff",
+          boxShadow: "0 4px 12px -4px rgba(185,28,28,0.3)",
+        }}
+      />
+    )
+  }
   return (
     <div className="rounded-full flex items-center justify-center flex-shrink-0"
       style={{
@@ -62,9 +78,17 @@ function DoctorAvatar({ size = 56 }: { size?: number }) {
         border: "3px solid #fff",
         boxShadow: "0 4px 12px -4px rgba(185,28,28,0.3)",
       }}>
-      <span className="text-white font-bold" style={{ fontSize: size * 0.32 }}>SK</span>
+      <span className="text-white font-bold" style={{ fontSize: size * 0.32 }}>{initials}</span>
     </div>
   )
+}
+
+/** Realistic step text tied to the connection progress bar. */
+function connectStep(pct: number, doctorName: string): string {
+  if (pct < 25) return "Establishing secure connection…"
+  if (pct < 55) return "Verifying doctor availability…"
+  if (pct < 85) return "Preparing your consultation room…"
+  return `Connecting to ${doctorName}…`
 }
 
 /* ── Shell ───────────────────────────────────────────────── */
@@ -82,6 +106,8 @@ function Shell({ children }: { children: React.ReactNode }) {
    MAIN COMPONENT
 ══════════════════════════════════════════════════════════════*/
 export default function SpeakToADoctorPage() {
+  const [consultSettings] = useConsultationSettings()
+  const doc = standbyDoctorOf(consultSettings)
   const [screen,     setScreen]     = useState<Screen>("select")
   const [consType,   setConsType]   = useState<"chat" | "call">("chat")
   const [category,   setCategory]   = useState("")
@@ -109,7 +135,7 @@ export default function SpeakToADoctorPage() {
       if (consType === "chat") {
         setMessages([{
           from: "doctor",
-          text: `Hello! I'm Dr. Salad Khalif. I understand you're experiencing: "${category || "General concern"}". I'm here to help. Can you tell me more about when these symptoms started?`,
+          text: `Hello! I'm ${doc.name}. I understand you're experiencing: "${category || "General concern"}". I'm here to help. Can you tell me more about when these symptoms started?`,
           time: "Just now",
         }])
         setScreen("chat")
@@ -547,24 +573,33 @@ export default function SpeakToADoctorPage() {
         <div className="flex items-start justify-between p-6 z-10">
           <div className="rounded-xl bg-white px-4 py-2.5 shadow-lg">
             <p className="font-semibold text-xs" style={{ color: "#9ca3af" }}>Connecting to</p>
-            <p className="font-bold text-sm" style={{ color: WINE }}>Dr. Salad Khalif</p>
+            <p className="font-bold text-sm" style={{ color: WINE }}>{doc.name}</p>
           </div>
           <div className="rounded-xl bg-white px-4 py-2.5 shadow-lg">
             <p className="font-bold text-sm" style={{ color: WINE }}>{fmtTime(callTimer)}</p>
           </div>
         </div>
 
-        <div className="flex-1 flex items-center justify-center">
-          <div
-            className="w-48 h-48 rounded-full flex items-center justify-center"
-            style={{
-              background: `linear-gradient(135deg, ${ACCENT_ORG} 0%, ${ACCENT_RED} 100%)`,
-              border: "4px solid rgba(255,255,255,0.2)",
-              boxShadow: "0 0 60px rgba(249,115,22,0.3)",
-            }}
-          >
-            <span className="text-white font-extrabold text-5xl">SK</span>
+        <div className="flex-1 flex flex-col items-center justify-center">
+          <div className="relative">
+            {/* Soft pulsing halo to make the wait feel alive */}
+            <span className="absolute inset-0 rounded-full animate-ping" style={{ background: ACCENT_ORG, opacity: 0.18 }} />
+            <div
+              className="relative w-48 h-48 rounded-full flex items-center justify-center"
+              style={{
+                background: doc.avatarUrl ? "transparent" : `linear-gradient(135deg, ${ACCENT_ORG} 0%, ${ACCENT_RED} 100%)`,
+                border: "4px solid rgba(255,255,255,0.2)",
+                boxShadow: "0 0 60px rgba(249,115,22,0.3)",
+                overflow: "hidden",
+              }}
+            >
+              {doc.avatarUrl
+                ? <img src={doc.avatarUrl} alt="" className="w-full h-full object-cover" />
+                : <span className="text-white font-extrabold text-5xl">{doc.initials}</span>}
+            </div>
           </div>
+          <p className="mt-6 text-white font-bold text-lg">{doc.name}</p>
+          <p className="text-xs" style={{ color: "rgba(255,255,255,0.7)" }}>{doc.specialty} · {doc.yearsExperience} yrs experience</p>
         </div>
 
         <div className="px-10 pb-10">
@@ -572,7 +607,7 @@ export default function SpeakToADoctorPage() {
             <div className="h-full rounded-full transition-all duration-300"
               style={{ width: `${connectPct}%`, background: `linear-gradient(90deg, ${ACCENT_ORG}, ${ACCENT_RED})` }} />
           </div>
-          <p className="text-center text-sm" style={{ color: "rgba(255,255,255,0.6)" }}>Connecting…</p>
+          <p className="text-center text-sm" style={{ color: "rgba(255,255,255,0.75)" }}>{connectStep(connectPct, doc.name)}</p>
         </div>
       </div>
     )
@@ -581,18 +616,19 @@ export default function SpeakToADoctorPage() {
     return (
       <Shell>
         <div className="mx-auto max-w-md px-4 py-14 text-center">
-          <div className="flex justify-center mb-6">
-            <DoctorAvatar size={108} />
+          <div className="flex justify-center mb-6 relative">
+            <span className="absolute inset-0 m-auto w-[108px] h-[108px] rounded-full animate-ping" style={{ background: ACCENT_ORG, opacity: 0.12 }} />
+            <DoctorAvatar size={108} initials={doc.initials} avatarUrl={doc.avatarUrl} />
           </div>
           <h2 className="text-2xl font-bold mb-1" style={{ color: WINE }}>Connecting to Doctor</h2>
-          <p className="font-semibold text-sm" style={{ color: ACCENT_RED }}>Dr. Salad Khalif</p>
-          <p className="text-xs mb-8" style={{ color: "#6b7280" }}>General Practice · 12 years experience</p>
+          <p className="font-semibold text-sm" style={{ color: ACCENT_RED }}>{doc.name}</p>
+          <p className="text-xs mb-8" style={{ color: "#6b7280" }}>{doc.specialty} · {doc.yearsExperience} years experience</p>
 
           <div className="h-1.5 rounded-full overflow-hidden mb-3" style={{ background: BORDER }}>
             <div className="h-full rounded-full transition-all duration-300"
               style={{ width: `${connectPct}%`, background: `linear-gradient(90deg, ${ACCENT_ORG} 0%, ${ACCENT_RED} 100%)` }} />
           </div>
-          <p className="text-xs mb-10" style={{ color: "#6b7280" }}>Confirming payment authorization…</p>
+          <p className="text-xs mb-10" style={{ color: "#6b7280" }}>{connectStep(connectPct, doc.name)}</p>
 
           <div className="grid grid-cols-2 gap-3 mb-5">
             <div className="rounded-lg bg-white p-4 text-left" style={{ border: `1px solid ${BORDER}` }}>
@@ -617,7 +653,7 @@ export default function SpeakToADoctorPage() {
             style={{ background: SOFT_BG, border: `1px solid ${BORDER}` }}>
             <Clock className="h-4 w-4 flex-shrink-0 mt-0.5" style={{ color: ACCENT_RED }} />
             <div>
-              <p className="text-xs font-semibold" style={{ color: WINE }}>You will only be charged once Dr. Salad connects</p>
+              <p className="text-xs font-semibold" style={{ color: WINE }}>You will only be charged once {doc.name} connects</p>
               <p className="text-[11px] mt-0.5" style={{ color: "#6b7280" }}>Estimated connection time: 30–60 seconds</p>
             </div>
           </div>
@@ -631,8 +667,9 @@ export default function SpeakToADoctorPage() {
     <DailyCall
       roomName={`consult-${(category || "general").toLowerCase().replace(/\s+/g, "-").slice(0, 20)}-${Math.floor(Date.now() / 1000 / 600)}`}
       userName="Patient"
-      title="Dr. Salad Khalif"
-      subtitle="General Practice · Connected"
+      title={doc.name}
+      subtitle={`${doc.specialty} · Connected`}
+      consultationKind="video"
       onSwitchToChat={() => setScreen("chat")}
       onLeave={() => setScreen("summary")}
     />
@@ -646,11 +683,11 @@ export default function SpeakToADoctorPage() {
         {/* Doctor header — clean white */}
         <div className="px-6 py-4 flex items-center justify-between bg-white" style={{ borderBottom: `1px solid ${BORDER}` }}>
           <div className="flex items-center gap-3">
-            <DoctorAvatar size={42} />
+            <DoctorAvatar size={42} initials={doc.initials} avatarUrl={doc.avatarUrl} />
             <div>
-              <p className="font-bold text-sm" style={{ color: WINE }}>Dr. Salad Khalif</p>
+              <p className="font-bold text-sm" style={{ color: WINE }}>{doc.name}</p>
               <p className="text-xs flex items-center gap-1.5" style={{ color: "#6b7280" }}>
-                <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block" /> General Practice · Online
+                <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block" /> {doc.specialty} · Online
               </p>
             </div>
           </div>
@@ -731,7 +768,7 @@ export default function SpeakToADoctorPage() {
           <div>
             <h1 className="text-2xl font-bold" style={{ color: WINE }}>Consultation Summary</h1>
             <p className="text-sm mt-1" style={{ color: "#6b7280" }}>
-              Dr. Salad Khalif · {new Date().toLocaleDateString()}
+              {doc.name} · {new Date().toLocaleDateString()}
             </p>
           </div>
         </div>

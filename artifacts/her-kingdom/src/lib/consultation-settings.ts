@@ -5,6 +5,19 @@ import { cmsStore } from "@/lib/cms-store"
 
 export type ConsultationKind = "chat" | "video" | "voice"
 
+export type StandbyDoctor = {
+  /** Display name, e.g. "Dr. A. Ahmed". Surfaced on every consult screen. */
+  name: string
+  specialty: string
+  yearsExperience: number
+  /** 2-letter avatar fallback. Auto-derived when blank. */
+  initials?: string
+  /** Optional avatar image. Falls back to gradient + initials. */
+  avatarUrl?: string
+  /** Short bio shown on the booking & connect screens. */
+  bio?: string
+}
+
 export type ConsultationSettings = {
   chatDurationMin: number
   videoDurationMin: number
@@ -12,6 +25,7 @@ export type ConsultationSettings = {
   overageRateKes: number
   overageBlockMin: number
   currency: string
+  standbyDoctor: StandbyDoctor
 }
 
 export const CONSULTATION_DEFAULTS: ConsultationSettings = {
@@ -21,6 +35,39 @@ export const CONSULTATION_DEFAULTS: ConsultationSettings = {
   overageRateKes: 200,
   overageBlockMin: 5,
   currency: "KES",
+  standbyDoctor: {
+    name: "Dr. On Call",
+    specialty: "General Practice",
+    yearsExperience: 8,
+    initials: "",
+    avatarUrl: "",
+    bio: "A licensed clinician is always on standby for Shaniid RX consultations.",
+  },
+}
+
+/** Two-letter avatar fallback derived from a name when none is set. */
+export function deriveInitials(name: string): string {
+  const parts = (name || "")
+    .replace(/^Dr\.?\s+/i, "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+  if (parts.length === 0) return "DR"
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase()
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
+}
+
+/** Read the configured standby doctor with safe defaults applied. */
+export function standbyDoctorOf(s: ConsultationSettings): Required<StandbyDoctor> {
+  const d = { ...CONSULTATION_DEFAULTS.standbyDoctor, ...(s.standbyDoctor || {}) }
+  return {
+    name: d.name || CONSULTATION_DEFAULTS.standbyDoctor.name,
+    specialty: d.specialty || CONSULTATION_DEFAULTS.standbyDoctor.specialty,
+    yearsExperience: d.yearsExperience ?? CONSULTATION_DEFAULTS.standbyDoctor.yearsExperience,
+    initials: (d.initials && d.initials.trim()) || deriveInitials(d.name || ""),
+    avatarUrl: d.avatarUrl || "",
+    bio: d.bio || CONSULTATION_DEFAULTS.standbyDoctor.bio!,
+  }
 }
 
 export function useConsultationSettings() {
