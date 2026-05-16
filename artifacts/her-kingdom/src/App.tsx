@@ -79,6 +79,7 @@ import { AdminChat } from "@/components/admin/chat";
 import AccountChatPage from "@/pages/account/chat";
 import { AdminRolesPermissions } from "@/components/admin/roles-permissions";
 import { AdminConsultations } from "@/components/admin/consultations";
+import { AdminConsultationSettings } from "@/components/admin/consultation-settings-page";
 import { AdminContactInquiries } from "@/components/admin/contact-inquiries";
 import { AdminAuditLog } from "@/components/admin/audit-log";
 import { PopupOffer } from "@/components/store/popup-offer";
@@ -404,6 +405,7 @@ function Router() {
       <Route path="/admin/settings" component={AdminSettings} />
       <Route path="/admin/users" component={UsersManagement} />
       <Route path="/admin/customers" component={AdminCustomers} />
+      <Route path="/admin/consultation-settings" component={AdminConsultationSettings} />
       <Route path="/admin/announcement" component={AdminAnnouncementBar} />
       <Route path="/admin/pages" component={AdminCustomPages} />
       <Route path="/admin/footer" component={AdminFooterCms} />

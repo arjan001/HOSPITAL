@@ -533,6 +533,7 @@ export function AdminConsultations() {
           isOwner
           title={`Patient: ${active.patientName}`}
           subtitle={active.topic || "Live consultation"}
+          consultationKind="video"
           onLeave={() => setVideoOpen(false)}
         />
       )}

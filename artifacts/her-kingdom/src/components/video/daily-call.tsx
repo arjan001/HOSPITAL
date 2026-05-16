@@ -4,6 +4,13 @@ import {
   Mic, MicOff, Video as VideoOn, VideoOff, MonitorUp, MessageSquare, X,
   Settings, Users, Loader2, AlertTriangle,
 } from "lucide-react"
+import { SessionTimer } from "@/components/consultation/session-timer"
+import {
+  useConsultationSettings,
+  formatOverageLabel,
+  logOverageCharge,
+  type ConsultationKind,
+} from "@/lib/consultation-settings"
 
 const WINE = "#3D0814"
 const ACCENT_RED = "#B91C1C"
@@ -24,6 +31,10 @@ export type DailyCallProps = {
   title?: string
   /** Optional subtitle (e.g. "General Practice · Online"). */
   subtitle?: string
+  /** "video" (default) or "voice" — selects the duration window from
+   *  the global Consultation settings. Pass `null` to disable the timer
+   *  (e.g. internal staff-to-staff calls). */
+  consultationKind?: ConsultationKind | null
 }
 
 type ConfigState = "checking" | "ready" | "missing" | "error"
@@ -52,7 +63,19 @@ export function DailyCall({
   onSwitchToChat,
   title,
   subtitle,
+  consultationKind = "video",
 }: DailyCallProps) {
+  const [consultSettings] = useConsultationSettings()
+  // Free window for this call kind, plus any overage extensions the user opts into.
+  const baseDurationSec =
+    consultationKind === "voice"
+      ? consultSettings.videoDurationMin * 60
+      : consultationKind === "video"
+        ? consultSettings.videoDurationMin * 60
+        : 0
+  const [extensionsSec, setExtensionsSec] = useState(0)
+  const effectiveMaxSec = baseDurationSec + extensionsSec
+  const timerEnabled = !!consultationKind && baseDurationSec > 0
   const containerRef = useRef<HTMLDivElement | null>(null)
   const callRef = useRef<DailyCall | null>(null)
 
@@ -175,7 +198,10 @@ export function DailyCall({
   // Call duration timer (starts on join).
   useEffect(() => {
     if (!joined) return
-    const t = window.setInterval(() => setElapsed((e) => e + 1), 1000)
+    // Use wall-clock arithmetic so the timer doesn't drift when the tab is
+    // backgrounded (browsers throttle setInterval to ~1Hz or slower).
+    const startMs = Date.now() - elapsed * 1000
+    const t = window.setInterval(() => setElapsed(Math.floor((Date.now() - startMs) / 1000)), 1000)
     return () => window.clearInterval(t)
   }, [joined])
 
@@ -230,8 +256,33 @@ export function DailyCall({
           </p>
         </div>
         {joined && (
-          <div className="rounded-xl bg-white/95 backdrop-blur px-4 py-2.5 shadow-lg font-bold text-sm pointer-events-auto" style={{ color: WINE }}>
-            {fmt(elapsed)}
+          <div className="rounded-xl bg-white/95 backdrop-blur px-4 py-2 shadow-lg pointer-events-auto flex items-center gap-2.5" style={{ color: WINE }}>
+            <span className="font-bold text-sm tabular-nums">{fmt(elapsed)}</span>
+            {timerEnabled && (
+              <>
+                <span className="w-px h-4 bg-black/10" />
+                <SessionTimer
+                  maxDurationSec={effectiveMaxSec}
+                  elapsedSec={elapsed}
+                  warnAtSecondsLeft={consultSettings.warnSecondsLeft}
+                  overageLabel={formatOverageLabel(consultSettings)}
+                  overageBlockMin={consultSettings.overageBlockMin}
+                  onConfirmOverage={() => {
+                    const extra = consultSettings.overageBlockMin * 60
+                    setExtensionsSec((e) => e + extra)
+                    logOverageCharge({
+                      kind: consultationKind || "video",
+                      roomOrThread: roomName,
+                      blockMin: consultSettings.overageBlockMin,
+                      amountKes: consultSettings.overageRateKes,
+                      patient: userName,
+                    })
+                  }}
+                  onEnd={() => { void handleLeave() }}
+                  compact
+                />
+              </>
+            )}
           </div>
         )}
       </div>

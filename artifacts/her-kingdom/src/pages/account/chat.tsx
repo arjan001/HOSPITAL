@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { mutate as globalMutate } from "swr"
 import { AccountShell } from "@/components/account/account-shell"
 import { ChatWindow } from "@/components/chat/chat-window"
@@ -15,6 +15,12 @@ import {
 } from "@/lib/api-nest"
 import { useUser } from "@clerk/react"
 import { ShieldCheck, Stethoscope, MessageCircle } from "lucide-react"
+import { SessionTimer } from "@/components/consultation/session-timer"
+import {
+  useConsultationSettings,
+  formatOverageLabel,
+  logOverageCharge,
+} from "@/lib/consultation-settings"
 
 const WINE = "#3D0814"
 
@@ -22,6 +28,23 @@ export default function AccountChatPage() {
   const { user, isSignedIn } = useUser()
   const { data: thread } = useMyThread()
   const { data: messages } = useMyMessages()
+
+  // Consultation timer (chat window). Starts when the patient opens the page;
+  // a hard "confirm overage or end" modal fires when it expires.
+  const [consultSettings] = useConsultationSettings()
+  const [elapsed, setElapsed] = useState(0)
+  const [extensionsSec, setExtensionsSec] = useState(0)
+  const [sessionEnded, setSessionEnded] = useState(false)
+  const startMsRef = useRef<number>(Date.now())
+  useEffect(() => {
+    if (sessionEnded) return
+    // Wall-clock arithmetic — survives background-tab throttling.
+    const tick = () => setElapsed(Math.floor((Date.now() - startMsRef.current) / 1000))
+    tick()
+    const t = window.setInterval(tick, 1000)
+    return () => window.clearInterval(t)
+  }, [sessionEnded])
+  const chatMaxSec = consultSettings.chatDurationMin * 60 + extensionsSec
 
   // SSE for true realtime push
   useEffect(() => {
@@ -67,14 +90,36 @@ export default function AccountChatPage() {
   return (
     <AccountShell title="Talk to a pharmacist" subtitle="Live chat with our verified pharmacy team" user={userInfo}>
       <div className="rounded-2xl overflow-hidden border bg-white" style={{ borderColor: "#F2DCC8" }}>
-        <ChatHeader thread={thread} />
+        <ChatHeader thread={thread} timerSlot={
+          isSignedIn && !sessionEnded ? (
+            <SessionTimer
+              maxDurationSec={chatMaxSec}
+              elapsedSec={elapsed}
+              warnAtSecondsLeft={consultSettings.warnSecondsLeft}
+              overageLabel={formatOverageLabel(consultSettings)}
+              overageBlockMin={consultSettings.overageBlockMin}
+              onConfirmOverage={() => {
+                setExtensionsSec((e) => e + consultSettings.overageBlockMin * 60)
+                logOverageCharge({
+                  kind: "chat",
+                  roomOrThread: thread?.id || "patient-chat",
+                  blockMin: consultSettings.overageBlockMin,
+                  amountKes: consultSettings.overageRateKes,
+                  patient: userName,
+                })
+              }}
+              onEnd={() => setSessionEnded(true)}
+              compact
+            />
+          ) : null
+        } />
         <div className="h-[60vh] min-h-[480px]">
           <ChatWindow
             messages={messages || []}
             perspective="patient"
             onSend={send}
-            composerDisabled={!isSignedIn}
-            composerHint="Sign in to start chatting"
+            composerDisabled={!isSignedIn || sessionEnded}
+            composerHint={sessionEnded ? "Consultation ended. Start a new chat to continue." : "Sign in to start chatting"}
             emptyState={<EmptyState />}
           />
         </div>
@@ -95,7 +140,7 @@ export default function AccountChatPage() {
   )
 }
 
-function ChatHeader({ thread }: { thread: ChatThread | undefined }) {
+function ChatHeader({ thread, timerSlot }: { thread: ChatThread | undefined; timerSlot?: React.ReactNode }) {
   return (
     <div className="px-4 sm:px-5 py-3 flex items-center gap-3 border-b" style={{ background: WINE, color: "white", borderColor: "rgba(0,0,0,0.06)" }}>
       <div className="w-10 h-10 rounded-full bg-white/15 flex items-center justify-center">
@@ -108,6 +153,7 @@ function ChatHeader({ thread }: { thread: ChatThread | undefined }) {
           Online · usually replies within minutes
         </p>
       </div>
+      {timerSlot}
       {thread?.unreadByPatient ? (
         <span className="text-[11px] font-bold bg-orange-500 text-white px-2 py-0.5 rounded-full">
           {thread.unreadByPatient} new

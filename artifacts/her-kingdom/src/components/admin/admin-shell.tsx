@@ -106,6 +106,7 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { label: "Prescriptions",     href: "/admin/prescriptions", icon: ClipboardList },
       { label: "Consultations",     href: "/admin/consultations", icon: Stethoscope },
+      { label: "Consultation Settings", href: "/admin/consultation-settings", icon: Timer },
       { label: "Live Chat",         href: "/admin/chat",          icon: MessagesSquare },
       { label: "Contact Inquiries", href: "/admin/inquiries",     icon: Inbox },
     ],
