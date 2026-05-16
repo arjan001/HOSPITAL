@@ -158,3 +158,22 @@ overrides:
   # drizzle-kit uses esbuild internally on an older version that's vulnerable, this overrides it
   "@esbuild-kit/esm-loader": "npm:tsx@^4.21.0"
   esbuild: "0.27.3"
+  # ============================================================================
+  # SECURITY: CVE overrides — pin transitive deps to patched versions
+  # ============================================================================
+  # GHSA-c2c7-rcm5-vvqj / GHSA-3v7f-55p6-f55p — picomatch ReDoS (v2.x, e.g. micromatch); patched 2.3.2
+  "picomatch@^2": "2.3.2"
+  # GHSA-c2c7-rcm5-vvqj / GHSA-3v7f-55p6-f55p — picomatch ReDoS (v4.x, e.g. vite/fdir); patched 4.0.4
+  "picomatch@^4": "4.0.4"
+  # GHSA-j3q9-mxjg-w52f / GHSA-27v5-c462-wpq7 — path-to-regexp DoS; patched 8.4.2
+  "path-to-regexp": "8.4.2"
+  # GHSA-f23m-r3pf-42rh / GHSA-r5fr-rjxr-66jc — lodash Prototype Pollution / Code Injection; patched 4.18.1
+  "lodash@^4": "4.18.1"
+  # GHSA-qx2v-qp2m-jg93 — postcss XSS via unescaped </style>; patched 8.5.14
+  postcss: "8.5.14"
+  # GHSA-q3j6-qgpj-74h6 / GHSA-v39h-62p7-jpjc — fast-uri path traversal + host confusion; patched 3.1.2
+  fast-uri: "3.1.2"
+  # GHSA-f886-m6hf-6m8v — brace-expansion DoS via zero-step sequence; patched 2.1.0 (v2.x only)
+  "brace-expansion@^2": "2.1.0"
+  # GHSA-48c2-rrv3-qjmp — yaml Stack Overflow via deeply nested YAML; patched 2.9.0
+  yaml: "2.9.0"
