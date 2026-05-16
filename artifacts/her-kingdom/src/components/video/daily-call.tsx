@@ -11,6 +11,8 @@ import {
   logOverageCharge,
   type ConsultationKind,
 } from "@/lib/consultation-settings"
+import { useCmsDoc } from "@/lib/cms-store"
+import { INTEGRATIONS_DEFAULTS } from "@/components/admin/integrations"
 
 const WINE = "#3D0814"
 const ACCENT_RED = "#B91C1C"
@@ -66,6 +68,10 @@ export function DailyCall({
   consultationKind = "video",
 }: DailyCallProps) {
   const [consultSettings] = useConsultationSettings()
+  // Recording is gated by the admin Integrations → Video toggle. Default off so
+  // accounts on Daily's free / starter plans don't 400 on room creation.
+  const [integrations] = useCmsDoc("integrations", INTEGRATIONS_DEFAULTS)
+  const recordingEnabled = !!integrations?.video?.recordingEnabled
   // Free window for this call kind, plus any overage extensions the user opts into.
   const baseDurationSec =
     consultationKind === "voice"
@@ -100,7 +106,7 @@ export function DailyCall({
     ;(async () => {
       try {
         const room = await postJson<{ url: string; name: string; configured?: boolean }>(
-          "/video/room", { name: roomName },
+          "/video/room", { name: roomName, enableRecording: recordingEnabled },
         )
         if (cancelled) return
         if (!room.url) {
@@ -157,9 +163,10 @@ export function DailyCall({
           .on("joined-meeting", () => {
             setJoined(true)
             // Owners (e.g. doctor / pharmacist) auto-start cloud recording so
-            // consultations are reviewable later. Failures are swallowed —
-            // recording is best-effort, not a hard requirement to talk.
-            if (isOwner) {
+            // consultations are reviewable later — but ONLY when the admin
+            // has turned recording on in Integrations → Video (their Daily
+            // plan must support it). Failures are swallowed.
+            if (isOwner && recordingEnabled) {
               try {
                 ;(call as unknown as { startRecording?: () => Promise<unknown> }).startRecording?.()
                   ?.catch?.(() => {})

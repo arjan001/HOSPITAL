@@ -83,10 +83,11 @@ router.post("/room", async (req: Request, res: Response) => {
             exp,
             enable_chat: body.enableChat ?? true,
             enable_screenshare: body.enableScreenshare ?? true,
-            // Default to cloud recording so consultations are back-recorded
-            // and reviewable later. Pass `enableRecording: false` from the
-            // client to opt out (e.g. a non-clinical chat).
-            enable_recording: body.enableRecording === false ? false : "cloud",
+            // Default OFF so accounts on the free / starter Daily plan don't
+            // 400 with "property 'enable_recording' cannot be set to that
+            // value with your current plan". Pass `enableRecording: true`
+            // from the admin Integrations panel once the plan supports it.
+            ...(body.enableRecording === true ? { enable_recording: "cloud" as const } : {}),
             start_video_off: false,
             start_audio_off: false,
             enable_prejoin_ui: true,
