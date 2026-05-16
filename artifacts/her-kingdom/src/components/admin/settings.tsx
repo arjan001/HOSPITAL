@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Switch } from "@/components/ui/switch"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { PosSettingsPanel } from "./pos-settings"
+// import { PosSettingsPanel } from "./pos-settings" // hidden until client requests POS module
 import { MonitoringPanel } from "./monitoring"
 
 import useSWR from "swr"
@@ -115,7 +115,7 @@ export function AdminSettings() {
             <TabsTrigger value="general">General</TabsTrigger>
             <TabsTrigger value="seo">SEO</TabsTrigger>
             <TabsTrigger value="footer">Footer & Social</TabsTrigger>
-            <TabsTrigger value="pos">POS & Receipt</TabsTrigger>
+            {/* <TabsTrigger value="pos">POS & Receipt</TabsTrigger> hidden until client requests POS module */}
             <TabsTrigger value="monitoring">Monitoring</TabsTrigger>
           </TabsList>
 
@@ -174,9 +174,9 @@ export function AdminSettings() {
             </div>
           </TabsContent>
 
-          <TabsContent value="pos" className="mt-6">
+          {/* <TabsContent value="pos" className="mt-6">
             <PosSettingsPanel />
-          </TabsContent>
+          </TabsContent> hidden until client requests POS module */}
 
           <TabsContent value="monitoring" className="mt-6">
             <MonitoringPanel />
