@@ -778,13 +778,14 @@ function SmallAction({ label, icon: Icon, onClick }: { label: string; icon: type
 
 function sanitizePhone(raw: string): string | null {
   const digits = raw.replace(/\D/g, "")
-  // Accept 07XXXXXXXX, 7XXXXXXXX, 254XXXXXXXXX, +254XXXXXXXXX
+  // Accept Safaricom 07XX, Airtel/Telkom 01XX, bare 7XX/1XX, or full 254 / +254.
   let p = digits
   if (p.startsWith("0") && p.length === 10) p = "254" + p.slice(1)
-  else if (p.length === 9 && p.startsWith("7")) p = "254" + p
+  else if (p.length === 9 && (p.startsWith("7") || p.startsWith("1"))) p = "254" + p
   else if (p.startsWith("254") && p.length === 12) { /* ok */ }
   else return null
-  if (!/^2547\d{8}$/.test(p)) return null
+  // Mobile prefixes: 7XX (Safaricom + Airtel) or 1XX (Airtel/Telkom).
+  if (!/^254[71]\d{8}$/.test(p)) return null
   return p
 }
 
