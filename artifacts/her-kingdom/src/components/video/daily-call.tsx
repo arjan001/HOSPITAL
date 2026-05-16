@@ -149,11 +149,11 @@ export function DailyCall({
               background: "#0b0b0e",
               backgroundAccent: "#171924",
               baseText: "#FFFFFF",
-              border: "rgba(255,255,255,0.12)",
+              border: "#FFFFFF1F",
               mainAreaBg: "#0b0b0e",
               mainAreaBgAccent: "#171924",
               mainAreaText: "#FFFFFF",
-              supportiveText: "rgba(255,255,255,0.65)",
+              supportiveText: "#FFFFFFA6",
             }
             return { light: { colors }, dark: { colors } }
           })(),
