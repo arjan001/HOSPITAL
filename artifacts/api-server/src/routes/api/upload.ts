@@ -1,8 +1,8 @@
 import { Router } from "express"
-import { createClient } from "../../lib/legacy-store.js"
+import multer from "multer"
 import { rateLimit, rateLimitResponse } from "../../lib/security.js"
 import { requireAdmin } from "../../middlewares/admin-auth.js"
-import multer from "multer"
+import { getStorage } from "../../lib/storage.js"
 
 const router = Router()
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } })
@@ -10,15 +10,14 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 
 const IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif", "image/svg+xml"])
 const VIDEO_TYPES = new Set(["video/mp4", "video/webm", "video/ogg", "video/quicktime"])
 
-// Uploads are admin-only: the `requireAdmin` middleware enforces a valid
-// Supabase session AND an admin/super_admin/editor role row in admin_users.
+// Uploads are admin-only. Today they're persisted via the local-disk Storage
+// backend (`lib/storage.ts`). To switch to S3 later, edit `lib/storage.ts` —
+// this route does not change.
 router.post("/", requireAdmin, upload.single("file"), async (req, res, next) => {
   const rl = rateLimit(req, { limit: 10, windowSeconds: 60 })
   if (!rl.success) return rateLimitResponse(res)
 
   try {
-    const store = createClient()
-
     const file = req.file
     if (!file) return res.status(400).json({ error: "No file provided" })
 
@@ -29,18 +28,9 @@ router.post("/", requireAdmin, upload.single("file"), async (req, res, next) => 
     if (isImage && file.size > 5 * 1024 * 1024) return res.status(400).json({ error: "Image too large (max 5MB)" })
     if (isVideo && file.size > 50 * 1024 * 1024) return res.status(400).json({ error: "Video too large (max 50MB)" })
 
-    const productSlug = (req.body.productSlug || "general").replace(/[^a-z0-9\-]/gi, "").slice(0, 100)
-    const ext = file.originalname.split(".").pop()?.replace(/[^a-z0-9]/gi, "") || (isVideo ? "mp4" : "jpg")
-    const filename = `${productSlug}/${Date.now()}-${Math.random().toString(36).substring(2, 8)}.${ext}`
-
-    const { error: uploadError } = await store.storage
-      .from("products")
-      .upload(filename, file.buffer, { contentType: file.mimetype, upsert: false })
-
-    if (uploadError) return res.status(500).json({ error: uploadError.message })
-
-    const { data: urlData } = store.storage.from("products").getPublicUrl(filename)
-    res.json({ url: urlData.publicUrl, isVideo })
+    const productSlug = String(req.body.productSlug || "products")
+    const { url, key } = await getStorage().put(productSlug, file.originalname, file.buffer, file.mimetype)
+    res.json({ url, key, isVideo })
   } catch (err) {
     next(err)
   }

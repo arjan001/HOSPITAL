@@ -39,7 +39,7 @@ export type Prescription = {
   dob?: string
   phone: string
   email: string
-  files: { name: string; size?: number; type?: string }[]
+  files: { name: string; size?: number; type?: string; url?: string; key?: string }[]
   notes: string
   status: PrescriptionStatus
   paymentMethod: PaymentMethod
@@ -57,7 +57,7 @@ type CreateInput = {
   dob?: string
   phone?: string
   email?: string
-  files?: Array<{ name?: string; size?: number; type?: string }>
+  files?: Array<{ name?: string; size?: number; type?: string; url?: string; key?: string }>
   notes?: string
   paymentMethod?: PaymentMethod
 }
@@ -103,6 +103,8 @@ class PrescriptionsService {
         name: String(f?.name ?? "attachment"),
         size: typeof f?.size === "number" ? f.size : undefined,
         type: f?.type ? String(f.type) : undefined,
+        url: f?.url ? String(f.url) : undefined,
+        key: f?.key ? String(f.key) : undefined,
       })),
       notes: String(data.notes ?? ""),
       status: "pending",

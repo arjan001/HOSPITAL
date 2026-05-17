@@ -55,45 +55,45 @@ type Seed = {
   offerPercentage?: number
 }
 
-// NOTE: Prices intentionally kept in the KSh 250–350 band for live PayHero
-// testing. Each on-offer item has an originalPrice ~30% higher to preserve
-// the discount UI without pushing the cart total up.
+// NOTE: prices are intentionally capped at KSh 20–40 while we run on dummy
+// seed data. When the real catalog lands in Postgres, the price column from
+// the DB takes over and this band no longer applies.
 const SEEDS: Seed[] = [
   // Medications
-  { name: "Paracetamol 500mg Tablets (24 pack)", price: 260, originalPrice: 340, image: "/images/products/medications/paracetamol-box.png", categorySlug: "medications", description: "Fast-acting paracetamol tablets for relief from headaches, fever and mild pain.", tags: ["pain relief", "fever"], isOnOffer: true, offerPercentage: 24 },
-  { name: "Ibuprofen 200mg Tablets (20 pack)", price: 280, image: "/images/products/medications/blister-pack-tablets.png", categorySlug: "medications", description: "Anti-inflammatory tablets for muscle pain, period pain and inflammation.", tags: ["anti-inflammatory"], isNew: true },
-  { name: "Cough Syrup 100ml", price: 320, image: "/images/products/medications/cough-syrup.png", categorySlug: "medications", description: "Soothing cough syrup for dry and chesty coughs. Suitable for adults and older children.", tags: ["cough", "cold"] },
-  { name: "Antibiotic Capsules (10 pack)", price: 290, originalPrice: 370, image: "/images/products/medications/antibiotic-capsules.png", categorySlug: "medications", description: "Broad-spectrum antibiotic capsules. Prescription required at checkout.", tags: ["prescription"], isOnOffer: true, offerPercentage: 22 },
-  { name: "Pain Relief Gel 50g", price: 310, image: "/images/products/medications/pain-relief-gel.png", categorySlug: "medications", description: "Topical gel for muscle aches, joint pain and sports injuries.", tags: ["topical", "pain relief"], isNew: true },
-  { name: "Allergy Relief Tablets (14 pack)", price: 270, originalPrice: 340, image: "/images/products/medications/pill-bottle-white.png", categorySlug: "medications", description: "Non-drowsy 24-hour antihistamine tablets for hayfever and allergic reactions.", tags: ["allergy"], isOnOffer: true, offerPercentage: 20 },
+  { name: "Paracetamol 500mg Tablets (24 pack)", price: 32, originalPrice: 42, image: "/images/products/medications/paracetamol-box.png", categorySlug: "medications", description: "Fast-acting paracetamol tablets for relief from headaches, fever and mild pain.", tags: ["pain relief", "fever"], isOnOffer: true, offerPercentage: 24 },
+  { name: "Ibuprofen 200mg Tablets (20 pack)", price: 35, image: "/images/products/medications/blister-pack-tablets.png", categorySlug: "medications", description: "Anti-inflammatory tablets for muscle pain, period pain and inflammation.", tags: ["anti-inflammatory"], isNew: true },
+  { name: "Cough Syrup 100ml", price: 38, image: "/images/products/medications/cough-syrup.png", categorySlug: "medications", description: "Soothing cough syrup for dry and chesty coughs. Suitable for adults and older children.", tags: ["cough", "cold"] },
+  { name: "Antibiotic Capsules (10 pack)", price: 34, originalPrice: 44, image: "/images/products/medications/antibiotic-capsules.png", categorySlug: "medications", description: "Broad-spectrum antibiotic capsules. Prescription required at checkout.", tags: ["prescription"], isOnOffer: true, offerPercentage: 23 },
+  { name: "Pain Relief Gel 50g", price: 36, image: "/images/products/medications/pain-relief-gel.png", categorySlug: "medications", description: "Topical gel for muscle aches, joint pain and sports injuries.", tags: ["topical", "pain relief"], isNew: true },
+  { name: "Allergy Relief Tablets (14 pack)", price: 32, originalPrice: 40, image: "/images/products/medications/pill-bottle-white.png", categorySlug: "medications", description: "Non-drowsy 24-hour antihistamine tablets for hayfever and allergic reactions.", tags: ["allergy"], isOnOffer: true, offerPercentage: 20 },
 
   // Vitamins
-  { name: "Vitamin C 1000mg (60 tablets)", price: 320, image: "/images/products/vitamins/vitamin-c-bottle.png", categorySlug: "vitamins", description: "High-strength vitamin C to support your immune system.", tags: ["immunity"], isNew: true },
-  { name: "Daily Multivitamin (90 tablets)", price: 300, originalPrice: 390, image: "/images/products/vitamins/multivitamin-bottle.png", categorySlug: "vitamins", description: "Complete daily multivitamin with 23 essential vitamins and minerals.", tags: ["wellness"], isOnOffer: true, offerPercentage: 23 },
-  { name: "Omega-3 Fish Oil Softgels (60)", price: 340, image: "/images/products/vitamins/omega-3.png", categorySlug: "vitamins", description: "Premium omega-3 softgels to support heart, brain and joint health.", tags: ["heart health"] },
-  { name: "Zinc Immunity Booster (30 caps)", price: 280, originalPrice: 360, image: "/images/products/vitamins/zinc-supplement.png", categorySlug: "vitamins", description: "Zinc supplement to support immunity and skin health.", tags: ["immunity"], isOnOffer: true, offerPercentage: 22 },
+  { name: "Vitamin C 1000mg (60 tablets)", price: 38, image: "/images/products/vitamins/vitamin-c-bottle.png", categorySlug: "vitamins", description: "High-strength vitamin C to support your immune system.", tags: ["immunity"], isNew: true },
+  { name: "Daily Multivitamin (90 tablets)", price: 30, originalPrice: 39, image: "/images/products/vitamins/multivitamin-bottle.png", categorySlug: "vitamins", description: "Complete daily multivitamin with 23 essential vitamins and minerals.", tags: ["wellness"], isOnOffer: true, offerPercentage: 23 },
+  { name: "Omega-3 Fish Oil Softgels (60)", price: 40, image: "/images/products/vitamins/omega-3.png", categorySlug: "vitamins", description: "Premium omega-3 softgels to support heart, brain and joint health.", tags: ["heart health"] },
+  { name: "Zinc Immunity Booster (30 caps)", price: 31, originalPrice: 40, image: "/images/products/vitamins/zinc-supplement.png", categorySlug: "vitamins", description: "Zinc supplement to support immunity and skin health.", tags: ["immunity"], isOnOffer: true, offerPercentage: 22 },
 
   // Medical Devices
-  { name: "Digital Thermometer", price: 330, image: "/images/products/medical-devices/digital-thermometer.png", categorySlug: "medical-devices", description: "Fast and accurate digital thermometer with fever alarm. Reads in 10 seconds.", tags: ["thermometer"], isNew: true },
-  { name: "Arm Blood Pressure Monitor", price: 290, originalPrice: 380, image: "/images/products/medical-devices/bp-monitor.png", categorySlug: "medical-devices", description: "Clinically validated upper-arm blood pressure monitor with memory for two users.", tags: ["bp monitor"], isOnOffer: true, offerPercentage: 24 },
-  { name: "Fingertip Pulse Oximeter", price: 310, image: "/images/products/medical-devices/pulse-oximeter.png", categorySlug: "medical-devices", description: "Compact fingertip pulse oximeter for SpO2 and pulse rate monitoring.", tags: ["spo2"], isNew: true },
-  { name: "Blood Glucose Meter Kit", price: 320, originalPrice: 410, image: "/images/products/medical-devices/glucose-meter.png", categorySlug: "medical-devices", description: "Complete glucose monitoring kit including 25 strips and lancets.", tags: ["diabetes"], isOnOffer: true, offerPercentage: 22 },
+  { name: "Digital Thermometer", price: 39, image: "/images/products/medical-devices/digital-thermometer.png", categorySlug: "medical-devices", description: "Fast and accurate digital thermometer with fever alarm. Reads in 10 seconds.", tags: ["thermometer"], isNew: true },
+  { name: "Arm Blood Pressure Monitor", price: 29, originalPrice: 38, image: "/images/products/medical-devices/bp-monitor.png", categorySlug: "medical-devices", description: "Clinically validated upper-arm blood pressure monitor with memory for two users.", tags: ["bp monitor"], isOnOffer: true, offerPercentage: 24 },
+  { name: "Fingertip Pulse Oximeter", price: 37, image: "/images/products/medical-devices/pulse-oximeter.png", categorySlug: "medical-devices", description: "Compact fingertip pulse oximeter for SpO2 and pulse rate monitoring.", tags: ["spo2"], isNew: true },
+  { name: "Blood Glucose Meter Kit", price: 31, originalPrice: 40, image: "/images/products/medical-devices/glucose-meter.png", categorySlug: "medical-devices", description: "Complete glucose monitoring kit including 25 strips and lancets.", tags: ["diabetes"], isOnOffer: true, offerPercentage: 22 },
 
   // Baby Care
-  { name: "Infant Formula Stage 1 (400g)", price: 340, image: "/images/products/baby-care/baby-formula.png", categorySlug: "baby-care", description: "Stage 1 infant formula milk with DHA, suitable from birth.", tags: ["infant"], isNew: true },
-  { name: "Pediatric Forehead Thermometer", price: 300, originalPrice: 380, image: "/images/products/baby-care/baby-thermometer.png", categorySlug: "baby-care", description: "Non-contact infrared thermometer designed for babies and young children.", tags: ["thermometer", "baby"], isOnOffer: true, offerPercentage: 21 },
-  { name: "Gentle Baby Lotion 250ml", price: 290, image: "/images/products/baby-care/baby-lotion.png", categorySlug: "baby-care", description: "Hypoallergenic moisturising lotion for delicate baby skin.", tags: ["baby skin"] },
+  { name: "Infant Formula Stage 1 (400g)", price: 40, image: "/images/products/baby-care/baby-formula.png", categorySlug: "baby-care", description: "Stage 1 infant formula milk with DHA, suitable from birth.", tags: ["infant"], isNew: true },
+  { name: "Pediatric Forehead Thermometer", price: 30, originalPrice: 38, image: "/images/products/baby-care/baby-thermometer.png", categorySlug: "baby-care", description: "Non-contact infrared thermometer designed for babies and young children.", tags: ["thermometer", "baby"], isOnOffer: true, offerPercentage: 21 },
+  { name: "Gentle Baby Lotion 250ml", price: 34, image: "/images/products/baby-care/baby-lotion.png", categorySlug: "baby-care", description: "Hypoallergenic moisturising lotion for delicate baby skin.", tags: ["baby skin"] },
 
   // Personal Care
-  { name: "Hand Sanitizer 500ml", price: 250, originalPrice: 320, image: "/images/products/personal-care/hand-sanitizer.png", categorySlug: "personal-care", description: "70% alcohol hand sanitizer with aloe vera. Kills 99.9% of germs.", tags: ["sanitizer"], isOnOffer: true, offerPercentage: 21 },
-  { name: "Antiseptic Mouthwash 500ml", price: 2, image: "/images/products/personal-care/mouthwash.png", categorySlug: "personal-care", description: "Daily antiseptic mouthwash for fresh breath and healthy gums.", tags: ["oral care"] },
-  { name: "Sensitive Toothpaste 100ml", price: 270, image: "/images/products/personal-care/toothpaste.png", categorySlug: "personal-care", description: "Toothpaste for sensitive teeth with daily enamel protection.", tags: ["oral care"], isNew: true },
-  { name: "Surgical Face Masks (50 pack)", price: 260, originalPrice: 340, image: "/images/products/personal-care/face-masks.png", categorySlug: "personal-care", description: "3-ply disposable surgical face masks. Box of 50.", tags: ["protection"], isOnOffer: true, offerPercentage: 23 },
+  { name: "Hand Sanitizer 500ml", price: 27, originalPrice: 34, image: "/images/products/personal-care/hand-sanitizer.png", categorySlug: "personal-care", description: "70% alcohol hand sanitizer with aloe vera. Kills 99.9% of germs.", tags: ["sanitizer"], isOnOffer: true, offerPercentage: 21 },
+  { name: "Antiseptic Mouthwash 500ml", price: 25, image: "/images/products/personal-care/mouthwash.png", categorySlug: "personal-care", description: "Daily antiseptic mouthwash for fresh breath and healthy gums.", tags: ["oral care"] },
+  { name: "Sensitive Toothpaste 100ml", price: 32, image: "/images/products/personal-care/toothpaste.png", categorySlug: "personal-care", description: "Toothpaste for sensitive teeth with daily enamel protection.", tags: ["oral care"], isNew: true },
+  { name: "Surgical Face Masks (50 pack)", price: 27, originalPrice: 35, image: "/images/products/personal-care/face-masks.png", categorySlug: "personal-care", description: "3-ply disposable surgical face masks. Box of 50.", tags: ["protection"], isOnOffer: true, offerPercentage: 23 },
 
   // First Aid
-  { name: "Sterile Bandage Roll Pack", price: 280, image: "/images/products/first-aid/bandages-roll.png", categorySlug: "first-aid", description: "Assorted sterile bandages and adhesive plasters for everyday cuts and grazes.", tags: ["wound care"] },
-  { name: "Antiseptic Solution 250ml", price: 250, originalPrice: 330, image: "/images/products/first-aid/antiseptic-solution.png", categorySlug: "first-aid", description: "Antiseptic solution for cleansing wounds, cuts and grazes.", tags: ["wound care"], isOnOffer: true, offerPercentage: 24 },
-  { name: "Compact First Aid Kit", price: 350, image: "/images/products/first-aid/first-aid-kit.png", categorySlug: "first-aid", description: "42-piece compact first aid kit for home, car or travel use.", tags: ["kit", "travel"], isNew: true },
+  { name: "Sterile Bandage Roll Pack", price: 33, image: "/images/products/first-aid/bandages-roll.png", categorySlug: "first-aid", description: "Assorted sterile bandages and adhesive plasters for everyday cuts and grazes.", tags: ["wound care"] },
+  { name: "Antiseptic Solution 250ml", price: 26, originalPrice: 34, image: "/images/products/first-aid/antiseptic-solution.png", categorySlug: "first-aid", description: "Antiseptic solution for cleansing wounds, cuts and grazes.", tags: ["wound care"], isOnOffer: true, offerPercentage: 24 },
+  { name: "Compact First Aid Kit", price: 40, image: "/images/products/first-aid/first-aid-kit.png", categorySlug: "first-aid", description: "42-piece compact first aid kit for home, car or travel use.", tags: ["kit", "travel"], isNew: true },
 ]
 
 function slugify(name: string) {

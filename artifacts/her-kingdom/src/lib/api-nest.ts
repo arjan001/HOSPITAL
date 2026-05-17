@@ -152,7 +152,7 @@ export type AccountPrescription = {
   dob?: string
   phone: string
   email: string
-  files: { name: string; size?: number; type?: string }[]
+  files: { name: string; size?: number; type?: string; url?: string; key?: string }[]
   notes: string
   status: RxStatus
   paymentMethod: "cash" | "insurance" | "unknown"
@@ -173,7 +173,7 @@ export const apiPrescriptions = {
     dob?: string
     phone?: string
     email?: string
-    files?: Array<{ name: string; size?: number; type?: string }>
+    files?: Array<{ name: string; size?: number; type?: string; url?: string; key?: string }>
     notes?: string
     paymentMethod?: "cash" | "insurance"
   }) =>
@@ -181,6 +181,43 @@ export const apiPrescriptions = {
       method: "POST",
       body: JSON.stringify(input),
     }),
+}
+
+/* ────────────────────────────────────────────────────────────
+   Uploads — generic binary upload to NestJS Storage backend.
+   Today persisted to local disk; swap to S3 by editing
+   artifacts/api-nest/src/common/storage.ts only.
+─────────────────────────────────────────────────────────────*/
+
+export type UploadedFile = { url: string; key: string; size: number }
+
+/** Read a File as base64 (without the `data:...;base64,` prefix). */
+async function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const fr = new FileReader()
+    fr.onload = () => {
+      const result = String(fr.result ?? "")
+      const idx = result.indexOf("base64,")
+      resolve(idx >= 0 ? result.slice(idx + "base64,".length) : result)
+    }
+    fr.onerror = () => reject(fr.error ?? new Error("file read failed"))
+    fr.readAsDataURL(file)
+  })
+}
+
+export const apiUploads = {
+  async putFile(file: File, namespace: "prescriptions" | "consultations" | "general" = "general"): Promise<UploadedFile> {
+    const data = await fileToBase64(file)
+    return nestFetch<UploadedFile>("/uploads", {
+      method: "POST",
+      body: JSON.stringify({
+        namespace,
+        filename: file.name,
+        contentType: file.type || "application/octet-stream",
+        data,
+      }),
+    })
+  },
 }
 
 export function useMyPrescriptions() {

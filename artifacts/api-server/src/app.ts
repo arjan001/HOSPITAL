@@ -10,6 +10,7 @@ import {
 } from "./middlewares/clerkProxyMiddleware";
 import router from "./routes";
 import { logger } from "./lib/logger";
+import { UPLOAD_DISK_ROOT, UPLOAD_URL_PREFIX } from "./lib/storage";
 
 const app: Express = express();
 
@@ -45,6 +46,14 @@ app.use(
       process.env.CLERK_PUBLISHABLE_KEY,
     ),
   })),
+);
+
+// Serve uploaded files from the local-disk Storage backend. When we swap
+// `lib/storage.ts` over to S3, this static mount can be removed — S3 URLs
+// are absolute and don't proxy through here.
+app.use(
+  UPLOAD_URL_PREFIX,
+  express.static(UPLOAD_DISK_ROOT, { fallthrough: false, maxAge: "1h", index: false }),
 );
 
 app.use("/api", router);

@@ -75,6 +75,12 @@ export default defineConfig({
         target: "http://localhost:8080",
         changeOrigin: true,
       },
+      // Local-disk uploads (api-server). When we move to S3 these URLs
+      // become absolute and the proxy is no longer needed.
+      "/uploads": {
+        target: "http://localhost:8080",
+        changeOrigin: true,
+      },
     },
   },
   preview: {

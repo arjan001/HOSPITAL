@@ -8,7 +8,7 @@ import { useStoreContact } from "@/hooks/use-store-contact"
 import { Seo, organizationJsonLd, websiteJsonLd, breadcrumbJsonLd, faqJsonLd, productJsonLd } from "@/components/seo"
 import { cmsStore, newId } from "@/lib/cms-store"
 import type { Prescription } from "@/components/admin/prescriptions"
-import { apiPrescriptions, refreshMyPrescriptions } from "@/lib/api-nest"
+import { apiPrescriptions, apiUploads, refreshMyPrescriptions } from "@/lib/api-nest"
 
 type UserPrescriptionRow = {
   id: string
@@ -207,19 +207,47 @@ export default function UploadPrescriptionPage() {
     // /account/prescriptions view has a real per-session source of truth.
     // localStorage above keeps the legacy admin panel (still on cmsStore)
     // working until it ports to NestJS.
+    let failedUploads = 0
     try {
+      // Upload the actual bytes via the Storage seam first, then attach
+      // the returned { url, key } to each file entry on the prescription.
+      // Per-file failure degrades to metadata-only so the pharmacist sees
+      // the patient *tried* to send it; the count surfaces in the success
+      // modal so the patient knows to re-send.
+      const uploaded = await Promise.all(
+        files.map(async (f) => {
+          try {
+            const r = await apiUploads.putFile(f, "prescriptions")
+            return { name: f.name, size: f.size, type: f.type, url: r.url, key: r.key }
+          } catch {
+            failedUploads += 1
+            return { name: f.name, size: f.size, type: f.type }
+          }
+        }),
+      )
       await apiPrescriptions.create({
         patientName: fullName,
         recipient: fullName,
         dob: dob || undefined,
         phone: "",
         email: "",
-        files: files.map((f) => ({ name: f.name, size: f.size, type: f.type })),
+        files: uploaded,
         notes: `Submitted via storefront. Payment: ${paymentMethod === "insurance" ? "Insurance" : "Cash"}.`,
         paymentMethod: paymentMethod === "insurance" ? "insurance" : "cash",
       })
       void refreshMyPrescriptions()
-    } catch { /* backend optional — local copy still saved */ }
+    } catch {
+      // Backend rejected the create call — local cmsStore copy still saved
+      // above, but warn the patient so they know to follow up.
+      failedUploads = files.length
+    }
+    if (failedUploads > 0) {
+      // Non-blocking, intentionally outside the success modal so the
+      // patient sees both: their reference number AND the warning.
+      window.setTimeout(() => {
+        alert(`${failedUploads} of ${files.length} file${files.length === 1 ? "" : "s"} couldn't be uploaded. Please share them with our pharmacist via WhatsApp or try again.`)
+      }, 350)
+    }
 
     setSubmittedRx({ rxNumber, name: displayName })
     setShowModal(true)
