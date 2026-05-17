@@ -1,18 +1,16 @@
 "use client"
 
 import { useState } from "react"
-import { apiFetch, authedFetcher as fetcher } from "@/lib/api-client"
+import { authedFetcher as fetcher } from "@/lib/api-client"
 import { AdminShell } from "./admin-shell"
 import useSWR, { mutate } from "swr"
 import { toast } from "sonner"
 import {
   CreditCard,
-  Send,
   RefreshCw,
   CheckCircle2,
   XCircle,
   Clock,
-  Phone,
   AlertCircle,
   Wallet,
 } from "lucide-react"
@@ -97,105 +95,7 @@ function StatusBadge({ status }: { status: string }) {
   )
 }
 
-function StkPushForm() {
-  const [phone, setPhone] = useState("")
-  const [amount, setAmount] = useState("")
-  const [customerName, setCustomerName] = useState("")
-  const [loading, setLoading] = useState(false)
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!phone || !amount) {
-      toast.error("Phone number and amount are required")
-      return
-    }
-
-    const numAmount = Number(amount)
-    if (numAmount < 1) {
-      toast.error("Minimum amount is KSh 1")
-      return
-    }
-
-    setLoading(true)
-    try {
-      const res = await apiFetch("/api/admin/payments", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "stk-push",
-          phone: phone.trim(),
-          amount: numAmount,
-          customerName: customerName.trim() || undefined,
-        }),
-      })
-      const data = await res.json()
-      if (!res.ok) {
-        toast.error(data.error || "Failed to initiate STK push")
-        return
-      }
-      toast.success("STK push sent via PayHero. The customer will receive an M-Pesa prompt.")
-      setPhone("")
-      setAmount("")
-      setCustomerName("")
-      mutate("/api/admin/payments?action=transactions")
-    } catch {
-      toast.error("Failed to initiate STK push")
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  return (
-    <form onSubmit={handleSubmit} className="space-y-4">
-      <div>
-        <label className="block text-sm font-medium mb-1.5">Customer Name <span className="text-muted-foreground font-normal">(optional)</span></label>
-        <input
-          type="text"
-          value={customerName}
-          onChange={(e) => setCustomerName(e.target.value)}
-          placeholder="e.g. Jane Wanjiku"
-          className="w-full h-10 px-3 border border-border rounded-md text-sm bg-background"
-        />
-        <p className="text-[11px] text-muted-foreground mt-1">Shown on the M-Pesa prompt. Auto-filled when blank.</p>
-      </div>
-      <div>
-        <label className="block text-sm font-medium mb-1.5">Phone Number</label>
-        <div className="relative">
-          <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <input
-            type="text"
-            value={phone}
-            onChange={(e) => setPhone(e.target.value)}
-            placeholder="0712345678 or +254712345678"
-            className="w-full h-10 pl-10 pr-3 border border-border rounded-md text-sm bg-background"
-          />
-        </div>
-        <p className="text-[11px] text-muted-foreground mt-1">Kenyan Safaricom number</p>
-      </div>
-      <div>
-        <label className="block text-sm font-medium mb-1.5">Amount (KES)</label>
-        <input
-          type="number"
-          min="1"
-          value={amount}
-          onChange={(e) => setAmount(e.target.value)}
-          placeholder="e.g. 5000"
-          className="w-full h-10 px-3 border border-border rounded-md text-sm bg-background"
-        />
-      </div>
-      <button
-        type="submit"
-        disabled={loading}
-        className="w-full h-10 bg-foreground text-background rounded-md text-sm font-medium hover:bg-foreground/90 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
-      >
-        <Send className="h-4 w-4" />
-        {loading ? "Sending STK Push..." : "Send M-Pesa Payment Request"}
-      </button>
-    </form>
-  )
-}
-
-type PaymentsTab = "transactions" | "stk-push" | "card-payments"
+type PaymentsTab = "transactions" | "card-payments"
 
 interface AdminPaymentsProps {
   initialTab?: PaymentsTab
@@ -239,7 +139,7 @@ export function AdminPayments({ initialTab = "transactions" }: AdminPaymentsProp
           <div>
             <h1 className="text-2xl font-serif font-bold">Payments</h1>
             <p className="text-sm text-muted-foreground mt-1">
-              Accept M-Pesa via PayHero, send STK push requests, and review card payment orders.
+              Review M-Pesa transactions and card payment orders.
             </p>
           </div>
           <button
@@ -304,7 +204,6 @@ export function AdminPayments({ initialTab = "transactions" }: AdminPaymentsProp
             {[
               { key: "transactions" as const, label: "M-Pesa Transactions", icon: CreditCard },
               { key: "card-payments" as const, label: "Card Payments", icon: Wallet },
-              { key: "stk-push" as const, label: "Send STK Push", icon: Send },
             ].map((tab) => (
               <button
                 key={tab.key}
@@ -426,38 +325,6 @@ export function AdminPayments({ initialTab = "transactions" }: AdminPaymentsProp
           </div>
         )}
 
-        {activeTab === "stk-push" && (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <div className="p-6 border border-border rounded-md">
-              <h3 className="font-medium mb-1">Send M-Pesa STK Push</h3>
-              <p className="text-xs text-muted-foreground mb-4">
-                Trigger a PayHero M-Pesa prompt on a customer's phone. They enter their PIN to complete the payment.
-              </p>
-              <StkPushForm />
-            </div>
-            <div className="p-6 border border-border rounded-md bg-secondary/30">
-              <h3 className="font-medium mb-3">How it works</h3>
-              <ol className="space-y-3 text-sm text-muted-foreground">
-                <li className="flex gap-3">
-                  <span className="flex-shrink-0 w-6 h-6 rounded-full bg-foreground text-background flex items-center justify-center text-xs font-bold">1</span>
-                  <span>Enter the customer's Safaricom phone number and amount.</span>
-                </li>
-                <li className="flex gap-3">
-                  <span className="flex-shrink-0 w-6 h-6 rounded-full bg-foreground text-background flex items-center justify-center text-xs font-bold">2</span>
-                  <span>PayHero pushes an M-Pesa prompt to the phone.</span>
-                </li>
-                <li className="flex gap-3">
-                  <span className="flex-shrink-0 w-6 h-6 rounded-full bg-foreground text-background flex items-center justify-center text-xs font-bold">3</span>
-                  <span>Customer enters their M-Pesa PIN to authorize payment.</span>
-                </li>
-                <li className="flex gap-3">
-                  <span className="flex-shrink-0 w-6 h-6 rounded-full bg-foreground text-background flex items-center justify-center text-xs font-bold">4</span>
-                  <span>Payment is confirmed via webhook and added to your wallet.</span>
-                </li>
-              </ol>
-            </div>
-          </div>
-        )}
       </div>
     </AdminShell>
   )
