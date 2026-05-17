@@ -70,7 +70,6 @@ function getStepIndex(status: OrderStatus) {
 }
 
 export function TrackOrderForm({ initialOrderNumber }: { initialOrderNumber?: string }) {
-  const searchParams = new URLSearchParams(window.location.search)
   const { whatsappNumber } = useStoreContact()
   const [searchType, setSearchType] = useState<"order" | "phone">("order")
   const [query,     setQuery]    = useState("")
@@ -98,9 +97,20 @@ export function TrackOrderForm({ initialOrderNumber }: { initialOrderNumber?: st
   }, [])
 
   useEffect(() => {
-    const orderCode = initialOrderNumber || searchParams.get("order")
-    if (orderCode) { setQuery(orderCode); setSearchType("order"); doSearch("order", orderCode) }
-  }, [initialOrderNumber, searchParams, doSearch])
+    const orderCode =
+      initialOrderNumber ||
+      (typeof window !== "undefined"
+        ? new URLSearchParams(window.location.search).get("order")
+        : null)
+    if (orderCode) {
+      setQuery(orderCode)
+      setSearchType("order")
+      doSearch("order", orderCode)
+    }
+    // Intentionally run once per mount / when the prop changes — we must NOT
+    // include a freshly-constructed URLSearchParams in deps (infinite loop).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialOrderNumber])
 
   const handleSearch = async (e: React.FormEvent) => { e.preventDefault(); doSearch(searchType, query) }
 
