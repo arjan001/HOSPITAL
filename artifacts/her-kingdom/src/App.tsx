@@ -63,6 +63,15 @@ import {
 import { AdminLogistics } from "@/components/admin/logistics-ops";
 import { AdminQa } from "@/components/admin/qa-ops";
 import { AdminMessageTemplates } from "@/components/admin/message-templates";
+import {
+  AdminCampaignsOverview,
+  AdminCampaignsEmail,
+  AdminCampaignsSms,
+  AdminCampaignsAudiences,
+  AdminCampaignsPipelines,
+  AdminCampaignsQueue,
+  AdminCampaignsSettings,
+} from "@/components/admin/campaigns";
 import { AdminSettings } from "@/components/admin/settings";
 // import { AdminPos } from "@/components/admin/pos"; // hidden until client requests POS module
 import { UsersManagement } from "@/components/admin/users";
@@ -407,6 +416,13 @@ function Router() {
       <Route path="/admin/logistics/lead-time"   component={AdminLogisticsLeadTime} />
       <Route path="/admin/logistics/fallback"    component={AdminLogisticsFallback} />
       <Route path="/admin/integrations/templates" component={AdminMessageTemplates} />
+      <Route path="/admin/campaigns"            component={AdminCampaignsOverview} />
+      <Route path="/admin/campaigns/email"      component={AdminCampaignsEmail} />
+      <Route path="/admin/campaigns/sms"        component={AdminCampaignsSms} />
+      <Route path="/admin/campaigns/audiences"  component={AdminCampaignsAudiences} />
+      <Route path="/admin/campaigns/pipelines"  component={AdminCampaignsPipelines} />
+      <Route path="/admin/campaigns/queue"      component={AdminCampaignsQueue} />
+      <Route path="/admin/campaigns/settings"   component={AdminCampaignsSettings} />
       {/* <Route path="/admin/pos" component={AdminPos} /> hidden until client requests POS module */}
       <Route path="/admin/settings" component={AdminSettings} />
       <Route path="/admin/users" component={UsersManagement} />

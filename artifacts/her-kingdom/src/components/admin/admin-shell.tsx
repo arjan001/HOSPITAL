@@ -57,6 +57,8 @@ import {
   Timer,
   Receipt,
   AlertCircle,
+  GitBranch,
+  ListChecks,
 } from "lucide-react"
 
 const COLLAPSE_KEY = "shaniidrx.admin.sidebarCollapsed"
@@ -220,6 +222,20 @@ const NAV_GROUPS: NavGroup[] = [
       { label: "Announcement Bar",  href: "/admin/announcement", icon: MegaphoneAlt },
       { label: "Popup Offer",       href: "/admin/popup-offer",  icon: Megaphone },
       { label: "Newsletter",        href: "/admin/newsletter",   icon: Mail },
+      {
+        label: "Campaigns",
+        href: "/admin/campaigns",
+        icon: Send,
+        children: [
+          { label: "Overview",   href: "/admin/campaigns",            icon: Megaphone },
+          { label: "Email",      href: "/admin/campaigns/email",      icon: Mail },
+          { label: "SMS",        href: "/admin/campaigns/sms",        icon: MessageSquare },
+          { label: "Audiences",  href: "/admin/campaigns/audiences",  icon: Users },
+          { label: "Pipelines",  href: "/admin/campaigns/pipelines",  icon: GitBranch },
+          { label: "Send Queue", href: "/admin/campaigns/queue",      icon: ListChecks },
+          { label: "Settings",   href: "/admin/campaigns/settings",   icon: Settings },
+        ],
+      },
       { label: "Contact Inquiries", href: "/admin/inquiries",    icon: Inbox },
     ],
   },
