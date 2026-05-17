@@ -38,6 +38,17 @@
 
     <!-- Canonical & hreflang -->
     <link rel="canonical" href="https://shaniidrx.co.ke/" />
+
+    <!-- ─── Auth preconnect (warm Clerk + Google OAuth TLS at page load,
+         so clicking "Continue with Google" redirects in tens of ms instead
+         of waiting on a cold TCP+TLS handshake to accounts.google.com) ─── -->
+    <link rel="preconnect" href="https://accounts.google.com" crossorigin />
+    <link rel="dns-prefetch" href="https://accounts.google.com" />
+    <link rel="preconnect" href="https://clerk.shaniidrx.co.ke" crossorigin />
+    <link rel="dns-prefetch" href="https://clerk.shaniidrx.co.ke" />
+    <link rel="preconnect" href="https://img.clerk.com" crossorigin />
+    <link rel="dns-prefetch" href="https://img.clerk.com" />
+    <link rel="dns-prefetch" href="https://clerk.accounts.dev" />
     <link rel="alternate" hreflang="en-KE" href="https://shaniidrx.co.ke/" />
     <link rel="alternate" hreflang="en"    href="https://shaniidrx.co.ke/" />
     <link rel="alternate" hreflang="x-default" href="https://shaniidrx.co.ke/" />
