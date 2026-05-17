@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react"
 import { Search, Package, Truck, CheckCircle, Clock, XCircle, Loader2, Phone, Hash, MapPin } from "lucide-react"
 import { useStoreContact } from "@/hooks/use-store-contact"
 import { Seo, organizationJsonLd, websiteJsonLd, breadcrumbJsonLd, faqJsonLd, productJsonLd } from "@/components/seo"
+import { OrderJourney } from "./order-journey"
 
 /* Brand tokens */
 const ACCENT_RED    = "#B91C1C"
@@ -192,94 +193,31 @@ export function TrackOrderForm({ initialOrderNumber }: { initialOrderNumber?: st
 
       {/* Order cards */}
       {orders.map(order => {
-        const stepIndex   = getStepIndex(order.status)
-        const config      = statusConfig[order.status]
-        const isCancelled = order.status === "cancelled"
-
         return (
-          <div key={order.id} className="rounded-2xl border border-neutral-200 bg-white overflow-hidden">
+          <div key={order.id} className="space-y-4">
+            {/* Modern animated multi-stage journey */}
+            <OrderJourney
+              status={order.status}
+              createdAt={order.createdAt}
+              orderNumber={order.orderNumber}
+              hasPrescription
+            />
+
+            <div className="rounded-2xl border border-neutral-200 bg-white overflow-hidden">
 
             {/* Header */}
             <div className="px-6 py-5 border-b border-neutral-200">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <p className="text-[11px] uppercase tracking-wider text-neutral-500 mb-1">Order Number</p>
-                  <p className="font-mono text-base font-bold text-neutral-900 tracking-wider">{order.orderNumber}</p>
+                  <p className="text-[11px] uppercase tracking-wider text-neutral-500 mb-1">Placed on</p>
+                  <p className="text-sm font-semibold text-neutral-900">{formatDate(order.createdAt)}</p>
                 </div>
                 <div className="text-right">
-                  <p className="text-[11px] uppercase tracking-wider text-neutral-500 mb-1">Placed on</p>
-                  <p className="text-sm text-neutral-900">{formatDate(order.createdAt)}</p>
+                  <p className="text-[11px] uppercase tracking-wider text-neutral-500 mb-1">For</p>
+                  <p className="text-sm font-semibold text-neutral-900">{order.customer}</p>
                 </div>
-              </div>
-
-              {/* Status badge */}
-              <div className="mt-4">
-                <span
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold"
-                  style={{ background: config.bg, color: config.color }}
-                >
-                  <span className="w-1.5 h-1.5 rounded-full" style={{ background: config.dot }} />
-                  {config.label}
-                </span>
               </div>
             </div>
-
-            {/* Progress stepper */}
-            {!isCancelled && (
-              <div className="px-6 py-6 bg-white">
-                <div className="flex items-center justify-between relative">
-                  {/* Track line (grey) */}
-                  <div className="absolute top-4 left-[10%] right-[10%] h-0.5 bg-neutral-200" />
-                  {/* Track line (brand progress) */}
-                  <div
-                    className="absolute top-4 left-[10%] h-0.5 transition-all duration-700"
-                    style={{
-                      width: `${Math.max(0, (stepIndex / (statusSteps.length - 1)) * 80)}%`,
-                      background: `linear-gradient(90deg, ${ACCENT_ORANGE}, ${ACCENT_RED})`,
-                    }}
-                  />
-
-                  {statusSteps.map((step, i) => {
-                    const isComplete = i <= stepIndex
-                    const isCurrent  = i === stepIndex
-                    const StepIcon   = step.icon
-
-                    return (
-                      <div key={step.key} className="flex flex-col items-center relative z-10">
-                        <div
-                          className="w-9 h-9 rounded-full flex items-center justify-center transition-all duration-500"
-                          style={{
-                            background: isComplete
-                              ? `linear-gradient(135deg, ${ACCENT_ORANGE}, ${ACCENT_RED})`
-                              : "#E5E5E5",
-                            color: isComplete ? "#fff" : "#9ca3af",
-                            boxShadow: isCurrent ? `0 0 0 3px #fff, 0 0 0 5px ${ACCENT_RED}` : "none",
-                          }}
-                        >
-                          <StepIcon className="h-4 w-4" />
-                        </div>
-                        <span
-                          className="text-[10px] mt-2 font-semibold text-center"
-                          style={{ color: isComplete ? "#171717" : "#9ca3af" }}
-                        >
-                          {step.label}
-                        </span>
-                      </div>
-                    )
-                  })}
-                </div>
-              </div>
-            )}
-
-            {/* Cancelled notice */}
-            {isCancelled && (
-              <div className="mx-6 my-4 p-4 rounded-xl flex items-start gap-3 bg-red-50 border border-red-200">
-                <XCircle className="h-5 w-5 flex-shrink-0 mt-0.5" style={{ color: ACCENT_RED }} />
-                <p className="text-sm text-red-900">
-                  This order has been cancelled. If you believe this is an error, please contact us on WhatsApp.
-                </p>
-              </div>
-            )}
 
             {/* Items list */}
             <div className="px-6 pb-2 border-t border-neutral-100">
@@ -368,6 +306,7 @@ export function TrackOrderForm({ initialOrderNumber }: { initialOrderNumber?: st
                   Notes: <span className="not-italic text-neutral-900">{order.notes}</span>
                 </p>
               )}
+            </div>
             </div>
           </div>
         )
