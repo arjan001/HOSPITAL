@@ -1,38 +1,29 @@
 {
-  "name": "Shaniid RX",
+  "name": "Shaniid RX — Trusted Online Pharmacy in Kenya",
   "short_name": "Shaniid RX",
-  "description": "Kenya's trusted online pharmacy. Shop authentic medications, vitamins, baby care and medical devices with same-day Nairobi delivery.",
-  "start_url": "/",
+  "description": "Kenya's trusted online pharmacy. Shop authentic medicines, vitamins, baby care and medical devices with same-day Nairobi delivery. Upload prescriptions, pay with M-Pesa, talk to a licensed pharmacist.",
+  "start_url": "/?utm_source=pwa",
+  "scope": "/",
+  "id": "/?source=pwa",
   "display": "standalone",
+  "display_override": ["standalone", "minimal-ui", "browser"],
   "background_color": "#FFFBF5",
   "theme_color": "#3D0814",
   "orientation": "portrait-primary",
-  "categories": ["shopping", "medical", "health", "lifestyle"],
-  "lang": "en",
+  "categories": ["medical", "health", "shopping", "lifestyle", "wellness"],
+  "lang": "en-KE",
+  "dir": "ltr",
+  "prefer_related_applications": false,
+  "shortcuts": [
+    { "name": "Shop medicines",          "short_name": "Shop",        "url": "/shop",                 "icons": [{ "src": "/favicon-192.png", "sizes": "192x192" }] },
+    { "name": "Upload prescription",     "short_name": "Upload Rx",   "url": "/upload-prescription",  "icons": [{ "src": "/favicon-192.png", "sizes": "192x192" }] },
+    { "name": "Speak to a doctor",       "short_name": "Doctor",      "url": "/speak-to-a-doctor",    "icons": [{ "src": "/favicon-192.png", "sizes": "192x192" }] },
+    { "name": "Track my order",          "short_name": "Track",       "url": "/track-order",          "icons": [{ "src": "/favicon-192.png", "sizes": "192x192" }] }
+  ],
   "icons": [
-    {
-      "src": "/favicon-48.png",
-      "sizes": "48x48",
-      "type": "image/png",
-      "purpose": "any"
-    },
-    {
-      "src": "/favicon-96.png",
-      "sizes": "96x96",
-      "type": "image/png",
-      "purpose": "any"
-    },
-    {
-      "src": "/favicon-192.png",
-      "sizes": "192x192",
-      "type": "image/png",
-      "purpose": "any maskable"
-    },
-    {
-      "src": "/favicon-512.png",
-      "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "any maskable"
-    }
+    { "src": "/favicon-48.png",  "sizes": "48x48",   "type": "image/png", "purpose": "any" },
+    { "src": "/favicon-96.png",  "sizes": "96x96",   "type": "image/png", "purpose": "any" },
+    { "src": "/favicon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "/favicon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
   ]
 }

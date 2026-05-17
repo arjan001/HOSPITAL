@@ -1,4 +1,5 @@
 import { useEffect } from "react"
+import { BRAND, TAGLINE as SITE_TAGLINE, SITE_URL as CONFIG_SITE_URL, GLOBAL_KEYWORDS, localBusinessJsonLd } from "@/lib/shaniidrx-seo"
 
 /* ─────────────────────────────────────────────────────────────
    Shaniid RX — global SEO helper
@@ -12,14 +13,16 @@ import { useEffect } from "react"
    rel="canonical">, OG / Twitter cards and an optional JSON-LD
    script. Restores values on unmount so client-side route
    transitions don't leak stale tags into other pages.
+
+   Per-page keywords are automatically merged with GLOBAL_KEYWORDS
+   (≈120 brand / category / geo / intent terms from shaniidrx-seo.ts).
 ────────────────────────────────────────────────────────────── */
 
-const BRAND = "Shaniid RX"
-const SITE_TAGLINE = "Trusted Online Pharmacy in Kenya"
-const DEFAULT_IMAGE = "/logo-rx.png"
+const DEFAULT_IMAGE = "/og-default.jpg"
 const DEFAULT_LOCALE = "en_KE"
-const SITE_URL =
-  typeof window !== "undefined" ? window.location.origin : "https://shaniidrx.co.ke"
+const SITE_URL = typeof window !== "undefined" ? window.location.origin : CONFIG_SITE_URL
+
+export { localBusinessJsonLd }
 
 export type SeoProps = {
   /** Page-specific title fragment. Will be suffixed with " | Shaniid RX" if it doesn't already include the brand. ~50–60 chars total recommended. */
@@ -61,6 +64,17 @@ function upsertLink(rel: string, href: string) {
   el.setAttribute("href", href)
 }
 
+function upsertHreflang(lang: string, href: string) {
+  let el = document.head.querySelector<HTMLLinkElement>(`link[rel="alternate"][hreflang="${lang}"]`)
+  if (!el) {
+    el = document.createElement("link")
+    el.setAttribute("rel", "alternate")
+    el.setAttribute("hreflang", lang)
+    document.head.appendChild(el)
+  }
+  el.setAttribute("href", href)
+}
+
 function setJsonLd(data: object | object[] | undefined, id = "seo-jsonld") {
   document.querySelectorAll(`script[data-seo-id="${id}"]`).forEach((n) => n.remove())
   if (!data) return
@@ -97,15 +111,37 @@ export function Seo({
         : `${SITE_URL}${image.startsWith("/") ? "" : "/"}${image}`
       : `${SITE_URL}${DEFAULT_IMAGE}`
 
-    const kw = Array.isArray(keywords) ? keywords.join(", ") : keywords
+    // Merge per-page keywords with the global pharma keyword bank, dedupe.
+    const pageKw = Array.isArray(keywords) ? keywords : keywords ? keywords.split(/\s*,\s*/) : []
+    const mergedKw = Array.from(new Set([...pageKw, ...GLOBAL_KEYWORDS]))
+      .filter(Boolean)
+      .join(", ")
 
     upsertMeta("name", "description", description)
-    upsertMeta("name", "keywords", kw)
+    upsertMeta("name", "keywords", mergedKw)
     upsertMeta("name", "robots", noindex ? "noindex, nofollow" : "index, follow")
+    upsertMeta("name", "googlebot", noindex ? "noindex, nofollow" : "index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1")
     upsertMeta("name", "author", BRAND)
+    upsertMeta("name", "publisher", BRAND)
     upsertMeta("name", "theme-color", "#3D0814")
+    upsertMeta("name", "application-name", BRAND)
+    upsertMeta("name", "apple-mobile-web-app-title", BRAND)
+    upsertMeta("name", "apple-mobile-web-app-capable", "yes")
+    upsertMeta("name", "apple-mobile-web-app-status-bar-style", "default")
+    upsertMeta("name", "format-detection", "telephone=yes")
+
+    // Geo targeting
+    upsertMeta("name", "geo.region", "KE-30")
+    upsertMeta("name", "geo.placename", "Nairobi")
+    upsertMeta("name", "geo.position", "-1.2722;36.8579")
+    upsertMeta("name", "ICBM", "-1.2722, 36.8579")
 
     upsertLink("canonical", canonical)
+    // Hreflang — single locale today, but declare both en and en-KE so
+    // Google can pick the right one per market.
+    upsertHreflang("en-KE", canonical)
+    upsertHreflang("en",    canonical)
+    upsertHreflang("x-default", canonical)
 
     upsertMeta("property", "og:site_name", BRAND)
     upsertMeta("property", "og:title", fullTitle)
@@ -113,15 +149,22 @@ export function Seo({
     upsertMeta("property", "og:type", type)
     upsertMeta("property", "og:url", canonical)
     upsertMeta("property", "og:image", img)
+    upsertMeta("property", "og:image:secure_url", img)
+    upsertMeta("property", "og:image:type", "image/jpeg")
+    upsertMeta("property", "og:image:width", "1200")
+    upsertMeta("property", "og:image:height", "630")
     upsertMeta("property", "og:image:alt", `${BRAND} — ${SITE_TAGLINE}`)
     upsertMeta("property", "og:locale", DEFAULT_LOCALE)
+    upsertMeta("property", "og:locale:alternate", "en_US")
 
     upsertMeta("name", "twitter:card", "summary_large_image")
     upsertMeta("name", "twitter:site", "@ShaniidRX")
+    upsertMeta("name", "twitter:creator", "@ShaniidRX")
     upsertMeta("name", "twitter:title", fullTitle)
     upsertMeta("name", "twitter:description", description)
     upsertMeta("name", "twitter:image", img)
     upsertMeta("name", "twitter:image:alt", `${BRAND} — ${SITE_TAGLINE}`)
+    upsertMeta("name", "twitter:domain", new URL(SITE_URL).host)
 
     setJsonLd(jsonLd, `seo-jsonld-${path}`)
 

@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react"
 import { mutate as globalMutate } from "swr"
 import { AccountShell } from "@/components/account/account-shell"
 import { ChatWindow } from "@/components/chat/chat-window"
+import { Seo } from "@/components/seo"
 import {
   apiChat,
   chatStreamUrl,
@@ -89,6 +90,12 @@ export default function AccountChatPage() {
 
   return (
     <AccountShell title="Talk to a pharmacist" subtitle="Live chat with our verified pharmacy team" user={userInfo}>
+      <Seo
+        title="Chat with a Pharmacist — Shaniid RX"
+        description="Private, real-time chat with the Shaniid RX pharmacy team."
+        canonicalPath="/account/chat"
+        noindex
+      />
       <div className="rounded-2xl overflow-hidden border bg-white" style={{ borderColor: "#F2DCC8" }}>
         <ChatHeader thread={thread} timerSlot={
           isSignedIn && !sessionEnded ? (

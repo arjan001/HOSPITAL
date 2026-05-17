@@ -3,6 +3,7 @@ import { Link } from "wouter"
 import { Heart, MapPin, Package, User as UserIcon, Mail, Phone, Settings, ShieldCheck, ClipboardList, Pill, Clock, CheckCheck, ChevronRight, Upload, FileText, Eye } from "lucide-react"
 import { useMe, useAddresses, useOrders, useWishlistRemote, useMyPrescriptions } from "@/lib/api-nest"
 import { RxDetailModal } from "@/components/account/rx-detail-modal"
+import { Seo } from "@/components/seo"
 
 const WINE = "#3D0814"
 const ACCENT = "#F97316"
@@ -81,6 +82,12 @@ export default function AccountDashboard() {
 
   return (
     <div className="min-h-screen" style={{ background: CREAM }}>
+      <Seo
+        title="My Account — Shaniid RX"
+        description="Manage your Shaniid RX orders, prescriptions, addresses and wishlist."
+        canonicalPath="/account"
+        noindex
+      />
       <div className="mx-auto max-w-5xl space-y-6 px-4 py-8">
         <div
           className="flex flex-wrap items-center justify-between gap-4 rounded-2xl p-6 text-white shadow-lg"

@@ -14,6 +14,7 @@ import {
 import { TopBar } from "@/components/store/top-bar"
 import { Navbar } from "@/components/store/navbar"
 import { Footer } from "@/components/store/footer"
+import { Seo } from "@/components/seo"
 import {
   useMyPrescriptions,
   type AccountPrescription,
@@ -47,6 +48,12 @@ export default function AccountPrescriptionsPage() {
 
   return (
     <>
+      <Seo
+        title="My Prescriptions — Shaniid RX"
+        description="View, refill and track the status of your prescriptions on Shaniid RX."
+        canonicalPath="/account/prescriptions"
+        noindex
+      />
       <TopBar />
       <Navbar />
       <div className="min-h-screen" style={{ background: CREAM }}>
