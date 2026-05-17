@@ -62,6 +62,7 @@ export default function AccountRegisterPage() {
   const { isLoaded, signUp, setActive } = useSignUp()
 
   const [step, setStep] = useState<"form" | "verify">("form")
+  const [sendingCode, setSendingCode] = useState(false)
   const [form, setForm] = useState({
     firstName: "",
     lastName: "",
@@ -123,28 +124,47 @@ export default function AccountRegisterPage() {
     }
     setLoading(true)
     try {
+      const firstName = form.firstName.trim()
+      const lastName  = form.lastName.trim()
+      const email     = form.email.trim()
+
+      /* Pass only the always-supported fields to create() and stash everything
+         else in unsafeMetadata. Some Clerk instances don't have firstName /
+         lastName enabled as profile attributes and will reject the whole
+         create call with "Unknown parameter" — keeping create minimal makes
+         registration robust to the Clerk dashboard config. */
       await signUp.create({
-        emailAddress: form.email.trim(),
+        emailAddress: email,
         password: form.password,
-        firstName: form.firstName.trim(),
-        lastName: form.lastName.trim(),
         unsafeMetadata: {
+          firstName,
+          lastName,
           phone: phoneE164,
           gender: form.gender,
           dob: form.dob,
           newsletter,
         },
       })
+
+      /* Best-effort: try to set the names on the standard profile fields too,
+         so they show up in Clerk's user object. If the instance doesn't allow
+         it we silently keep them in unsafeMetadata. */
+      try {
+        await signUp.update({ firstName, lastName })
+      } catch {
+        /* Names live in unsafeMetadata — no user-visible impact. */
+      }
+
       // If Clerk completes immediately (verification disabled), sign in now.
       if (signUp.status === "complete") {
         await setActive({ session: signUp.createdSessionId })
         if (signUp.createdUserId) {
           upsertCustomer({
             id: signUp.createdUserId,
-            firstName: form.firstName.trim(),
-            lastName: form.lastName.trim(),
-            fullName: `${form.firstName.trim()} ${form.lastName.trim()}`.trim(),
-            email: form.email.trim(),
+            firstName,
+            lastName,
+            fullName: `${firstName} ${lastName}`.trim(),
+            email,
             phone: phoneE164,
             source: "email",
           })
@@ -152,9 +172,19 @@ export default function AccountRegisterPage() {
         navigate("/user")
         return
       }
-      // Otherwise prepare email verification and switch to the code-entry step.
-      await signUp.prepareEmailAddressVerification({ strategy: "email_code" })
+
+      /* Flip to the verify step IMMEDIATELY so the user sees progress, then
+         fire prepareEmailAddressVerification in the background. The verify
+         form shows "Sending code…" until the email is actually dispatched.
+         Cuts perceived submit latency roughly in half on slow networks. */
       setStep("verify")
+      setSendingCode(true)
+      signUp
+        .prepareEmailAddressVerification({ strategy: "email_code" })
+        .catch((err) => {
+          setTopError(errorMessage(err, "Could not send the verification code. Tap Resend to try again."))
+        })
+        .finally(() => setSendingCode(false))
     } catch (err) {
       setTopError(errorMessage(err, "Could not create your account. Please try again."))
     } finally {
@@ -197,10 +227,13 @@ export default function AccountRegisterPage() {
   const resendCode = async () => {
     if (!isLoaded || !signUp) return
     setTopError("")
+    setSendingCode(true)
     try {
       await signUp.prepareEmailAddressVerification({ strategy: "email_code" })
     } catch (err) {
       setTopError(errorMessage(err, "Could not resend the code. Please try again."))
+    } finally {
+      setSendingCode(false)
     }
   }
 
@@ -286,8 +319,16 @@ export default function AccountRegisterPage() {
             <form onSubmit={handleVerify} className="px-8 py-7 space-y-5">
               <div className="flex items-center gap-3 rounded-xl px-4 py-3 text-sm"
                 style={{ background: "#EFF6FF", border: "1px solid #BFDBFE", color: "#1D4ED8" }}>
-                <Mail className="h-4 w-4 flex-shrink-0" />
-                <span>We've emailed a 6-digit code to <strong>{form.email}</strong>. Enter it below to verify your account.</span>
+                {sendingCode ? (
+                  <Loader2 className="h-4 w-4 flex-shrink-0 animate-spin" />
+                ) : (
+                  <Mail className="h-4 w-4 flex-shrink-0" />
+                )}
+                <span>
+                  {sendingCode
+                    ? <>Sending a 6-digit code to <strong>{form.email}</strong>…</>
+                    : <>We've emailed a 6-digit code to <strong>{form.email}</strong>. Enter it below to verify your account.</>}
+                </span>
               </div>
               <Field label="Verification Code" required>
                 <InputBox
@@ -303,18 +344,18 @@ export default function AccountRegisterPage() {
               </Field>
               <button
                 type="submit"
-                disabled={loading}
+                disabled={loading || sendingCode}
                 className="w-full rounded-full font-bold text-base text-white flex items-center justify-center gap-2 transition-all hover:scale-[1.02] active:scale-[0.99] disabled:opacity-70"
                 style={{ height: 52, background: `linear-gradient(135deg, ${ACCENT_ORANGE} 0%, ${ACCENT_RED} 100%)`, boxShadow: "0 16px 32px -10px rgba(185,28,28,0.5)" }}
               >
-                {loading ? "Verifying…" : (<>Verify & Continue <ArrowRight className="h-4 w-4" /></>)}
+                {loading ? "Verifying…" : sendingCode ? "Waiting for code…" : (<>Verify &amp; Continue <ArrowRight className="h-4 w-4" /></>)}
               </button>
               <div className="flex items-center justify-between text-xs">
                 <button type="button" onClick={() => setStep("form")} className="font-semibold hover:underline" style={{ color: WINE_SOFT }}>
                   ← Back to details
                 </button>
-                <button type="button" onClick={resendCode} className="font-semibold hover:underline" style={{ color: ACCENT_RED }}>
-                  Resend code
+                <button type="button" onClick={resendCode} disabled={sendingCode} className="font-semibold hover:underline disabled:opacity-60" style={{ color: ACCENT_RED }}>
+                  {sendingCode ? "Sending…" : "Resend code"}
                 </button>
               </div>
             </form>
