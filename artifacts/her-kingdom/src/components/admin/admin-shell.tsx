@@ -4,8 +4,7 @@ import { useState, useEffect, useMemo, useRef, type ReactNode } from "react"
 import { createPortal } from "react-dom"
 import { Link } from "wouter"
 import { useLocation } from "wouter"
-import { useCmsCollection } from "@/lib/cms-store"
-import { ORDERS_KEY, type AdminOrderRecord } from "@/lib/orders-store"
+import { useAdminOrders } from "@/lib/orders-store"
 import {
   LayoutDashboard,
   Package,
@@ -585,8 +584,8 @@ export function AdminShell({ children, title }: { children: ReactNode; title: st
   const [fullscreen, setFullscreen] = useState(false)
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null)
   const [loggingOut, setLoggingOut] = useState(false)
-  const ordersCollection = useCmsCollection<AdminOrderRecord>(ORDERS_KEY, [])
-  const pendingOrders = ordersCollection.items.filter((o) => o.status === "pending").length
+  const { items: ordersList } = useAdminOrders()
+  const pendingOrders = ordersList.filter((o) => o.status === "pending").length
   const [search, setSearch] = useState("")
 
   useEffect(() => {

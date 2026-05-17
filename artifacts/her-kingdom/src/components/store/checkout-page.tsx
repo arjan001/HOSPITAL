@@ -760,7 +760,8 @@ export function CheckoutPage() {
     status: AdminOrderStatus,
     extras: { mpesaCode?: string; mpesaPhone?: string; mpesaMessage?: string; notes?: string } = {},
   ) => {
-    upsertAdminOrder({
+    // Fire-and-forget — never block the success screen on the admin backend.
+    void upsertAdminOrder({
       orderNo: snap.orderNumber,
       customer: snap.customerName || "Guest",
       phone: snap.customerPhone || "",
@@ -784,6 +785,9 @@ export function CheckoutPage() {
       mpesaCode: extras.mpesaCode,
       mpesaPhone: extras.mpesaPhone,
       mpesaMessage: extras.mpesaMessage,
+    }).catch((err) => {
+      // eslint-disable-next-line no-console
+      console.warn("Failed to mirror order into admin backend", err)
     })
   }
 

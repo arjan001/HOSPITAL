@@ -14,12 +14,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { useCmsCollection } from "@/lib/cms-store"
 import {
-  ORDERS_KEY,
   SALE_STATUSES,
   setOrderStatus,
   deleteOrdersByIds,
+  useAdminOrders,
   type AdminOrderRecord as Order,
   type AdminOrderStatus as OrderStatus,
 } from "@/lib/orders-store"
@@ -33,9 +32,8 @@ const statusConfig: Record<OrderStatus, { label: string; icon: typeof Clock; cla
 }
 
 export function AdminOrders() {
-  const collection = useCmsCollection<Order>(ORDERS_KEY, [])
-  const orders = [...collection.items].sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""))
-  const mutate = () => { /* cmsStore reactivity handles refresh */ }
+  const { items, mutate } = useAdminOrders()
+  const orders = [...items].sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""))
   const [search, setSearch] = useState("")
   const [statusFilter, setStatusFilter] = useState<string>("all")
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null)
@@ -76,9 +74,13 @@ export function AdminOrders() {
     if (ids.length === 0) return false
     setDeleting(true)
     try {
-      const count = deleteOrdersByIds(ids)
+      const count = await deleteOrdersByIds(ids)
       toast.success(`${count} order${count !== 1 ? "s" : ""} deleted`)
+      await mutate()
       return true
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to delete orders")
+      return false
     } finally {
       setDeleting(false)
     }
@@ -107,12 +109,15 @@ export function AdminOrders() {
   }
 
   const updateStatus = async (orderId: string, newStatus: OrderStatus) => {
-    const target = orders.find((o) => o.id === orderId)
-    if (!target) return
-    setOrderStatus(target.orderNo, newStatus)
-    toast.success(`Order ${statusConfig[newStatus].label.toLowerCase()}`)
-    if (selectedOrder?.id === orderId) {
-      setSelectedOrder((prev) => prev ? { ...prev, status: newStatus } : null)
+    try {
+      await setOrderStatus(orderId, newStatus)
+      toast.success(`Order ${statusConfig[newStatus].label.toLowerCase()}`)
+      await mutate()
+      if (selectedOrder?.id === orderId) {
+        setSelectedOrder((prev) => prev ? { ...prev, status: newStatus } : null)
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to update order status")
     }
   }
 

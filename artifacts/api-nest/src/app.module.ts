@@ -5,6 +5,7 @@ import { ProfileModule } from "./modules/profile.module"
 import { AddressesModule } from "./modules/addresses.module"
 import { WishlistModule } from "./modules/wishlist.module"
 import { OrdersModule } from "./modules/orders.module"
+import { AdminOrdersModule } from "./modules/admin-orders.module"
 import { PrescriptionsModule } from "./modules/prescriptions.module"
 import { ChatModule } from "./modules/chat.module"
 import { MonitoringModule } from "./modules/monitoring.module"
@@ -16,6 +17,7 @@ import { MonitoringModule } from "./modules/monitoring.module"
     AddressesModule,
     WishlistModule,
     OrdersModule,
+    AdminOrdersModule,
     PrescriptionsModule,
     ChatModule,
     MonitoringModule,

@@ -1,6 +1,26 @@
-import { cmsStore, newId } from "@/lib/cms-store"
+import useSWR, { mutate as globalMutate } from "swr"
 
-export type AdminOrderStatus = "pending" | "confirmed" | "dispatched" | "delivered" | "cancelled"
+/**
+ * Admin Sales & Orders client.
+ *
+ * Backed by the NestJS api-nest module at /api/v2/admin/orders. The legacy
+ * cmsStore "admin-orders" key is no longer used — this is the single source
+ * of truth for every order placed on the storefront.
+ *
+ * Status semantics:
+ *   pending     → placed but payment NOT confirmed (COD, M-Pesa awaiting receipt)
+ *   confirmed   → payment captured / cash received → counts as a SALE
+ *   dispatched  → fulfilment in motion (also a SALE)
+ *   delivered   → completed (also a SALE)
+ *   cancelled   → failed / declined / abandoned
+ */
+
+export type AdminOrderStatus =
+  | "pending"
+  | "confirmed"
+  | "dispatched"
+  | "delivered"
+  | "cancelled"
 
 export interface AdminOrderItem {
   name: string
@@ -31,23 +51,35 @@ export interface AdminOrderRecord {
   mpesaMessage: string
   date: string
   createdAt: string
+  updatedAt?: string
 }
-
-export const ORDERS_KEY = "admin-orders"
 
 /** Sales = orders whose payment has been confirmed (and onward in fulfilment). */
-export const SALE_STATUSES: AdminOrderStatus[] = ["confirmed", "dispatched", "delivered"]
+export const SALE_STATUSES: AdminOrderStatus[] = [
+  "confirmed",
+  "dispatched",
+  "delivered",
+]
 export const isSale = (s: AdminOrderStatus) => SALE_STATUSES.includes(s)
 
-function readAll(): AdminOrderRecord[] {
-  return cmsStore.get<AdminOrderRecord[]>(ORDERS_KEY, [])
-}
-function writeAll(list: AdminOrderRecord[]) {
-  cmsStore.set(ORDERS_KEY, list)
-}
+const BASE = "/api/v2"
+const LIST_KEY = "/admin/orders"
 
-function todayLabel(d = new Date()): string {
-  return d.toLocaleDateString("en-KE", { year: "numeric", month: "short", day: "numeric" })
+async function nestFetch<T>(path: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(`${BASE}${path}`, {
+    credentials: "include",
+    headers: {
+      "Content-Type": "application/json",
+      ...(init?.headers ?? {}),
+    },
+    ...init,
+  })
+  if (!res.ok) {
+    const text = await res.text().catch(() => "")
+    throw new Error(`admin-orders ${res.status} ${path}: ${text || res.statusText}`)
+  }
+  if (res.status === 204) return undefined as T
+  return (await res.json()) as T
 }
 
 export interface UpsertOrderInput {
@@ -71,79 +103,50 @@ export interface UpsertOrderInput {
   mpesaMessage?: string
 }
 
-/** Insert or update by orderNo. Status mapping (caller's responsibility) decides Sale vs Order. */
-export function upsertAdminOrder(input: UpsertOrderInput): AdminOrderRecord {
-  const list = readAll()
-  const now = new Date()
-  const existingIdx = list.findIndex((o) => o.orderNo === input.orderNo)
-  const base: AdminOrderRecord = existingIdx >= 0
-    ? list[existingIdx]
-    : {
-        id: newId("ord"),
-        orderNo: input.orderNo,
-        customer: "",
-        phone: "",
-        email: "",
-        items: [],
-        subtotal: 0,
-        delivery: 0,
-        total: 0,
-        location: "",
-        address: "",
-        notes: "",
-        specialInstructions: "",
-        status: "pending",
-        orderedVia: "website",
-        paymentMethod: "cod",
-        mpesaCode: "",
-        mpesaPhone: "",
-        mpesaMessage: "",
-        date: todayLabel(now),
-        createdAt: now.toISOString(),
-      }
-  const record: AdminOrderRecord = {
-    ...base,
-    customer: input.customer || base.customer,
-    phone: input.phone || base.phone,
-    email: input.email ?? base.email,
-    items: input.items?.length ? input.items : base.items,
-    subtotal: input.subtotal ?? base.subtotal,
-    delivery: input.delivery ?? base.delivery,
-    total: input.total ?? base.total,
-    location: input.location ?? base.location,
-    address: input.address ?? base.address,
-    notes: input.notes ?? base.notes,
-    specialInstructions: input.specialInstructions ?? base.specialInstructions,
-    status: input.status,
-    orderedVia: input.orderedVia ?? base.orderedVia,
-    paymentMethod: input.paymentMethod ?? base.paymentMethod,
-    mpesaCode: input.mpesaCode ?? base.mpesaCode,
-    mpesaPhone: input.mpesaPhone ?? base.mpesaPhone,
-    mpesaMessage: input.mpesaMessage ?? base.mpesaMessage,
-  }
-  const next = [...list]
-  if (existingIdx >= 0) next[existingIdx] = record
-  else next.unshift(record)
-  writeAll(next)
-  return record
+/** Create or update by orderNo. Fire-and-forget safe — see usage in checkout. */
+export async function upsertAdminOrder(
+  input: UpsertOrderInput,
+): Promise<AdminOrderRecord> {
+  const out = await nestFetch<AdminOrderRecord>(LIST_KEY, {
+    method: "POST",
+    body: JSON.stringify(input),
+  })
+  void globalMutate(LIST_KEY)
+  return out
 }
 
-export function setOrderStatus(orderNo: string, status: AdminOrderStatus): void {
-  const list = readAll()
-  const idx = list.findIndex((o) => o.orderNo === orderNo)
-  if (idx < 0) return
-  list[idx] = { ...list[idx], status }
-  writeAll(list)
+export async function setOrderStatus(
+  id: string,
+  status: AdminOrderStatus,
+): Promise<AdminOrderRecord> {
+  const out = await nestFetch<AdminOrderRecord>(`${LIST_KEY}/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify({ status }),
+  })
+  void globalMutate(LIST_KEY)
+  return out
 }
 
-export function deleteOrdersByIds(ids: string[]): number {
-  const list = readAll()
-  const set = new Set(ids)
-  const next = list.filter((o) => !set.has(o.id))
-  writeAll(next)
-  return list.length - next.length
+export async function deleteOrdersByIds(ids: string[]): Promise<number> {
+  if (ids.length === 0) return 0
+  const out = await nestFetch<{ deleted: number }>(
+    `${LIST_KEY}?ids=${ids.map(encodeURIComponent).join(",")}`,
+    { method: "DELETE" },
+  )
+  void globalMutate(LIST_KEY)
+  return out.deleted
 }
 
-export function countPendingOrders(): number {
-  return readAll().filter((o) => o.status === "pending").length
+const swrFetcher = (path: string) => nestFetch<AdminOrderRecord[]>(path)
+
+export function useAdminOrders() {
+  const { data, mutate, isLoading } = useSWR<AdminOrderRecord[]>(LIST_KEY, swrFetcher, {
+    refreshInterval: 15_000,
+    revalidateOnFocus: true,
+  })
+  return { items: data ?? [], mutate, isLoading }
+}
+
+export function refreshAdminOrders() {
+  return globalMutate(LIST_KEY)
 }
