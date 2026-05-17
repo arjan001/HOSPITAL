@@ -146,14 +146,12 @@ export default function AccountRegisterPage() {
         },
       })
 
-      /* Best-effort: try to set the names on the standard profile fields too,
-         so they show up in Clerk's user object. If the instance doesn't allow
-         it we silently keep them in unsafeMetadata. */
-      try {
-        await signUp.update({ firstName, lastName })
-      } catch {
-        /* Names live in unsafeMetadata — no user-visible impact. */
-      }
+      /* We deliberately do NOT call signUp.update({ firstName, lastName }) —
+         on Clerk instances where first_name / last_name aren't enabled as
+         profile attributes, Clerk rejects the call with "first_name is not
+         a valid parameter for this request" and the error surfaces to the
+         user. Names already live in unsafeMetadata and in our local
+         customer mirror, so there's no functional loss. */
 
       // If Clerk completes immediately (verification disabled), sign in now.
       if (signUp.status === "complete") {
