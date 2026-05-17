@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useMemo } from "react"
+import { useUser, useClerk } from "@clerk/react"
 import { AccountShell } from "@/components/account/account-shell"
 import { useCmsDoc } from "@/lib/cms-store"
 import { notify } from "@/lib/notify"
@@ -269,10 +270,13 @@ export default function AccountSettingsPage() {
           {tab === "security" && (
             <>
               <Banner tone="info">
-                Sign-in is handled by Clerk. Password & 2FA settings live with your Clerk profile — these toggles
-                are notification preferences only.
+                Update the username, email, and password you use to sign in. These are stored securely with Clerk.
+                The notification toggles below are reminder preferences only.
               </Banner>
-              <Section title="Account security">
+              <Section title="Sign-in credentials" subtitle="Used to log in and recover your account.">
+                <ClerkCredentialsPanel />
+              </Section>
+              <Section title="Reminder preferences">
                 <Toggle
                   label="Enable two-factor authentication (2FA)"
                   hint="Adds an extra step at sign-in via SMS or authenticator app."
@@ -285,14 +289,6 @@ export default function AccountSettingsPage() {
                   checked={draft.security.loginAlerts}
                   onChange={(v) => update("security", { loginAlerts: v })}
                 />
-                <button
-                  type="button"
-                  className="inline-flex items-center gap-2 px-4 h-10 rounded-md border bg-white text-sm font-medium text-[#3D0814] hover:bg-[#FFFBF5]"
-                  style={{ borderColor: PEACH_BORDER }}
-                  onClick={() => notify.info("Password change opens in Clerk (coming soon)")}
-                >
-                  <Lock className="h-4 w-4" /> Change password
-                </button>
               </Section>
             </>
           )}
@@ -624,6 +620,287 @@ function ChannelMatrix({
           })}
         </tbody>
       </table>
+    </div>
+  )
+}
+
+/* ---------- Clerk credentials panel (username / email / password) ---------- */
+
+type EmailStep = "idle" | "verify"
+
+function ClerkCredentialsPanel() {
+  const { user, isLoaded } = useUser()
+  const { signOut } = useClerk()
+
+  /* Username */
+  const [username, setUsername] = useState("")
+  const [savingUsername, setSavingUsername] = useState(false)
+
+  /* Email */
+  const [newEmail, setNewEmail] = useState("")
+  const [emailStep, setEmailStep] = useState<EmailStep>("idle")
+  const [emailCode, setEmailCode] = useState("")
+  const [pendingEmailId, setPendingEmailId] = useState<string | null>(null)
+  const [savingEmail, setSavingEmail] = useState(false)
+
+  /* Password */
+  const [currentPw, setCurrentPw] = useState("")
+  const [newPw, setNewPw] = useState("")
+  const [confirmPw, setConfirmPw] = useState("")
+  const [savingPw, setSavingPw] = useState(false)
+
+  if (!isLoaded) {
+    return <p className="text-xs text-muted-foreground">Loading your account…</p>
+  }
+  if (!user) {
+    return (
+      <p className="text-xs text-muted-foreground">
+        Sign in to manage your credentials.
+      </p>
+    )
+  }
+
+  const currentEmail = user.primaryEmailAddress?.emailAddress ?? "—"
+  const currentUsername = user.username ?? ""
+
+  const clerkError = (err: unknown, fallback: string): string => {
+    const errs = (err as { errors?: Array<{ longMessage?: string; message?: string }> })?.errors
+    return errs?.[0]?.longMessage || errs?.[0]?.message || fallback
+  }
+
+  const saveUsername = async () => {
+    const v = username.trim()
+    if (!v) { notify.error("Username can't be empty"); return }
+    setSavingUsername(true)
+    try {
+      await user.update({ username: v })
+      notify.saved(`Username updated to "${v}"`)
+      setUsername("")
+    } catch (err) {
+      notify.error(clerkError(err, "Could not update username"))
+    } finally { setSavingUsername(false) }
+  }
+
+  const startEmailChange = async () => {
+    const v = newEmail.trim()
+    if (!/\S+@\S+\.\S+/.test(v)) { notify.error("Enter a valid email address"); return }
+    setSavingEmail(true)
+    try {
+      const created = await user.createEmailAddress({ email: v })
+      await created.prepareVerification({ strategy: "email_code" })
+      setPendingEmailId(created.id)
+      setEmailStep("verify")
+      notify.info(`We've emailed a 6-digit code to ${v}.`)
+    } catch (err) {
+      notify.error(clerkError(err, "Could not start email change"))
+    } finally { setSavingEmail(false) }
+  }
+
+  const confirmEmailChange = async () => {
+    if (!pendingEmailId) return
+    if (!/^\d{6}$/.test(emailCode.trim())) { notify.error("Enter the 6-digit code"); return }
+    setSavingEmail(true)
+    try {
+      const pending = user.emailAddresses.find((e) => e.id === pendingEmailId)
+      if (!pending) throw new Error("Pending email not found")
+      const attempt = await pending.attemptVerification({ code: emailCode.trim() })
+      if (attempt.verification.status !== "verified") {
+        notify.error("Code didn't verify. Try again or resend.")
+        return
+      }
+      await user.update({ primaryEmailAddressId: pending.id })
+      notify.saved(`Primary email set to ${pending.emailAddress}`)
+      setNewEmail(""); setEmailCode(""); setPendingEmailId(null); setEmailStep("idle")
+    } catch (err) {
+      notify.error(clerkError(err, "Could not verify code"))
+    } finally { setSavingEmail(false) }
+  }
+
+  const cancelEmailChange = () => {
+    setEmailStep("idle"); setEmailCode(""); setPendingEmailId(null)
+  }
+
+  const changePassword = async () => {
+    if (newPw.length < 8) { notify.error("New password must be at least 8 characters"); return }
+    if (newPw !== confirmPw) { notify.error("Passwords don't match"); return }
+    setSavingPw(true)
+    try {
+      await user.updatePassword({
+        newPassword: newPw,
+        currentPassword: currentPw || undefined,
+        signOutOfOtherSessions: true,
+      })
+      notify.saved("Password updated. Other sessions were signed out.")
+      setCurrentPw(""); setNewPw(""); setConfirmPw("")
+    } catch (err) {
+      notify.error(clerkError(err, "Could not change password"))
+    } finally { setSavingPw(false) }
+  }
+
+  const inputCls =
+    "w-full h-10 px-3 rounded-md border bg-white text-sm focus:outline-none focus:border-[#3D0814]/40"
+  const btnPrimary =
+    "h-10 px-4 rounded-md text-sm font-semibold text-white inline-flex items-center gap-2 disabled:opacity-50"
+  const btnGhost =
+    "h-10 px-3 rounded-md text-sm border bg-white hover:bg-[#FFFBF5] inline-flex items-center gap-2 disabled:opacity-50"
+
+  return (
+    <div className="space-y-5">
+      {/* Username */}
+      <div className="rounded-lg border p-4 space-y-2" style={{ borderColor: PEACH_BORDER }}>
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div>
+            <p className="text-sm font-semibold text-[#3D0814]">Username</p>
+            <p className="text-xs text-muted-foreground">
+              Current: <span className="font-medium">{currentUsername || "Not set"}</span>
+            </p>
+          </div>
+        </div>
+        <div className="flex gap-2 flex-wrap">
+          <input
+            type="text"
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            placeholder={currentUsername ? "New username" : "Set a username"}
+            className={`${inputCls} flex-1 min-w-[200px]`}
+            style={{ borderColor: PEACH_BORDER }}
+          />
+          <button
+            type="button"
+            onClick={saveUsername}
+            disabled={savingUsername || !username.trim()}
+            className={btnPrimary}
+            style={{ background: WINE }}
+          >
+            <Save className="h-4 w-4" /> {savingUsername ? "Saving…" : "Save"}
+          </button>
+        </div>
+      </div>
+
+      {/* Email */}
+      <div className="rounded-lg border p-4 space-y-2" style={{ borderColor: PEACH_BORDER }}>
+        <div>
+          <p className="text-sm font-semibold text-[#3D0814]">Email</p>
+          <p className="text-xs text-muted-foreground">
+            Current: <span className="font-medium">{currentEmail}</span>
+          </p>
+        </div>
+        {emailStep === "idle" ? (
+          <div className="flex gap-2 flex-wrap">
+            <input
+              type="email"
+              value={newEmail}
+              onChange={(e) => setNewEmail(e.target.value)}
+              placeholder="new@example.com"
+              className={`${inputCls} flex-1 min-w-[200px]`}
+              style={{ borderColor: PEACH_BORDER }}
+            />
+            <button
+              type="button"
+              onClick={startEmailChange}
+              disabled={savingEmail || !newEmail.trim()}
+              className={btnPrimary}
+              style={{ background: WINE }}
+            >
+              <Mail className="h-4 w-4" /> {savingEmail ? "Sending…" : "Send code"}
+            </button>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            <p className="text-xs text-muted-foreground">
+              Enter the 6-digit code we emailed to <strong>{newEmail}</strong>.
+            </p>
+            <div className="flex gap-2 flex-wrap">
+              <input
+                type="text"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                value={emailCode}
+                onChange={(e) => setEmailCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                placeholder="123456"
+                className={`${inputCls} w-32 tracking-[0.3em] text-center`}
+                style={{ borderColor: PEACH_BORDER }}
+              />
+              <button
+                type="button"
+                onClick={confirmEmailChange}
+                disabled={savingEmail || emailCode.length !== 6}
+                className={btnPrimary}
+                style={{ background: WINE }}
+              >
+                <Save className="h-4 w-4" /> {savingEmail ? "Verifying…" : "Verify & set primary"}
+              </button>
+              <button
+                type="button"
+                onClick={cancelEmailChange}
+                disabled={savingEmail}
+                className={btnGhost}
+                style={{ borderColor: PEACH_BORDER, color: WINE }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Password */}
+      <div className="rounded-lg border p-4 space-y-2" style={{ borderColor: PEACH_BORDER }}>
+        <p className="text-sm font-semibold text-[#3D0814]">Password</p>
+        <p className="text-xs text-muted-foreground">
+          {user.passwordEnabled
+            ? "Update the password you use to sign in. Other devices will be signed out."
+            : "Set a password so you can sign in with email + password (instead of only Google)."}
+        </p>
+        <div className="grid gap-2 md:grid-cols-3">
+          {user.passwordEnabled && (
+            <input
+              type="password"
+              value={currentPw}
+              onChange={(e) => setCurrentPw(e.target.value)}
+              placeholder="Current password"
+              className={inputCls}
+              style={{ borderColor: PEACH_BORDER }}
+            />
+          )}
+          <input
+            type="password"
+            value={newPw}
+            onChange={(e) => setNewPw(e.target.value)}
+            placeholder="New password (min 8)"
+            className={inputCls}
+            style={{ borderColor: PEACH_BORDER }}
+          />
+          <input
+            type="password"
+            value={confirmPw}
+            onChange={(e) => setConfirmPw(e.target.value)}
+            placeholder="Confirm new password"
+            className={inputCls}
+            style={{ borderColor: PEACH_BORDER }}
+          />
+        </div>
+        <div className="flex gap-2 flex-wrap pt-1">
+          <button
+            type="button"
+            onClick={changePassword}
+            disabled={savingPw || !newPw || !confirmPw}
+            className={btnPrimary}
+            style={{ background: WINE }}
+          >
+            <Lock className="h-4 w-4" />
+            {savingPw ? "Updating…" : user.passwordEnabled ? "Update password" : "Set password"}
+          </button>
+          <button
+            type="button"
+            onClick={() => signOut()}
+            className={btnGhost}
+            style={{ borderColor: PEACH_BORDER, color: WINE }}
+          >
+            Sign out
+          </button>
+        </div>
+      </div>
     </div>
   )
 }

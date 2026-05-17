@@ -13,7 +13,7 @@ const BASE_PATH = import.meta.env.BASE_URL.replace(/\/$/, "")
 import { TopBar } from "@/components/store/top-bar"
 import { Navbar } from "@/components/store/navbar"
 import { Footer } from "@/components/store/footer"
-import { Eye, EyeOff, ArrowRight, ChevronDown } from "lucide-react"
+import { Eye, EyeOff, ArrowRight, ChevronDown, Mail } from "lucide-react"
 import { Seo } from "@/components/seo"
 import logoShaniid from "@assets/image_1778744075874.png"
 
@@ -24,11 +24,14 @@ const ACCENT_ORANGE = "#F97316"
 const CREAM         = "#FFFBF5"
 const PEACH_BORDER  = "#F2DCC8"
 
+type Step = "signin" | "reset_email" | "reset_code"
+
 export default function AccountLoginPage() {
   const [, navigate] = useLocation()
   const { isSignedIn } = useUser()
   const { isLoaded, signIn, setActive } = useSignIn()
 
+  const [step, setStep]       = useState<Step>("signin")
   const [method, setMethod]   = useState<"phone" | "email">("email")
   const [phone, setPhone]     = useState("")
   const [email, setEmail]     = useState("")
@@ -37,6 +40,63 @@ export default function AccountLoginPage() {
   const [remember, setRemember] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError]     = useState("")
+
+  /* Reset-password state */
+  const [resetCode, setResetCode]       = useState("")
+  const [resetNewPw, setResetNewPw]     = useState("")
+  const [resetConfirm, setResetConfirm] = useState("")
+  const [resetInfo, setResetInfo]       = useState("")
+
+  const sendResetCode = async () => {
+    if (!isLoaded || !signIn) return
+    const id = email.trim()
+    if (!id) { setError("Enter the email on your account first."); return }
+    setError(""); setResetInfo(""); setLoading(true)
+    try {
+      await signIn.create({ strategy: "reset_password_email_code", identifier: id })
+      setStep("reset_code")
+      setResetInfo(`We've emailed a 6-digit reset code to ${id}.`)
+    } catch (err) {
+      const msg =
+        (err as { errors?: Array<{ longMessage?: string; message?: string }> })?.errors?.[0]?.longMessage ||
+        (err as { errors?: Array<{ message?: string }> })?.errors?.[0]?.message ||
+        "Could not start password reset. Check the email and try again."
+      setError(msg)
+    } finally { setLoading(false) }
+  }
+
+  const submitReset = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!isLoaded || !signIn) return
+    setError("")
+    if (resetNewPw.length < 8) { setError("New password must be at least 8 characters."); return }
+    if (resetNewPw !== resetConfirm) { setError("Passwords do not match."); return }
+    setLoading(true)
+    try {
+      const attempt = await signIn.attemptFirstFactor({
+        strategy: "reset_password_email_code",
+        code: resetCode.trim(),
+        password: resetNewPw,
+      })
+      if (attempt.status === "complete") {
+        await setActive({ session: attempt.createdSessionId })
+        navigate("/user")
+      } else {
+        setError("Reset needs another step. Please try signing in normally.")
+      }
+    } catch (err) {
+      const msg =
+        (err as { errors?: Array<{ longMessage?: string; message?: string }> })?.errors?.[0]?.longMessage ||
+        (err as { errors?: Array<{ message?: string }> })?.errors?.[0]?.message ||
+        "Could not reset password. Check the code and try again."
+      setError(msg)
+    } finally { setLoading(false) }
+  }
+
+  const backToSignIn = () => {
+    setStep("signin"); setError(""); setResetInfo("")
+    setResetCode(""); setResetNewPw(""); setResetConfirm("")
+  }
 
   /* Avoid calling navigate during render — that triggers a setState-in-render
      warning and can deadlock the component. */
@@ -166,24 +226,50 @@ export default function AccountLoginPage() {
                   className="text-2xl lg:text-3xl font-extrabold"
                   style={{ color: WINE, fontFamily: "var(--font-serif, ui-serif, Georgia, serif)" }}
                 >
-                  Log In
+                  {step === "signin" ? "Log In" : "Reset Password"}
                 </h1>
               </div>
               <div className="text-right shrink-0 mt-1">
-                <p className="text-xs" style={{ color: WINE_SOFT }}>Don't have an account?</p>
-                <Link
-                  href="/account/register"
-                  className="text-xs font-bold hover:underline transition-all"
-                  style={{ color: ACCENT_RED }}
-                >
-                  Create Account
-                </Link>
+                {step === "signin" ? (
+                  <>
+                    <p className="text-xs" style={{ color: WINE_SOFT }}>Don't have an account?</p>
+                    <Link
+                      href="/account/register"
+                      className="text-xs font-bold hover:underline transition-all"
+                      style={{ color: ACCENT_RED }}
+                    >
+                      Create Account
+                    </Link>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-xs" style={{ color: WINE_SOFT }}>Remembered it?</p>
+                    <button
+                      type="button"
+                      onClick={backToSignIn}
+                      className="text-xs font-bold hover:underline transition-all"
+                      style={{ color: ACCENT_RED }}
+                    >
+                      Back to Sign In
+                    </button>
+                  </>
+                )}
               </div>
             </div>
           </div>
 
-          <form onSubmit={handleSubmit} className="px-8 py-7 space-y-5">
-            {/* Identifier field */}
+          <form onSubmit={step === "signin" ? handleSubmit : submitReset} className="px-8 py-7 space-y-5">
+            {step === "reset_code" && resetInfo && (
+              <div
+                className="rounded-xl px-4 py-3 text-xs flex items-start gap-2"
+                style={{ background: "#FFFBF5", border: `1px solid ${PEACH_BORDER}`, color: WINE }}
+              >
+                <Mail className="h-4 w-4 flex-shrink-0 mt-0.5" />
+                <span>{resetInfo} Enter it below with your new password.</span>
+              </div>
+            )}
+            {/* Identifier field — visible only in sign-in mode */}
+            {step === "signin" && (
             <div>
               <div className="flex items-center justify-between mb-1.5">
                 <label className="text-xs font-bold uppercase tracking-wider" style={{ color: WINE_SOFT }}>
@@ -244,8 +330,10 @@ export default function AccountLoginPage() {
                 </div>
               )}
             </div>
+            )}
 
             {/* Password */}
+            {step === "signin" && (
             <div>
               <label className="text-xs font-bold uppercase tracking-wider mb-1.5 block" style={{ color: WINE_SOFT }}>
                 Password *
@@ -272,8 +360,10 @@ export default function AccountLoginPage() {
                 </button>
               </div>
             </div>
+            )}
 
-            {/* Remember + forgot */}
+            {/* Remember + forgot — sign-in mode only */}
+            {step === "signin" && (
             <div className="flex items-center justify-between">
               <label className="flex items-center gap-2 cursor-pointer select-none">
                 <input
@@ -285,14 +375,88 @@ export default function AccountLoginPage() {
                 />
                 <span className="text-xs font-medium" style={{ color: WINE_SOFT }}>Keep me signed in</span>
               </label>
-              <Link
-                href="/account/login"
-                className="text-xs font-semibold hover:underline"
+              <button
+                type="button"
+                onClick={sendResetCode}
+                disabled={loading || !isLoaded}
+                className="text-xs font-semibold hover:underline disabled:opacity-50"
                 style={{ color: ACCENT_RED }}
               >
                 Forgot Password?
-              </Link>
+              </button>
             </div>
+            )}
+
+            {/* Reset-code form — reset mode only */}
+            {step === "reset_code" && (
+              <>
+                <div>
+                  <label className="text-xs font-bold uppercase tracking-wider mb-1.5 block" style={{ color: WINE_SOFT }}>
+                    6-digit code *
+                  </label>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    required
+                    value={resetCode}
+                    onChange={(e) => setResetCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                    placeholder="123456"
+                    className="w-full h-12 px-4 rounded-xl text-sm tracking-[0.4em] text-center bg-white outline-none"
+                    style={{ border: `1.5px solid ${PEACH_BORDER}`, color: WINE }}
+                  />
+                  <button
+                    type="button"
+                    onClick={sendResetCode}
+                    disabled={loading}
+                    className="mt-1.5 text-xs font-semibold hover:underline disabled:opacity-50"
+                    style={{ color: ACCENT_RED }}
+                  >
+                    Resend code
+                  </button>
+                </div>
+                <div>
+                  <label className="text-xs font-bold uppercase tracking-wider mb-1.5 block" style={{ color: WINE_SOFT }}>
+                    New password *
+                  </label>
+                  <div
+                    className="flex items-center h-12 rounded-xl overflow-hidden"
+                    style={{ background: "white", border: `1.5px solid ${PEACH_BORDER}` }}
+                  >
+                    <input
+                      type={showPw ? "text" : "password"}
+                      required
+                      value={resetNewPw}
+                      onChange={(e) => setResetNewPw(e.target.value)}
+                      placeholder="Min 8 characters"
+                      className="flex-1 h-full px-4 text-sm bg-transparent outline-none"
+                      style={{ color: WINE }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPw(!showPw)}
+                      className="px-4 text-gray-400 hover:text-gray-600 transition-colors"
+                    >
+                      {showPw ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                  </div>
+                </div>
+                <div>
+                  <label className="text-xs font-bold uppercase tracking-wider mb-1.5 block" style={{ color: WINE_SOFT }}>
+                    Confirm new password *
+                  </label>
+                  <input
+                    type={showPw ? "text" : "password"}
+                    required
+                    value={resetConfirm}
+                    onChange={(e) => setResetConfirm(e.target.value)}
+                    placeholder="Re-enter new password"
+                    className="w-full h-12 px-4 rounded-xl text-sm bg-white outline-none"
+                    style={{ border: `1.5px solid ${PEACH_BORDER}`, color: WINE }}
+                  />
+                </div>
+              </>
+            )}
 
             {/* Error */}
             {error && (
@@ -323,19 +487,23 @@ export default function AccountLoginPage() {
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
                 </svg>
-              ) : (
+              ) : step === "signin" ? (
                 <>Sign In <ArrowRight className="h-4 w-4" /></>
+              ) : (
+                <>Reset Password <ArrowRight className="h-4 w-4" /></>
               )}
             </button>
 
-            {/* Divider */}
+            {/* Divider + Google — sign-in mode only */}
+            {step === "signin" && (
             <div className="flex items-center gap-3">
               <div className="flex-1 h-px" style={{ background: PEACH_BORDER }} />
               <span className="text-xs font-semibold" style={{ color: WINE_SOFT }}>OR</span>
               <div className="flex-1 h-px" style={{ background: PEACH_BORDER }} />
             </div>
+            )}
 
-            {/* Google */}
+            {step === "signin" && (
             <button
               type="button"
               onClick={handleGoogle}
@@ -351,6 +519,7 @@ export default function AccountLoginPage() {
               </svg>
               Continue with Google
             </button>
+            )}
           </form>
         </div>
       </main>
