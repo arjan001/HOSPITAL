@@ -222,29 +222,29 @@ function DeviceRow({ item }: { item: DeviceItem }) {
       href={item.href}
       className="flex items-center gap-4 group"
     >
-      {/* White rounded image card matching figma reference */}
+      {/* White rounded image card — slightly larger so the product reads first */}
       <div
-        className="relative w-[88px] h-[88px] rounded-2xl overflow-hidden shrink-0 flex items-center justify-center transition-transform group-hover:scale-[1.04]"
+        className="relative w-[104px] h-[104px] rounded-2xl overflow-hidden shrink-0 flex items-center justify-center transition-transform group-hover:scale-[1.04]"
         style={{
           background: "#FFFFFF",
           boxShadow:
             "0 10px 22px -12px rgba(184,60,30,0.35), inset 0 1px 0 rgba(255,255,255,0.95)",
         }}
       >
-        <div className="relative w-[78%] h-[78%]">
+        <div className="relative w-[80%] h-[80%]">
           <ProductImage src={item.image} alt={item.name} fill loaderSize="sm" />
         </div>
       </div>
       <div className="flex-1 min-w-0">
-        <p className="text-base font-bold leading-tight" style={{ color: TEXT_WINE }}>
+        <p className="text-sm font-semibold leading-tight" style={{ color: TEXT_WINE }}>
           {item.name}
         </p>
-        <p className="text-base font-bold mt-0.5" style={{ color: TEXT_WINE }}>
+        <p className="text-sm font-bold mt-1" style={{ color: TEXT_WINE }}>
           {item.price}
         </p>
         <div className="flex items-center gap-0.5 mt-1.5" aria-label="5 star rating">
           {Array.from({ length: 5 }).map((_, i) => (
-            <Star key={i} className="h-3.5 w-3.5" fill={ACCENT_ORANGE} stroke={ACCENT_ORANGE} />
+            <Star key={i} className="h-3 w-3" fill={ACCENT_ORANGE} stroke={ACCENT_ORANGE} />
           ))}
         </div>
       </div>

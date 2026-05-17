@@ -16,12 +16,12 @@ const STEPS = [
 
 export function HowToOrder() {
   return (
-    <section className="bg-[#f4f6f7] py-16 lg:py-24">
-      <div className="mx-auto max-w-6xl px-4 lg:px-6">
-        <div className="grid lg:grid-cols-2 gap-12 lg:gap-16 items-center">
+    <section className="bg-[#f4f6f7] py-10 lg:py-14">
+      <div className="mx-auto max-w-5xl px-4 lg:px-6">
+        <div className="grid lg:grid-cols-2 gap-8 lg:gap-12 items-center">
 
           {/* Image collage */}
-          <div className="relative h-[420px] sm:h-[500px] lg:h-[560px]">
+          <div className="relative h-[320px] sm:h-[380px] lg:h-[420px]">
             {/* Decorative shapes */}
             <div
               aria-hidden
@@ -106,50 +106,50 @@ export function HowToOrder() {
           {/* Copy + Steps */}
           <div>
             <h2
-              className="font-serif text-3xl sm:text-4xl lg:text-[42px] leading-tight text-neutral-900 font-semibold"
+              className="font-serif text-2xl sm:text-3xl lg:text-[32px] leading-tight text-neutral-900 font-semibold"
               style={{ letterSpacing: "-0.01em" }}
             >
               How to order medicines on Shaniid&nbsp;RX? It’s Simple.
             </h2>
 
-            <ol className="mt-8 space-y-5">
+            <ol className="mt-6 space-y-3">
               {STEPS.map((s) => (
-                <li key={s.n} className="flex items-center gap-4">
+                <li key={s.n} className="flex items-center gap-3">
                   <span
-                    className="flex-shrink-0 grid place-items-center w-10 h-10 rounded-full border-2 text-sm font-semibold"
+                    className="flex-shrink-0 grid place-items-center w-9 h-9 rounded-full border-2 text-sm font-semibold"
                     style={{ borderColor: s.color, color: s.color }}
                   >
                     {s.n}
                   </span>
-                  <span className="text-[17px] text-neutral-800">{s.label}</span>
+                  <span className="text-[15px] text-neutral-800">{s.label}</span>
                 </li>
               ))}
             </ol>
 
             <p
-              className="mt-8 text-[20px] font-semibold"
+              className="mt-6 text-[17px] font-semibold"
               style={{ color: TEAL }}
             >
               Don’t have a prescription? Don’t worry!
             </p>
-            <p className="mt-2 text-[15px] text-neutral-600 leading-relaxed max-w-md">
+            <p className="mt-1.5 text-sm text-neutral-600 leading-relaxed max-w-md">
               Simply search &amp; add the medicines OR get a consultation from a Shaniid&nbsp;RX doctor.
             </p>
 
-            <div className="mt-8">
+            <div className="mt-6">
               <Link
                 href="/about"
                 className="inline-flex items-center gap-3 group"
               >
                 <span
-                  className="grid place-items-center w-12 h-12 rounded-full text-white transition-colors"
+                  className="grid place-items-center w-11 h-11 rounded-full text-white transition-colors"
                   style={{ background: TEAL }}
                   onMouseEnter={(e) => (e.currentTarget.style.background = TEAL_DARK)}
                   onMouseLeave={(e) => (e.currentTarget.style.background = TEAL)}
                 >
                   <ArrowRight className="h-5 w-5" />
                 </span>
-                <span className="text-sm font-semibold uppercase tracking-[0.18em] text-neutral-900">
+                <span className="text-xs font-semibold uppercase tracking-[0.18em] text-neutral-900">
                   About&nbsp;us
                 </span>
               </Link>
