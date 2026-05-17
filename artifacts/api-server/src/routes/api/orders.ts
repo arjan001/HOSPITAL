@@ -30,7 +30,10 @@ router.post("/", async (req, res) => {
     }
 
     if (!isValidPhone(customerPhone)) {
-      return res.status(400).json({ error: "Invalid phone number format" })
+      return res.status(400).json({
+        error: "Invalid phone number format",
+        hint: "Use a Kenyan number like 0712345678 or +254712345678",
+      })
     }
 
     if (customerEmail && !isValidEmail(customerEmail)) {

@@ -56,7 +56,14 @@ export function isValidEmail(email: string): boolean {
 }
 
 export function isValidPhone(phone: string): boolean {
-  const cleaned = phone.replace(/[\s\-()]/g, "")
+  if (typeof phone !== "string") return false
+  // Normalize: keep only digits and a single leading +. This tolerates spaces,
+  // dashes, parens, dots, non-breaking spaces and other punctuation that may
+  // sneak in via paste / autocomplete from contact apps. Mirrors the more
+  // permissive cleaner used in the storefront checkout form.
+  const hasLeadingPlus = phone.trim().startsWith("+")
+  const digits = phone.replace(/\D/g, "")
+  const cleaned = (hasLeadingPlus ? "+" : "") + digits
   // Strict Kenyan formats:
   if (/^(\+?254[17]\d{8}|0[17]\d{8}|011\d{7})$/.test(cleaned)) return true
   // Generic international: optional +, then 9-15 digits
