@@ -100,7 +100,6 @@ const NAV_GROUPS: NavGroup[] = [
     name: "Customers",
     items: [
       { label: "All Customers", href: "/admin/customers", icon: UserCircle },
-      { label: "Newsletter",    href: "/admin/newsletter", icon: Mail },
     ],
   },
   {
@@ -110,7 +109,6 @@ const NAV_GROUPS: NavGroup[] = [
       { label: "Consultations",     href: "/admin/consultations", icon: Stethoscope },
       { label: "Consultation Settings", href: "/admin/consultation-settings", icon: Timer },
       { label: "Live Chat",         href: "/admin/chat",          icon: MessagesSquare },
-      { label: "Contact Inquiries", href: "/admin/inquiries",     icon: Inbox },
     ],
   },
   {
@@ -218,9 +216,11 @@ const NAV_GROUPS: NavGroup[] = [
   {
     name: "Marketing",
     items: [
-      { label: "Offers & Banners", href: "/admin/banners",      icon: ImageIcon },
-      { label: "Announcement Bar", href: "/admin/announcement", icon: MegaphoneAlt },
-      { label: "Popup Offer",      href: "/admin/popup-offer",  icon: Megaphone },
+      { label: "Offers & Banners",  href: "/admin/banners",      icon: ImageIcon },
+      { label: "Announcement Bar",  href: "/admin/announcement", icon: MegaphoneAlt },
+      { label: "Popup Offer",       href: "/admin/popup-offer",  icon: Megaphone },
+      { label: "Newsletter",        href: "/admin/newsletter",   icon: Mail },
+      { label: "Contact Inquiries", href: "/admin/inquiries",    icon: Inbox },
     ],
   },
   {
