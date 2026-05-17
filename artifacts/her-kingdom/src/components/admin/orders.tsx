@@ -1,7 +1,6 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { apiFetch, authedFetcher as fetcher } from "@/lib/api-client"
 import { toast } from "sonner"
 import { Eye, Truck, CheckCircle, Clock, Package, XCircle, Search, Trash2, Loader2, MessageSquare, Phone, Download, DollarSign, StickyNote } from "lucide-react"
 import { usePagination } from "@/hooks/use-pagination"
@@ -14,34 +13,16 @@ import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Checkbox } from "@/components/ui/checkbox"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import useSWR from "swr"
-
-
-type OrderStatus = "pending" | "confirmed" | "dispatched" | "delivered" | "cancelled"
-
-interface Order {
-  id: string
-  orderNo: string
-  customer: string
-  phone: string
-  email: string
-  items: { name: string; qty: number; price: number; variation?: string }[]
-  subtotal: number
-  delivery: number
-  total: number
-  location: string
-  address: string
-  notes: string
-  specialInstructions: string
-  status: OrderStatus
-  orderedVia: string
-  paymentMethod: string
-  mpesaCode: string
-  mpesaPhone: string
-  mpesaMessage: string
-  date: string
-}
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { useCmsCollection } from "@/lib/cms-store"
+import {
+  ORDERS_KEY,
+  SALE_STATUSES,
+  setOrderStatus,
+  deleteOrdersByIds,
+  type AdminOrderRecord as Order,
+  type AdminOrderStatus as OrderStatus,
+} from "@/lib/orders-store"
 
 const statusConfig: Record<OrderStatus, { label: string; icon: typeof Clock; className: string }> = {
   pending: { label: "Pending", icon: Clock, className: "bg-secondary text-foreground" },
@@ -51,10 +32,10 @@ const statusConfig: Record<OrderStatus, { label: string; icon: typeof Clock; cla
   cancelled: { label: "Cancelled", icon: XCircle, className: "bg-secondary text-muted-foreground" },
 }
 
-const SALE_STATUSES: OrderStatus[] = ["confirmed", "dispatched", "delivered"]
-
 export function AdminOrders() {
-  const { data: orders = [], mutate } = useSWR<Order[]>("/api/admin/orders", fetcher)
+  const collection = useCmsCollection<Order>(ORDERS_KEY, [])
+  const orders = [...collection.items].sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""))
+  const mutate = () => { /* cmsStore reactivity handles refresh */ }
   const [search, setSearch] = useState("")
   const [statusFilter, setStatusFilter] = useState<string>("all")
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null)
@@ -95,19 +76,9 @@ export function AdminOrders() {
     if (ids.length === 0) return false
     setDeleting(true)
     try {
-      const res = await apiFetch(`/api/admin/orders?ids=${ids.join(",")}`, { method: "DELETE" })
-      const data = await res.json().catch(() => ({}))
-      if (res.ok) {
-        const count = data.deleted ?? ids.length
-        toast.success(`${count} order${count !== 1 ? "s" : ""} deleted`)
-        mutate()
-        return true
-      }
-      toast.error(data.error || "Failed to delete orders")
-      return false
-    } catch {
-      toast.error("Failed to delete orders")
-      return false
+      const count = deleteOrdersByIds(ids)
+      toast.success(`${count} order${count !== 1 ? "s" : ""} deleted`)
+      return true
     } finally {
       setDeleting(false)
     }
@@ -136,14 +107,10 @@ export function AdminOrders() {
   }
 
   const updateStatus = async (orderId: string, newStatus: OrderStatus) => {
-    const res = await apiFetch("/api/admin/orders", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id: orderId, status: newStatus }),
-    })
-    if (res.ok) toast.success(`Order ${statusConfig[newStatus].label.toLowerCase()}`)
-    else toast.error("Failed to update order status")
-    mutate()
+    const target = orders.find((o) => o.id === orderId)
+    if (!target) return
+    setOrderStatus(target.orderNo, newStatus)
+    toast.success(`Order ${statusConfig[newStatus].label.toLowerCase()}`)
     if (selectedOrder?.id === orderId) {
       setSelectedOrder((prev) => prev ? { ...prev, status: newStatus } : null)
     }
@@ -168,7 +135,7 @@ export function AdminOrders() {
         <td style="padding:6px 10px;border-bottom:1px solid #eee;font-size:12px;">${o.customer}</td>
         <td style="padding:6px 10px;border-bottom:1px solid #eee;font-size:12px;">${o.phone}</td>
         <td style="padding:6px 10px;border-bottom:1px solid #eee;font-size:12px;">${o.items.map(i => `${i.name} x${i.qty}`).join(", ")}</td>
-        <td style="padding:6px 10px;border-bottom:1px solid #eee;font-size:12px;">${o.paymentMethod === "mpesa" ? "M-PESA" : o.orderedVia === "whatsapp" ? "WhatsApp" : "COD"}</td>
+        <td style="padding:6px 10px;border-bottom:1px solid #eee;font-size:12px;">${o.paymentMethod === "mpesa" ? "M-PESA" : o.paymentMethod === "card" ? "Card" : o.orderedVia === "whatsapp" ? "WhatsApp" : "COD"}</td>
         <td style="padding:6px 10px;border-bottom:1px solid #eee;font-size:12px;">${statusConfig[o.status].label}</td>
         <td style="padding:6px 10px;border-bottom:1px solid #eee;font-size:12px;text-align:right;">KES ${o.total.toLocaleString()}</td>
         <td style="padding:6px 10px;border-bottom:1px solid #eee;font-size:12px;">${o.date}</td>
@@ -344,6 +311,8 @@ export function AdminOrders() {
                           <td className="px-4 py-3 hidden lg:table-cell">
                             {order.paymentMethod === "mpesa" ? (
                               <span className="text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-sm bg-[#00843D]/10 text-[#00843D]">M-PESA</span>
+                            ) : order.paymentMethod === "card" ? (
+                              <span className="text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-sm bg-[#F97316]/10 text-[#B91C1C]">Card</span>
                             ) : order.orderedVia === "whatsapp" ? (
                               <span className="text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-sm bg-[#25D366]/10 text-[#25D366]">WhatsApp</span>
                             ) : (
@@ -420,6 +389,8 @@ export function AdminOrders() {
                   <span className="text-xs text-muted-foreground">{selectedOrder.date}</span>
                   {selectedOrder.orderedVia === "whatsapp" && <Badge variant="outline" className="text-[10px]">WhatsApp</Badge>}
                   {selectedOrder.paymentMethod === "mpesa" && <Badge variant="outline" className="text-[10px] border-[#00843D]/30 text-[#00843D]">M-PESA</Badge>}
+                  {selectedOrder.paymentMethod === "card" && <Badge variant="outline" className="text-[10px] border-[#F97316]/30 text-[#B91C1C]">Card</Badge>}
+                  {selectedOrder.paymentMethod === "cod" && <Badge variant="outline" className="text-[10px]">COD</Badge>}
                 </div>
               </div>
 

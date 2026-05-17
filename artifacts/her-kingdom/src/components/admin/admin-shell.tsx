@@ -4,6 +4,8 @@ import { useState, useEffect, useMemo, useRef, type ReactNode } from "react"
 import { createPortal } from "react-dom"
 import { Link } from "wouter"
 import { useLocation } from "wouter"
+import { useCmsCollection } from "@/lib/cms-store"
+import { ORDERS_KEY, type AdminOrderRecord } from "@/lib/orders-store"
 import {
   LayoutDashboard,
   Package,
@@ -583,7 +585,8 @@ export function AdminShell({ children, title }: { children: ReactNode; title: st
   const [fullscreen, setFullscreen] = useState(false)
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null)
   const [loggingOut, setLoggingOut] = useState(false)
-  const [pendingOrders, setPendingOrders] = useState(0)
+  const ordersCollection = useCmsCollection<AdminOrderRecord>(ORDERS_KEY, [])
+  const pendingOrders = ordersCollection.items.filter((o) => o.status === "pending").length
   const [search, setSearch] = useState("")
 
   useEffect(() => {
@@ -592,25 +595,6 @@ export function AdminShell({ children, title }: { children: ReactNode; title: st
       email: "admin@shaniidrx.local",
       role: "super_admin",
     })
-
-    const fetchPending = async () => {
-      try {
-        const res = await fetch("/api/admin/orders?status=pending&count=true")
-        if (!res.ok) return
-        const data = await res.json()
-        const count = typeof data?.count === "number"
-          ? data.count
-          : Array.isArray(data?.orders)
-            ? data.orders.length
-            : Array.isArray(data)
-              ? data.length
-              : 0
-        setPendingOrders(count)
-      } catch { /* badge just hides */ }
-    }
-    fetchPending()
-    const interval = setInterval(fetchPending, 30000)
-    return () => clearInterval(interval)
   }, [])
 
   useEffect(() => {

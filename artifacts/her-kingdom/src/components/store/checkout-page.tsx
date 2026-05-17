@@ -18,6 +18,7 @@ import { Footer } from "./footer"
 import { MpesaPaymentModal } from "./mpesa-payment-modal"
 import { CardPaymentModal } from "./card-payment-modal"
 import { cmsStore } from "@/lib/cms-store"
+import { upsertAdminOrder, type AdminOrderStatus } from "@/lib/orders-store"
 import type { CardPaymentRecord } from "@/components/admin/card-details"
 import { apiNest, refreshAccount, type AccountOrder } from "@/lib/api-nest"
 import { useCart } from "@/lib/cart-context"
@@ -749,6 +750,43 @@ export function CheckoutPage() {
     }
   }
 
+  /* ── Persist an order into the admin cmsStore feed (Sales & Orders + Dashboard).
+        Status semantics:
+          - "pending"   = order placed, payment not yet confirmed (COD, M-Pesa awaiting receipt)
+          - "confirmed" = payment captured / cash received → counts as a Sale
+          - "cancelled" = failed / declined / abandoned        ── */
+  const persistAdminOrder = (
+    snap: OrderSuccess,
+    status: AdminOrderStatus,
+    extras: { mpesaCode?: string; mpesaPhone?: string; mpesaMessage?: string; notes?: string } = {},
+  ) => {
+    upsertAdminOrder({
+      orderNo: snap.orderNumber,
+      customer: snap.customerName || "Guest",
+      phone: snap.customerPhone || "",
+      email: snap.customerEmail || "",
+      items: snap.items.map((it) => ({
+        name: it.name,
+        qty: it.qty,
+        price: it.unitPrice,
+        variation: it.variation,
+      })),
+      subtotal: snap.subtotal,
+      delivery: snap.deliveryFee,
+      total: snap.total,
+      location: snap.locationLabel || (snap.fulfilmentMode === "pickup" ? "Pickup" : ""),
+      address: snap.deliveryAddress || "",
+      notes: extras.notes || "",
+      specialInstructions: deliveryNote || "",
+      status,
+      orderedVia: "website",
+      paymentMethod: snap.paymentMethod,
+      mpesaCode: extras.mpesaCode,
+      mpesaPhone: extras.mpesaPhone,
+      mpesaMessage: extras.mpesaMessage,
+    })
+  }
+
   /* ── MPesa ── */
   const createMpesaPendingOrder = async (): Promise<{ orderNumber: string } | { error: string } | null> => {
     try {
@@ -756,6 +794,11 @@ export function CheckoutPage() {
       const data = await res.json().catch(() => ({}))
       if (!res.ok) return { error: data?.error || `Server error (${res.status})` }
       if (!data?.orderNumber) return { error: "Server did not return an order number" }
+      // Record the pending Order immediately so admin sees it even if M-Pesa never confirms.
+      try {
+        const pendingSnap = buildOrderSnapshot({ orderNumber: data.orderNumber, paymentMethod: "mpesa" })
+        persistAdminOrder(pendingSnap, "pending")
+      } catch { /* localStorage best-effort */ }
       return { orderNumber: data.orderNumber }
     } catch (err) { return { error: err instanceof Error ? err.message : "Network error" } }
   }
@@ -766,6 +809,13 @@ export function CheckoutPage() {
       paymentMethod: "mpesa",
       mpesaReceipt: result.mpesaReceipt,
     })
+    // Persist to admin Sales & Orders as a confirmed Sale (M-Pesa payment captured).
+    try {
+      persistAdminOrder(snap, "confirmed", {
+        mpesaCode: result.mpesaReceipt,
+        mpesaPhone: result.phone,
+      })
+    } catch { /* localStorage best-effort */ }
     setOrderResult(snap)
     void persistOrderToAccount(snap)
     clearCart()
@@ -806,6 +856,19 @@ export function CheckoutPage() {
         }
         cmsStore.set("card-payment-tests", [record, ...prev])
       } catch { /* localStorage may be unavailable */ }
+
+      // Persist to admin Sales & Orders. Card success = confirmed Sale; failure = cancelled Order.
+      try {
+        const cardSnap = buildOrderSnapshot({
+          orderNumber,
+          paymentMethod: "card",
+          cardBrand: details.cardBrand,
+          cardLast4: details.last4,
+        })
+        persistAdminOrder(cardSnap, status === "success" ? "confirmed" : "cancelled", {
+          notes: `Card ${details.cardBrand} ending ${details.last4}`,
+        })
+      } catch { /* localStorage best-effort */ }
 
       if (status === "success") {
         const snap = buildOrderSnapshot({
@@ -1675,6 +1738,8 @@ export function CheckoutPage() {
                             }
                             {
                               const snap = buildOrderSnapshot({ orderNumber: data.orderNumber, paymentMethod: "cod" })
+                              // COD: placed as pending — becomes a Sale only when admin confirms cash received.
+                              try { persistAdminOrder(snap, "pending") } catch { /* localStorage best-effort */ }
                               setOrderResult(snap)
                               void persistOrderToAccount(snap)
                             }
