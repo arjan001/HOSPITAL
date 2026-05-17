@@ -262,5 +262,8 @@ class AdminOrdersController {
 @Module({
   controllers: [AdminOrdersController],
   providers: [AdminOrdersService],
+  exports: [AdminOrdersService],
 })
 export class AdminOrdersModule {}
+
+export { AdminOrdersService }

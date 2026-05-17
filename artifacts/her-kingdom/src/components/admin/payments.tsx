@@ -1,11 +1,16 @@
 "use client"
 
 import { useState } from "react"
-import { authedFetcher as fetcher } from "@/lib/api-client"
 import { AdminShell } from "./admin-shell"
 import { useCmsCollection } from "@/lib/cms-store"
 import type { CardPaymentRecord } from "./card-details"
 import useSWR, { mutate } from "swr"
+
+const nestFetcher = async (path: string) => {
+  const res = await fetch(`/api/v2${path}`, { credentials: "include" })
+  if (!res.ok) throw new Error(`payments ${res.status}`)
+  return res.json()
+}
 import { toast } from "sonner"
 import {
   CreditCard,
@@ -87,8 +92,8 @@ interface AdminPaymentsProps {
 export function AdminPayments({ initialTab = "transactions" }: AdminPaymentsProps) {
   const [activeTab, setActiveTab] = useState<PaymentsTab>(initialTab)
   const { data: transactions, isLoading: txLoading } = useSWR<Transaction[]>(
-    "/api/admin/payments?action=transactions",
-    fetcher,
+    "/admin/payments?action=transactions&method=mpesa",
+    nestFetcher,
     { refreshInterval: 15000 },
   )
   const cardCollection = useCmsCollection<CardPaymentRecord>("card-payment-tests", [])
@@ -119,7 +124,7 @@ export function AdminPayments({ initialTab = "transactions" }: AdminPaymentsProp
           <button
             type="button"
             onClick={() => {
-              mutate("/api/admin/payments?action=transactions")
+              mutate("/admin/payments?action=transactions&method=mpesa")
               toast.success("Refreshed")
             }}
             className="flex items-center gap-2 px-4 py-2 border border-border rounded-md text-sm hover:bg-secondary transition-colors self-start"

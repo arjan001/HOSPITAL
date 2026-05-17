@@ -1,27 +1,69 @@
 "use client"
 
 /**
- * cms-store — thin localStorage-backed CMS adapter.
+ * cms-store — hybrid CMS adapter (localStorage cache + NestJS source of truth).
  *
- * All admin CMS modules write through this single module so we can swap the
- * backend (NestJS + Postgres) in one place later without touching every page.
+ * Public API is **unchanged** so every existing caller (~22 admin modules)
+ * works without edits:
+ *   - `useCmsDoc<T>(key, defaults)`
+ *   - `useCmsCollection<T>(key, defaults)`
+ *   - `cmsStore.get / set / has / subscribe`
  *
- * - `useCmsDoc<T>(key, defaults)` — single object document
- * - `useCmsCollection<T>(key, defaults)` — array of records keyed by `id`
+ * How it works:
+ *   1. Reads are synchronous — they return the localStorage snapshot (or the
+ *      provided fallback) and kick off a background fetch from
+ *      `/api/v2/admin/cms/:key` the first time a key is touched in this tab.
+ *   2. When the server response differs from the local cache, the snapshot
+ *      cache is updated and a `cms-store:change` event is fired — components
+ *      using `useSyncExternalStore` re-read automatically.
+ *   3. Writes update localStorage + snapshot cache + fire the change event
+ *      (synchronously, so the UI feels instant), then PUT to NestJS in the
+ *      background. Failed PUTs are logged but don't roll back the UI.
  *
- * Reads/writes are tab-synced via `window.storage` event + a private
- * `cms-store:change` event so multiple components in the same tab stay in
- * sync (storage events do not fire in the originating tab).
+ * Keys prefixed with `user-` or `customer-` stay local-only (they're
+ * per-visitor storefront state, not admin-managed CMS). The audit-log key
+ * IS persisted to the server, but its own write does NOT re-fire the audit
+ * recorder (that's the recursion guard).
+ *
+ * The Postgres swap is one file: replace the in-process Map in
+ * `artifacts/api-nest/src/modules/admin-cms.module.ts` with a Drizzle-backed
+ * implementation against `sql/00_admin_cms.sql`. No client changes needed.
  */
 
 import { useCallback, useSyncExternalStore } from "react"
 
 const NAMESPACE = "shaniidrx.cms"
 const CHANGE_EVENT = "cms-store:change"
+const API_BASE = "/api/v2/admin/cms"
 
 function fullKey(key: string) {
   return `${NAMESPACE}.${key}`
 }
+
+/**
+ * Per-visitor / storefront state stays local-only — never round-tripped.
+ *
+ * `audit-log` is also local-only because it's an append-only log that grows
+ * to thousands of entries; PUTting the entire JSON blob on every admin
+ * mutation would create runaway upload traffic. When the NestJS port adds a
+ * dedicated `POST /admin/audit-log/events` append endpoint, drop it from
+ * this list and switch `audit-log.ts` to call that endpoint directly.
+ */
+function isLocalOnly(key: string): boolean {
+  return (
+    key === "audit-log" ||
+    key.startsWith("user-") ||
+    key.startsWith("customer-")
+  )
+}
+
+/**
+ * Tracks the timestamp of the most recent local write per key. Used by
+ * `hydrateFromServer` so that an in-flight GET that started before a local
+ * write doesn't clobber the user's just-saved value when it resolves.
+ */
+const lastLocalWriteAt = new Map<string, number>()
+const HYDRATE_GRACE_MS = 5_000
 
 function readRaw<T>(key: string, fallback: T): T {
   if (typeof window === "undefined") return fallback
@@ -38,14 +80,73 @@ function readRaw<T>(key: string, fallback: T): T {
  * Per-key snapshot cache. `useSyncExternalStore` requires a stable reference
  * for unchanged values — without this, every render parses JSON afresh and
  * React re-renders forever ("Maximum update depth exceeded").
- *
- * We cache by raw JSON string so a real localStorage change still flows
- * through, but identical reads return the same object.
  */
 const snapshotCache = new Map<string, { raw: string | null; value: unknown }>()
+const hydrated = new Set<string>()
+const inflight = new Map<string, Promise<void>>()
+
+function fireChange(key: string) {
+  if (typeof window === "undefined") return
+  window.dispatchEvent(new CustomEvent(CHANGE_EVENT, { detail: { key } }))
+}
+
+function writeLocal<T>(key: string, value: T): string | null {
+  if (typeof window === "undefined") return null
+  try {
+    const json = JSON.stringify(value)
+    window.localStorage.setItem(fullKey(key), json)
+    return json
+  } catch {
+    return null
+  }
+}
+
+async function hydrateFromServer(key: string): Promise<void> {
+  if (isLocalOnly(key)) return
+  if (hydrated.has(key)) return
+  const existing = inflight.get(key)
+  if (existing) return existing
+  const p = (async () => {
+    try {
+      const res = await fetch(`${API_BASE}/${encodeURIComponent(key)}`, {
+        credentials: "include",
+      })
+      if (res.status === 404) {
+        // Server has no record — mark hydrated so we don't re-fetch every read.
+        hydrated.add(key)
+        return
+      }
+      if (!res.ok) return // leave un-hydrated to retry on next read
+      const body = (await res.json()) as { value: unknown }
+      // Guard against clobbering an optimistic local write that landed while
+      // this request was in flight.
+      const wroteAt = lastLocalWriteAt.get(key) ?? 0
+      if (Date.now() - wroteAt < HYDRATE_GRACE_MS) {
+        hydrated.add(key)
+        return
+      }
+      const json = JSON.stringify(body.value)
+      const cached = snapshotCache.get(key)
+      if (!cached || cached.raw !== json) {
+        snapshotCache.set(key, { raw: json, value: body.value })
+        writeLocal(key, body.value)
+        fireChange(key)
+      }
+      hydrated.add(key)
+    } catch {
+      // Network down — fall back to local cache; retry on next read.
+    } finally {
+      inflight.delete(key)
+    }
+  })()
+  inflight.set(key, p)
+  return p
+}
 
 function readSnapshot<T>(key: string, fallback: T): T {
   if (typeof window === "undefined") return fallback
+  // Kick off background hydration the first time we touch this key.
+  if (!hydrated.has(key) && !isLocalOnly(key)) void hydrateFromServer(key)
   const fk = fullKey(key)
   let raw: string | null = null
   try {
@@ -74,7 +175,7 @@ function readSnapshot<T>(key: string, fallback: T): T {
 function writeRaw<T>(key: string, value: T) {
   if (typeof window === "undefined") return
   try {
-    // Capture the previous value for audit diff hints BEFORE we overwrite.
+    // Capture the previous value for audit-diff hints BEFORE we overwrite.
     let prev: unknown = undefined
     try {
       const before = window.localStorage.getItem(fullKey(key))
@@ -82,14 +183,35 @@ function writeRaw<T>(key: string, value: T) {
     } catch { /* ignore */ }
 
     const json = JSON.stringify(value)
-    window.localStorage.setItem(fullKey(key), json)
-    // Update cache eagerly so the next snapshot read returns the same ref.
+    writeLocal(key, value)
     snapshotCache.set(key, { raw: json, value })
-    window.dispatchEvent(new CustomEvent(CHANGE_EVENT, { detail: { key } }))
+    lastLocalWriteAt.set(key, Date.now())
+    fireChange(key)
 
-    // Auto-audit: record any cmsStore mutation made under /admin/*. We skip
-    // the audit-log key itself to prevent infinite recursion, and skip
-    // user-* / customer-* keys (those are storefront writes by the visitor).
+    // Push to NestJS (fire-and-forget — UI already updated).
+    if (!isLocalOnly(key)) {
+      void fetch(`${API_BASE}/${encodeURIComponent(key)}`, {
+        method: "PUT",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: json,
+      })
+        .then((res) => {
+          if (!res.ok) {
+            // eslint-disable-next-line no-console
+            console.warn(`cms-store PUT ${key} failed: ${res.status}`)
+            return
+          }
+          hydrated.add(key) // server now knows about this key
+        })
+        .catch((err) => {
+          // eslint-disable-next-line no-console
+          console.warn(`cms-store PUT ${key} network error`, err)
+        })
+    }
+
+    // Auto-audit: record any cmsStore mutation made under /admin/*. Skip the
+    // audit-log key itself (recursion) and user-*/customer-* (storefront).
     if (
       key !== "audit-log" &&
       !key.startsWith("user-") &&
@@ -97,21 +219,22 @@ function writeRaw<T>(key: string, value: T) {
       typeof window.location !== "undefined" &&
       window.location.pathname.startsWith("/admin")
     ) {
-      // Lazy/async import to avoid circular dep with audit-log.
-      import("./audit-log").then((m) => {
-        const action = m.inferAction(prev, value)
-        const meta: Record<string, unknown> = {}
-        if (Array.isArray(value)) {
-          meta.size = value.length
-          if (Array.isArray(prev)) meta.delta = value.length - (prev as unknown[]).length
-        }
-        m.logActivity({
-          module: m.prettifyKey(key),
-          action,
-          target: key,
-          meta,
+      import("./audit-log")
+        .then((m) => {
+          const action = m.inferAction(prev, value)
+          const meta: Record<string, unknown> = {}
+          if (Array.isArray(value)) {
+            meta.size = value.length
+            if (Array.isArray(prev)) meta.delta = value.length - (prev as unknown[]).length
+          }
+          m.logActivity({
+            module: m.prettifyKey(key),
+            action,
+            target: key,
+            meta,
+          })
         })
-      }).catch(() => { /* ignore */ })
+        .catch(() => { /* ignore */ })
     }
   } catch {
     /* quota exceeded etc — silent */
@@ -210,6 +333,11 @@ export const cmsStore = {
   set: writeRaw,
   has: hasRaw,
   subscribe,
+  /** Force a re-hydrate from server for a key (useful after admin SSO etc). */
+  refresh: (key: string) => {
+    hydrated.delete(key)
+    return hydrateFromServer(key)
+  },
 }
 
 /* ---------- Utilities ---------- */
