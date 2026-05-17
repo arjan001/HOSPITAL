@@ -95,39 +95,50 @@ const emptyForm: FormState = {
   excerpt: "",
   content: "",
   cover_image: "",
-  author: "Shaniid RX Editorial",
-  author_role: "Style Editor",
+  author: "Shaniid RX Editorial Team",
+  author_role: "Pharmacy Editor",
   author_avatar: "",
   tags: [],
-  category: "Style",
+  category: "Health Tips",
   read_time_minutes: 5,
   is_published: true,
   is_featured: false,
 }
 
-const CATEGORIES = ["Style", "Gifting", "Jewelry", "Stories", "Behind The Scenes", "Guides", "Editorial"]
+const CATEGORIES = [
+  "Health Tips",
+  "Medications",
+  "Family Care",
+  "Chronic Conditions",
+  "Mental Wellness",
+  "Maternal & Child",
+  "Nutrition",
+  "Pharmacy News",
+  "Patient Guides",
+  "Safety & Compliance",
+]
 
 const STARTER_CONTENT = `
-<p class="lead">Open with a line that lingers — something a reader would read twice. The drop cap ahead will turn this into a classic editorial opening.</p>
+<p class="lead">Open with a clear, reassuring sentence — the kind a patient would trust on a first read. Calm, simple, evidence-led.</p>
 
-<p>Follow with a second short paragraph that gives the piece a voice. Keep sentences tight. Let the reader lean in.</p>
+<p>Follow with one or two short paragraphs that frame why this matters: who it's for, what it covers, and the outcome the reader can expect.</p>
 
-<h2>1. Your first chapter</h2>
-<p>Break your story into clean sections with H2 headings. Each one should feel like a small promise to the reader — a reason to keep going.</p>
+<h2>1. What you need to know</h2>
+<p>Use H2 headings to break the article into clear sections. Lead with the most important point. Keep sentences short and free of jargon — write at a Grade 8 reading level wherever possible.</p>
 
-<h2>2. Make a point you believe in</h2>
-<p>Write with conviction. Add a <strong>bold highlight</strong> when the phrase matters, and link out to <a href="#">related context</a> when it helps.</p>
+<h2>2. How to use the medication safely</h2>
+<p>Spell out dosing, timing, and what to do if a dose is missed. Add a <strong>bold highlight</strong> for the lines that matter most, and link to <a href="#">our product page or guide</a> when relevant.</p>
 
-<blockquote>"Write the sentence you wish you had read when you were the one searching for it."</blockquote>
+<blockquote>"If you are pregnant, breastfeeding, or taking other medicines, speak to a Shaniid RX pharmacist before starting."</blockquote>
 
-<h2>3. A useful list</h2>
+<h2>3. Side effects &amp; when to call a pharmacist</h2>
 <ul>
-  <li><strong>Keep items short.</strong> One thought per bullet.</li>
-  <li><strong>Vary pace.</strong> Mix a list with prose.</li>
-  <li><strong>End with a reason.</strong> Why does this list matter?</li>
+  <li><strong>Common, mild effects:</strong> what's expected and usually fine.</li>
+  <li><strong>Less common:</strong> what's worth monitoring at home.</li>
+  <li><strong>Seek care now:</strong> the red-flag symptoms that need a doctor or pharmacist right away.</li>
 </ul>
 
-<p>Close with a quiet landing — a line the reader can repeat to themselves on the walk home.</p>
+<p>Close with a clear next step — chat with a pharmacist on Shaniid RX, upload a prescription, or browse related products. Keep the tone warm, never alarming.</p>
 `.trim()
 
 function slugify(str: string): string {
@@ -144,6 +155,65 @@ function estimateReadTime(html: string): number {
   const text = html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim()
   const words = text ? text.split(" ").length : 0
   return Math.max(1, Math.round(words / 220))
+}
+
+/**
+ * Compress an image client-side to a JPEG data URL, capped at `maxEdge` px
+ * on the longest edge. Used by the cmsStore fallback path so that blog
+ * images stay well under the per-key localStorage quota (~5MB) even if a
+ * patient editor uploads a 10MP camera photo.
+ */
+async function compressToDataUrl(file: File, maxEdge = 1600, quality = 0.82): Promise<string> {
+  const bitmap = await new Promise<HTMLImageElement>((resolve, reject) => {
+    const url = URL.createObjectURL(file)
+    const img = new Image()
+    img.onload = () => { URL.revokeObjectURL(url); resolve(img) }
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("Could not decode image")) }
+    img.src = url
+  })
+  const scale = Math.min(1, maxEdge / Math.max(bitmap.width, bitmap.height))
+  const w = Math.max(1, Math.round(bitmap.width * scale))
+  const h = Math.max(1, Math.round(bitmap.height * scale))
+  const canvas = document.createElement("canvas")
+  canvas.width = w
+  canvas.height = h
+  const ctx = canvas.getContext("2d")
+  if (!ctx) throw new Error("Canvas not supported")
+  ctx.drawImage(bitmap, 0, 0, w, h)
+  // SVGs can't be encoded as JPEG; keep PNG for transparency-friendly types.
+  const mime = file.type === "image/png" || file.type === "image/svg+xml" ? "image/png" : "image/jpeg"
+  return canvas.toDataURL(mime, quality)
+}
+
+/**
+ * Upload an image for the blog editor.
+ *
+ * Tries the legacy `/api/upload` endpoint first (returns a hosted URL). If
+ * that backend is disabled or fails (the storage stub is a no-op today —
+ * see `api-server/src/lib/legacy-store.ts`), we fall back to a client-side
+ * compressed JPEG data URL so the admin remains functional without object
+ * storage. The compressed payload (~150–500KB) is safe for the cmsStore
+ * localStorage quota and will be migrated cleanly when the NestJS
+ * object-storage module ships.
+ */
+async function uploadBlogImage(file: File): Promise<string> {
+  const MAX = 5 * 1024 * 1024
+  if (file.size > MAX) throw new Error("Image too large (max 5MB)")
+
+  try {
+    const fd = new FormData()
+    fd.append("file", file)
+    fd.append("productSlug", "blogs")
+    const res = await apiFetch("/api/upload", { method: "POST", body: fd })
+    if (res.ok) {
+      const data = await res.json().catch(() => null) as { url?: string } | null
+      if (data && typeof data.url === "string" && data.url) return data.url
+    }
+  } catch {
+    /* fall through to compressed data URL */
+  }
+
+  return await compressToDataUrl(file)
 }
 
 function formatDate(iso: string): string {
@@ -328,7 +398,7 @@ function RichEditor({
           onMouseDown={(e) => e.preventDefault()}
           onClick={handleLead}
           title="Mark as lead paragraph (drop cap)"
-          className="px-2 py-1 rounded-md text-[11px] font-semibold uppercase tracking-widest hover:bg-background hover:shadow-sm active:scale-95 transition-all text-pink-600"
+          className="px-2 py-1 rounded-md text-[11px] font-semibold uppercase tracking-widest hover:bg-background hover:shadow-sm active:scale-95 transition-all text-orange-600"
         >
           Lead
         </button>
@@ -405,21 +475,21 @@ function RichEditor({
           "[&_h2]:font-serif [&_h2]:font-semibold [&_h2]:text-foreground [&_h2]:text-3xl [&_h2]:mt-10 [&_h2]:mb-3 [&_h2]:leading-tight",
           "[&_h3]:font-serif [&_h3]:font-semibold [&_h3]:text-foreground [&_h3]:text-2xl [&_h3]:mt-8 [&_h3]:mb-2",
           "[&_p]:text-[17px] [&_p]:leading-[1.85] [&_p]:my-4",
-          "[&_a]:text-pink-600 [&_a]:underline [&_a]:underline-offset-4",
+          "[&_a]:text-orange-600 [&_a]:underline [&_a]:underline-offset-4",
           "[&_strong]:text-foreground [&_strong]:font-semibold",
           "[&_ul]:list-disc [&_ul]:pl-6 [&_ul]:my-4 [&_ul]:space-y-2",
           "[&_ol]:list-decimal [&_ol]:pl-6 [&_ol]:my-4 [&_ol]:space-y-2",
-          "[&_li]:leading-[1.75] [&_li]:text-[17px] [&_li]:marker:text-pink-400",
-          "[&_blockquote]:not-italic [&_blockquote]:border-l-4 [&_blockquote]:border-pink-400",
-          "[&_blockquote]:bg-gradient-to-br [&_blockquote]:from-pink-50 [&_blockquote]:to-rose-50/60",
+          "[&_li]:leading-[1.75] [&_li]:text-[17px] [&_li]:marker:text-orange-400",
+          "[&_blockquote]:not-italic [&_blockquote]:border-l-4 [&_blockquote]:border-orange-400",
+          "[&_blockquote]:bg-gradient-to-br [&_blockquote]:from-orange-50 [&_blockquote]:to-amber-50/60",
           "[&_blockquote]:rounded-r-2xl [&_blockquote]:py-5 [&_blockquote]:px-6 [&_blockquote]:my-6",
           "[&_blockquote]:text-foreground [&_blockquote]:font-serif [&_blockquote]:text-xl [&_blockquote]:leading-snug",
           "[&_p.lead]:text-xl [&_p.lead]:leading-[1.7] [&_p.lead]:font-medium [&_p.lead]:text-foreground",
           "[&_p.lead]:first-letter:font-serif [&_p.lead]:first-letter:text-[4rem] [&_p.lead]:first-letter:font-semibold",
           "[&_p.lead]:first-letter:float-left [&_p.lead]:first-letter:mr-3 [&_p.lead]:first-letter:mt-1",
-          "[&_p.lead]:first-letter:leading-[0.9] [&_p.lead]:first-letter:text-pink-600",
+          "[&_p.lead]:first-letter:leading-[0.9] [&_p.lead]:first-letter:text-orange-600",
           "[&_figure]:my-6 [&_figure_img]:w-full [&_figure_img]:rounded-2xl [&_figure_img]:shadow-lg",
-          "[&_hr]:border-0 [&_hr]:h-px [&_hr]:bg-pink-200 [&_hr]:my-10",
+          "[&_hr]:border-0 [&_hr]:h-px [&_hr]:bg-orange-200 [&_hr]:my-10",
         )}
       />
 
@@ -453,13 +523,8 @@ function ImageUploadDialog({
     setError("")
     setUploading(true)
     try {
-      const fd = new FormData()
-      fd.append("file", file)
-      fd.append("productSlug", "blogs")
-      const res = await apiFetch("/api/upload", { method: "POST", body: fd })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error || "Upload failed")
-      onInsert(data.url)
+      const url = await uploadBlogImage(file)
+      onInsert(url)
       onClose()
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Upload failed")
@@ -489,9 +554,9 @@ function ImageUploadDialog({
           <DialogTitle className="font-serif">Insert Image</DialogTitle>
         </DialogHeader>
         <div className="space-y-4">
-          <label className="flex flex-col items-center justify-center gap-2 h-32 border-2 border-dashed border-border rounded-xl cursor-pointer hover:border-pink-400 hover:bg-pink-50/30 transition-colors">
+          <label className="flex flex-col items-center justify-center gap-2 h-32 border-2 border-dashed border-border rounded-xl cursor-pointer hover:border-orange-400 hover:bg-orange-50/30 transition-colors">
             {uploading ? (
-              <Loader2 className="h-6 w-6 animate-spin text-pink-500" />
+              <Loader2 className="h-6 w-6 animate-spin text-orange-500" />
             ) : (
               <>
                 <Upload className="h-6 w-6 text-muted-foreground" />
@@ -543,7 +608,7 @@ function BlogPreview({ form }: { form: FormState }) {
       <div className="p-8 md:p-10">
         <div className="flex flex-wrap items-center gap-3 text-[11px] font-semibold uppercase tracking-widest mb-5">
           {form.category && (
-            <span className="inline-flex items-center gap-1 bg-pink-500 text-white px-3 py-1 rounded-full">
+            <span className="inline-flex items-center gap-1 bg-orange-500 text-white px-3 py-1 rounded-full">
               <Sparkles className="h-3 w-3" />
               {form.category}
             </span>
@@ -566,7 +631,7 @@ function BlogPreview({ form }: { form: FormState }) {
           </p>
         )}
         <div className="flex items-center gap-3 mb-6">
-          <div className="h-10 w-10 rounded-full bg-gradient-to-br from-pink-300 to-rose-400 flex items-center justify-center text-white font-semibold">
+          <div className="h-10 w-10 rounded-full bg-gradient-to-br from-orange-300 to-amber-400 flex items-center justify-center text-white font-semibold">
             {form.author?.[0] || "H"}
           </div>
           <div>
@@ -588,21 +653,21 @@ function BlogPreview({ form }: { form: FormState }) {
             [&_h2]:font-serif [&_h2]:font-semibold [&_h2]:text-foreground [&_h2]:text-3xl [&_h2]:mt-12 [&_h2]:mb-4 [&_h2]:leading-tight
             [&_h3]:font-serif [&_h3]:font-semibold [&_h3]:text-foreground [&_h3]:text-2xl [&_h3]:mt-10 [&_h3]:mb-3
             [&_p]:text-[17px] [&_p]:leading-[1.85] [&_p]:my-5
-            [&_a]:text-pink-600 [&_a]:font-medium [&_a]:underline [&_a]:underline-offset-4
+            [&_a]:text-orange-600 [&_a]:font-medium [&_a]:underline [&_a]:underline-offset-4
             [&_strong]:text-foreground [&_strong]:font-semibold
             [&_ul]:list-disc [&_ul]:pl-6 [&_ul]:my-5 [&_ul]:space-y-2
             [&_ol]:list-decimal [&_ol]:pl-6 [&_ol]:my-5 [&_ol]:space-y-2
-            [&_li]:leading-[1.75] [&_li]:text-[17px] [&_li]:marker:text-pink-400
-            [&_blockquote]:not-italic [&_blockquote]:border-l-4 [&_blockquote]:border-pink-400
-            [&_blockquote]:bg-gradient-to-br [&_blockquote]:from-pink-50 [&_blockquote]:to-rose-50/60
+            [&_li]:leading-[1.75] [&_li]:text-[17px] [&_li]:marker:text-orange-400
+            [&_blockquote]:not-italic [&_blockquote]:border-l-4 [&_blockquote]:border-orange-400
+            [&_blockquote]:bg-gradient-to-br [&_blockquote]:from-orange-50 [&_blockquote]:to-amber-50/60
             [&_blockquote]:rounded-r-2xl [&_blockquote]:py-5 [&_blockquote]:px-6 [&_blockquote]:my-8
             [&_blockquote]:text-foreground [&_blockquote]:font-serif [&_blockquote]:text-xl [&_blockquote]:leading-snug
             [&_p.lead]:text-xl [&_p.lead]:leading-[1.7] [&_p.lead]:font-medium [&_p.lead]:text-foreground
             [&_p.lead]:first-letter:font-serif [&_p.lead]:first-letter:text-[4rem] [&_p.lead]:first-letter:font-semibold
             [&_p.lead]:first-letter:float-left [&_p.lead]:first-letter:mr-3 [&_p.lead]:first-letter:mt-1
-            [&_p.lead]:first-letter:leading-[0.9] [&_p.lead]:first-letter:text-pink-600
+            [&_p.lead]:first-letter:leading-[0.9] [&_p.lead]:first-letter:text-orange-600
             [&_figure]:my-6 [&_figure_img]:w-full [&_figure_img]:rounded-2xl [&_figure_img]:shadow-lg
-            [&_hr]:border-0 [&_hr]:h-px [&_hr]:bg-pink-200 [&_hr]:my-10
+            [&_hr]:border-0 [&_hr]:h-px [&_hr]:bg-orange-200 [&_hr]:my-10
           "
           dangerouslySetInnerHTML={{ __html: sanitizeHtml(form.content || "<p>Your story will appear here.</p>") }}
         />
@@ -615,7 +680,7 @@ function BlogPreview({ form }: { form: FormState }) {
               {form.tags.map((tag) => (
                 <span
                   key={tag}
-                  className="inline-flex items-center px-3 py-1.5 rounded-full bg-white border border-pink-100 text-pink-700 text-xs font-medium"
+                  className="inline-flex items-center px-3 py-1.5 rounded-full bg-white border border-orange-100 text-orange-700 text-xs font-medium"
                 >
                   {tag}
                 </span>
@@ -710,7 +775,7 @@ export function AdminBlogs() {
       author_role: b.author_role || "",
       author_avatar: b.author_avatar || "",
       tags: b.tags || [],
-      category: b.category || "Style",
+      category: b.category || "Health Tips",
       read_time_minutes: b.read_time_minutes || 5,
       is_published: b.is_published,
       is_featured: b.is_featured,
@@ -771,13 +836,8 @@ export function AdminBlogs() {
 
   const handleCoverUpload = async (file: File) => {
     try {
-      const fd = new FormData()
-      fd.append("file", file)
-      fd.append("productSlug", "blogs")
-      const res = await apiFetch("/api/upload", { method: "POST", body: fd })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error || "Upload failed")
-      setForm((f) => ({ ...f, cover_image: data.url }))
+      const url = await uploadBlogImage(file)
+      setForm((f) => ({ ...f, cover_image: url }))
       setSuccess("Cover image uploaded")
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Upload failed")
@@ -846,9 +906,9 @@ export function AdminBlogs() {
         <div className="space-y-6">
           <div className="flex items-start justify-between flex-wrap gap-4">
             <div>
-              <h1 className="text-2xl font-serif font-bold">The Journal</h1>
+              <h1 className="text-2xl font-serif font-bold">Health Notes</h1>
               <p className="text-sm text-muted-foreground mt-1">
-                Write, edit, and publish editorial stories to /blogs
+                Write, edit and publish calm, evidence-led pharmacy articles to /blogs
               </p>
             </div>
             <Button onClick={startNew} className="bg-foreground text-background hover:bg-foreground/90">
@@ -874,7 +934,7 @@ export function AdminBlogs() {
               { label: "Total", value: stats.total, color: "bg-secondary text-foreground" },
               { label: "Published", value: stats.published, color: "bg-green-100 text-green-800 dark:bg-green-950/40 dark:text-green-300" },
               { label: "Drafts", value: stats.drafts, color: "bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300" },
-              { label: "Featured", value: stats.featured, color: "bg-pink-100 text-pink-800 dark:bg-pink-950/40 dark:text-pink-300" },
+              { label: "Featured", value: stats.featured, color: "bg-orange-100 text-orange-800 dark:bg-orange-950/40 dark:text-orange-300" },
               { label: "Total Reads", value: stats.totalViews.toLocaleString(), color: "bg-blue-100 text-blue-800 dark:bg-blue-950/40 dark:text-blue-300" },
             ].map((s) => (
               <div key={s.label} className={cn("p-4 rounded-xl", s.color)}>
@@ -936,9 +996,9 @@ export function AdminBlogs() {
               {filteredBlogs.map((b) => (
                 <article
                   key={b.id}
-                  className="group flex flex-col rounded-2xl border border-border bg-background hover:shadow-lg hover:border-pink-200 transition-all overflow-hidden"
+                  className="group flex flex-col rounded-2xl border border-border bg-background hover:shadow-lg hover:border-orange-200 transition-all overflow-hidden"
                 >
-                  <div className="relative aspect-[16/9] bg-gradient-to-br from-pink-100 to-rose-100 overflow-hidden">
+                  <div className="relative aspect-[16/9] bg-gradient-to-br from-orange-100 to-amber-100 overflow-hidden">
                     {b.cover_image ? (
                       <img
                         src={b.cover_image}
@@ -949,13 +1009,13 @@ export function AdminBlogs() {
                        
                       />
                     ) : (
-                      <div className="absolute inset-0 flex items-center justify-center text-pink-300">
+                      <div className="absolute inset-0 flex items-center justify-center text-orange-300">
                         <FileText className="h-12 w-12" />
                       </div>
                     )}
                     <div className="absolute top-3 left-3 flex items-center gap-2">
                       {b.is_featured && (
-                        <span className="inline-flex items-center gap-1 bg-pink-500 text-white text-[10px] uppercase tracking-wider font-semibold px-2 py-1 rounded-full">
+                        <span className="inline-flex items-center gap-1 bg-orange-500 text-white text-[10px] uppercase tracking-wider font-semibold px-2 py-1 rounded-full">
                           <Star className="h-2.5 w-2.5-white" /> Featured
                         </span>
                       )}
@@ -971,11 +1031,11 @@ export function AdminBlogs() {
                   </div>
                   <div className="p-5 flex-1 flex flex-col">
                     {b.category && (
-                      <p className="text-[10px] uppercase tracking-widest text-pink-600 font-semibold mb-2">
+                      <p className="text-[10px] uppercase tracking-widest text-orange-600 font-semibold mb-2">
                         {b.category}
                       </p>
                     )}
-                    <h3 className="font-serif text-lg font-semibold leading-tight mb-2 line-clamp-2 group-hover:text-pink-600 transition-colors">
+                    <h3 className="font-serif text-lg font-semibold leading-tight mb-2 line-clamp-2 group-hover:text-orange-600 transition-colors">
                       {b.title}
                     </h3>
                     <p className="text-xs text-muted-foreground line-clamp-2 mb-4">
@@ -1052,7 +1112,7 @@ export function AdminBlogs() {
             onClick={backToList}
             className="inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground"
           >
-            <ChevronLeft className="h-4 w-4" /> Back to journal
+            <ChevronLeft className="h-4 w-4" /> Back to articles
           </button>
           <div className="flex items-center gap-2">
             <Button
@@ -1084,7 +1144,7 @@ export function AdminBlogs() {
               onClick={() => handleSave(true)}
               disabled={saving}
               size="sm"
-              className="bg-pink-600 text-white hover:bg-pink-700"
+              className="bg-orange-600 text-white hover:bg-orange-700"
             >
               {saving ? (
                 <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
@@ -1120,7 +1180,7 @@ export function AdminBlogs() {
                 placeholder="Your headline…"
                 value={form.title}
                 onChange={(e) => handleTitleChange(e.target.value)}
-                className="w-full text-3xl md:text-4xl font-serif font-semibold bg-transparent border-0 border-b border-border pb-3 focus:outline-none focus:border-pink-400 transition-colors"
+                className="w-full text-3xl md:text-4xl font-serif font-semibold bg-transparent border-0 border-b border-border pb-3 focus:outline-none focus:border-orange-400 transition-colors"
               />
 
               {/* Excerpt */}
@@ -1130,7 +1190,7 @@ export function AdminBlogs() {
                 onChange={(e) => setForm({ ...form, excerpt: e.target.value })}
                 rows={2}
                 maxLength={220}
-                className="text-base resize-none bg-transparent border-border focus-visible:ring-pink-300"
+                className="text-base resize-none bg-transparent border-border focus-visible:ring-orange-300"
               />
               <p className="text-[10px] text-muted-foreground -mt-3">{form.excerpt.length}/220</p>
 
@@ -1159,7 +1219,7 @@ export function AdminBlogs() {
                   />
                 </label>
                 <label className="flex items-center justify-between text-sm cursor-pointer">
-                  <span>Featured on Journal</span>
+                  <span>Featured on Health Notes</span>
                   <input
                     type="checkbox"
                     checked={form.is_featured}
@@ -1210,7 +1270,7 @@ export function AdminBlogs() {
                     </button>
                   </div>
                 ) : (
-                  <label className="flex flex-col items-center justify-center gap-2 h-32 border-2 border-dashed border-border rounded-lg cursor-pointer hover:border-pink-400 hover:bg-pink-50/30 transition-colors">
+                  <label className="flex flex-col items-center justify-center gap-2 h-32 border-2 border-dashed border-border rounded-lg cursor-pointer hover:border-orange-400 hover:bg-orange-50/30 transition-colors">
                     <Upload className="h-5 w-5 text-muted-foreground" />
                     <span className="text-xs text-muted-foreground">Upload cover (5MB)</span>
                     <input
@@ -1267,7 +1327,7 @@ export function AdminBlogs() {
                       onClick={() =>
                         setForm((f) => ({ ...f, read_time_minutes: estimateReadTime(f.content) }))
                       }
-                      className="text-[10px] uppercase tracking-widest font-semibold text-pink-600 hover:text-pink-700"
+                      className="text-[10px] uppercase tracking-widest font-semibold text-orange-600 hover:text-orange-700"
                     >
                       Auto
                     </button>
@@ -1287,7 +1347,7 @@ export function AdminBlogs() {
                   className="h-9"
                 />
                 <Input
-                  placeholder="Role (e.g. Senior Style Editor)"
+                  placeholder="Role (e.g. Lead Pharmacist, Clinical Editor)"
                   value={form.author_role}
                   onChange={(e) => setForm({ ...form, author_role: e.target.value })}
                   className="h-9"
@@ -1309,13 +1369,13 @@ export function AdminBlogs() {
                   {form.tags.map((t) => (
                     <span
                       key={t}
-                      className="inline-flex items-center gap-1 bg-pink-50 text-pink-700 text-xs px-2 py-1 rounded-full border border-pink-200"
+                      className="inline-flex items-center gap-1 bg-orange-50 text-orange-700 text-xs px-2 py-1 rounded-full border border-orange-200"
                     >
                       {t}
                       <button
                         type="button"
                         onClick={() => removeTag(t)}
-                        className="hover:text-pink-900"
+                        className="hover:text-orange-900"
                       >
                         <X className="h-3 w-3" />
                       </button>
