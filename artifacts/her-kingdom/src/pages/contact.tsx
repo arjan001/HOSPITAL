@@ -84,7 +84,7 @@ export default function ContactPage() {
       updatedAt: now,
     }
 
-    const existing = (cmsStore.get<ContactInquiry[]>("contact-inquiries") ?? []) as ContactInquiry[]
+    const existing = cmsStore.get<ContactInquiry[]>("contact-inquiries", [])
     cmsStore.set("contact-inquiries", [inquiry, ...existing])
 
     setSubmitted(true)

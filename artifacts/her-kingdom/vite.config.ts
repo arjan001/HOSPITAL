@@ -4,7 +4,13 @@ import tailwindcss from "@tailwindcss/vite";
 import path from "path";
 import runtimeErrorOverlay from "@replit/vite-plugin-runtime-error-modal";
 
-const rawPort = process.env.PORT;
+// PORT and BASE_PATH are supplied by the artifact runtime for `vite dev`.
+// During production builds (`vite build`) they aren't set — fall back to
+// sensible defaults so the build doesn't crash. The dev-server still
+// validates them strictly below.
+const isBuild = process.argv.includes("build");
+
+const rawPort = process.env.PORT ?? (isBuild ? "21470" : undefined);
 
 if (!rawPort) {
   throw new Error(
@@ -18,7 +24,7 @@ if (Number.isNaN(port) || port <= 0) {
   throw new Error(`Invalid PORT value: "${rawPort}"`);
 }
 
-const basePath = process.env.BASE_PATH;
+const basePath = process.env.BASE_PATH ?? (isBuild ? "/" : undefined);
 
 if (!basePath) {
   throw new Error(

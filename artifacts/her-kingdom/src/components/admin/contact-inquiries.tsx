@@ -174,10 +174,7 @@ export function AdminContactInquiries() {
   }
 
   return (
-    <AdminShell
-      title="Contact Inquiries"
-      breadcrumbs={[{ label: "Admin", href: "/admin" }, { label: "Contact Inquiries" }]}
-    >
+    <AdminShell title="Contact Inquiries">
       <div className="flex items-start justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2">

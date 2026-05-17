@@ -1,7 +1,7 @@
 import "reflect-metadata"
 import { NestFactory } from "@nestjs/core"
 import type { NestExpressApplication } from "@nestjs/platform-express"
-import express from "express"
+import express, { type Request, type Response, type NextFunction } from "express"
 import cookieParser from "cookie-parser"
 import { AppModule } from "./app.module"
 import { UPLOAD_DISK_ROOT, UPLOAD_URL_PREFIX } from "./common/storage"
@@ -29,7 +29,7 @@ async function bootstrap() {
   // to the Nest router so `POST /api/v2/uploads` still hits UploadsController.
   app.use(
     UPLOAD_URL_PREFIX,
-    (req, res, next) => {
+    (req: Request, res: Response, next: NextFunction) => {
       if (req.method !== "GET" && req.method !== "HEAD") return next()
       if (!req.cookies?.["shaniidrx_sid"]) {
         return res.status(401).json({ error: "Session required" })
