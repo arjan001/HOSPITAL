@@ -30,9 +30,15 @@ router.post("/", async (req, res) => {
     }
 
     if (!isValidPhone(customerPhone)) {
+      const digitCount = customerPhone.replace(/\D/g, "").length
+      const last4 = customerPhone.replace(/\D/g, "").slice(-4) || "----"
+      req.log?.warn?.(
+        { digitCount, last4, raw: customerPhone.length },
+        "Order rejected — invalid phone format",
+      )
       return res.status(400).json({
         error: "Invalid phone number format",
-        hint: "Use a Kenyan number like 0712345678 or +254712345678",
+        hint: `Use a Kenyan number like 0712345678 or +254712345678 (we received ${digitCount} digits ending in ${last4})`,
       })
     }
 

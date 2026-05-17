@@ -173,7 +173,9 @@ export function MpesaPaymentModal({
     if (!created || "error" in created || !created.orderNumber) {
       setStep("failed")
       const reason = created && "error" in created ? created.error : ""
-      setError(reason ? `We could not save your order: ${reason}` : "We could not save your order. Please try again.")
+      const hint = created && "hint" in created ? (created as { hint?: string }).hint : ""
+      const combined = [reason, hint].filter(Boolean).join(" — ")
+      setError(combined ? `We could not save your order: ${combined}` : "We could not save your order. Please try again.")
       onPaymentFailed?.("create_order_failed")
       return
     }

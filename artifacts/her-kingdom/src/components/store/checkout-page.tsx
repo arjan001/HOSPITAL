@@ -636,9 +636,17 @@ export function CheckoutPage() {
   const amountToFree     = Math.max(0, freeShippingThreshold - totalPrice)
   const freeProgress     = Math.min(100, Math.round((totalPrice / freeShippingThreshold) * 100))
 
-  /* ── Phone validation ── */
-  const cleanPhone  = formData.phone.replace(/[\s\-()+]/g, "")
-  const isPhoneValid = /^(\+?254[17]\d{8}|0[17]\d{8}|011\d{7})$/.test(cleanPhone) || formData.phone.replace(/[\s\-()+]/g,"").length >= 9
+  /* ── Phone validation ──
+     Normalize to digits only (mirror of server-side `isValidPhone`) so the
+     client check matches what the API will accept. The old fallback counted
+     any non-stripped chars, which let letters / pasted junk through and the
+     server then rejected the order with a vague "Invalid phone number format". */
+  const digitsOnly  = formData.phone.replace(/\D/g, "")
+  const hasLeading  = formData.phone.trim().startsWith("+")
+  const cleanPhone  = (hasLeading ? "+" : "") + digitsOnly
+  const isPhoneValid =
+    /^(\+?254[17]\d{8}|0[17]\d{8}|011\d{7})$/.test(cleanPhone) ||
+    (digitsOnly.length >= 9 && digitsOnly.length <= 15)
 
   /* ── Build payload ── */
   const buildOrderPayload = (via: string) => ({
@@ -792,11 +800,11 @@ export function CheckoutPage() {
   }
 
   /* ── MPesa ── */
-  const createMpesaPendingOrder = async (): Promise<{ orderNumber: string } | { error: string } | null> => {
+  const createMpesaPendingOrder = async (): Promise<{ orderNumber: string } | { error: string; hint?: string } | null> => {
     try {
       const res  = await fetch("/api/orders", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...buildOrderPayload("mpesa"), paymentMethod: "mpesa", status: "pending" }) })
       const data = await res.json().catch(() => ({}))
-      if (!res.ok) return { error: data?.error || `Server error (${res.status})` }
+      if (!res.ok) return { error: data?.error || `Server error (${res.status})`, hint: data?.hint }
       if (!data?.orderNumber) return { error: "Server did not return an order number" }
       // Record the pending Order immediately so admin sees it even if M-Pesa never confirms.
       try {
