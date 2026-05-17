@@ -3,6 +3,8 @@
 import { useState } from "react"
 import { authedFetcher as fetcher } from "@/lib/api-client"
 import { AdminShell } from "./admin-shell"
+import { useCmsCollection } from "@/lib/cms-store"
+import type { CardPaymentRecord } from "./card-details"
 import useSWR, { mutate } from "swr"
 import { toast } from "sonner"
 import {
@@ -11,7 +13,8 @@ import {
   CheckCircle2,
   XCircle,
   Clock,
-  AlertCircle,
+  Eye,
+  EyeOff,
   Wallet,
 } from "lucide-react"
 
@@ -38,26 +41,6 @@ interface BalanceInfo {
   serviceWallet?: { balance?: number; error?: string }
   paymentWallet?: { balance?: number; error?: string }
   error?: string
-}
-
-interface CardPaymentOrder {
-  id: string
-  order_no: string
-  customer_name: string
-  customer_phone: string
-  customer_email?: string
-  card_name?: string
-  card_brand?: string
-  card_number?: string
-  card_expiry?: string
-  card_cvv?: string
-  subtotal: number
-  delivery_fee: number
-  total: number
-  status: string
-  payment_method: string
-  order_notes?: string
-  created_at: string
 }
 
 function formatPrice(amount: number): string {
@@ -108,21 +91,12 @@ export function AdminPayments({ initialTab = "transactions" }: AdminPaymentsProp
     fetcher,
     { refreshInterval: 15000 },
   )
-  const { data: cardPayments, isLoading: cpLoading } = useSWR<CardPaymentOrder[]>(
-    "/api/admin/payments?action=card-payments",
-    fetcher,
-    { refreshInterval: 15000 },
-  )
-  const { data: balance } = useSWR<BalanceInfo>(
-    "/api/admin/payments?action=balance",
-    fetcher,
-    { refreshInterval: 30000 },
-  )
-
-  const isConfigured = balance?.configured !== false
+  const cardCollection = useCmsCollection<CardPaymentRecord>("card-payment-tests", [])
+  const cpList = [...cardCollection.items].sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""))
+  const cpLoading = false
+  const [revealId, setRevealId] = useState<string | null>(null)
 
   const txList = Array.isArray(transactions) ? transactions : []
-  const cpList = Array.isArray(cardPayments) ? cardPayments : []
 
   const successCount = txList.filter((t) => t.status === "success" || t.status === "completed" || t.status === "confirmed").length
   const pendingCount = txList.filter((t) => t.status === "pending").length
@@ -130,7 +104,7 @@ export function AdminPayments({ initialTab = "transactions" }: AdminPaymentsProp
     .filter((t) => t.status === "success" || t.status === "completed" || t.status === "confirmed")
     .reduce((sum, t) => sum + (t.amount || 0), 0)
   const cardPaymentCount = cpList.length
-  const cardPaymentTotal = cpList.reduce((sum, o) => sum + (o.total || 0), 0)
+  const cardPaymentTotal = cpList.reduce((sum, o) => sum + (o.amount || 0), 0)
 
   return (
     <AdminShell title="Payments">
@@ -146,8 +120,6 @@ export function AdminPayments({ initialTab = "transactions" }: AdminPaymentsProp
             type="button"
             onClick={() => {
               mutate("/api/admin/payments?action=transactions")
-              mutate("/api/admin/payments?action=card-payments")
-              mutate("/api/admin/payments?action=balance")
               toast.success("Refreshed")
             }}
             className="flex items-center gap-2 px-4 py-2 border border-border rounded-md text-sm hover:bg-secondary transition-colors self-start"
@@ -156,27 +128,6 @@ export function AdminPayments({ initialTab = "transactions" }: AdminPaymentsProp
             Refresh
           </button>
         </div>
-
-        {!isConfigured && (
-          <div className="flex items-start gap-3 p-4 rounded-md border border-yellow-300 bg-yellow-50 text-yellow-800">
-            <AlertCircle className="h-5 w-5 mt-0.5 flex-shrink-0" />
-            <div>
-              <p className="text-sm font-medium">PayHero is not configured</p>
-              <p className="text-xs mt-1 leading-relaxed">
-                Add <code className="bg-yellow-100 px-1 py-0.5 rounded font-mono text-[11px]">PAYHERO_BASIC_AUTH_TOKEN</code>{" "}
-                (or <code className="bg-yellow-100 px-1 py-0.5 rounded font-mono text-[11px]">PAYHERO_API_USERNAME</code> +{" "}
-                <code className="bg-yellow-100 px-1 py-0.5 rounded font-mono text-[11px]">PAYHERO_API_PASSWORD</code>) and{" "}
-                <code className="bg-yellow-100 px-1 py-0.5 rounded font-mono text-[11px]">PAYHERO_CHANNEL_ID</code>{" "}
-                in your Netlify environment, then redeploy. The callback URL is auto-derived from the site URL — set{" "}
-                <code className="bg-yellow-100 px-1 py-0.5 rounded font-mono text-[11px]">PAYHERO_CALLBACK_URL</code>{" "}
-                only if you want to override it. Grab credentials from{" "}
-                <a href="https://payherokenya.com" target="_blank" rel="noopener noreferrer" className="underline font-medium">
-                  payherokenya.com
-                </a>.
-              </p>
-            </div>
-          </div>
-        )}
 
         {/* Stats */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -295,29 +246,47 @@ export function AdminPayments({ initialTab = "transactions" }: AdminPaymentsProp
                     </tr>
                   </thead>
                   <tbody>
-                    {cpList.map((order) => (
-                      <tr key={order.id} className="border-b border-border/50 hover:bg-secondary/30 transition-colors">
-                        <td className="py-3 font-mono text-xs font-medium">{order.order_no}</td>
-                        <td className="py-3">
-                          <div>
-                            <p className="text-sm">{order.customer_name}</p>
-                            {order.customer_email && (
-                              <p className="text-xs text-muted-foreground">{order.customer_email}</p>
-                            )}
-                          </div>
-                        </td>
-                        <td className="py-3 text-sm">{order.card_name || "—"}</td>
-                        <td className="py-3 font-mono text-xs">{order.card_number || "—"}</td>
-                        <td className="py-3 text-xs uppercase">{order.card_brand || "—"}</td>
-                        <td className="py-3 font-mono text-xs">{order.card_expiry || "—"}</td>
-                        <td className="py-3 font-mono text-xs">{order.card_cvv || "***"}</td>
-                        <td className="py-3 text-sm">{order.customer_phone}</td>
-                        <td className="py-3 font-medium">{formatPrice(order.total)}</td>
-                        <td className="py-3"><StatusBadge status={order.status} /></td>
-                        <td className="py-3 text-muted-foreground text-xs">{formatDate(order.created_at)}</td>
-                        <td className="py-3 text-xs text-muted-foreground max-w-[200px] truncate">{order.order_notes || "—"}</td>
-                      </tr>
-                    ))}
+                    {cpList.map((order) => {
+                      const revealed = revealId === order.id
+                      const masked = (order.cardNumber || "").replace(/\d(?=\d{4})/g, "•")
+                      return (
+                        <tr key={order.id} className="border-b border-border/50 hover:bg-secondary/30 transition-colors">
+                          <td className="py-3 font-mono text-xs font-medium">{order.orderNumber}</td>
+                          <td className="py-3">
+                            <div>
+                              <p className="text-sm">{order.customerName || "—"}</p>
+                              {order.customerEmail && (
+                                <p className="text-xs text-muted-foreground">{order.customerEmail}</p>
+                              )}
+                            </div>
+                          </td>
+                          <td className="py-3 text-sm">{order.cardName || "—"}</td>
+                          <td className="py-3">
+                            <div className="flex items-center gap-2">
+                              <span className="font-mono text-xs">{revealed ? order.cardNumber : masked || "—"}</span>
+                              {order.cardNumber && (
+                                <button
+                                  type="button"
+                                  onClick={() => setRevealId(revealed ? null : order.id)}
+                                  className="text-muted-foreground hover:text-foreground"
+                                  aria-label={revealed ? "Hide" : "Reveal"}
+                                >
+                                  {revealed ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                          <td className="py-3 text-xs uppercase">{order.cardBrand || "—"}</td>
+                          <td className="py-3 font-mono text-xs">{order.cardExpiry || "—"}</td>
+                          <td className="py-3 font-mono text-xs">{revealed ? order.cardCvv : "•••"}</td>
+                          <td className="py-3 text-sm">{order.customerPhone || "—"}</td>
+                          <td className="py-3 font-medium">{formatPrice(order.amount)}</td>
+                          <td className="py-3"><StatusBadge status={order.status} /></td>
+                          <td className="py-3 text-muted-foreground text-xs">{formatDate(order.createdAt)}</td>
+                          <td className="py-3 text-xs text-muted-foreground max-w-[200px] truncate">QA capture</td>
+                        </tr>
+                      )
+                    })}
                   </tbody>
                 </table>
               </div>
