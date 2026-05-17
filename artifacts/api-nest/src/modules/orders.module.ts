@@ -56,17 +56,103 @@ function toLine(raw: Partial<OrderLine>): OrderLine {
   }
 }
 
+function seedOrdersFor(sid: string): Order[] {
+  const now = Date.now()
+  const day = 24 * 60 * 60 * 1000
+  const mk = (
+    offsetDays: number,
+    status: OrderStatus,
+    paymentMethod: PaymentMethod,
+    items: OrderLine[],
+    deliveryFee: number,
+    address: Order["shippingAddress"],
+  ): Order => {
+    const subtotal = items.reduce((s, i) => s + i.unitPrice * i.quantity, 0)
+    return {
+      id: newId("ord"),
+      number: `SHX-${(100000 + Math.floor(Math.random() * 899999)).toString()}`,
+      items,
+      subtotal,
+      deliveryFee,
+      total: subtotal + deliveryFee,
+      currency: "KSH",
+      status,
+      paymentMethod,
+      customer: {
+        fullName: "Aisha Mwangi",
+        phone: "+254 712 345 678",
+        email: "aisha@example.com",
+      },
+      shippingAddress: address,
+      createdAt: new Date(now - offsetDays * day).toISOString(),
+    }
+  }
+  return [
+    mk(1, "fulfilled", "mpesa",
+      [
+        { productSlug: "panadol-extra-24s", name: "Panadol Extra 24 tabs", unitPrice: 250, quantity: 2 },
+        { productSlug: "vitamin-c-1000mg", name: "Vitamin C 1000mg (30 tabs)", unitPrice: 650, quantity: 1 },
+      ],
+      200,
+      { line1: "Apt 4B, Riverside Lane", city: "Nairobi", region: "Westlands" },
+    ),
+    mk(7, "fulfilled", "card",
+      [
+        { productSlug: "ventolin-inhaler-100mcg", name: "Ventolin Inhaler 100mcg", unitPrice: 950, quantity: 1 },
+        { productSlug: "amoxicillin-500mg-21s", name: "Amoxicillin 500mg (21 caps)", unitPrice: 480, quantity: 1 },
+      ],
+      250,
+      { line1: "House 12, Garden Estate", city: "Nairobi", region: "Roysambu" },
+    ),
+    mk(3, "paid", "mpesa",
+      [
+        { productSlug: "metformin-500mg-100s", name: "Metformin 500mg (100 tabs)", unitPrice: 720, quantity: 1 },
+        { productSlug: "amlodipine-5mg-30s", name: "Amlodipine 5mg (30 tabs)", unitPrice: 410, quantity: 2 },
+      ],
+      200,
+      { line1: "Apt 4B, Riverside Lane", city: "Nairobi", region: "Westlands" },
+    ),
+    mk(0, "pending", "mpesa",
+      [
+        { productSlug: "paracetamol-500mg-100s", name: "Paracetamol 500mg (100 tabs)", unitPrice: 320, quantity: 1 },
+        { productSlug: "zinc-tab-30s", name: "Zinc 25mg (30 tabs)", unitPrice: 450, quantity: 1 },
+        { productSlug: "thermometer-digital", name: "Digital Thermometer", unitPrice: 800, quantity: 1 },
+      ],
+      150,
+      { line1: "Apt 4B, Riverside Lane", city: "Nairobi", region: "Westlands" },
+    ),
+    mk(21, "cancelled", "cod",
+      [
+        { productSlug: "ibuprofen-400mg-20s", name: "Ibuprofen 400mg (20 tabs)", unitPrice: 280, quantity: 1 },
+      ],
+      150,
+      { line1: "House 12, Garden Estate", city: "Nairobi", region: "Roysambu" },
+    ),
+  ]
+}
+
 @Injectable()
 class OrdersService {
   private repo = new InMemoryRepository<Order>()
+  private seeded = new Set<string>()
+
+  private ensureSeeded(sid: string) {
+    if (this.seeded.has(sid)) return
+    this.seeded.add(sid)
+    if (this.repo.listFor(sid).length === 0) {
+      for (const o of seedOrdersFor(sid)) this.repo.add(sid, o)
+    }
+  }
 
   list(sid: string): Order[] {
+    this.ensureSeeded(sid)
     return [...this.repo.listFor(sid)].sort((a, b) =>
       b.createdAt.localeCompare(a.createdAt),
     )
   }
 
   get(sid: string, id: string): Order {
+    this.ensureSeeded(sid)
     const o = this.repo.findById(sid, id)
     if (!o) throw new HttpException("Order not found", HttpStatus.NOT_FOUND)
     return o
