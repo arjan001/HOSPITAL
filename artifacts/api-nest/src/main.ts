@@ -10,6 +10,11 @@ async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     cors: { origin: true, credentials: true },
     logger: ["log", "error", "warn"],
+    // `rawBody: true` makes the raw request body Buffer available on
+    // `req.rawBody` so webhook receivers (Paystack, Clerk, etc.) can verify
+    // HMAC signatures over the bytes the provider actually sent — JSON
+    // re-stringification is not safe because object key order isn't stable.
+    rawBody: true,
   })
   app.use(cookieParser())
 

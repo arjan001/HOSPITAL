@@ -41,8 +41,9 @@ export default function CustomPageView() {
   return (
     <div className="min-h-screen bg-white">
       <Seo
-        title="Shaniid RX"
-        description="A Shaniid RX page — calm, transparent information from Kenya's trusted pharmacy infrastructure."
+        title={page.seoTitle || `${page.title} | Shaniid RX`}
+        description={page.seoDescription || page.excerpt || "A Shaniid RX page — calm, transparent information from Kenya's trusted pharmacy infrastructure."}
+        canonicalPath={`/pages/${page.slug}`}
       />
       {/* Wine band header */}
       <div className="text-white" style={{ background: `linear-gradient(135deg, ${WINE} 0%, #6B0F1A 100%)` }}>

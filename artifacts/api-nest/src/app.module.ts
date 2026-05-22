@@ -12,6 +12,7 @@ import { PrescriptionsModule } from "./modules/prescriptions.module"
 import { UploadsModule } from "./modules/uploads.module"
 import { ChatModule } from "./modules/chat.module"
 import { MonitoringModule } from "./modules/monitoring.module"
+import { PaystackModule } from "./modules/paystack.module"
 
 @Module({
   imports: [
@@ -27,6 +28,7 @@ import { MonitoringModule } from "./modules/monitoring.module"
     UploadsModule,
     ChatModule,
     MonitoringModule,
+    PaystackModule,
   ],
 })
 export class AppModule implements NestModule {

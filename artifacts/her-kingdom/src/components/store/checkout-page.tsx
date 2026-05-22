@@ -17,6 +17,15 @@ import { Navbar } from "./navbar"
 import { Footer } from "./footer"
 import { MpesaPaymentModal } from "./mpesa-payment-modal"
 import { CardPaymentModal } from "./card-payment-modal"
+import { PaystackPaymentModal } from "./paystack-payment-modal"
+
+/**
+ * Card payments are hidden in the UI by default while we finalise the merchant
+ * agreement. Set `VITE_ENABLE_CARD_PAYMENTS=true` to bring the card option +
+ * the secure card form back. The handler logic stays in this file either way
+ * so re-enabling is a one-flag flip — no code restoration needed.
+ */
+const CARDS_ENABLED = import.meta.env["VITE_ENABLE_CARD_PAYMENTS"] === "true"
 import { cmsStore } from "@/lib/cms-store"
 import { upsertAdminOrder, type AdminOrderStatus } from "@/lib/orders-store"
 import type { CardPaymentRecord } from "@/components/admin/card-details"
@@ -555,7 +564,11 @@ export function CheckoutPage() {
     placedAt: string
   }
   const [orderResult,     setOrderResult]     = useState<OrderSuccess | null>(null)
+  /* MpesaPaymentModal is kept imported + rendered so the old PayHero code path
+     stays in tree (zero-touch rollback). It just never opens — Paystack is the
+     live M-PESA processor now. */
   const [showMpesa,       setShowMpesa]       = useState(false)
+  const [showPaystack,    setShowPaystack]    = useState(false)
   const [showCardPayment, setShowCardPayment] = useState(false)
   const [isSubmitting,    setIsSubmitting]    = useState(false)
   const [formError,       setFormError]       = useState("")
@@ -1597,20 +1610,22 @@ export function CheckoutPage() {
                         key: "mpesa",
                         icon: Smartphone,
                         title: "M-PESA",
-                        badge: "Powered by PayHero",
+                        badge: "Powered by Paystack",
                         desc: "Receive an STK push on your Safaricom phone to complete the payment securely.",
-                        iconBg: "#ECFDF5",
-                        iconFg: "#059669",
+                        // Wine-tinted background + orange icon — brand-aligned.
+                        // Green was the legacy M-PESA palette; we use brand tokens now.
+                        iconBg: "#FFF7ED",
+                        iconFg: "#F97316",
                       },
-                      {
-                        key: "card",
+                      ...(CARDS_ENABLED ? [{
+                        key: "card" as const,
                         icon: CreditCard,
                         title: "Credit / Debit Card",
                         badge: "Visa · Mastercard · Amex",
                         desc: "Pay with your card. Encrypted and 3D-Secure protected.",
                         iconBg: "#EFF6FF",
                         iconFg: "#1D4ED8",
-                      },
+                      }] : []),
                       {
                         key: "cod",
                         icon: Banknote,
@@ -1673,8 +1688,8 @@ export function CheckoutPage() {
                     </div>
                   )}
 
-                  {/* Card info */}
-                  {paymentMethod === "card" && (
+                  {/* Card info — only when cards are enabled via VITE_ENABLE_CARD_PAYMENTS */}
+                  {CARDS_ENABLED && paymentMethod === "card" && (
                     <div className="bg-white p-5" style={{ border: "1px solid #E5E7EB" }}>
                       <div className="flex items-start gap-3">
                         <div className="w-10 h-10 flex items-center justify-center flex-shrink-0" style={{ background: "#EFF6FF", border: "1px solid #DBEAFE" }}>
@@ -1735,8 +1750,8 @@ export function CheckoutPage() {
                     <button
                       onClick={() => {
                         setFormError("")
-                        if (paymentMethod === "mpesa") { setShowMpesa(true); return }
-                        if (paymentMethod === "card")  { setShowCardPayment(true); return }
+                        if (paymentMethod === "mpesa") { setShowPaystack(true); return }
+                        if (paymentMethod === "card" && CARDS_ENABLED) { setShowCardPayment(true); return }
                         /* COD: place order directly */
                         ;(async () => {
                           try {
@@ -1780,7 +1795,7 @@ export function CheckoutPage() {
                   {/* Trust row */}
                   <div className="flex items-center justify-center gap-5 text-xs text-gray-400 pt-2">
                     <span className="flex items-center gap-1.5"><ShieldCheck className="h-3.5 w-3.5" /> SSL Secure</span>
-                    <span className="flex items-center gap-1.5"><Lock className="h-3.5 w-3.5" /> PayHero Protected</span>
+                    <span className="flex items-center gap-1.5"><Lock className="h-3.5 w-3.5" /> Paystack Protected</span>
                   </div>
                 </div>
               )}
@@ -1815,12 +1830,29 @@ export function CheckoutPage() {
         onPaymentFailed={r => trackAbandoned(`mpesa_${r}`, "payment_failed")}
       />
 
-      <CardPaymentModal
-        isOpen={showCardPayment}
-        onClose={() => setShowCardPayment(false)}
+      <PaystackPaymentModal
+        isOpen={showPaystack}
+        onClose={() => setShowPaystack(false)}
         total={grandTotal}
-        onPaymentComplete={handleCardPaymentComplete}
+        defaultPhone={formData.phone || savedAddress?.phone || ""}
+        defaultEmail={formData.email || ""}
+        customerName={formData.name  || savedAddress?.name  || ""}
+        createPendingOrder={createMpesaPendingOrder}
+        onPaymentConfirmed={(r) => {
+          handleMpesaConfirmed({ orderNumber: r.orderNumber, mpesaReceipt: r.mpesaReceipt, phone: r.phone })
+          setTimeout(() => setShowPaystack(false), 1500)
+        }}
+        onPaymentFailed={r => trackAbandoned(`paystack_${r}`, "payment_failed")}
       />
+
+      {CARDS_ENABLED && (
+        <CardPaymentModal
+          isOpen={showCardPayment}
+          onClose={() => setShowCardPayment(false)}
+          total={grandTotal}
+          onPaymentComplete={handleCardPaymentComplete}
+        />
+      )}
     </div>
   )
 }

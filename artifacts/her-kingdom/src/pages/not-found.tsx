@@ -7,7 +7,7 @@ import { PAGE_SEO } from "@/lib/shaniidrx-seo";
 export default function NotFound() {
   return (
     <div className="min-h-screen w-full flex items-center justify-center bg-[#FFFBF5] px-4">
-      <Seo {...PAGE_SEO.notFound} noindex />
+      <Seo {...PAGE_SEO.notFound} canonicalPath="/404" noindex />
       <Card className="w-full max-w-md">
         <CardContent className="pt-6">
           <div className="flex mb-3 gap-2 items-center">

@@ -85,6 +85,13 @@ function StatusBadge({ status }: { status: string }) {
 
 type PaymentsTab = "transactions" | "card-payments"
 
+/**
+ * Hide the card-payments admin tab + KPI by default while card processing is
+ * paused. The cmsStore data and read logic stay intact — re-enable by setting
+ * VITE_ENABLE_CARD_PAYMENTS=true and the tab returns automatically.
+ */
+const CARDS_ENABLED = import.meta.env["VITE_ENABLE_CARD_PAYMENTS"] === "true"
+
 interface AdminPaymentsProps {
   initialTab?: PaymentsTab
 }
@@ -134,8 +141,8 @@ export function AdminPayments({ initialTab = "transactions" }: AdminPaymentsProp
           </button>
         </div>
 
-        {/* Stats */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* Stats — Card Payments KPI hidden when CARDS_ENABLED is false (matches tab gating). */}
+        <div className={`grid grid-cols-1 sm:grid-cols-2 ${CARDS_ENABLED ? "lg:grid-cols-4" : "lg:grid-cols-3"} gap-4`}>
           <div className="p-4 rounded-md border border-border">
             <p className="text-xs text-muted-foreground uppercase tracking-wider">M-Pesa Revenue</p>
             <p className="text-2xl font-bold mt-1">{formatPrice(totalRevenue)}</p>
@@ -148,18 +155,20 @@ export function AdminPayments({ initialTab = "transactions" }: AdminPaymentsProp
             <p className="text-xs text-muted-foreground uppercase tracking-wider">Pending</p>
             <p className="text-2xl font-bold mt-1 text-yellow-600">{pendingCount}</p>
           </div>
-          <div className="p-4 rounded-md border border-border">
-            <p className="text-xs text-muted-foreground uppercase tracking-wider">Card Payments</p>
-            <p className="text-2xl font-bold mt-1 text-blue-600">{cardPaymentCount}</p>
-            <p className="text-xs text-muted-foreground mt-0.5">{formatPrice(cardPaymentTotal)} total</p>
-          </div>
+          {CARDS_ENABLED && (
+            <div className="p-4 rounded-md border border-border">
+              <p className="text-xs text-muted-foreground uppercase tracking-wider">Card Payments</p>
+              <p className="text-2xl font-bold mt-1 text-blue-600">{cardPaymentCount}</p>
+              <p className="text-xs text-muted-foreground mt-0.5">{formatPrice(cardPaymentTotal)} total</p>
+            </div>
+          )}
         </div>
 
         <div className="border-b border-border">
           <div className="flex gap-6">
             {[
               { key: "transactions" as const, label: "M-Pesa Transactions", icon: CreditCard },
-              { key: "card-payments" as const, label: "Card Payments", icon: Wallet },
+              ...(CARDS_ENABLED ? [{ key: "card-payments" as const, label: "Card Payments", icon: Wallet }] : []),
             ].map((tab) => (
               <button
                 key={tab.key}

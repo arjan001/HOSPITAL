@@ -113,6 +113,9 @@ export default function AccountLoginPage() {
     setError("")
     setLoading(true)
     try {
+      /* `identifier` accepts username, email, or phone. Clerk routes the
+         right strategy based on what it matches. Keep it as a plain trimmed
+         string — no email-shaped normalisation. */
       const identifier =
         method === "phone"
           ? `+254${phone.replace(/^0+/, "").replace(/\D/g, "")}`
@@ -277,7 +280,7 @@ export default function AccountLoginPage() {
             <div>
               <div className="flex items-center justify-between mb-1.5">
                 <label className="text-xs font-bold uppercase tracking-wider" style={{ color: WINE_SOFT }}>
-                  {method === "phone" ? "Phone Number" : "Email ID"} *
+                  {method === "phone" ? "Phone Number" : "Email or Username"} *
                 </label>
                 <button
                   type="button"
@@ -323,11 +326,14 @@ export default function AccountLoginPage() {
                     </svg>
                   </span>
                   <input
-                    type="email"
+                    /* `type="text"` so usernames don't trip browser email
+                       validation. Clerk accepts both as `identifier`. */
+                    type="text"
+                    autoComplete="username"
                     required
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    placeholder="Enter registered email address"
+                    placeholder="Email address or username"
                     className="flex-1 h-full pr-4 text-sm bg-transparent outline-none"
                     style={{ color: WINE }}
                   />
