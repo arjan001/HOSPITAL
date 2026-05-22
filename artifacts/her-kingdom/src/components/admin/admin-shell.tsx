@@ -10,6 +10,7 @@ import {
   LayoutDashboard,
   Package,
   Tag,
+  Upload,
   Truck,
   ImageIcon,
   Menu,
@@ -120,8 +121,9 @@ const NAV_GROUPS: NavGroup[] = [
   {
     name: "Catalog",
     items: [
-      { label: "Products",   href: "/admin/products",   icon: Package },
-      { label: "Categories", href: "/admin/categories", icon: Tag },
+      { label: "Products",        href: "/admin/products",     icon: Package },
+      { label: "Categories",      href: "/admin/categories",   icon: Tag },
+      { label: "Bulk Import",     href: "/admin/bulk-import",  icon: Upload },
     ],
   },
   // Pipeline (per brand brief): Sourcing → Trading → QA → Logistics.

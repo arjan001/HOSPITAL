@@ -1,0 +1,60 @@
+# Shaniid RX — Docker Compose for self-hosted Postgres
+#
+# Note: Replit itself does not run docker-compose. Use this file when you
+# self-host the app on a Linux server / VPS. On Replit, use the managed
+# Postgres (the DATABASE_URL env var) instead.
+#
+# Quick start (self-hosted):
+#   1. cp .env.docker.example .env.docker
+#   2. Edit .env.docker — set POSTGRES_PASSWORD and (optionally) ports
+#   3. docker compose --env-file .env.docker up -d
+#   4. Connection string for the app:
+#        DATABASE_URL=postgres://shaniidrx:${POSTGRES_PASSWORD}@localhost:5432/shaniidrx
+#   5. Push the schema:  pnpm --filter @workspace/db run push
+#
+# See docs/DOCKER_SETUP.md for the full walkthrough (backups, upgrades,
+# pgvector if you ever need embeddings, Adminer UI, etc.).
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: shaniidrx-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-shaniidrx}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      POSTGRES_DB: ${POSTGRES_DB:-shaniidrx}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - shaniidrx-pgdata:/var/lib/postgresql/data
+      # Mount this directory if you want to seed/initialize on first boot.
+      # Files are applied alphabetically and only when the data dir is empty.
+      - ./scripts/postgres-init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-shaniidrx} -d ${POSTGRES_DB:-shaniidrx}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - shaniidrx-net
+
+  adminer:
+    image: adminer:4
+    container_name: shaniidrx-adminer
+    restart: unless-stopped
+    ports:
+      - "${ADMINER_PORT:-8081}:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - shaniidrx-net
+
+volumes:
+  shaniidrx-pgdata:
+    name: shaniidrx-pgdata
+
+networks:
+  shaniidrx-net:
+    name: shaniidrx-net

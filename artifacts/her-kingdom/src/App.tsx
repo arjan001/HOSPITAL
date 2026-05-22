@@ -93,6 +93,7 @@ import { AdminConsultationSettings } from "@/components/admin/consultation-setti
 import { AdminContactInquiries } from "@/components/admin/contact-inquiries";
 import { AdminAuditLog } from "@/components/admin/audit-log";
 import { AdminDocs } from "@/components/admin/docs";
+import { AdminBulkImport } from "@/components/admin/bulk-import";
 import { PopupOffer } from "@/components/store/popup-offer";
 
 // Account pages (customer-facing)
@@ -451,6 +452,7 @@ function Router() {
       <Route path="/admin/roles" component={AdminRolesPermissions} />
       <Route path="/admin/audit-log" component={AdminAuditLog} />
       <Route path="/admin/docs" component={AdminDocs} />
+      <Route path="/admin/bulk-import" component={AdminBulkImport} />
       <Route path="/admin/consultations" component={AdminConsultations} />
       <Route path="/admin/inquiries" component={AdminContactInquiries} />
       <Route path="/admin/doctors" component={AdminDoctors} />
