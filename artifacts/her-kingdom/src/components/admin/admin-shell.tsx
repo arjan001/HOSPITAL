@@ -250,6 +250,7 @@ const NAV_GROUPS: NavGroup[] = [
       { label: "Users & Roles",       href: "/admin/users",            icon: Users },
       { label: "Roles & Permissions", href: "/admin/roles",            icon: Shield },
       { label: "Audit Log",           href: "/admin/audit-log",        icon: ScrollText },
+      { label: "Documentation",       href: "/admin/docs",             icon: BookOpen },
       { label: "Settings",            href: "/admin/settings",         icon: Settings },
       { label: "My Profile",          href: "/admin/profile",          icon: UserCircle },
     ],
