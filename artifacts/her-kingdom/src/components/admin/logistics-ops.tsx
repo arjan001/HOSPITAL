@@ -313,6 +313,16 @@ export function AdminLogisticsOps() {
   const riderById = useMemo(() => new Map(riders.map((r) => [r.id, r])), [riders])
   const batchById = useMemo(() => new Map(batches.map((b) => [b.id, b])), [batches])
 
+  const runAutoAssign = async () => {
+    try {
+      const { pipelineClient } = await import("@/lib/pipeline-client")
+      const r = await pipelineClient.logistics.autoAssign()
+      alert(`Auto-assign complete\n\nAssigned: ${r.assigned}\nSkipped: ${r.skipped}\nSLA at risk: ${r.slaAtRisk}${r.notes.length > 0 ? "\n\n" + r.notes.join("\n") : ""}`)
+    } catch (e) {
+      alert(`Auto-assign failed: ${e instanceof Error ? e.message : String(e)}`)
+    }
+  }
+
   // ---- KPIs (Fulfillment Time, Orders per Batch, SLA %, Cost) ----
   const kpis = useMemo(() => {
     const delivered = deliveries.filter((d) => d.status === "delivered" && d.deliveredAt && d.createdAt)
@@ -355,6 +365,16 @@ export function AdminLogisticsOps() {
             exception handling. Everything below persists locally and will migrate to the NestJS
             logistics module in one step.
           </p>
+          <div className="mt-3">
+            <button
+              type="button"
+              onClick={runAutoAssign}
+              className="text-[12px] px-3 py-1.5 rounded-sm border border-border bg-background hover:bg-muted inline-flex items-center gap-1.5"
+              style={{ color: WINE }}
+            >
+              <Truck className="h-3.5 w-3.5" /> Run server auto-assign
+            </button>
+          </div>
         </div>
 
         {/* KPI strip */}

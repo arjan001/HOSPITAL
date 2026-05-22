@@ -32,10 +32,11 @@ import { EmailModule, EmailService } from "./email.module"
 
 type Audience = "admin" | "doctor" | "pharmacist" | string
 
-export type NotificationLevel = "info" | "success" | "warning" | "alert"
+export type NotificationLevel = "info" | "success" | "warning" | "alert" | "warn" | "error"
 export type NotificationModule =
   | "orders" | "payments" | "prescriptions" | "consultations"
   | "doctors" | "support" | "system" | "marketing"
+  | "sourcing" | "trading" | "qa" | "logistics" | "communications"
 
 export type Notification = {
   id: string

@@ -15,6 +15,7 @@ import { MonitoringModule } from "./modules/monitoring.module"
 import { PaystackModule } from "./modules/paystack.module"
 import { EmailModule } from "./modules/email.module"
 import { NotificationsModule } from "./modules/notifications.module"
+import { PipelineModule } from "./modules/pipeline.module"
 
 @Module({
   imports: [
@@ -33,6 +34,7 @@ import { NotificationsModule } from "./modules/notifications.module"
     PaystackModule,
     EmailModule,
     NotificationsModule,
+    PipelineModule,
   ],
 })
 export class AppModule implements NestModule {

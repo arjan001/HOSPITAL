@@ -284,6 +284,24 @@ export function AdminQaOps() {
             Track stock levels, expiry windows and safety-stock alerts across devices, consumables
             and medication — then sign-off every outbound batch through the 7-step QA checklist.
           </p>
+          <div className="mt-3">
+            <button
+              type="button"
+              onClick={async () => {
+                try {
+                  const { pipelineClient } = await import("@/lib/pipeline-client")
+                  const r = await pipelineClient.qa.scanExpiry()
+                  alert(`QA scan complete\n\nExpired: ${r.expired}\nCritical: ${r.critical}\nWarning: ${r.warning}\nTotal flags: ${r.flags.length}`)
+                } catch (e) {
+                  alert(`Scan failed: ${e instanceof Error ? e.message : String(e)}`)
+                }
+              }}
+              className="text-[12px] px-3 py-1.5 rounded-sm border border-border bg-background hover:bg-muted inline-flex items-center gap-1.5"
+              style={{ color: WINE }}
+            >
+              <ShieldCheck className="h-3.5 w-3.5" /> Run server expiry scan
+            </button>
+          </div>
         </div>
 
         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">

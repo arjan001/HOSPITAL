@@ -237,7 +237,23 @@ export function SourcingAutomationTab() {
         Rules scan inventory and create sourcing requests automatically. Run them manually for now — when the backend ports to NestJS, these become scheduled jobs.
       </p>
 
-      <div className="flex items-center justify-end">
+      <div className="flex items-center justify-end gap-2">
+        <Button
+          size="sm"
+          variant="outline"
+          className="gap-1.5"
+          onClick={async () => {
+            try {
+              const { pipelineClient } = await import("@/lib/pipeline-client")
+              const res = await pipelineClient.sourcing.scan()
+              alert(`Server scan complete\n\nRules evaluated: ${res.rulesEvaluated}\nRequests created: ${res.requestsCreated}\nItems flagged: ${res.flagged.length}`)
+            } catch (e) {
+              alert(`Scan failed: ${e instanceof Error ? e.message : String(e)}`)
+            }
+          }}
+        >
+          <Bot className="h-3.5 w-3.5" /> Run server scan
+        </Button>
         <Button size="sm" onClick={() => setModal({ open: true, editing: null })} className="bg-[#3D0814] hover:bg-[#6B0F1A] text-white gap-1.5">
           <Plus className="h-3.5 w-3.5" /> New rule
         </Button>
