@@ -5,6 +5,7 @@ import { createPortal } from "react-dom"
 import { Link } from "wouter"
 import { useLocation } from "wouter"
 import { useAdminOrders } from "@/lib/orders-store"
+import { NotificationBell } from "@/components/admin/notification-bell"
 import {
   LayoutDashboard,
   Package,
@@ -110,8 +111,10 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { label: "Prescriptions",     href: "/admin/prescriptions", icon: ClipboardList },
       { label: "Consultations",     href: "/admin/consultations", icon: Stethoscope },
+      { label: "Doctors",           href: "/admin/doctors",       icon: Stethoscope },
       { label: "Consultation Settings", href: "/admin/consultation-settings", icon: Timer },
       { label: "Live Chat",         href: "/admin/chat",          icon: MessagesSquare },
+      { label: "Support Tickets",   href: "/admin/support",       icon: MessageSquare },
     ],
   },
   {
@@ -861,6 +864,7 @@ export function AdminShell({ children, title }: { children: ReactNode; title: st
                   {currentUser.email}
                 </span>
               )}
+              <NotificationBell audience="admin" />
               <button
                 type="button"
                 onClick={toggleFullscreen}

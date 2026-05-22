@@ -10,6 +10,9 @@ import {
 } from "lucide-react"
 import { DailyCall } from "@/components/video/daily-call"
 import { useConsultationSettings, standbyDoctorOf } from "@/lib/consultation-settings"
+import { PaystackPaymentModal } from "@/components/store/paystack-payment-modal"
+
+const CARD_PAYMENTS_ENABLED = import.meta.env.VITE_ENABLE_CARD_PAYMENTS === "true"
 
 /* ── Palette (aligned with upload-prescription) ──────────── */
 const WINE       = "#3D0814"
@@ -114,6 +117,7 @@ export default function SpeakToADoctorPage() {
   const [symptoms,   setSymptoms]   = useState("")
   const [payMethod,  setPayMethod]  = useState<"mpesa" | "card">("mpesa")
   const [mpesaPhone, setMpesaPhone] = useState("")
+  const [paystackOpen, setPaystackOpen] = useState(false)
   const [connectPct, setConnectPct] = useState(0)
   const [callTimer,  setCallTimer]  = useState(480)
   const [messages,   setMessages]   = useState<{ from: "doctor"|"user"; text: string; time: string }[]>([])
@@ -464,7 +468,7 @@ export default function SpeakToADoctorPage() {
                   <span className="flex-1 text-sm font-semibold" style={{ color: WINE }}>M-PESA</span>
                   <span className="text-[10px] font-bold px-2 py-0.5 rounded-full"
                     style={{ background: "#fff", color: "#6b7280", border: `1px solid ${BORDER}` }}>
-                    Powered by PayHero
+                    Powered by Paystack
                   </span>
                 </label>
 
@@ -484,21 +488,22 @@ export default function SpeakToADoctorPage() {
                   </div>
                 )}
 
-                {/* Card */}
-                <label
-                  className="flex items-center gap-3 px-4 py-3 rounded-lg cursor-pointer transition-colors"
-                  style={{
-                    border: `1.5px solid ${payMethod === "card" ? ACCENT_RED : BORDER}`,
-                    background: payMethod === "card" ? PEACH_TINT : "#fff",
-                  }}
-                >
-                  <span className="w-4 h-4 rounded-full border-2 flex items-center justify-center flex-shrink-0"
-                    style={{ borderColor: payMethod === "card" ? ACCENT_RED : "#d1d5db" }}>
-                    {payMethod === "card" && <span className="w-2 h-2 rounded-full" style={{ background: ACCENT_RED }} />}
-                  </span>
-                  <input type="radio" className="sr-only" checked={payMethod === "card"} onChange={() => setPayMethod("card")} />
-                  <span className="flex-1 text-sm font-semibold" style={{ color: WINE }}>Credit / Debit Card</span>
-                </label>
+                {CARD_PAYMENTS_ENABLED && (
+                  <label
+                    className="flex items-center gap-3 px-4 py-3 rounded-lg cursor-pointer transition-colors"
+                    style={{
+                      border: `1.5px solid ${payMethod === "card" ? ACCENT_RED : BORDER}`,
+                      background: payMethod === "card" ? PEACH_TINT : "#fff",
+                    }}
+                  >
+                    <span className="w-4 h-4 rounded-full border-2 flex items-center justify-center flex-shrink-0"
+                      style={{ borderColor: payMethod === "card" ? ACCENT_RED : "#d1d5db" }}>
+                      {payMethod === "card" && <span className="w-2 h-2 rounded-full" style={{ background: ACCENT_RED }} />}
+                    </span>
+                    <input type="radio" className="sr-only" checked={payMethod === "card"} onChange={() => setPayMethod("card")} />
+                    <span className="flex-1 text-sm font-semibold" style={{ color: WINE }}>Credit / Debit Card</span>
+                  </label>
+                )}
               </div>
             </div>
           </div>
@@ -541,16 +546,24 @@ export default function SpeakToADoctorPage() {
             </div>
 
             <button
-              onClick={() => setScreen("connecting")}
+              onClick={() => setPaystackOpen(true)}
               disabled={payMethod === "mpesa" && mpesaPhone.trim().length < 10}
               className="w-full h-12 rounded-full font-semibold text-sm disabled:opacity-40 transition-opacity hover:opacity-90"
               style={btnPrimary}
             >
-              Authorize & Connect
+              Pay KSh {fee.toLocaleString()} & Connect
             </button>
             <p className="text-xs text-center mt-3" style={{ color: "#9ca3af" }}>
-              Payment processed only when connected to a doctor.
+              Payment is required before the doctor connects.
             </p>
+            <PaystackPaymentModal
+              isOpen={paystackOpen}
+              onClose={() => setPaystackOpen(false)}
+              total={fee}
+              defaultPhone={mpesaPhone}
+              createPendingOrder={async () => ({ orderNumber: `CONS-${Date.now()}` })}
+              onPaymentConfirmed={() => { setPaystackOpen(false); setScreen("connecting") }}
+            />
 
             <button
               onClick={() => setScreen("concern")}

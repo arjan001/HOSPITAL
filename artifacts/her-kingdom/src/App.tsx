@@ -100,9 +100,14 @@ import AccountDashboard from "@/pages/account/dashboard";
 import AccountPrescriptionsPage from "@/pages/account/prescriptions";
 import AccountLoginPage from "@/pages/account/login";
 import AccountRegisterPage from "@/pages/account/register";
+import AccountSupportPage from "@/pages/account/support";
 import DashboardPage from "@/pages/dashboard";
 import UploadPrescriptionPage from "@/pages/upload-prescription";
 import SpeakToADoctorPage from "@/pages/speak-to-a-doctor";
+import DoctorPanelPage from "@/pages/doctor/panel";
+import { AdminDoctors } from "@/components/admin/doctors";
+import { AdminPatientDetail } from "@/components/admin/patient-detail";
+import { AdminSupportTickets } from "@/components/admin/support-tickets";
 
 // Policy pages
 import PolicyPage from "@/pages/policy";
@@ -383,6 +388,8 @@ function Router() {
       </Route>
       <Route path="/upload-prescription" component={UploadPrescriptionPage} />
       <Route path="/speak-to-a-doctor" component={SpeakToADoctorPage} />
+      <Route path="/doctor" component={DoctorPanelPage} />
+      <Route path="/account/support" component={AccountSupportPage} />
       {/* Admin */}
       <Route path="/admin" component={AdminDashboard} />
       <Route path="/admin/dashboard" component={AdminDashboard} />
@@ -444,6 +451,10 @@ function Router() {
       <Route path="/admin/audit-log" component={AdminAuditLog} />
       <Route path="/admin/consultations" component={AdminConsultations} />
       <Route path="/admin/inquiries" component={AdminContactInquiries} />
+      <Route path="/admin/doctors" component={AdminDoctors} />
+      <Route path="/admin/patients/:id" component={AdminPatientDetail} />
+      <Route path="/admin/support" component={AdminSupportTickets} />
+      <Route path="/admin/support/:id" component={AdminSupportTickets} />
       <Route component={NotFound} />
     </Switch>
   );

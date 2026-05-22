@@ -21,6 +21,8 @@ import {
   type RxStatus,
 } from "@/lib/api-nest"
 import { RxDetailModal, StatusPill, STATUS_META, fmtTime } from "@/components/account/rx-detail-modal"
+import { PaystackPaymentModal } from "@/components/store/paystack-payment-modal"
+import { ShoppingBag } from "lucide-react"
 
 const WINE = "#3D0814"
 const ACCENT = "#F97316"
@@ -33,7 +35,10 @@ export default function AccountPrescriptionsPage() {
 
   const [openId, setOpenId] = useState<string | null>(null)
   const [filter, setFilter] = useState<RxStatus | "all">("all")
+  const [buyRxId, setBuyRxId] = useState<string | null>(null)
   const open = openId ? items.find((x) => x.id === openId) ?? null : null
+  const buyRx = buyRxId ? items.find((x) => x.id === buyRxId) ?? null : null
+  const buyTotal = buyRx ? Math.max(1500, buyRx.approvedDrugs.length * 750) : 0
 
   const counts = useMemo(() => {
     const c = { all: items.length, pending: 0, verified: 0, dispensed: 0, rejected: 0 }
@@ -157,7 +162,17 @@ export default function AccountPrescriptionsPage() {
             ) : (
               <ul className="divide-y divide-border">
                 {filtered.map((rx) => (
-                  <li key={rx.id}>
+                  <li key={rx.id} className="relative">
+                    {rx.status === "verified" && rx.approvedDrugs.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); setBuyRxId(rx.id) }}
+                        className="absolute right-12 top-1/2 z-10 inline-flex h-8 -translate-y-1/2 items-center gap-1 rounded-md px-3 text-[11px] font-bold text-white shadow"
+                        style={{ background: `linear-gradient(135deg, ${ACCENT} 0%, ${ACCENT_RED} 100%)` }}
+                      >
+                        <ShoppingBag className="h-3.5 w-3.5" /> Buy
+                      </button>
+                    )}
                     <button
                       onClick={() => setOpenId(rx.id)}
                       type="button"
@@ -204,6 +219,14 @@ export default function AccountPrescriptionsPage() {
       </div>
 
       {open && <RxDetailModal rx={open} onClose={() => setOpenId(null)} />}
+
+      <PaystackPaymentModal
+        isOpen={!!buyRx}
+        onClose={() => setBuyRxId(null)}
+        total={buyTotal}
+        createPendingOrder={async () => ({ orderNumber: `RX-${buyRx?.rxNumber || Date.now()}` })}
+        onPaymentConfirmed={() => { setBuyRxId(null); void mutate() }}
+      />
 
       <Footer />
     </>
