@@ -352,12 +352,13 @@ function QuickViewContent({ product, onClose }: { product: Product; onClose: () 
           <button
             onClick={handleAdd}
             disabled={!product.inStock}
-            className="flex-1 inline-flex items-center justify-center gap-2 h-11 rounded-md font-semibold text-sm text-white transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex-1 inline-flex items-center justify-center gap-2 h-11 rounded-md font-semibold text-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed"
             style={{
-              background: justAdded ? "#15803D" : "#3D0814",
+              background: justAdded ? "#15803D" : "#F2D4C4",
+              color: justAdded ? "white" : "#3D0814",
             }}
-            onMouseEnter={(e) => { if (!justAdded) (e.currentTarget as HTMLButtonElement).style.background = "linear-gradient(135deg, #F97316 0%, #B91C1C 100%)" }}
-            onMouseLeave={(e) => { if (!justAdded) (e.currentTarget as HTMLButtonElement).style.background = justAdded ? "#15803D" : "#3D0814" }}
+            onMouseEnter={(e) => { if (!justAdded) { (e.currentTarget as HTMLButtonElement).style.background = "linear-gradient(135deg, #F97316 0%, #B91C1C 100%)"; (e.currentTarget as HTMLButtonElement).style.color = "white" } }}
+            onMouseLeave={(e) => { if (!justAdded) { (e.currentTarget as HTMLButtonElement).style.background = "#F2D4C4"; (e.currentTarget as HTMLButtonElement).style.color = "#3D0814" } }}
           >
             {justAdded ? <Check className="h-4 w-4" /> : <ShoppingBag className="h-4 w-4" />}
             {justAdded ? "Added to cart" : "Add to cart"}

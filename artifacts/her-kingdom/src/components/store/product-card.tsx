@@ -172,7 +172,7 @@ export function ProductCard({ product }: { product: Product }) {
                       border: "none",
                       boxShadow: "0 8px 20px -8px rgba(185,28,28,0.5)",
                     }
-                  : { background: "#3D0814", color: "white", border: "none" }
+                  : { background: "#F2D4C4", color: "#3D0814", border: "none" }
             }
           >
             {justAdded ? (

@@ -148,11 +148,11 @@ function WishlistCard({
           className="w-full h-9 rounded-full text-xs font-semibold transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
           style={
             adding
-              ? { background: `linear-gradient(135deg, ${WINE} 0%, ${WINE_SOFT} 100%)`, color: "white", border: "none" }
-              : { background: WINE, color: "white", border: "none" }
+              ? { background: "#15803D", color: "white", border: "none" }
+              : { background: "#F2D4C4", color: WINE, border: "none" }
           }
-          onMouseEnter={(e) => { if (!adding) (e.currentTarget as HTMLButtonElement).style.background = `linear-gradient(135deg, #F97316 0%, #B91C1C 100%)` }}
-          onMouseLeave={(e) => { if (!adding) (e.currentTarget as HTMLButtonElement).style.background = WINE }}
+          onMouseEnter={(e) => { if (!adding) { (e.currentTarget as HTMLButtonElement).style.background = `linear-gradient(135deg, #F97316 0%, #B91C1C 100%)`; (e.currentTarget as HTMLButtonElement).style.color = "white" } }}
+          onMouseLeave={(e) => { if (!adding) { (e.currentTarget as HTMLButtonElement).style.background = "#F2D4C4"; (e.currentTarget as HTMLButtonElement).style.color = WINE } }}
         >
           <ShoppingBag className="h-3.5 w-3.5" />
           {adding ? "Added!" : !product.inStock ? "Out of Stock" : "Add To Cart"}

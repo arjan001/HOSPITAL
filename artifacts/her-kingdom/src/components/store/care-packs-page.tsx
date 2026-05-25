@@ -204,7 +204,7 @@ function PackCard({ packDef, product }: { packDef: PackDef; product: Product | n
                 ? { background: "#15803D", color: "white" }
                 : hover
                   ? { background: `linear-gradient(135deg, ${ACCENT_ORANGE} 0%, ${ACCENT_RED} 100%)`, color: "white" }
-                  : { background: WINE, color: "white" }
+                  : { background: "#F2D4C4", color: WINE }
             }
           >
             {justAdded ? <Check className="h-3 w-3" /> : <ShoppingBag className="h-3 w-3" />}

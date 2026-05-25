@@ -723,11 +723,11 @@ function ProductDetailPageInner({ slug }: { slug: string }) {
                     disabled={!product.inStock}
                     className="mt-5 w-full h-11 rounded-full text-sm font-semibold transition-all disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center justify-center gap-2"
                     style={{
-                      background: added ? "#15803D" : "#3D0814",
-                      color: "white",
+                      background: added ? "#15803D" : "#F2D4C4",
+                      color: added ? "white" : "#3D0814",
                     }}
-                    onMouseEnter={(e) => { if (!added) (e.currentTarget as HTMLButtonElement).style.background = "linear-gradient(135deg, #F97316 0%, #B91C1C 100%)" }}
-                    onMouseLeave={(e) => { if (!added) (e.currentTarget as HTMLButtonElement).style.background = added ? "#15803D" : "#3D0814" }}
+                    onMouseEnter={(e) => { if (!added) { (e.currentTarget as HTMLButtonElement).style.background = "linear-gradient(135deg, #F97316 0%, #B91C1C 100%)"; (e.currentTarget as HTMLButtonElement).style.color = "white" } }}
+                    onMouseLeave={(e) => { if (!added) { (e.currentTarget as HTMLButtonElement).style.background = "#F2D4C4"; (e.currentTarget as HTMLButtonElement).style.color = "#3D0814" } }}
                   >
                     {added ? (
                       <>
