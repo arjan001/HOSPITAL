@@ -13,6 +13,12 @@ const DOCS = [
 
 type DocId = (typeof DOCS)[number]["id"]
 
+function fileToDocId(href: string): DocId | null {
+  const name = href.replace(/^\.\//, "").replace(/^\/docs\//, "")
+  const match = DOCS.find((d) => d.file === name)
+  return match ? match.id : null
+}
+
 function useDoc(file: string) {
   const [text, setText] = useState<string>("")
   const [loading, setLoading] = useState(true)
@@ -36,7 +42,7 @@ function useDoc(file: string) {
   return { text, loading, error, reload: load }
 }
 
-function DocViewer({ file }: { file: string }) {
+function DocViewer({ file, onSwitchTab }: { file: string; onSwitchTab: (id: DocId) => void }) {
   const { text, loading, error, reload } = useDoc(file)
 
   const download = () => {
@@ -75,7 +81,34 @@ function DocViewer({ file }: { file: string }) {
                             prose-code:text-[#3D0814] prose-code:text-[0.85em] prose-code:before:content-none prose-code:after:content-none
                             prose-pre:rounded-lg prose-pre:bg-zinc-900 prose-pre:text-zinc-100
                             prose-table:text-sm prose-th:bg-zinc-50">
-          <ReactMarkdown remarkPlugins={[remarkGfm]}>{text}</ReactMarkdown>
+          <ReactMarkdown
+            remarkPlugins={[remarkGfm]}
+            components={{
+              a({ href, children, ...rest }) {
+                if (href) {
+                  const docId = fileToDocId(href)
+                  if (docId) {
+                    return (
+                      <a
+                        href="#"
+                        onClick={(e) => { e.preventDefault(); onSwitchTab(docId) }}
+                        {...rest}
+                      >
+                        {children}
+                      </a>
+                    )
+                  }
+                }
+                return (
+                  <a href={href} target="_blank" rel="noopener noreferrer" {...rest}>
+                    {children}
+                  </a>
+                )
+              },
+            }}
+          >
+            {text}
+          </ReactMarkdown>
         </article>
       )}
     </div>
@@ -109,7 +142,7 @@ export function AdminDocs() {
           </TabsList>
           {DOCS.map((d) => (
             <TabsContent key={d.id} value={d.id} className="mt-4">
-              <DocViewer file={d.file} />
+              <DocViewer file={d.file} onSwitchTab={setTab} />
             </TabsContent>
           ))}
         </Tabs>
