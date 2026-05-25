@@ -9,6 +9,7 @@ import { Seo, organizationJsonLd, websiteJsonLd, breadcrumbJsonLd, faqJsonLd, pr
 import { cmsStore, newId } from "@/lib/cms-store"
 import type { Prescription } from "@/components/admin/prescriptions"
 import { apiPrescriptions, apiUploads, refreshMyPrescriptions } from "@/lib/api-nest"
+import { pushAdminNotification } from "@/lib/notifications-client"
 
 type UserPrescriptionRow = {
   id: string
@@ -251,6 +252,26 @@ export default function UploadPrescriptionPage() {
 
     setSubmittedRx({ rxNumber, name: displayName })
     setShowModal(true)
+
+    // Notify admin and pharmacist of the new prescription request.
+    void Promise.all([
+      pushAdminNotification({
+        audience: "admin",
+        module: "Prescriptions",
+        level: "info",
+        title: "New prescription submitted",
+        body: `${displayName} submitted RX-${rxNumber} — awaiting pharmacist review.`,
+        href: "/admin/prescriptions",
+      }),
+      pushAdminNotification({
+        audience: "pharmacist",
+        module: "Prescriptions",
+        level: "alert",
+        title: "Prescription needs review",
+        body: `RX-${rxNumber} from ${displayName} is pending verification.`,
+        href: "/admin/prescriptions",
+      }),
+    ])
   }
 
   /* ── Action buttons shared style ── */

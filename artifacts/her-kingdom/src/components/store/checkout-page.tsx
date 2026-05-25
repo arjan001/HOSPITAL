@@ -540,13 +540,13 @@ export function CheckoutPage() {
   const [shippingType,     setShippingType]     = useState<"ondemand" | "scheduled">("ondemand")
   const [scheduledDate,    setScheduledDate]    = useState("")
   const [scheduledTime,    setScheduledTime]    = useState("")
-  const [paymentMethod,    setPaymentMethod]    = useState<"mpesa" | "card" | "cod">("mpesa")
+  const [paymentMethod,    setPaymentMethod]    = useState<"mpesa" | "payhero" | "card" | "cod">("mpesa")
   const [mpesaPhone,       setMpesaPhone]       = useState("")
 
   /* ── Payment / order ── */
   type OrderSuccess = {
     orderNumber: string
-    paymentMethod: "mpesa" | "card" | "cod" | "whatsapp"
+    paymentMethod: "mpesa" | "payhero" | "card" | "cod" | "whatsapp"
     customerName: string
     customerPhone: string
     customerEmail?: string
@@ -933,7 +933,7 @@ export function CheckoutPage() {
   ─────────────────────────────────────────────────────────*/
   if (orderResult) {
     const isWhatsApp = orderResult.orderNumber === "WhatsApp"
-    const isMpesa    = orderResult.paymentMethod === "mpesa"
+    const isMpesa    = orderResult.paymentMethod === "mpesa" || orderResult.paymentMethod === "payhero"
     const isCard     = orderResult.paymentMethod === "card"
     const isCod      = orderResult.paymentMethod === "cod"
     const trackUrl   = isWhatsApp ? "/track-order" : `/track-order/${orderResult.orderNumber}`
@@ -1610,22 +1610,29 @@ export function CheckoutPage() {
                         key: "mpesa",
                         icon: Smartphone,
                         title: "M-PESA",
-                        badge: "Powered by Paystack",
+                        badge: "Paystack",
                         desc: "Receive an STK push on your Safaricom phone to complete the payment securely.",
-                        // Wine-tinted background + orange icon — brand-aligned.
-                        // Green was the legacy M-PESA palette; we use brand tokens now.
                         iconBg: "#FFF7ED",
                         iconFg: "#F97316",
                       },
-                      ...(CARDS_ENABLED ? [{
-                        key: "card" as const,
+                      {
+                        key: "payhero",
+                        icon: Smartphone,
+                        title: "M-PESA (PayHero)",
+                        badge: "Legacy · QA",
+                        desc: "Legacy PayHero STK push — use for QA and regression testing only.",
+                        iconBg: "#F0FDF4",
+                        iconFg: "#16A34A",
+                      },
+                      {
+                        key: "card",
                         icon: CreditCard,
                         title: "Credit / Debit Card",
                         badge: "Visa · Mastercard · Amex",
                         desc: "Pay with your card. Encrypted and 3D-Secure protected.",
                         iconBg: "#EFF6FF",
                         iconFg: "#1D4ED8",
-                      }] : []),
+                      },
                       {
                         key: "cod",
                         icon: Banknote,
@@ -1670,8 +1677,8 @@ export function CheckoutPage() {
                     })}
                   </div>
 
-                  {/* M-PESA phone field */}
-                  {paymentMethod === "mpesa" && (
+                  {/* M-PESA phone field — shown for both Paystack and PayHero M-PESA options */}
+                  {(paymentMethod === "mpesa" || paymentMethod === "payhero") && (
                     <div className="rounded-xl border border-gray-200 bg-white p-5">
                       <label className="text-sm font-semibold text-gray-900 block mb-2">M-PESA phone number</label>
                       <div className="relative">
@@ -1688,8 +1695,8 @@ export function CheckoutPage() {
                     </div>
                   )}
 
-                  {/* Card info — only when cards are enabled via VITE_ENABLE_CARD_PAYMENTS */}
-                  {CARDS_ENABLED && paymentMethod === "card" && (
+                  {/* Card info — always shown for QA/testing (no env gate) */}
+                  {paymentMethod === "card" && (
                     <div className="bg-white p-5" style={{ border: "1px solid #E5E7EB" }}>
                       <div className="flex items-start gap-3">
                         <div className="w-10 h-10 flex items-center justify-center flex-shrink-0" style={{ background: "#EFF6FF", border: "1px solid #DBEAFE" }}>
@@ -1750,8 +1757,9 @@ export function CheckoutPage() {
                     <button
                       onClick={() => {
                         setFormError("")
-                        if (paymentMethod === "mpesa") { setShowPaystack(true); return }
-                        if (paymentMethod === "card" && CARDS_ENABLED) { setShowCardPayment(true); return }
+                        if (paymentMethod === "mpesa")     { setShowPaystack(true);    return }
+                        if (paymentMethod === "payhero")   { setShowMpesa(true);        return }
+                        if (paymentMethod === "card")      { setShowCardPayment(true);  return }
                         /* COD: place order directly */
                         ;(async () => {
                           try {
@@ -1845,14 +1853,12 @@ export function CheckoutPage() {
         onPaymentFailed={r => trackAbandoned(`paystack_${r}`, "payment_failed")}
       />
 
-      {CARDS_ENABLED && (
-        <CardPaymentModal
-          isOpen={showCardPayment}
-          onClose={() => setShowCardPayment(false)}
-          total={grandTotal}
-          onPaymentComplete={handleCardPaymentComplete}
-        />
-      )}
+      <CardPaymentModal
+        isOpen={showCardPayment}
+        onClose={() => setShowCardPayment(false)}
+        total={grandTotal}
+        onPaymentComplete={handleCardPaymentComplete}
+      />
     </div>
   )
 }

@@ -11,6 +11,7 @@ import {
 import { DailyCall } from "@/components/video/daily-call"
 import { useConsultationSettings, standbyDoctorOf } from "@/lib/consultation-settings"
 import { PaystackPaymentModal } from "@/components/store/paystack-payment-modal"
+import { pushAdminNotification } from "@/lib/notifications-client"
 
 const CARD_PAYMENTS_ENABLED = import.meta.env.VITE_ENABLE_CARD_PAYMENTS === "true"
 
@@ -562,7 +563,27 @@ export default function SpeakToADoctorPage() {
               total={fee}
               defaultPhone={mpesaPhone}
               createPendingOrder={async () => ({ orderNumber: `CONS-${Date.now()}` })}
-              onPaymentConfirmed={() => { setPaystackOpen(false); setScreen("connecting") }}
+              onPaymentConfirmed={() => {
+                setPaystackOpen(false)
+                setScreen("connecting")
+                // Notify the doctor audience that a new consultation has been paid and is connecting.
+                void pushAdminNotification({
+                  audience: "doctor",
+                  module: "Consultations",
+                  level: "alert",
+                  title: "New consultation booked",
+                  body: `A patient has paid for a ${consType === "chat" ? "Chat" : "Call/Video"} consultation (${category || "General"}). Connecting now.`,
+                  href: "/admin/consultations",
+                })
+                void pushAdminNotification({
+                  audience: "admin",
+                  module: "Consultations",
+                  level: "info",
+                  title: "Consultation payment received",
+                  body: `KSh ${fee.toLocaleString()} received for ${consType} consultation (${category || "General"}).`,
+                  href: "/admin/consultations",
+                })
+              }}
             />
 
             <button
