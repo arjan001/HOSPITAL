@@ -2,9 +2,6 @@ import { useEffect, useState } from "react"
 import { Link, useLocation } from "wouter"
 import { useUser } from "@clerk/react"
 import { useSignUp } from "@clerk/react/legacy"
-import { TopBar } from "@/components/store/top-bar"
-import { Navbar } from "@/components/store/navbar"
-import { Footer } from "@/components/store/footer"
 import { Eye, EyeOff, ArrowRight, Info, Check, Mail, Loader2 } from "lucide-react"
 import { Seo } from "@/components/seo"
 import { upsertCustomer } from "@/lib/use-customer-mirror"
@@ -13,8 +10,14 @@ const WINE          = "#3D0814"
 const WINE_SOFT     = "#6B0F1A"
 const ACCENT_RED    = "#B91C1C"
 const ACCENT_ORANGE = "#F97316"
-const CREAM         = "#FFFBF5"
-const PEACH_BORDER  = "#F2DCC8"
+
+/* ───────────────────── glassmorphism tokens ───────────────────── */
+const GRADIENT_BG   = "linear-gradient(135deg, #E8A87C 0%, #C44B2B 35%, #8B1A1A 70%, #6B0F1A 100%)"
+const CARD_BG       = "rgba(255, 240, 230, 0.22)"
+const CARD_BORDER   = "rgba(255, 255, 255, 0.35)"
+const INPUT_BG      = "rgba(255, 250, 245, 0.92)"
+const INPUT_BORDER  = "rgba(255, 255, 255, 0.6)"
+const BTN_BG        = WINE
 
 const BASE_PATH = import.meta.env.BASE_URL.replace(/\/$/, "")
 
@@ -44,8 +47,8 @@ function InputBox({ className = "", ...props }: React.InputHTMLAttributes<HTMLIn
   return (
     <input
       {...props}
-      className={`w-full h-12 px-4 rounded-xl text-sm bg-white outline-none transition-shadow focus:shadow-md ${className}`}
-      style={{ border: `1.5px solid ${PEACH_BORDER}`, color: WINE, ...props.style }}
+      className={`w-full h-12 px-5 rounded-full text-sm bg-white/90 outline-none transition-shadow focus:shadow-md ${className}`}
+      style={{ border: `1.5px solid ${INPUT_BORDER}`, color: WINE, ...props.style }}
     />
   )
 }
@@ -75,9 +78,7 @@ export default function AccountRegisterPage() {
   })
   const [showPw, setShowPw]           = useState(false)
   const [showConfirm, setShowConfirm] = useState(false)
-  const [newsletter, setNewsletter]   = useState(true)
   const [terms, setTerms]             = useState(false)
-  const [isAdult, setIsAdult]         = useState(false)
   const [loading, setLoading]         = useState(false)
   const [googleLoading, setGoogleLoading] = useState(false)
   const [errors, setErrors]           = useState<Record<string, string>>({})
@@ -106,7 +107,6 @@ export default function AccountRegisterPage() {
     else if (form.password.length < 8) e.password = "At least 8 characters"
     if (form.password !== form.confirmPassword) e.confirmPassword = "Passwords do not match"
     if (!terms)  e.terms  = "Please accept the Terms & Conditions"
-    if (!isAdult) e.adult = "You must confirm you are 18 or over"
     return e
   }
 
@@ -128,11 +128,6 @@ export default function AccountRegisterPage() {
       const lastName  = form.lastName.trim()
       const email     = form.email.trim()
 
-      /* Pass only the always-supported fields to create() and stash everything
-         else in unsafeMetadata. Some Clerk instances don't have firstName /
-         lastName enabled as profile attributes and will reject the whole
-         create call with "Unknown parameter" — keeping create minimal makes
-         registration robust to the Clerk dashboard config. */
       await signUp.create({
         emailAddress: email,
         password: form.password,
@@ -142,18 +137,9 @@ export default function AccountRegisterPage() {
           phone: phoneE164,
           gender: form.gender,
           dob: form.dob,
-          newsletter,
         },
       })
 
-      /* We deliberately do NOT call signUp.update({ firstName, lastName }) —
-         on Clerk instances where first_name / last_name aren't enabled as
-         profile attributes, Clerk rejects the call with "first_name is not
-         a valid parameter for this request" and the error surfaces to the
-         user. Names already live in unsafeMetadata and in our local
-         customer mirror, so there's no functional loss. */
-
-      // If Clerk completes immediately (verification disabled), sign in now.
       if (signUp.status === "complete") {
         await setActive({ session: signUp.createdSessionId })
         if (signUp.createdUserId) {
@@ -171,10 +157,6 @@ export default function AccountRegisterPage() {
         return
       }
 
-      /* Flip to the verify step IMMEDIATELY so the user sees progress, then
-         fire prepareEmailAddressVerification in the background. The verify
-         form shows "Sending code…" until the email is actually dispatched.
-         Cuts perceived submit latency roughly in half on slow networks. */
       setStep("verify")
       setSendingCode(true)
       signUp
@@ -245,275 +227,266 @@ export default function AccountRegisterPage() {
         redirectUrl: `${BASE_PATH}/account/sso-callback`,
         redirectUrlComplete: `${BASE_PATH}/user`,
       })
-      /* Success path = full-page redirect to Google; nothing else runs here. */
     } catch (err) {
       setGoogleLoading(false)
       setTopError(errorMessage(err, "Could not start Google sign-up. Please try again."))
     }
   }
 
+  const SocialButton = ({
+    icon, label, onClick, disabled, loading: btnLoading,
+  }: {
+    icon: React.ReactNode
+    label: string
+    onClick?: () => void
+    disabled?: boolean
+    loading?: boolean
+  }) => (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled || btnLoading}
+      className="w-11 h-11 rounded-full flex items-center justify-center transition-all hover:scale-105 hover:shadow-md disabled:opacity-60"
+      style={{ background: "rgba(255,255,255,0.9)", border: "1px solid rgba(255,255,255,0.5)" }}
+      aria-label={label}
+    >
+      {btnLoading ? (
+        <Loader2 className="h-4 w-4 animate-spin" style={{ color: WINE }} />
+      ) : (
+        icon
+      )}
+    </button>
+  )
+
   return (
-    <div className="min-h-screen flex flex-col" style={{ background: CREAM }}>
-      <Seo title="Create Your Shaniid RX Account" description="Join Shaniid RX in minutes — verified medicine, fair prices, door-to-door delivery and a calm pharmacy experience built around your family." canonicalPath="/account/register" noindex />
-      <TopBar />
-      <Navbar />
+    <div className="min-h-screen flex items-center justify-center px-4 py-8 relative overflow-hidden" style={{ background: GRADIENT_BG }}>
+      <Seo title="Create Your Shaniid RX Account" description="Join Shaniid RX in minutes — verified medicine, fair pricing, door-to-door delivery and a calm pharmacy experience built around your family." canonicalPath="/account/register" noindex />
 
-      <main
-        className="flex-1 flex items-center justify-center px-4 py-12 lg:py-16 relative overflow-hidden"
-        style={{ background: "linear-gradient(160deg, #FFFBF5 0%, #FFF0DE 55%, #FFE4C8 100%)" }}
+      {/* Decorative circles */}
+      <div className="absolute -top-24 -left-24 w-64 h-64 rounded-full border-2 border-white/20 pointer-events-none" />
+      <div className="absolute top-1/3 -left-12 w-48 h-48 rounded-full border-2 border-white/15 pointer-events-none" />
+      <div className="absolute -bottom-16 -right-16 w-72 h-72 rounded-full border-2 border-white/20 pointer-events-none" />
+      <div className="absolute top-1/4 -right-20 w-56 h-56 rounded-full border-2 border-white/15 pointer-events-none" />
+
+      <div
+        className="relative w-full max-w-lg rounded-3xl overflow-hidden z-10"
+        style={{
+          background: CARD_BG,
+          backdropFilter: "blur(24px)",
+          WebkitBackdropFilter: "blur(24px)",
+          border: `1px solid ${CARD_BORDER}`,
+          boxShadow: "0 32px 64px -20px rgba(61,8,20,0.35), inset 0 1px 0 rgba(255,255,255,0.25)",
+        }}
       >
-        <div className="absolute -top-40 -right-40 w-[500px] h-[500px] rounded-full pointer-events-none"
-          style={{ background: "radial-gradient(circle, rgba(249,115,22,0.12) 0%, transparent 70%)", filter: "blur(60px)" }} />
-        <div className="absolute -bottom-40 -left-40 w-[420px] h-[420px] rounded-full pointer-events-none"
-          style={{ background: "radial-gradient(circle, rgba(185,28,28,0.10) 0%, transparent 70%)", filter: "blur(60px)" }} />
+        <div className="px-8 pt-10 pb-2 text-center">
+          <h1 className="text-2xl font-bold" style={{ color: WINE, fontFamily: "var(--font-serif, ui-serif, Georgia, serif)" }}>
+            {step === "form" ? "Create Account" : "Verify Your Email"}
+          </h1>
+        </div>
 
-        <div
-          className="relative w-full max-w-lg rounded-3xl overflow-hidden z-10"
-          style={{
-            background: "rgba(255,251,245,0.82)",
-            backdropFilter: "blur(24px)",
-            WebkitBackdropFilter: "blur(24px)",
-            border: `1px solid ${PEACH_BORDER}`,
-            boxShadow: "0 40px 80px -24px rgba(61,8,20,0.2), 0 8px 24px -8px rgba(61,8,20,0.08), inset 0 1px 0 rgba(255,255,255,0.8)",
-          }}
-        >
-          <div
-            className="px-8 pt-8 pb-6"
-            style={{
-              background: "linear-gradient(135deg, rgba(255,228,200,0.8) 0%, rgba(255,205,170,0.6) 100%)",
-              borderBottom: `1px solid ${PEACH_BORDER}`,
-            }}
-          >
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <p className="text-[10px] font-bold uppercase tracking-[0.25em] mb-1" style={{ color: ACCENT_RED }}>Shaniid RX</p>
-                <h1
-                  className="text-2xl lg:text-3xl font-extrabold"
-                  style={{ color: WINE, fontFamily: "var(--font-serif, ui-serif, Georgia, serif)" }}
-                >
-                  {step === "form" ? "Create Account" : "Verify Your Email"}
-                </h1>
-              </div>
-              <div className="text-right shrink-0 mt-1">
-                <p className="text-xs" style={{ color: WINE_SOFT }}>Have Account?</p>
-                <Link href="/account/login" className="text-xs font-bold hover:underline" style={{ color: ACCENT_RED }}>
-                  Log In
-                </Link>
-              </div>
-            </div>
+        {topError && (
+          <div className="mx-8 mt-5 rounded-xl px-4 py-3 text-sm flex items-start gap-2" style={{ background: "rgba(254,242,242,0.85)", border: "1px solid #FECACA", color: ACCENT_RED }}>
+            <svg className="h-4 w-4 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+              <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+            </svg>
+            <span>{topError}</span>
           </div>
+        )}
 
-          {topError && (
-            <div className="mx-8 mt-5 rounded-xl px-4 py-3 text-sm flex items-start gap-2"
-              style={{ background: "#FEF2F2", border: "1px solid #FECACA", color: ACCENT_RED }}>
-              <svg className="h-4 w-4 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
-                <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-              </svg>
-              <span>{topError}</span>
+        {step === "verify" ? (
+          <form onSubmit={handleVerify} className="px-8 py-7 space-y-5">
+            <div className="flex items-center gap-3 rounded-xl px-4 py-3 text-sm" style={{ background: "rgba(255,255,255,0.7)", border: "1px solid rgba(255,255,255,0.5)", color: "#1D4ED8" }}>
+              {sendingCode ? (
+                <Loader2 className="h-4 w-4 flex-shrink-0 animate-spin" />
+              ) : (
+                <Mail className="h-4 w-4 flex-shrink-0" />
+              )}
+              <span>
+                {sendingCode
+                  ? <>Sending a 6-digit code to <strong>{form.email}</strong>…</>
+                  : <>We've emailed a 6-digit code to <strong>{form.email}</strong>. Enter it below to verify your account.</>}
+              </span>
             </div>
-          )}
-
-          {step === "verify" ? (
-            <form onSubmit={handleVerify} className="px-8 py-7 space-y-5">
-              <div className="flex items-center gap-3 rounded-xl px-4 py-3 text-sm"
-                style={{ background: "#EFF6FF", border: "1px solid #BFDBFE", color: "#1D4ED8" }}>
-                {sendingCode ? (
-                  <Loader2 className="h-4 w-4 flex-shrink-0 animate-spin" />
-                ) : (
-                  <Mail className="h-4 w-4 flex-shrink-0" />
-                )}
-                <span>
-                  {sendingCode
-                    ? <>Sending a 6-digit code to <strong>{form.email}</strong>…</>
-                    : <>We've emailed a 6-digit code to <strong>{form.email}</strong>. Enter it below to verify your account.</>}
-                </span>
-              </div>
-              <Field label="Verification Code" required>
-                <InputBox
-                  type="text"
-                  inputMode="numeric"
-                  pattern="[0-9]*"
-                  autoComplete="one-time-code"
-                  value={code}
-                  onChange={(e) => setCode(e.target.value)}
-                  placeholder="123456"
-                  className="tracking-[0.4em] text-center text-lg font-bold"
-                />
-              </Field>
-              <button
-                type="submit"
-                disabled={loading || sendingCode}
-                className="w-full rounded-full font-bold text-base text-white flex items-center justify-center gap-2 transition-all hover:scale-[1.02] active:scale-[0.99] disabled:opacity-70"
-                style={{ height: 52, background: `linear-gradient(135deg, ${ACCENT_ORANGE} 0%, ${ACCENT_RED} 100%)`, boxShadow: "0 16px 32px -10px rgba(185,28,28,0.5)" }}
-              >
-                {loading ? "Verifying…" : sendingCode ? "Waiting for code…" : (<>Verify &amp; Continue <ArrowRight className="h-4 w-4" /></>)}
+            <Field label="Verification Code" required>
+              <InputBox
+                type="text"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                autoComplete="one-time-code"
+                value={code}
+                onChange={(e) => setCode(e.target.value)}
+                placeholder="123456"
+                className="tracking-[0.4em] text-center text-lg font-bold"
+              />
+            </Field>
+            <button
+              type="submit"
+              disabled={loading || sendingCode}
+              className="w-full rounded-full font-bold text-base text-white flex items-center justify-center gap-2 transition-all hover:scale-[1.02] active:scale-[0.99] disabled:opacity-70"
+              style={{ height: 48, background: BTN_BG, boxShadow: "0 12px 24px -8px rgba(61,8,20,0.45)" }}
+            >
+              {loading ? "Verifying…" : sendingCode ? "Waiting for code…" : (<>Verify &amp; Continue <ArrowRight className="h-4 w-4" /></>)}
+            </button>
+            <div className="flex items-center justify-between text-xs">
+              <button type="button" onClick={() => setStep("form")} className="font-semibold hover:underline" style={{ color: "rgba(255,255,255,0.8)" }}>
+                ← Back to details
               </button>
-              <div className="flex items-center justify-between text-xs">
-                <button type="button" onClick={() => setStep("form")} className="font-semibold hover:underline" style={{ color: WINE_SOFT }}>
-                  ← Back to details
-                </button>
-                <button type="button" onClick={resendCode} disabled={sendingCode} className="font-semibold hover:underline disabled:opacity-60" style={{ color: ACCENT_RED }}>
-                  {sendingCode ? "Sending…" : "Resend code"}
-                </button>
-              </div>
-            </form>
-          ) : (
-            <form onSubmit={handleSubmit} className="px-8 py-7 space-y-5">
-              <div className="grid grid-cols-2 gap-4">
-                <Field label="First Name" required error={errors.firstName}>
-                  <InputBox type="text" value={form.firstName} onChange={set("firstName")} placeholder="e.g. Shakila" style={errors.firstName ? { borderColor: ACCENT_RED } : {}} />
-                </Field>
-                <Field label="Last Name" required error={errors.lastName}>
-                  <InputBox type="text" value={form.lastName} onChange={set("lastName")} placeholder="e.g. Marando" style={errors.lastName ? { borderColor: ACCENT_RED } : {}} />
-                </Field>
-              </div>
+              <button type="button" onClick={resendCode} disabled={sendingCode} className="font-semibold hover:underline disabled:opacity-60" style={{ color: "#fff" }}>
+                {sendingCode ? "Sending…" : "Resend code"}
+              </button>
+            </div>
+          </form>
+        ) : (
+          <form onSubmit={handleSubmit} className="px-8 py-7 space-y-5">
+            <div className="grid grid-cols-2 gap-4">
+              <Field label="Full Name" required error={errors.firstName}>
+                <InputBox type="text" value={form.firstName} onChange={set("firstName")} placeholder="e.g. Shakila" style={errors.firstName ? { borderColor: ACCENT_RED } : {}} />
+              </Field>
+              <Field label="Last Name" required error={errors.lastName}>
+                <InputBox type="text" value={form.lastName} onChange={set("lastName")} placeholder="e.g. Marando" style={errors.lastName ? { borderColor: ACCENT_RED } : {}} />
+              </Field>
+            </div>
 
-              <Field label="Phone Number" required error={errors.phone}>
-                <div className="flex items-center h-12 rounded-xl overflow-hidden bg-white"
-                  style={{ border: `1.5px solid ${errors.phone ? ACCENT_RED : PEACH_BORDER}` }}>
-                  <div className="flex items-center gap-1.5 px-3 h-full border-r flex-shrink-0 select-none"
-                    style={{ borderColor: PEACH_BORDER }}>
-                    <span className="text-sm font-semibold" style={{ color: WINE }}>+254</span>
-                  </div>
-                  <input type="tel" value={form.phone} onChange={set("phone")} placeholder="718 436 649"
-                    className="flex-1 h-full px-4 text-sm bg-transparent outline-none" style={{ color: WINE }} />
+            <Field label="Email Address" required error={errors.email}>
+              <InputBox type="email" value={form.email} onChange={set("email")} placeholder="you@example.com" style={errors.email ? { borderColor: ACCENT_RED } : {}} />
+            </Field>
+
+            <Field label="Phone Number" required error={errors.phone}>
+              <div className="flex items-center h-12 rounded-full overflow-hidden bg-white/90" style={{ border: `1.5px solid ${errors.phone ? ACCENT_RED : INPUT_BORDER}` }}>
+                <div className="flex items-center gap-1.5 px-4 h-full border-r flex-shrink-0 select-none" style={{ borderColor: INPUT_BORDER }}>
+                  <span className="text-sm font-semibold" style={{ color: WINE }}>+254</span>
+                </div>
+                <input type="tel" value={form.phone} onChange={set("phone")} placeholder="718 436 649"
+                  className="flex-1 h-full px-4 text-sm bg-transparent outline-none" style={{ color: WINE }} />
+              </div>
+            </Field>
+
+            <div className="grid grid-cols-2 gap-4">
+              <Field label="Password" required error={errors.password}>
+                <div className="relative">
+                  <InputBox type={showPw ? "text" : "password"} value={form.password} onChange={set("password")} placeholder="Min 8 characters" className="pr-10" style={errors.password ? { borderColor: ACCENT_RED } : {}} />
+                  <button type="button" onClick={() => setShowPw(!showPw)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600" aria-label={showPw ? "Hide password" : "Show password"}>
+                    {showPw ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
                 </div>
               </Field>
-
-              <Field label="Email ID" required error={errors.email}>
-                <InputBox type="email" value={form.email} onChange={set("email")} placeholder="you@example.com" style={errors.email ? { borderColor: ACCENT_RED } : {}} />
+              <Field label="Confirm Password" required error={errors.confirmPassword}>
+                <div className="relative">
+                  <InputBox type={showConfirm ? "text" : "password"} value={form.confirmPassword} onChange={set("confirmPassword")} placeholder="Re-enter password" className="pr-10" style={errors.confirmPassword ? { borderColor: ACCENT_RED } : {}} />
+                  <button type="button" onClick={() => setShowConfirm(!showConfirm)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600" aria-label={showConfirm ? "Hide confirm password" : "Show confirm password"}>
+                    {showConfirm ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
               </Field>
+            </div>
 
-              <div className="flex items-start gap-3 rounded-xl px-4 py-3 text-xs leading-relaxed"
-                style={{ background: "#EFF6FF", border: "1px solid #BFDBFE", color: "#1D4ED8" }}>
-                <Info className="h-4 w-4 flex-shrink-0 mt-0.5" />
-                We ask for your age and gender to keep things safe, accurate, and tailored just for you.
-              </div>
+            <div className="grid grid-cols-2 gap-4">
+              <Field label="Gender" required error={errors.gender}>
+                <div className="relative">
+                  <select value={form.gender} onChange={set("gender")}
+                    className="w-full h-12 pl-4 pr-10 rounded-full text-sm bg-white/90 outline-none appearance-none"
+                    style={{ border: `1.5px solid ${errors.gender ? ACCENT_RED : INPUT_BORDER}`, color: form.gender ? WINE : "#9CA3AF" }}>
+                    <option value="" disabled>Select…</option>
+                    <option value="male">Male</option>
+                    <option value="female">Female</option>
+                    <option value="other">Other</option>
+                    <option value="prefer_not">Prefer not to say</option>
+                  </select>
+                  <svg className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 pointer-events-none text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                  </svg>
+                </div>
+              </Field>
+              <Field label="Date Of Birth" required error={errors.dob}>
+                <InputBox type="date" value={form.dob} onChange={set("dob")} style={{ color: form.dob ? WINE : "#9CA3AF", ...(errors.dob ? { borderColor: ACCENT_RED } : {}) }} />
+              </Field>
+            </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <Field label="Gender" required error={errors.gender}>
-                  <div className="relative">
-                    <select value={form.gender} onChange={set("gender")}
-                      className="w-full h-12 pl-4 pr-10 rounded-xl text-sm bg-white outline-none appearance-none"
-                      style={{ border: `1.5px solid ${errors.gender ? ACCENT_RED : PEACH_BORDER}`, color: form.gender ? WINE : "#9CA3AF" }}>
-                      <option value="" disabled>Select…</option>
-                      <option value="male">Male</option>
-                      <option value="female">Female</option>
-                      <option value="other">Other</option>
-                      <option value="prefer_not">Prefer not to say</option>
-                    </select>
-                    <svg className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 pointer-events-none text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-                    </svg>
-                  </div>
-                </Field>
-                <Field label="Date Of Birth" required error={errors.dob}>
-                  <InputBox type="date" value={form.dob} onChange={set("dob")} style={{ color: form.dob ? WINE : "#9CA3AF", ...(errors.dob ? { borderColor: ACCENT_RED } : {}) }} />
-                </Field>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <Field label="Password" required error={errors.password}>
-                  <div className="relative">
-                    <InputBox type={showPw ? "text" : "password"} value={form.password} onChange={set("password")} placeholder="Min 8 characters" className="pr-10" style={errors.password ? { borderColor: ACCENT_RED } : {}} />
-                    <button type="button" onClick={() => setShowPw(!showPw)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
-                      {showPw ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                    </button>
-                  </div>
-                </Field>
-                <Field label="Confirm Password" required error={errors.confirmPassword}>
-                  <div className="relative">
-                    <InputBox type={showConfirm ? "text" : "password"} value={form.confirmPassword} onChange={set("confirmPassword")} placeholder="Re-enter password" className="pr-10" style={errors.confirmPassword ? { borderColor: ACCENT_RED } : {}} />
-                    <button type="button" onClick={() => setShowConfirm(!showConfirm)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
-                      {showConfirm ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                    </button>
-                  </div>
-                </Field>
-              </div>
-
-              <div className="space-y-3 pt-1">
-                {[
-                  { id: "newsletter", label: "Get the latest updates on new products and offers from Shaniid RX",
-                    checked: newsletter, onChange: (v: boolean) => setNewsletter(v), error: undefined },
-                  { id: "terms",
-                    label: (<>I accept the{" "}
-                      <Link href="/terms-of-service" className="underline font-semibold" style={{ color: ACCENT_RED }}>Terms and conditions</Link>{" "}
-                      and{" "}
-                      <Link href="/privacy-policy" className="underline font-semibold" style={{ color: ACCENT_RED }}>Privacy Policy</Link>{" "}*
-                    </>),
-                    checked: terms, onChange: (v: boolean) => setTerms(v), error: errors.terms },
-                  { id: "adult", label: "I am over 18 years old *", checked: isAdult, onChange: (v: boolean) => setIsAdult(v), error: errors.adult },
-                ].map((cb) => (
-                  <label key={cb.id} className="flex items-start gap-3 cursor-pointer select-none">
-                    <div className="relative flex-shrink-0 mt-0.5">
-                      <input type="checkbox" checked={cb.checked} onChange={(e) => cb.onChange(e.target.checked)} className="sr-only" />
-                      <div className="rounded flex items-center justify-center transition-colors"
-                        style={{ width: 18, height: 18,
-                          background: cb.checked ? `linear-gradient(135deg, ${ACCENT_ORANGE} 0%, ${ACCENT_RED} 100%)` : "white",
-                          border: `1.5px solid ${cb.error ? ACCENT_RED : cb.checked ? ACCENT_RED : PEACH_BORDER}` }}>
-                        {cb.checked && <Check className="h-3 w-3 text-white" strokeWidth={3} />}
-                      </div>
+            <div className="space-y-3 pt-1">
+              {[
+                { id: "terms",
+                  label: (<>I agree the{" "}
+                    <Link href="/terms-of-service" className="underline font-semibold" style={{ color: "#fff" }}>Terms and conditions</Link>{" "}*
+                  </>),
+                  checked: terms, onChange: (v: boolean) => setTerms(v), error: errors.terms },
+              ].map((cb) => (
+                <label key={cb.id} className="flex items-start gap-3 cursor-pointer select-none">
+                  <div className="relative flex-shrink-0 mt-0.5">
+                    <input type="checkbox" checked={cb.checked} onChange={(e) => cb.onChange(e.target.checked)} className="sr-only" />
+                    <div className="rounded flex items-center justify-center transition-colors"
+                      style={{ width: 18, height: 18,
+                        background: cb.checked ? `linear-gradient(135deg, ${ACCENT_ORANGE} 0%, ${ACCENT_RED} 100%)` : "white",
+                        border: `1.5px solid ${cb.error ? ACCENT_RED : cb.checked ? ACCENT_RED : INPUT_BORDER}` }}>
+                      {cb.checked && <Check className="h-3 w-3 text-white" strokeWidth={3} />}
                     </div>
-                    <div>
-                      <span className="text-xs leading-relaxed" style={{ color: WINE_SOFT }}>{cb.label}</span>
-                      {cb.error && <p className="text-xs font-medium mt-0.5" style={{ color: ACCENT_RED }}>{cb.error}</p>}
-                    </div>
-                  </label>
-                ))}
-              </div>
+                  </div>
+                  <div>
+                    <span className="text-xs leading-relaxed" style={{ color: "rgba(255,255,255,0.85)" }}>{cb.label}</span>
+                    {cb.error && <p className="text-xs font-medium mt-0.5" style={{ color: ACCENT_RED }}>{cb.error}</p>}
+                  </div>
+                </label>
+              ))}
+            </div>
 
-              <button
-                type="submit"
-                disabled={loading || !isLoaded}
-                className="w-full rounded-full font-bold text-base text-white flex items-center justify-center gap-2 transition-all hover:scale-[1.02] active:scale-[0.99] disabled:opacity-70 mt-2"
-                style={{ height: 52, background: `linear-gradient(135deg, ${ACCENT_ORANGE} 0%, ${ACCENT_RED} 100%)`, boxShadow: "0 16px 32px -10px rgba(185,28,28,0.5)" }}
-              >
-                {loading ? "Creating account…" : (<>Create Account <ArrowRight className="h-4 w-4" /></>)}
-              </button>
+            <button
+              type="submit"
+              disabled={loading || !isLoaded}
+              className="w-full rounded-full font-bold text-base text-white flex items-center justify-center gap-2 transition-all hover:scale-[1.02] active:scale-[0.99] disabled:opacity-70 mt-2"
+              style={{ height: 48, background: BTN_BG, boxShadow: "0 12px 24px -8px rgba(61,8,20,0.45)" }}
+            >
+              {loading ? "Creating account…" : (<>Sign Up</>)}
+            </button>
 
-              <div className="flex items-center gap-3">
-                <div className="flex-1 h-px" style={{ background: PEACH_BORDER }} />
-                <span className="text-xs font-semibold" style={{ color: WINE_SOFT }}>OR</span>
-                <div className="flex-1 h-px" style={{ background: PEACH_BORDER }} />
-              </div>
+            <div className="flex items-center gap-3">
+              <div className="flex-1 h-px" style={{ background: "rgba(255,255,255,0.3)" }} />
+              <span className="text-xs font-semibold" style={{ color: "rgba(255,255,255,0.7)" }}>OR</span>
+              <div className="flex-1 h-px" style={{ background: "rgba(255,255,255,0.3)" }} />
+            </div>
 
-              <button
-                type="button"
+            <div className="flex items-center justify-center gap-4">
+              <SocialButton
+                label="Sign up with Google"
                 onClick={handleGoogle}
                 disabled={!isLoaded || googleLoading}
-                className="w-full h-12 rounded-full font-semibold text-sm flex items-center justify-center gap-3 transition-all hover:shadow-md hover:-translate-y-0.5 disabled:opacity-70"
-                style={{ background: "white", border: `1.5px solid ${PEACH_BORDER}`, color: WINE }}
-              >
-                {googleLoading ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Connecting to Google…
-                  </>
-                ) : (
-                  <>
-                    <svg className="h-5 w-5 flex-shrink-0" viewBox="0 0 24 24">
-                      <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
-                      <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
-                      <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" />
-                      <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
-                    </svg>
-                    Continue with Google
-                  </>
-                )}
-              </button>
+                loading={googleLoading}
+                icon={
+                  <svg className="h-5 w-5" viewBox="0 0 24 24">
+                    <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+                    <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.15-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+                    <path fill="#FBBC05" d="M5.85 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" />
+                    <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.86-2.6 3.3-4.53 6.16-4.53z" />
+                  </svg>
+                }
+              />
+              <SocialButton
+                label="Sign up with Apple (coming soon)"
+                disabled
+                icon={
+                  <svg className="h-5 w-5" viewBox="0 0 24 24" fill="currentColor" style={{ color: "#9CA3AF" }}>
+                    <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z" />
+                  </svg>
+                }
+              />
+              <SocialButton
+                label="Sign up with Facebook (coming soon)"
+                disabled
+                icon={
+                  <svg className="h-5 w-5" viewBox="0 0 24 24" fill="currentColor" style={{ color: "#9CA3AF" }}>
+                    <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" />
+                  </svg>
+                }
+              />
+            </div>
 
-              <p className="text-center text-xs leading-relaxed pt-1" style={{ color: WINE_SOFT }}>
-                By creating an account, you agree to Shaniid RX's{" "}
-                <Link href="/terms-of-service" className="underline font-semibold" style={{ color: ACCENT_RED }}>Terms &amp; Conditions</Link>
-                {" "}and{" "}
-                <Link href="/privacy-policy" className="underline font-semibold" style={{ color: ACCENT_RED }}>Privacy Policy</Link>.
-              </p>
-            </form>
-          )}
-        </div>
-      </main>
-
-      <Footer />
+            <p className="text-center text-sm" style={{ color: "rgba(255,255,255,0.85)" }}>
+              Already have your Account?{" "}
+              <Link href="/account/login" className="font-bold hover:underline" style={{ color: "#fff" }}>
+                Login
+              </Link>
+            </p>
+          </form>
+        )}
+      </div>
     </div>
   )
 }

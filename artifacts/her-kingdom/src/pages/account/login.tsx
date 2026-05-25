@@ -10,19 +10,21 @@ import { useSignIn } from "@clerk/react/legacy"
    a full window.location redirect, so OAuth round-trip URLs must include the
    prefix or the browser lands on the wrong origin path. */
 const BASE_PATH = import.meta.env.BASE_URL.replace(/\/$/, "")
-import { TopBar } from "@/components/store/top-bar"
-import { Navbar } from "@/components/store/navbar"
-import { Footer } from "@/components/store/footer"
-import { Eye, EyeOff, ArrowRight, ChevronDown, Mail, Loader2 } from "lucide-react"
+import { Eye, EyeOff, ArrowRight, Mail, Loader2 } from "lucide-react"
 import { Seo } from "@/components/seo"
-import logoShaniid from "@assets/image_1778744075874.png"
 
 const WINE          = "#3D0814"
 const WINE_SOFT     = "#6B0F1A"
 const ACCENT_RED    = "#B91C1C"
 const ACCENT_ORANGE = "#F97316"
-const CREAM         = "#FFFBF5"
-const PEACH_BORDER  = "#F2DCC8"
+
+/* ───────────────────── glassmorphism tokens ───────────────────── */
+const GRADIENT_BG   = "linear-gradient(135deg, #E8A87C 0%, #C44B2B 35%, #8B1A1A 70%, #6B0F1A 100%)"
+const CARD_BG       = "rgba(255, 240, 230, 0.22)"
+const CARD_BORDER   = "rgba(255, 255, 255, 0.35)"
+const INPUT_BG      = "rgba(255, 250, 245, 0.92)"
+const INPUT_BORDER  = "rgba(255, 255, 255, 0.6)"
+const BTN_BG        = WINE
 
 type Step = "signin" | "reset_email" | "reset_code"
 
@@ -32,12 +34,9 @@ export default function AccountLoginPage() {
   const { isLoaded, signIn, setActive } = useSignIn()
 
   const [step, setStep]       = useState<Step>("signin")
-  const [method, setMethod]   = useState<"phone" | "email">("email")
-  const [phone, setPhone]     = useState("")
   const [email, setEmail]     = useState("")
   const [password, setPassword] = useState("")
   const [showPw, setShowPw]   = useState(false)
-  const [remember, setRemember] = useState(false)
   const [loading, setLoading] = useState(false)
   const [googleLoading, setGoogleLoading] = useState(false)
   const [error, setError]     = useState("")
@@ -99,8 +98,6 @@ export default function AccountLoginPage() {
     setResetCode(""); setResetNewPw(""); setResetConfirm("")
   }
 
-  /* Avoid calling navigate during render — that triggers a setState-in-render
-     warning and can deadlock the component. */
   useEffect(() => {
     if (isSignedIn) navigate("/user")
   }, [isSignedIn, navigate])
@@ -113,13 +110,7 @@ export default function AccountLoginPage() {
     setError("")
     setLoading(true)
     try {
-      /* `identifier` accepts username, email, or phone. Clerk routes the
-         right strategy based on what it matches. Keep it as a plain trimmed
-         string — no email-shaped normalisation. */
-      const identifier =
-        method === "phone"
-          ? `+254${phone.replace(/^0+/, "").replace(/\D/g, "")}`
-          : email.trim()
+      const identifier = email.trim()
       const attempt = await signIn.create({ identifier, password })
       if (attempt.status === "complete") {
         await setActive({ session: attempt.createdSessionId })
@@ -147,14 +138,11 @@ export default function AccountLoginPage() {
     setError("")
     setGoogleLoading(true)
     try {
-      /* Clerk performs a real browser redirect, so prefix the artifact base
-         path or the OAuth callback lands on the wrong URL on Replit. */
       await signIn.authenticateWithRedirect({
         strategy: "oauth_google",
         redirectUrl: `${BASE_PATH}/account/sso-callback`,
         redirectUrlComplete: `${BASE_PATH}/user`,
       })
-      /* Success path = full-page redirect to Google; nothing else runs here. */
     } catch (err) {
       setGoogleLoading(false)
       const msg =
@@ -166,191 +154,101 @@ export default function AccountLoginPage() {
     }
   }
 
+  const SocialButton = ({
+    icon, label, onClick, disabled, loading: btnLoading,
+  }: {
+    icon: React.ReactNode
+    label: string
+    onClick?: () => void
+    disabled?: boolean
+    loading?: boolean
+  }) => (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled || btnLoading}
+      className="w-11 h-11 rounded-full flex items-center justify-center transition-all hover:scale-105 hover:shadow-md disabled:opacity-60"
+      style={{ background: "rgba(255,255,255,0.9)", border: "1px solid rgba(255,255,255,0.5)" }}
+      aria-label={label}
+    >
+      {btnLoading ? (
+        <Loader2 className="h-4 w-4 animate-spin" style={{ color: WINE }} />
+      ) : (
+        icon
+      )}
+    </button>
+  )
+
   return (
-    <div className="min-h-screen flex flex-col" style={{ background: CREAM }}>
+    <div className="min-h-screen flex items-center justify-center px-4 py-8 relative overflow-hidden" style={{ background: GRADIENT_BG }}>
       <Seo title="Sign In to Shaniid RX" description="Sign in to your Shaniid RX account to view orders, manage prescriptions and continue your pharmacy care." canonicalPath="/account/login" noindex />
-      <TopBar />
-      <Navbar />
 
-      <main
-        className="flex-1 flex items-center justify-center px-4 py-14 lg:py-20 relative overflow-hidden"
-        style={{ background: "linear-gradient(160deg, #FFFBF5 0%, #FFF0DE 55%, #FFE4C8 100%)" }}
+      {/* Decorative circles */}
+      <div className="absolute -top-24 -left-24 w-64 h-64 rounded-full border-2 border-white/20 pointer-events-none" />
+      <div className="absolute top-1/3 -left-12 w-48 h-48 rounded-full border-2 border-white/15 pointer-events-none" />
+      <div className="absolute -bottom-16 -right-16 w-72 h-72 rounded-full border-2 border-white/20 pointer-events-none" />
+      <div className="absolute top-1/4 -right-20 w-56 h-56 rounded-full border-2 border-white/15 pointer-events-none" />
+
+      {/* Glass card */}
+      <div
+        className="relative w-full max-w-md rounded-3xl overflow-hidden z-10"
+        style={{
+          background: CARD_BG,
+          backdropFilter: "blur(24px)",
+          WebkitBackdropFilter: "blur(24px)",
+          border: `1px solid ${CARD_BORDER}`,
+          boxShadow: "0 32px 64px -20px rgba(61,8,20,0.35), inset 0 1px 0 rgba(255,255,255,0.25)",
+        }}
       >
-        {/* Decorative blobs */}
-        <div
-          className="absolute -top-32 -left-32 w-[480px] h-[480px] rounded-full pointer-events-none"
-          style={{ background: "radial-gradient(circle, rgba(249,115,22,0.12) 0%, transparent 70%)", filter: "blur(60px)" }}
-        />
-        <div
-          className="absolute -bottom-32 -right-32 w-[400px] h-[400px] rounded-full pointer-events-none"
-          style={{ background: "radial-gradient(circle, rgba(185,28,28,0.1) 0%, transparent 70%)", filter: "blur(60px)" }}
-        />
+        {/* Header */}
+        <div className="px-8 pt-10 pb-6 text-center">
+          <h1 className="text-2xl font-bold" style={{ color: WINE, fontFamily: "var(--font-serif, ui-serif, Georgia, serif)" }}>
+            {step === "signin" ? "Welcome" : "Reset Password"}
+          </h1>
+        </div>
 
-        {/* Glass card */}
-        <div
-          className="relative w-full max-w-md rounded-3xl overflow-hidden z-10"
-          style={{
-            background: "rgba(255,251,245,0.80)",
-            backdropFilter: "blur(24px)",
-            WebkitBackdropFilter: "blur(24px)",
-            border: `1px solid ${PEACH_BORDER}`,
-            boxShadow: "0 40px 80px -24px rgba(61,8,20,0.2), 0 8px 24px -8px rgba(61,8,20,0.08), inset 0 1px 0 rgba(255,255,255,0.8)",
-          }}
-        >
-          {/* Header strip */}
-          <div
-            className="px-8 pt-8 pb-6"
-            style={{
-              background: "linear-gradient(135deg, rgba(255,228,200,0.8) 0%, rgba(255,205,170,0.6) 100%)",
-              borderBottom: `1px solid ${PEACH_BORDER}`,
-            }}
-          >
-            {/* Logo mark */}
-            <div className="flex justify-center mb-4">
+        <form onSubmit={step === "signin" ? handleSubmit : submitReset} className="px-8 pb-8 space-y-5">
+          {/* Reset info banner */}
+          {step === "reset_code" && resetInfo && (
+            <div className="rounded-xl px-4 py-3 text-xs flex items-start gap-2" style={{ background: "rgba(255,255,255,0.7)", border: `1px solid ${INPUT_BORDER}`, color: WINE }}>
+              <Mail className="h-4 w-4 flex-shrink-0 mt-0.5" />
+              <span>{resetInfo} Enter it below with your new password.</span>
+            </div>
+          )}
+
+          {/* Identifier field */}
+          {step === "signin" && (
+            <div>
+              <label className="text-xs font-bold uppercase tracking-wider mb-1.5 block" style={{ color: WINE_SOFT }}>
+                Email or Username
+              </label>
               <div
-                className="h-16 w-16 rounded-2xl flex items-center justify-center overflow-hidden"
-                style={{
-                  background: "#0B0B0B",
-                  boxShadow: "0 10px 24px -8px rgba(61,8,20,0.28), inset 0 1px 0 rgba(255,255,255,0.06)",
-                  border: `1px solid ${PEACH_BORDER}`,
-                }}
+                className="flex items-center h-12 rounded-full overflow-hidden"
+                style={{ background: INPUT_BG, border: `1.5px solid ${INPUT_BORDER}` }}
               >
-                <img
-                  src={logoShaniid}
-                  alt="Shaniid RX"
-                  className="h-14 w-14 object-contain"
-                  draggable={false}
+                <input
+                  type="text"
+                  autoComplete="username"
+                  required
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="Email address"
+                  className="flex-1 h-full px-5 text-sm bg-transparent outline-none"
+                  style={{ color: WINE }}
                 />
               </div>
             </div>
+          )}
 
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <p className="text-[10px] font-bold uppercase tracking-[0.25em] mb-1" style={{ color: ACCENT_RED }}>
-                  Shaniid RX
-                </p>
-                <h1
-                  className="text-2xl lg:text-3xl font-extrabold"
-                  style={{ color: WINE, fontFamily: "var(--font-serif, ui-serif, Georgia, serif)" }}
-                >
-                  {step === "signin" ? "Log In" : "Reset Password"}
-                </h1>
-              </div>
-              <div className="text-right shrink-0 mt-1">
-                {step === "signin" ? (
-                  <>
-                    <p className="text-xs" style={{ color: WINE_SOFT }}>Don't have an account?</p>
-                    <Link
-                      href="/account/register"
-                      className="text-xs font-bold hover:underline transition-all"
-                      style={{ color: ACCENT_RED }}
-                    >
-                      Create Account
-                    </Link>
-                  </>
-                ) : (
-                  <>
-                    <p className="text-xs" style={{ color: WINE_SOFT }}>Remembered it?</p>
-                    <button
-                      type="button"
-                      onClick={backToSignIn}
-                      className="text-xs font-bold hover:underline transition-all"
-                      style={{ color: ACCENT_RED }}
-                    >
-                      Back to Sign In
-                    </button>
-                  </>
-                )}
-              </div>
-            </div>
-          </div>
-
-          <form onSubmit={step === "signin" ? handleSubmit : submitReset} className="px-8 py-7 space-y-5">
-            {step === "reset_code" && resetInfo && (
-              <div
-                className="rounded-xl px-4 py-3 text-xs flex items-start gap-2"
-                style={{ background: "#FFFBF5", border: `1px solid ${PEACH_BORDER}`, color: WINE }}
-              >
-                <Mail className="h-4 w-4 flex-shrink-0 mt-0.5" />
-                <span>{resetInfo} Enter it below with your new password.</span>
-              </div>
-            )}
-            {/* Identifier field — visible only in sign-in mode */}
-            {step === "signin" && (
-            <div>
-              <div className="flex items-center justify-between mb-1.5">
-                <label className="text-xs font-bold uppercase tracking-wider" style={{ color: WINE_SOFT }}>
-                  {method === "phone" ? "Phone Number" : "Email or Username"} *
-                </label>
-                <button
-                  type="button"
-                  onClick={() => setMethod(method === "phone" ? "email" : "phone")}
-                  className="text-xs font-semibold hover:underline"
-                  style={{ color: ACCENT_RED }}
-                >
-                  {method === "phone" ? "Use Email ID Instead" : "Use Phone Instead"}
-                </button>
-              </div>
-
-              {method === "phone" ? (
-                <div
-                  className="flex items-center h-12 rounded-xl overflow-hidden"
-                  style={{ background: "white", border: `1.5px solid ${PEACH_BORDER}` }}
-                >
-                  <div
-                    className="flex items-center gap-1.5 px-3 h-full border-r select-none flex-shrink-0"
-                    style={{ borderColor: PEACH_BORDER }}
-                  >
-                    <span className="text-lg leading-none">🇰🇪</span>
-                    <ChevronDown className="h-3 w-3 opacity-50" style={{ color: WINE }} />
-                    <span className="text-sm font-semibold" style={{ color: WINE }}>+254</span>
-                  </div>
-                  <input
-                    type="tel"
-                    required
-                    value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
-                    placeholder="Enter registered phone number"
-                    className="flex-1 h-full px-4 text-sm bg-transparent outline-none"
-                    style={{ color: WINE }}
-                  />
-                </div>
-              ) : (
-                <div
-                  className="flex items-center h-12 rounded-xl overflow-hidden"
-                  style={{ background: "white", border: `1.5px solid ${PEACH_BORDER}` }}
-                >
-                  <span className="pl-4 pr-2 flex-shrink-0">
-                    <svg className="h-4 w-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                    </svg>
-                  </span>
-                  <input
-                    /* `type="text"` so usernames don't trip browser email
-                       validation. Clerk accepts both as `identifier`. */
-                    type="text"
-                    autoComplete="username"
-                    required
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="Email address or username"
-                    className="flex-1 h-full pr-4 text-sm bg-transparent outline-none"
-                    style={{ color: WINE }}
-                  />
-                </div>
-              )}
-            </div>
-            )}
-
-            {/* Password */}
-            {step === "signin" && (
+          {/* Password */}
+          {step === "signin" && (
             <div>
               <label className="text-xs font-bold uppercase tracking-wider mb-1.5 block" style={{ color: WINE_SOFT }}>
-                Password *
+                Password
               </label>
               <div
-                className="flex items-center h-12 rounded-xl overflow-hidden"
-                style={{ background: "white", border: `1.5px solid ${PEACH_BORDER}` }}
+                className="flex items-center h-12 rounded-full overflow-hidden"
+                style={{ background: INPUT_BG, border: `1.5px solid ${INPUT_BORDER}` }}
               >
                 <input
                   type={showPw ? "text" : "password"}
@@ -358,33 +256,25 @@ export default function AccountLoginPage() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="Enter your password"
-                  className="flex-1 h-full px-4 text-sm bg-transparent outline-none"
+                  className="flex-1 h-full px-5 text-sm bg-transparent outline-none"
                   style={{ color: WINE }}
                 />
                 <button
                   type="button"
                   onClick={() => setShowPw(!showPw)}
                   className="px-4 text-gray-400 hover:text-gray-600 transition-colors"
+                  aria-label={showPw ? "Hide password" : "Show password"}
                 >
                   {showPw ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>
               </div>
             </div>
-            )}
+          )}
 
-            {/* Remember + forgot — sign-in mode only */}
-            {step === "signin" && (
+          {/* Remember + forgot */}
+          {step === "signin" && (
             <div className="flex items-center justify-between">
-              <label className="flex items-center gap-2 cursor-pointer select-none">
-                <input
-                  type="checkbox"
-                  checked={remember}
-                  onChange={(e) => setRemember(e.target.checked)}
-                  className="w-4 h-4 rounded"
-                  style={{ accentColor: ACCENT_RED }}
-                />
-                <span className="text-xs font-medium" style={{ color: WINE_SOFT }}>Keep me signed in</span>
-              </label>
+              <span /> {/* spacer */}
               <button
                 type="button"
                 onClick={sendResetCode}
@@ -395,155 +285,185 @@ export default function AccountLoginPage() {
                 Forgot Password?
               </button>
             </div>
-            )}
+          )}
 
-            {/* Reset-code form — reset mode only */}
-            {step === "reset_code" && (
-              <>
-                <div>
-                  <label className="text-xs font-bold uppercase tracking-wider mb-1.5 block" style={{ color: WINE_SOFT }}>
-                    6-digit code *
-                  </label>
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    autoComplete="one-time-code"
-                    required
-                    value={resetCode}
-                    onChange={(e) => setResetCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
-                    placeholder="123456"
-                    className="w-full h-12 px-4 rounded-xl text-sm tracking-[0.4em] text-center bg-white outline-none"
-                    style={{ border: `1.5px solid ${PEACH_BORDER}`, color: WINE }}
-                  />
-                  <button
-                    type="button"
-                    onClick={sendResetCode}
-                    disabled={loading}
-                    className="mt-1.5 text-xs font-semibold hover:underline disabled:opacity-50"
-                    style={{ color: ACCENT_RED }}
-                  >
-                    Resend code
-                  </button>
-                </div>
-                <div>
-                  <label className="text-xs font-bold uppercase tracking-wider mb-1.5 block" style={{ color: WINE_SOFT }}>
-                    New password *
-                  </label>
-                  <div
-                    className="flex items-center h-12 rounded-xl overflow-hidden"
-                    style={{ background: "white", border: `1.5px solid ${PEACH_BORDER}` }}
-                  >
-                    <input
-                      type={showPw ? "text" : "password"}
-                      required
-                      value={resetNewPw}
-                      onChange={(e) => setResetNewPw(e.target.value)}
-                      placeholder="Min 8 characters"
-                      className="flex-1 h-full px-4 text-sm bg-transparent outline-none"
-                      style={{ color: WINE }}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPw(!showPw)}
-                      className="px-4 text-gray-400 hover:text-gray-600 transition-colors"
-                    >
-                      {showPw ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                    </button>
-                  </div>
-                </div>
-                <div>
-                  <label className="text-xs font-bold uppercase tracking-wider mb-1.5 block" style={{ color: WINE_SOFT }}>
-                    Confirm new password *
-                  </label>
+          {/* Reset-code form */}
+          {step === "reset_code" && (
+            <>
+              <div>
+                <label className="text-xs font-bold uppercase tracking-wider mb-1.5 block" style={{ color: WINE_SOFT }}>
+                  6-digit code *
+                </label>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  required
+                  value={resetCode}
+                  onChange={(e) => setResetCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                  placeholder="123456"
+                  className="w-full h-12 px-5 rounded-full text-sm tracking-[0.4em] text-center bg-white/90 outline-none"
+                  style={{ border: `1.5px solid ${INPUT_BORDER}`, color: WINE }}
+                />
+                <button
+                  type="button"
+                  onClick={sendResetCode}
+                  disabled={loading}
+                  className="mt-1.5 text-xs font-semibold hover:underline disabled:opacity-50"
+                  style={{ color: ACCENT_RED }}
+                >
+                  Resend code
+                </button>
+              </div>
+              <div>
+                <label className="text-xs font-bold uppercase tracking-wider mb-1.5 block" style={{ color: WINE_SOFT }}>
+                  New password *
+                </label>
+                <div
+                  className="flex items-center h-12 rounded-full overflow-hidden"
+                  style={{ background: INPUT_BG, border: `1.5px solid ${INPUT_BORDER}` }}
+                >
                   <input
                     type={showPw ? "text" : "password"}
                     required
-                    value={resetConfirm}
-                    onChange={(e) => setResetConfirm(e.target.value)}
-                    placeholder="Re-enter new password"
-                    className="w-full h-12 px-4 rounded-xl text-sm bg-white outline-none"
-                    style={{ border: `1.5px solid ${PEACH_BORDER}`, color: WINE }}
+                    value={resetNewPw}
+                    onChange={(e) => setResetNewPw(e.target.value)}
+                    placeholder="Min 8 characters"
+                    className="flex-1 h-full px-5 text-sm bg-transparent outline-none"
+                    style={{ color: WINE }}
                   />
+                  <button
+                    type="button"
+                    onClick={() => setShowPw(!showPw)}
+                    className="px-4 text-gray-400 hover:text-gray-600 transition-colors"
+                    aria-label={showPw ? "Hide password" : "Show password"}
+                  >
+                    {showPw ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
                 </div>
-              </>
-            )}
-
-            {/* Error */}
-            {error && (
-              <div
-                className="rounded-xl px-4 py-3 text-sm flex items-center gap-2"
-                style={{ background: "#FEF2F2", border: "1px solid #FECACA", color: ACCENT_RED }}
-              >
-                <svg className="h-4 w-4 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-                </svg>
-                {error}
               </div>
-            )}
+              <div>
+                <label className="text-xs font-bold uppercase tracking-wider mb-1.5 block" style={{ color: WINE_SOFT }}>
+                  Confirm new password *
+                </label>
+                <input
+                  type={showPw ? "text" : "password"}
+                  required
+                  value={resetConfirm}
+                  onChange={(e) => setResetConfirm(e.target.value)}
+                  placeholder="Re-enter new password"
+                  className="w-full h-12 px-5 rounded-full text-sm bg-white/90 outline-none"
+                  style={{ border: `1.5px solid ${INPUT_BORDER}`, color: WINE }}
+                />
+              </div>
+            </>
+          )}
 
-            {/* CTA */}
-            <button
-              type="submit"
-              disabled={loading || !isLoaded}
-              className="w-full rounded-full font-bold text-base text-white flex items-center justify-center gap-2 transition-all hover:scale-[1.02] active:scale-[0.99] disabled:opacity-70"
-              style={{
-                height: 52,
-                background: `linear-gradient(135deg, ${ACCENT_ORANGE} 0%, ${ACCENT_RED} 100%)`,
-                boxShadow: "0 16px 32px -10px rgba(185,28,28,0.5)",
-              }}
-            >
-              {loading ? (
-                <svg className="animate-spin h-5 w-5" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                </svg>
-              ) : step === "signin" ? (
-                <>Sign In <ArrowRight className="h-4 w-4" /></>
-              ) : (
-                <>Reset Password <ArrowRight className="h-4 w-4" /></>
-              )}
-            </button>
-
-            {/* Divider + Google — sign-in mode only */}
-            {step === "signin" && (
-            <div className="flex items-center gap-3">
-              <div className="flex-1 h-px" style={{ background: PEACH_BORDER }} />
-              <span className="text-xs font-semibold" style={{ color: WINE_SOFT }}>OR</span>
-              <div className="flex-1 h-px" style={{ background: PEACH_BORDER }} />
+          {/* Error */}
+          {error && (
+            <div className="rounded-xl px-4 py-3 text-sm flex items-center gap-2" style={{ background: "rgba(254,242,242,0.85)", border: "1px solid #FECACA", color: ACCENT_RED }}>
+              <svg className="h-4 w-4 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+              </svg>
+              {error}
             </div>
-            )}
+          )}
 
-            {step === "signin" && (
-            <button
-              type="button"
-              onClick={handleGoogle}
-              disabled={!isLoaded || googleLoading}
-              className="w-full h-12 rounded-full font-semibold text-sm flex items-center justify-center gap-3 transition-all hover:shadow-md hover:-translate-y-0.5 disabled:opacity-70"
-              style={{ background: "white", border: `1.5px solid ${PEACH_BORDER}`, color: WINE }}
-            >
-              {googleLoading ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Connecting to Google…
-                </>
-              ) : (
-                <>
-                  <svg className="h-5 w-5 flex-shrink-0" viewBox="0 0 24 24">
-                    <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
-                    <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
-                    <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" />
-                    <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
-                  </svg>
-                  Continue with Google
-                </>
-              )}
-            </button>
+          {/* CTA */}
+          <button
+            type="submit"
+            disabled={loading || !isLoaded}
+            className="w-full rounded-full font-bold text-base text-white flex items-center justify-center gap-2 transition-all hover:scale-[1.02] active:scale-[0.99] disabled:opacity-70"
+            style={{
+              height: 48,
+              background: BTN_BG,
+              boxShadow: "0 12px 24px -8px rgba(61,8,20,0.45)",
+            }}
+          >
+            {loading ? (
+              <svg className="animate-spin h-5 w-5" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+              </svg>
+            ) : step === "signin" ? (
+              <>Login</>
+            ) : (
+              <>Reset Password <ArrowRight className="h-4 w-4" /></>
             )}
-          </form>
-        </div>
-      </main>
+          </button>
 
-      <Footer />
+          {/* Divider + social */}
+          {step === "signin" && (
+            <>
+              <div className="flex items-center gap-3">
+                <div className="flex-1 h-px" style={{ background: "rgba(255,255,255,0.3)" }} />
+                <span className="text-xs font-semibold" style={{ color: "rgba(255,255,255,0.7)" }}>OR</span>
+                <div className="flex-1 h-px" style={{ background: "rgba(255,255,255,0.3)" }} />
+              </div>
+
+              <div className="flex items-center justify-center gap-4">
+                <SocialButton
+                  label="Sign in with Google"
+                  onClick={handleGoogle}
+                  disabled={!isLoaded || googleLoading}
+                  loading={googleLoading}
+                  icon={
+                    <svg className="h-5 w-5" viewBox="0 0 24 24">
+                      <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+                      <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.15-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+                      <path fill="#FBBC05" d="M5.85 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" />
+                      <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.86-2.6 3.3-4.53 6.16-4.53z" />
+                    </svg>
+                  }
+                />
+                <SocialButton
+                  label="Sign in with Apple (coming soon)"
+                  disabled
+                  icon={
+                    <svg className="h-5 w-5" viewBox="0 0 24 24" fill="currentColor" style={{ color: "#9CA3AF" }}>
+                      <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z" />
+                    </svg>
+                  }
+                />
+                <SocialButton
+                  label="Sign in with Facebook (coming soon)"
+                  disabled
+                  icon={
+                    <svg className="h-5 w-5" viewBox="0 0 24 24" fill="currentColor" style={{ color: "#9CA3AF" }}>
+                      <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" />
+                    </svg>
+                  }
+                />
+              </div>
+
+              <p className="text-center text-sm" style={{ color: "rgba(255,255,255,0.85)" }}>
+                New here?{" "}
+                <Link
+                  href="/account/register"
+                  className="font-bold hover:underline"
+                  style={{ color: "#fff" }}
+                >
+                  Create an account
+                </Link>
+              </p>
+            </>
+          )}
+
+          {step !== "signin" && (
+            <p className="text-center text-sm" style={{ color: "rgba(255,255,255,0.85)" }}>
+              Remembered it?{" "}
+              <button
+                type="button"
+                onClick={backToSignIn}
+                className="font-bold hover:underline"
+                style={{ color: "#fff" }}
+              >
+                Back to Sign In
+              </button>
+            </p>
+          )}
+        </form>
+      </div>
     </div>
   )
 }

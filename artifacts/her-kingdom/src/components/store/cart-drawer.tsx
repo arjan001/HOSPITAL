@@ -29,6 +29,7 @@ export function CartDrawer() {
       <SheetContent
         className="w-full sm:max-w-md p-0 flex flex-col border-0"
         style={{ background: CREAM }}
+        hideClose
       >
         <VisuallyHidden><SheetTitle>Shopping Cart</SheetTitle></VisuallyHidden>
 
@@ -64,14 +65,14 @@ export function CartDrawer() {
           <div className="flex-1 flex flex-col bg-white px-6 py-10">
             <div className="flex-1 flex flex-col items-center justify-center text-center">
               <div
-                className="w-20 h-20 rounded-full flex items-center justify-center mb-6"
+                className="w-16 h-16 rounded-full flex items-center justify-center mb-4"
                 style={{ background: "#F3F4F6" }}
               >
-                <ShoppingBag className="h-9 w-9" style={{ color: "#9CA3AF" }} strokeWidth={1.5} />
+                <ShoppingBag className="h-7 w-7" style={{ color: "#9CA3AF" }} strokeWidth={1.5} />
               </div>
-              <p className="font-bold text-xl" style={{ color: WINE }}>This is a bit empty</p>
-              <p className="text-sm mt-2 max-w-xs" style={{ color: "#6b7280" }}>
-                Let's start adding items to your shopping bag
+              <p className="font-semibold text-base leading-snug" style={{ color: WINE }}>Your bag is empty</p>
+              <p className="text-sm mt-1.5 max-w-xs leading-snug" style={{ color: "#6b7280" }}>
+                Start adding items to your shopping bag
               </p>
               <button
                 onClick={() => setIsCartOpen(false)}

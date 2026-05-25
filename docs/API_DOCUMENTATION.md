@@ -191,7 +191,7 @@ The status endpoint will **lazily call Paystack's `/transaction/verify`** while 
 
 #### `POST /api/v2/payments/paystack/callback`
 
-Paystack webhook. Trust-on-payload today; signature verification is a Phase 2 item.
+Paystack webhook. Verifies the `x-paystack-signature` header with HMAC-SHA512 using `PAYSTACK_SECRET_KEY`. Forged callbacks return 401 and never mutate state.
 
 ```jsonc
 // Request body (subset)

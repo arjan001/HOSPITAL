@@ -262,7 +262,7 @@ export function Navbar() {
               >
                 <button
                   type="button"
-                  className="inline-flex flex-col items-center gap-0.5 transition-opacity hover:opacity-80"
+                  className="inline-flex flex-col items-center justify-center gap-0.5 transition-opacity hover:opacity-80 w-12"
                   style={{ color: TEXT_WINE }}
                 >
                   <User className="h-5 w-5" style={{ color: ACCENT_RED }} />
@@ -424,7 +424,7 @@ export function Navbar() {
 
               <Link
                 href="/wishlist"
-                className="hidden md:inline-flex flex-col items-center gap-0.5 transition-opacity hover:opacity-80"
+                className="hidden md:inline-flex flex-col items-center justify-center gap-0.5 transition-opacity hover:opacity-80 w-12"
                 style={{ color: TEXT_WINE }}
                 aria-label={`Wishlist with ${wishlistCount} items`}
               >
@@ -445,7 +445,7 @@ export function Navbar() {
               <button
                 type="button"
                 onClick={() => setIsCartOpen(true)}
-                className="hidden md:inline-flex flex-col items-center gap-0.5 transition-opacity hover:opacity-80"
+                className="hidden md:inline-flex flex-col items-center justify-center gap-0.5 transition-opacity hover:opacity-80 w-12"
                 style={{ color: TEXT_WINE }}
                 aria-label="Open cart"
               >
@@ -466,7 +466,7 @@ export function Navbar() {
               {/* Mobile wishlist + cart icons */}
               <Link
                 href="/wishlist"
-                className="md:hidden relative p-2"
+                className="md:hidden relative p-2 w-10 h-10 flex items-center justify-center"
                 aria-label={`Wishlist with ${wishlistCount} items`}
               >
                 <Heart className="h-5 w-5" style={{ color: ACCENT_RED }} fill={wishlistCount > 0 ? ACCENT_RED : "none"} />
@@ -482,7 +482,7 @@ export function Navbar() {
               <button
                 type="button"
                 onClick={() => setIsCartOpen(true)}
-                className="md:hidden relative p-2"
+                className="md:hidden relative p-2 w-10 h-10 flex items-center justify-center"
                 aria-label="Open cart"
               >
                 <ShoppingBag className="h-5 w-5" style={{ color: ACCENT_RED }} />

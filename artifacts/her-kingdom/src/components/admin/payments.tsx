@@ -100,7 +100,11 @@ export function AdminPayments({ initialTab = "transactions" }: AdminPaymentsProp
   const [activeTab, setActiveTab] = useState<PaymentsTab>(initialTab)
   const { data: transactions, isLoading: txLoading } = useSWR<Transaction[]>(
     "/admin/payments?action=transactions&method=mpesa",
-    nestFetcher,
+    async (path) => {
+      const res = await fetch(`/api/v2${path}`, { credentials: "include" })
+      if (!res.ok) throw new Error(`payments ${res.status}`)
+      return res.json()
+    },
     { refreshInterval: 15000 },
   )
   const cardCollection = useCmsCollection<CardPaymentRecord>("card-payment-tests", [])
@@ -125,7 +129,7 @@ export function AdminPayments({ initialTab = "transactions" }: AdminPaymentsProp
           <div>
             <h1 className="text-2xl font-serif font-bold">Payments</h1>
             <p className="text-sm text-muted-foreground mt-1">
-              Review M-Pesa transactions and card payment orders.
+              Review Paystack M-Pesa transactions and card payment orders.
             </p>
           </div>
           <button
@@ -144,7 +148,7 @@ export function AdminPayments({ initialTab = "transactions" }: AdminPaymentsProp
         {/* Stats — Card Payments KPI hidden when CARDS_ENABLED is false (matches tab gating). */}
         <div className={`grid grid-cols-1 sm:grid-cols-2 ${CARDS_ENABLED ? "lg:grid-cols-4" : "lg:grid-cols-3"} gap-4`}>
           <div className="p-4 rounded-md border border-border">
-            <p className="text-xs text-muted-foreground uppercase tracking-wider">M-Pesa Revenue</p>
+            <p className="text-xs text-muted-foreground uppercase tracking-wider">Revenue</p>
             <p className="text-2xl font-bold mt-1">{formatPrice(totalRevenue)}</p>
           </div>
           <div className="p-4 rounded-md border border-border">
@@ -167,7 +171,7 @@ export function AdminPayments({ initialTab = "transactions" }: AdminPaymentsProp
         <div className="border-b border-border">
           <div className="flex gap-6">
             {[
-              { key: "transactions" as const, label: "M-Pesa Transactions", icon: CreditCard },
+              { key: "transactions" as const, label: "Transactions", icon: CreditCard },
               ...(CARDS_ENABLED ? [{ key: "card-payments" as const, label: "Card Payments", icon: Wallet }] : []),
             ].map((tab) => (
               <button
@@ -194,8 +198,8 @@ export function AdminPayments({ initialTab = "transactions" }: AdminPaymentsProp
             ) : txList.length === 0 ? (
               <div className="text-center py-12">
                 <CreditCard className="h-10 w-10 mx-auto text-muted-foreground/40 mb-3" />
-                <p className="text-sm text-muted-foreground">No M-Pesa transactions yet</p>
-                <p className="text-xs text-muted-foreground mt-1">STK pushes from checkout will appear here.</p>
+                <p className="text-sm text-muted-foreground">No transactions yet</p>
+                <p className="text-xs text-muted-foreground mt-1">Paystack payments from checkout will appear here.</p>
               </div>
             ) : (
               <div className="overflow-x-auto">

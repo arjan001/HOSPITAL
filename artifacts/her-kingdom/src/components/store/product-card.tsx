@@ -1,6 +1,6 @@
 "use client"
 
-import { Link } from "wouter"
+import { Link, useLocation } from "wouter"
 
 import { Heart, ShoppingBag, Eye, Play, Check, BellRing } from "lucide-react"
 import { useState } from "react"
@@ -8,7 +8,6 @@ import type { Product } from "@/lib/types"
 import { formatPrice } from "@/lib/format"
 import { useCart } from "@/lib/cart-context"
 import { useWishlist } from "@/lib/wishlist-context"
-import { useQuickView } from "@/lib/quick-view-context"
 import { isVideoUrl } from "@/lib/media-utils"
 
 const ACCENT_ORANGE = "#F97316"
@@ -17,7 +16,7 @@ const ACCENT_RED = "#B91C1C"
 export function ProductCard({ product }: { product: Product }) {
   const { addItem } = useCart()
   const { toggleItem, isInWishlist } = useWishlist()
-  const { openQuickView } = useQuickView()
+  const [, navigate] = useLocation()
   const [justAdded, setJustAdded] = useState(false)
   const [hoverBtn, setHoverBtn] = useState(false)
   const wishlisted = isInWishlist(product.id)
@@ -87,13 +86,13 @@ export function ProductCard({ product }: { product: Product }) {
           <div className="absolute top-2 right-2 flex flex-col gap-1.5 z-10">
             <button
               type="button"
-              onClick={(e) => { e.preventDefault(); e.stopPropagation(); openQuickView(product.slug) }}
+              onClick={(e) => { e.preventDefault(); e.stopPropagation(); navigate(`/product/${product.slug}`) }}
               className="w-8 h-8 flex items-center justify-center rounded-full bg-white shadow-sm hover:shadow-md transition-shadow"
               style={{ border: "1px solid #E8E8E8" }}
-              aria-label="Quick view"
-              title="Quick view"
+              aria-label="View product"
+              title="View product"
             >
-              <Eye className="h-4 w-4 text-gray-500" />
+              <Eye className="h-4 w-4" style={{ color: "#3D0814" }} />
             </button>
             <button
               type="button"
@@ -133,6 +132,7 @@ export function ProductCard({ product }: { product: Product }) {
             </span>
           )}
         </div>
+        <div className="flex-1" />
 
         {/* Add To Cart — out-of-stock shows Notify Me */}
         {product.inStock === false ? (
@@ -183,7 +183,7 @@ export function ProductCard({ product }: { product: Product }) {
             ) : (
               <>
                 <ShoppingBag className="h-4 w-4" />
-                + Add To Cart
+                Add to cart
               </>
             )}
           </button>

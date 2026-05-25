@@ -80,6 +80,8 @@ export function PageViewTracker() {
     if (pathname.startsWith("/admin") || pathname.startsWith("/auth")) return
     if (lastTracked.current === pathname) return
     if (lastTracked.current) sendDuration()
+    const prefersReduced = typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches
+    window.scrollTo({ top: 0, behavior: prefersReduced ? "auto" : "smooth" })
     lastTracked.current = pathname
     pageEnterTime.current = Date.now()
     maxScrollDepth.current = 0
