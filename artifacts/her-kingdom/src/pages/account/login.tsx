@@ -1,3 +1,37 @@
+/**
+ * Login page — authentication code flow.
+ *
+ * This page handles three auth paths, all using Clerk:
+ *
+ * Path 1: Email / password sign-in
+ *   1. User enters identifier (email or username) and password.
+ *   2. handleSubmit calls signIn.create({ identifier, password }).
+ *   3. On status "complete": setActive({ session }) persists the Clerk session
+ *      cookie and redirects to /user.
+ *   4. On any other status: prompt the user to check email or use Google.
+ *
+ * Path 2: Google OAuth
+ *   1. User clicks the Google button.
+ *   2. handleGoogle calls signIn.authenticateWithRedirect with strategy "oauth_google".
+ *   3. Clerk redirects to accounts.google.com for consent.
+ *   4. Google redirects back to /account/sso-callback.
+ *   5. SsoCallbackPage in App.tsx renders AuthenticateWithRedirectCallback,
+ *      which finalises the session and forwards to /user.
+ *
+ * Path 3: Password reset
+ *   1. User clicks "Forgot password" — step changes to "reset_email".
+ *   2. sendResetCode calls signIn.create({ strategy: "reset_password_email_code" }).
+ *   3. Clerk emails a 6-digit code; step changes to "reset_code".
+ *   4. submitReset calls signIn.attemptFirstFactor with the code + new password.
+ *   5. On status "complete": setActive and redirect to /user.
+ *
+ * Session persistence:
+ *   Clerk stores the session as a signed JWT in a first-party cookie.
+ *   The ClerkProvider in App.tsx proxies Clerk API calls through /api/__clerk
+ *   to avoid subdomain issues on Replit. The NestJS backend separately issues
+ *   a shaniidrx_sid cookie via SessionMiddleware (guest session scoping).
+ */
+
 import { useEffect, useState } from "react"
 import { Link, useLocation } from "wouter"
 import { useUser } from "@clerk/react"
