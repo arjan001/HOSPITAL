@@ -145,27 +145,17 @@ function WishlistCard({
           type="button"
           onClick={handleAddToCart}
           disabled={!product.inStock || adding}
-          className="relative w-full h-9 rounded-full text-xs font-semibold overflow-hidden group/btn transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-          style={{
-            border: `1.5px solid ${adding ? WINE : PEACH_BORDER}`,
-            color: adding ? "white" : WINE,
-            background: adding
-              ? `linear-gradient(135deg, ${WINE} 0%, ${WINE_SOFT} 100%)`
-              : "white",
-          }}
+          className="w-full h-9 rounded-full text-xs font-semibold transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
+          style={
+            adding
+              ? { background: `linear-gradient(135deg, ${WINE} 0%, ${WINE_SOFT} 100%)`, color: "white", border: "none" }
+              : { background: WINE, color: "white", border: "none" }
+          }
+          onMouseEnter={(e) => { if (!adding) (e.currentTarget as HTMLButtonElement).style.background = `linear-gradient(135deg, #F97316 0%, #B91C1C 100%)` }}
+          onMouseLeave={(e) => { if (!adding) (e.currentTarget as HTMLButtonElement).style.background = WINE }}
         >
-          {/* Hover fill sweep */}
-          <span
-            className="absolute inset-0 rounded-full translate-x-[-101%] group-hover/btn:translate-x-0 transition-transform duration-300"
-            style={{
-              background: `linear-gradient(135deg, ${WINE} 0%, ${WINE_SOFT} 100%)`,
-              zIndex: 0,
-            }}
-          />
-          <span className="relative z-10 flex items-center justify-center gap-1.5 group-hover/btn:text-white transition-colors duration-300">
-            <ShoppingBag className="h-3.5 w-3.5" />
-            {adding ? "Added!" : !product.inStock ? "Out of Stock" : "+ Add To Cart"}
-          </span>
+          <ShoppingBag className="h-3.5 w-3.5" />
+          {adding ? "Added!" : !product.inStock ? "Out of Stock" : "Add To Cart"}
         </button>
       </div>
     </div>

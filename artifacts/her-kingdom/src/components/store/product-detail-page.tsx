@@ -721,11 +721,13 @@ function ProductDetailPageInner({ slug }: { slug: string }) {
                   <button
                     onClick={handleAddToCart}
                     disabled={!product.inStock}
-                    className="mt-5 w-full h-11 rounded-full text-sm font-semibold transition-all hover:opacity-90 disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center justify-center gap-2"
+                    className="mt-5 w-full h-11 rounded-full text-sm font-semibold transition-all disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center justify-center gap-2"
                     style={{
-                      background: added ? "#E6F4EE" : "#F2DCC8",
-                      color: added ? SUCCESS : WINE,
+                      background: added ? "#15803D" : "#3D0814",
+                      color: "white",
                     }}
+                    onMouseEnter={(e) => { if (!added) (e.currentTarget as HTMLButtonElement).style.background = "linear-gradient(135deg, #F97316 0%, #B91C1C 100%)" }}
+                    onMouseLeave={(e) => { if (!added) (e.currentTarget as HTMLButtonElement).style.background = added ? "#15803D" : "#3D0814" }}
                   >
                     {added ? (
                       <>
@@ -733,7 +735,7 @@ function ProductDetailPageInner({ slug }: { slug: string }) {
                       </>
                     ) : (
                       <>
-                        Add To Cart
+                        <ShoppingBag className="h-4 w-4" /> Add To Cart
                       </>
                     )}
                   </button>
