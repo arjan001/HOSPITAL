@@ -129,7 +129,7 @@ export function AdminPayments({ initialTab = "transactions" }: AdminPaymentsProp
           <div>
             <h1 className="text-2xl font-serif font-bold">Payments</h1>
             <p className="text-sm text-muted-foreground mt-1">
-              Review Paystack M-Pesa transactions and card payment orders.
+              Review M-Pesa transactions and card payment orders.
             </p>
           </div>
           <button
@@ -199,7 +199,7 @@ export function AdminPayments({ initialTab = "transactions" }: AdminPaymentsProp
               <div className="text-center py-12">
                 <CreditCard className="h-10 w-10 mx-auto text-muted-foreground/40 mb-3" />
                 <p className="text-sm text-muted-foreground">No transactions yet</p>
-                <p className="text-xs text-muted-foreground mt-1">Paystack payments from checkout will appear here.</p>
+                <p className="text-xs text-muted-foreground mt-1">M-Pesa payments from checkout will appear here.</p>
               </div>
             ) : (
               <div className="overflow-x-auto">

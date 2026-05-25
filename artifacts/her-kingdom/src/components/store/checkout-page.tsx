@@ -540,7 +540,7 @@ export function CheckoutPage() {
   const [shippingType,     setShippingType]     = useState<"ondemand" | "scheduled">("ondemand")
   const [scheduledDate,    setScheduledDate]    = useState("")
   const [scheduledTime,    setScheduledTime]    = useState("")
-  const [paymentMethod,    setPaymentMethod]    = useState<"mpesa" | "payhero" | "card" | "cod">("mpesa")
+  const [paymentMethod,    setPaymentMethod]    = useState<"mpesa" | "payhero" | "card" | "cod">("payhero")
   const [mpesaPhone,       setMpesaPhone]       = useState("")
 
   /* ── Payment / order ── */
@@ -1607,20 +1607,11 @@ export function CheckoutPage() {
                   <div className="space-y-3">
                     {([
                       {
-                        key: "mpesa",
-                        icon: Smartphone,
-                        title: "M-PESA",
-                        badge: "Paystack",
-                        desc: "Receive an STK push on your Safaricom phone to complete the payment securely.",
-                        iconBg: "#FFF7ED",
-                        iconFg: "#F97316",
-                      },
-                      {
                         key: "payhero",
                         icon: Smartphone,
-                        title: "M-PESA (PayHero)",
-                        badge: "Legacy · QA",
-                        desc: "Legacy PayHero STK push — use for QA and regression testing only.",
+                        title: "M-PESA",
+                        badge: "",
+                        desc: "Receive an STK push on your Safaricom phone to complete the payment securely.",
                         iconBg: "#F0FDF4",
                         iconFg: "#16A34A",
                       },
