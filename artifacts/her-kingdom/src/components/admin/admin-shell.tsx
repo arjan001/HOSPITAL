@@ -111,12 +111,13 @@ const NAV_GROUPS: NavGroup[] = [
   {
     name: "Pharmacy",
     items: [
-      { label: "Prescriptions",     href: "/admin/prescriptions", icon: ClipboardList },
-      { label: "Consultations",     href: "/admin/consultations", icon: Stethoscope },
-      { label: "Doctors",           href: "/admin/doctors",       icon: Stethoscope },
+      { label: "Prescriptions",     href: "/admin/prescriptions",  icon: ClipboardList },
+      { label: "Consultations",     href: "/admin/consultations",  icon: Stethoscope },
+      { label: "Clinics & Partners",href: "/admin/clinics",        icon: Building2 },
+      { label: "Doctors",           href: "/admin/doctors",        icon: Stethoscope },
       { label: "Consultation Settings", href: "/admin/consultation-settings", icon: Timer },
-      { label: "Live Chat",         href: "/admin/chat",          icon: MessagesSquare },
-      { label: "Support Tickets",   href: "/admin/support",       icon: MessageSquare },
+      { label: "Live Chat",         href: "/admin/chat",           icon: MessagesSquare },
+      { label: "Support Tickets",   href: "/admin/support",        icon: MessageSquare },
     ],
   },
   {
@@ -136,7 +137,8 @@ const NAV_GROUPS: NavGroup[] = [
         href: "/admin/sourcing",
         icon: PackageSearch,
         children: [
-          { label: "Suppliers & POs",       href: "/admin/sourcing",             icon: Building2 },
+          { label: "Supplier Registry",     href: "/admin/suppliers",            icon: Building2 },
+          { label: "Sourcing & POs",        href: "/admin/sourcing",             icon: PackageSearch },
           { label: "Inventory",             href: "/admin/sourcing/inventory",   icon: Boxes },
           { label: "Demand Forecast",       href: "/admin/sourcing/forecast",    icon: LineChart },
           { label: "Pricing & Competitor",  href: "/admin/sourcing/pricing",     icon: TrendingUp },
@@ -186,6 +188,7 @@ const NAV_GROUPS: NavGroup[] = [
         href: "/admin/logistics",
         icon: Truck,
         children: [
+          { label: "Partner Registry",      href: "/admin/logistics-partners",   icon: Building2 },
           { label: "Delivery Operations",  href: "/admin/logistics",            icon: Truck },
           { label: "Delivery Locations",   href: "/admin/delivery-locations",   icon: Truck },
           { label: "Inventory Optimization", href: "/admin/logistics/inventory", icon: Warehouse },

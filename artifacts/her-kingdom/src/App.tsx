@@ -75,6 +75,14 @@ import {
 import { AdminSettings } from "@/components/admin/settings";
 // import { AdminPos } from "@/components/admin/pos"; // hidden until client requests POS module
 import { UsersManagement } from "@/components/admin/users";
+import { AdminSuppliers } from "@/components/admin/suppliers";
+import { AdminClinics } from "@/components/admin/clinics";
+import { AdminLogisticsPartners } from "@/components/admin/logistics-partners";
+
+// Partner portals
+import SupplierPortal from "@/pages/portal/supplier";
+import ClinicPortal from "@/pages/portal/clinic";
+import LogisticsPortal from "@/pages/portal/logistics";
 import { AdminCustomers } from "@/components/admin/customers";
 import { useCustomerMirror } from "@/lib/use-customer-mirror";
 import { AdminAnnouncementBar } from "@/components/admin/announcement-bar";
@@ -467,6 +475,14 @@ function Router() {
       <Route path="/admin/patients/:id" component={AdminPatientDetail} />
       <Route path="/admin/support" component={AdminSupportTickets} />
       <Route path="/admin/support/:id" component={AdminSupportTickets} />
+      {/* Partner management (admin) */}
+      <Route path="/admin/suppliers" component={AdminSuppliers} />
+      <Route path="/admin/clinics" component={AdminClinics} />
+      <Route path="/admin/logistics-partners" component={AdminLogisticsPartners} />
+      {/* Partner portals — standalone, no Clerk requirement */}
+      <Route path="/portal/supplier" component={SupplierPortal} />
+      <Route path="/portal/clinic" component={ClinicPortal} />
+      <Route path="/portal/logistics" component={LogisticsPortal} />
       <Route component={NotFound} />
     </Switch>
   );
