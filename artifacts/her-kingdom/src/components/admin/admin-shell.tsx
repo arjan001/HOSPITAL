@@ -1001,47 +1001,83 @@ export function AdminShell({ children, title }: { children: ReactNode; title: st
 
         {/* ── Main content area ─────────────────────────────────────────── */}
         <main className={`flex-1 min-w-0 max-w-full ${mainOffset} transition-[margin] duration-200`}>
-          <div className="hidden lg:flex items-center justify-between h-14 px-8 border-b border-border sticky top-0 z-30" style={{ background: "#FFFBF5" }}>
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <button
-                type="button"
-                onClick={() => setCollapsed((c) => !c)}
-                className="p-1.5 -ml-1.5 rounded-md hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors"
-                aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-                aria-expanded={!collapsed}
-                title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-              >
-                {collapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
-              </button>
-              <Link href="/admin" className="hover:text-foreground">Admin</Link>
-              <ChevronRight className="h-3 w-3" />
-              <span className="text-foreground font-medium">{title}</span>
-            </div>
-            <div className="flex items-center gap-3">
-              {currentUser && (
-                <span className="text-xs text-muted-foreground hidden xl:inline">
-                  {currentUser.email}
-                </span>
-              )}
-              <NotificationBell audience="admin" />
-              <button
-                type="button"
-                onClick={toggleFullscreen}
-                className="p-1.5 rounded-md hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors"
-                aria-label={fullscreen ? "Exit full screen" : "Enter full screen"}
-                aria-pressed={fullscreen}
-                title={fullscreen ? "Exit full screen" : "Enter full screen"}
-              >
-                {fullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
-              </button>
-              <button
-                type="button"
-                onClick={handleLogout}
-                disabled={loggingOut}
-                className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-              >
-                {loggingOut ? "Signing out..." : "Sign Out"}
-              </button>
+          <div
+            className="hidden lg:flex flex-col sticky top-0 z-30"
+            style={{ background: "#FFFBF5" }}
+          >
+            {/* Wine accent strip along the very top */}
+            <div style={{ height: 3, background: `linear-gradient(90deg, ${S_BG} 0%, #6B0F1A 40%, ${S_ACCENT} 100%)` }} />
+            <div
+              className="flex items-center justify-between h-14 px-6"
+              style={{ borderBottom: "1px solid rgba(61,8,20,0.12)" }}
+            >
+              {/* Left: collapse toggle + breadcrumb */}
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <button
+                  type="button"
+                  onClick={() => setCollapsed((c) => !c)}
+                  className="p-1.5 -ml-1.5 rounded-md hover:bg-secondary transition-colors"
+                  style={{ color: S_BG }}
+                  aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+                  aria-expanded={!collapsed}
+                  title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+                >
+                  {collapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
+                </button>
+                <Link href="/admin" className="hover:text-foreground">Admin</Link>
+                <ChevronRight className="h-3 w-3" />
+                <span className="text-foreground font-medium">{title}</span>
+              </div>
+
+              {/* Right: user chip + tools */}
+              <div className="flex items-center gap-3">
+                <NotificationBell audience="admin" />
+                <button
+                  type="button"
+                  onClick={toggleFullscreen}
+                  className="p-1.5 rounded-md hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors"
+                  aria-label={fullscreen ? "Exit full screen" : "Enter full screen"}
+                  aria-pressed={fullscreen}
+                  title={fullscreen ? "Exit full screen" : "Enter full screen"}
+                >
+                  {fullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+                </button>
+
+                {/* Divider */}
+                <div style={{ width: 1, height: 28, background: "rgba(61,8,20,0.12)" }} />
+
+                {/* User chip */}
+                {currentUser && (
+                  <Link
+                    href="/admin/profile"
+                    className="flex items-center gap-2.5 px-2 py-1.5 rounded-lg transition-colors hover:bg-[rgba(61,8,20,0.06)]"
+                    title="My Profile"
+                  >
+                    <div
+                      className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold select-none flex-shrink-0"
+                      style={{ background: S_BG, color: "white" }}
+                    >
+                      {currentUser.display_name[0].toUpperCase()}
+                    </div>
+                    <div className="hidden xl:block leading-none">
+                      <p className="text-xs font-semibold text-foreground">{currentUser.display_name}</p>
+                      <p className="text-[10px] text-muted-foreground mt-0.5">{currentUser.email}</p>
+                    </div>
+                  </Link>
+                )}
+
+                {/* Sign out */}
+                <button
+                  type="button"
+                  onClick={handleLogout}
+                  disabled={loggingOut}
+                  className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+                  title="Sign Out"
+                >
+                  <LogOut className="h-4 w-4" />
+                  <span className="hidden xl:inline">{loggingOut ? "Signing out…" : "Sign Out"}</span>
+                </button>
+              </div>
             </div>
           </div>
           <div className="p-4 lg:p-8 min-w-0 max-w-full overflow-x-clip">{children}</div>
