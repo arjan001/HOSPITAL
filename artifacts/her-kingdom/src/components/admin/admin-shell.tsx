@@ -764,31 +764,31 @@ export function AdminShell({ children, title }: { children: ReactNode; title: st
         >
           {/* Logo / brand header */}
           <div
-            className={`flex items-center gap-3 ${collapsed ? "justify-center p-3" : "px-5 py-4"}`}
+            className={`flex items-center ${collapsed ? "justify-center p-3" : "px-5 py-4"}`}
             style={{ borderBottom: `1px solid ${S_BORDER}` }}
           >
             {collapsed ? (
-              <Link href="/admin" title="Shaniid RX Admin" className="flex flex-col items-center leading-none gap-0.5">
-                <span className="font-black text-base" style={{ color: "white" }}>S</span>
-                <span className="font-black text-base" style={{ color: S_ACCENT }}>X</span>
+              /* Collapsed: clip the SVG to show just the shield mark */
+              <Link
+                href="/admin"
+                title="Shaniid RX Admin"
+                className="flex-shrink-0 overflow-hidden"
+                style={{ width: 36, height: 32 }}
+              >
+                <img
+                  src="/logo.svg"
+                  alt="Shaniid RX"
+                  style={{ height: 32, width: "auto", filter: "brightness(0) invert(1)", flexShrink: 0, display: "block" }}
+                />
               </Link>
             ) : (
-              <>
-                <div
-                  className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 font-black text-sm select-none"
-                  style={{ background: S_ACCENT, color: "white" }}
-                >
-                  Rx
-                </div>
-                <Link href="/admin" className="min-w-0 block">
-                  <p className="font-black text-[15px] leading-tight truncate" style={{ color: "white" }}>
-                    Shaniid Rx
-                  </p>
-                  <p className="text-[11px] mt-0.5 truncate" style={{ color: S_MUTED }}>
-                    Manage Shaniid Rx Store
-                  </p>
-                </Link>
-              </>
+              <Link href="/admin" className="block flex-shrink-0">
+                <img
+                  src="/logo.svg"
+                  alt="Shaniid RX"
+                  style={{ height: 34, width: "auto", maxWidth: 180, filter: "brightness(0) invert(1)", display: "block" }}
+                />
+              </Link>
             )}
           </div>
 
@@ -920,17 +920,13 @@ export function AdminShell({ children, title }: { children: ReactNode; title: st
                 className="flex items-center justify-between px-5 py-4"
                 style={{ borderBottom: `1px solid ${S_BORDER}` }}
               >
-                <div className="flex items-center gap-3">
-                  <div
-                    className="w-8 h-8 rounded-xl flex items-center justify-center font-black text-sm select-none"
-                    style={{ background: S_ACCENT, color: "white" }}
-                  >
-                    Rx
-                  </div>
-                  <span className="font-black text-[15px]" style={{ color: "white" }}>
-                    Shaniid Rx
-                  </span>
-                </div>
+                <Link href="/admin" className="block flex-shrink-0">
+                  <img
+                    src="/logo.svg"
+                    alt="Shaniid RX"
+                    style={{ height: 32, width: "auto", maxWidth: 160, filter: "brightness(0) invert(1)", display: "block" }}
+                  />
+                </Link>
                 <button
                   type="button"
                   onClick={() => setSidebarOpen(false)}
