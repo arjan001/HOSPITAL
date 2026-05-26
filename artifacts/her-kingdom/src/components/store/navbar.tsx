@@ -73,8 +73,8 @@ export function Navbar() {
   const [location, navigate] = useLocation()
   const { isSignedIn } = useUser()
   const { signOut } = useClerk()
-  const { totalItems, totalPrice, setIsCartOpen } = useCart()
-  const { totalItems: wishlistCount } = useWishlist()
+  const { items: cartItems, totalItems, totalPrice, setIsCartOpen } = useCart()
+  const { items: wishlistItems, totalItems: wishlistCount } = useWishlist()
   const { phoneHref } = useStoreContact()
   const { data: settingsResp } = useSWR<{ settings?: SiteSettings }>("/api/site-data", safeFetcher)
   const settings = settingsResp?.settings || {}
@@ -86,6 +86,8 @@ export function Navbar() {
   const [suggestions, setSuggestions] = useState<Product[]>([])
   const [showSuggestions, setShowSuggestions] = useState(false)
   const [accountOpen, setAccountOpen] = useState(false)
+  const [wishlistOpen, setWishlistOpen] = useState(false)
+  const [cartOpen, setCartOpen] = useState(false)
   const searchRef = useRef<HTMLDivElement>(null)
   const accountRef = useRef<HTMLDivElement>(null)
 
@@ -422,46 +424,219 @@ export function Navbar() {
                 )}
               </div>
 
-              <Link
-                href="/wishlist"
-                className="hidden md:inline-flex flex-col items-center justify-center gap-0.5 transition-opacity hover:opacity-80 w-12"
-                style={{ color: TEXT_WINE }}
-                aria-label={`Wishlist with ${wishlistCount} items`}
+              {/* Wishlist dropdown */}
+              <div
+                className="hidden md:block relative"
+                onMouseEnter={() => setWishlistOpen(true)}
+                onMouseLeave={() => setWishlistOpen(false)}
               >
-                <span className="relative">
-                  <Heart className="h-5 w-5" style={{ color: ACCENT_RED }} fill={wishlistCount > 0 ? ACCENT_RED : "none"} />
-                  {wishlistCount > 0 && (
-                    <span
-                      className="absolute -top-1.5 -right-1.5 flex items-center justify-center rounded-full text-white text-[10px] font-bold min-w-[18px] h-[18px]"
-                      style={{ background: ACCENT_RED }}
-                    >
-                      {wishlistCount}
-                    </span>
-                  )}
-                </span>
-                <span className="text-[11px] font-semibold leading-none">Wishlist</span>
-              </Link>
+                <button
+                  type="button"
+                  className="inline-flex flex-col items-center justify-center gap-0.5 transition-opacity hover:opacity-80 w-12"
+                  style={{ color: TEXT_WINE }}
+                  aria-label={`Wishlist with ${wishlistCount} items`}
+                >
+                  <span className="relative">
+                    <Heart className="h-5 w-5" style={{ color: ACCENT_RED }} fill={wishlistCount > 0 ? ACCENT_RED : "none"} />
+                    {wishlistCount > 0 && (
+                      <span
+                        className="absolute -top-1.5 -right-1.5 flex items-center justify-center rounded-full text-white text-[10px] font-bold min-w-[18px] h-[18px]"
+                        style={{ background: ACCENT_RED }}
+                      >
+                        {wishlistCount}
+                      </span>
+                    )}
+                  </span>
+                  <span className="text-[11px] font-semibold leading-none">Wishlist</span>
+                </button>
 
-              <button
-                type="button"
-                onClick={() => setIsCartOpen(true)}
-                className="hidden md:inline-flex flex-col items-center justify-center gap-0.5 transition-opacity hover:opacity-80 w-12"
-                style={{ color: TEXT_WINE }}
-                aria-label="Open cart"
-              >
-                <span className="relative">
-                  <ShoppingBag className="h-5 w-5" style={{ color: ACCENT_RED }} />
-                  {totalItems > 0 && (
-                    <span
-                      className="absolute -top-1.5 -right-1.5 flex items-center justify-center rounded-full text-white text-[10px] font-bold min-w-[18px] h-[18px]"
-                      style={{ background: ACCENT_RED }}
+                {wishlistOpen && (
+                  <div className="absolute top-full right-0 pt-3 w-[360px] z-50">
+                    <div
+                      className="rounded-2xl overflow-hidden bg-white"
+                      style={{
+                        border: `1px solid ${PILL_BORDER}`,
+                        boxShadow: "0 20px 60px -12px rgba(61,8,20,0.22), 0 6px 16px -6px rgba(61,8,20,0.10)",
+                      }}
                     >
-                      {totalItems}
-                    </span>
-                  )}
-                </span>
-                <span className="text-[11px] font-semibold leading-none">Cart</span>
-              </button>
+                      <div className="px-6 pt-5 pb-4 border-b" style={{ borderColor: "#F2DCC8" }}>
+                        <p className="font-extrabold text-lg leading-tight" style={{ color: TEXT_WINE }}>Wishlist</p>
+                      </div>
+                      {wishlistItems.length === 0 ? (
+                        <div className="px-6 py-8 text-center">
+                          <Heart className="h-8 w-8 mx-auto mb-3 opacity-25" style={{ color: ACCENT_RED }} />
+                          <p className="text-sm font-medium" style={{ color: TEXT_WINE_SOFT }}>Your wishlist is empty</p>
+                          <Link
+                            href="/shop"
+                            onClick={() => setWishlistOpen(false)}
+                            className="mt-3 inline-block text-xs font-semibold"
+                            style={{ color: ACCENT_RED }}
+                          >
+                            Browse products →
+                          </Link>
+                        </div>
+                      ) : (
+                        <>
+                          <div className="divide-y" style={{ borderColor: "#F2DCC8" }}>
+                            {wishlistItems.slice(0, 3).map((p) => (
+                              <Link
+                                key={p.id}
+                                href={`/product/${p.slug}`}
+                                onClick={() => setWishlistOpen(false)}
+                                className="flex items-center gap-3 px-5 py-3 hover:bg-[#FFF9F5] transition-colors"
+                              >
+                                <div className="w-12 h-12 rounded-xl overflow-hidden flex-shrink-0" style={{ background: "#FFF1E6" }}>
+                                  {p.images?.[0] ? (
+                                    <img src={p.images[0]} alt={p.name} className="w-full h-full object-contain p-1" />
+                                  ) : (
+                                    <div className="w-full h-full" style={{ background: "#F2DCC8" }} />
+                                  )}
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-sm font-semibold line-clamp-1" style={{ color: TEXT_WINE }}>{p.name}</p>
+                                  <p className="text-xs font-bold mt-0.5" style={{ color: ACCENT_RED }}>KSh {p.price?.toLocaleString()}</p>
+                                </div>
+                              </Link>
+                            ))}
+                            {wishlistItems.length > 3 && (
+                              <p className="px-5 py-2 text-xs text-center" style={{ color: "#888" }}>+{wishlistItems.length - 3} more item{wishlistItems.length - 3 > 1 ? "s" : ""}</p>
+                            )}
+                          </div>
+                          <div className="px-5 pb-5 pt-3">
+                            <Link
+                              href="/wishlist"
+                              onClick={() => setWishlistOpen(false)}
+                              className="w-full h-11 rounded-full text-white font-semibold text-sm inline-flex items-center justify-center gap-2 transition-opacity hover:opacity-90"
+                              style={{
+                                background: `linear-gradient(135deg, ${ACCENT_ORANGE} 0%, ${ACCENT_RED} 100%)`,
+                                boxShadow: "0 6px 18px -6px rgba(185,28,28,0.45)",
+                              }}
+                            >
+                              View All Wishlist ({wishlistCount})
+                              <ArrowRight className="h-4 w-4" />
+                            </Link>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Cart dropdown */}
+              <div
+                className="hidden md:block relative"
+                onMouseEnter={() => setCartOpen(true)}
+                onMouseLeave={() => setCartOpen(false)}
+              >
+                <button
+                  type="button"
+                  onClick={() => { setCartOpen(false); setIsCartOpen(true) }}
+                  className="inline-flex flex-col items-center justify-center gap-0.5 transition-opacity hover:opacity-80 w-12"
+                  style={{ color: TEXT_WINE }}
+                  aria-label="Open cart"
+                >
+                  <span className="relative">
+                    <ShoppingBag className="h-5 w-5" style={{ color: ACCENT_RED }} />
+                    {totalItems > 0 && (
+                      <span
+                        className="absolute -top-1.5 -right-1.5 flex items-center justify-center rounded-full text-white text-[10px] font-bold min-w-[18px] h-[18px]"
+                        style={{ background: ACCENT_RED }}
+                      >
+                        {totalItems}
+                      </span>
+                    )}
+                  </span>
+                  <span className="text-[11px] font-semibold leading-none">Cart</span>
+                </button>
+
+                {cartOpen && (
+                  <div className="absolute top-full right-0 pt-3 w-[360px] z-50">
+                    <div
+                      className="rounded-2xl overflow-hidden bg-white"
+                      style={{
+                        border: `1px solid ${PILL_BORDER}`,
+                        boxShadow: "0 20px 60px -12px rgba(61,8,20,0.22), 0 6px 16px -6px rgba(61,8,20,0.10)",
+                      }}
+                    >
+                      <div className="px-6 pt-5 pb-4 border-b flex items-center justify-between" style={{ borderColor: "#F2DCC8" }}>
+                        <p className="font-extrabold text-lg leading-tight" style={{ color: TEXT_WINE }}>My Cart</p>
+                        {totalItems > 0 && (
+                          <span className="text-xs font-bold px-2.5 py-1 rounded-full" style={{ background: "#FFF1E6", color: ACCENT_RED }}>
+                            {totalItems} item{totalItems > 1 ? "s" : ""}
+                          </span>
+                        )}
+                      </div>
+                      {cartItems.length === 0 ? (
+                        <div className="px-6 py-8 text-center">
+                          <ShoppingBag className="h-8 w-8 mx-auto mb-3 opacity-25" style={{ color: ACCENT_RED }} />
+                          <p className="text-sm font-medium" style={{ color: TEXT_WINE_SOFT }}>Your cart is empty</p>
+                          <Link
+                            href="/shop"
+                            onClick={() => setCartOpen(false)}
+                            className="mt-3 inline-block text-xs font-semibold"
+                            style={{ color: ACCENT_RED }}
+                          >
+                            Start shopping →
+                          </Link>
+                        </div>
+                      ) : (
+                        <>
+                          <div className="divide-y" style={{ borderColor: "#F2DCC8" }}>
+                            {cartItems.slice(0, 3).map((item) => (
+                              <div key={item.product.id} className="flex items-center gap-3 px-5 py-3">
+                                <div className="w-12 h-12 rounded-xl overflow-hidden flex-shrink-0" style={{ background: "#FFF1E6" }}>
+                                  {item.product.images?.[0] ? (
+                                    <img src={item.product.images[0]} alt={item.product.name} className="w-full h-full object-contain p-1" />
+                                  ) : (
+                                    <div className="w-full h-full" style={{ background: "#F2DCC8" }} />
+                                  )}
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-sm font-semibold line-clamp-1" style={{ color: TEXT_WINE }}>{item.product.name}</p>
+                                  <p className="text-xs mt-0.5" style={{ color: "#888" }}>Qty: {item.quantity}</p>
+                                </div>
+                                <p className="text-sm font-bold flex-shrink-0" style={{ color: ACCENT_RED }}>
+                                  KSh {(item.product.price * item.quantity).toLocaleString()}
+                                </p>
+                              </div>
+                            ))}
+                            {cartItems.length > 3 && (
+                              <p className="px-5 py-2 text-xs text-center" style={{ color: "#888" }}>+{cartItems.length - 3} more item{cartItems.length - 3 > 1 ? "s" : ""}</p>
+                            )}
+                          </div>
+                          <div className="px-6 py-3 border-t flex items-center justify-between" style={{ borderColor: "#F2DCC8" }}>
+                            <p className="text-sm font-semibold" style={{ color: TEXT_WINE }}>Total</p>
+                            <p className="text-base font-extrabold" style={{ color: TEXT_WINE }}>KSh {totalPrice.toLocaleString()}</p>
+                          </div>
+                          <div className="px-5 pb-5 pt-2 flex flex-col gap-2">
+                            <button
+                              type="button"
+                              onClick={() => { setCartOpen(false); setIsCartOpen(true) }}
+                              className="w-full h-11 rounded-full font-semibold text-sm inline-flex items-center justify-center gap-2 transition-colors hover:bg-[#FFF6EE] border"
+                              style={{ borderColor: PILL_BORDER, color: TEXT_WINE, background: "#fff" }}
+                            >
+                              View Cart
+                            </button>
+                            <Link
+                              href="/checkout"
+                              onClick={() => setCartOpen(false)}
+                              className="w-full h-11 rounded-full text-white font-semibold text-sm inline-flex items-center justify-center gap-2 transition-opacity hover:opacity-90"
+                              style={{
+                                background: `linear-gradient(135deg, ${ACCENT_ORANGE} 0%, ${ACCENT_RED} 100%)`,
+                                boxShadow: "0 6px 18px -6px rgba(185,28,28,0.45)",
+                              }}
+                            >
+                              Checkout
+                              <ArrowRight className="h-4 w-4" />
+                            </Link>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
 
               {/* Mobile wishlist + cart icons */}
               <Link

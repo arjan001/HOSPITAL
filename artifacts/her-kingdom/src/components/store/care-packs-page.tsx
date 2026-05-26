@@ -5,7 +5,7 @@ import { Link } from "wouter"
 import { Seo, organizationJsonLd, websiteJsonLd, breadcrumbJsonLd, faqJsonLd, productJsonLd } from "@/components/seo"
 import {
   ChevronDown, ChevronUp, ChevronLeft, ChevronRight,
-  Heart, ShoppingBag, Check,
+  Heart, ShoppingBag, Check, Eye,
   Activity, Stethoscope, Package2, Zap, Users, ShieldCheck, Cpu,
 } from "lucide-react"
 import { TopBar } from "./top-bar"
@@ -154,25 +154,36 @@ function PackCard({ packDef, product }: { packDef: PackDef; product: Product | n
 
       {/* Image area */}
       <div className="p-3.5 pb-0">
-        <Link href={product ? `/product/${product.slug}` : `/shop?tag=${packDef.slug}`}>
-          <div
-            className="w-full aspect-square rounded-[14px] flex items-center justify-center overflow-hidden"
-            style={{ background: product ? "#FFF8F0" : `radial-gradient(circle, ${GOLDEN}88 0%, ${GOLDEN} 100%)` }}
+        <div className="relative group">
+          <Link href={product ? `/product/${product.slug}` : `/shop?tag=${packDef.slug}`}>
+            <div
+              className="w-full aspect-square rounded-[14px] flex items-center justify-center overflow-hidden"
+              style={{ background: product ? "#FFF8F0" : `radial-gradient(circle, ${GOLDEN}88 0%, ${GOLDEN} 100%)` }}
+            >
+              {product?.images?.[0] ? (
+                <img
+                  src={product.images[0]}
+                  alt={packDef.name}
+                  className="w-full h-full object-contain p-2"
+                />
+              ) : (
+                <div
+                  className="w-[60%] h-[60%] rounded-xl"
+                  style={{ background: GOLDEN }}
+                />
+              )}
+            </div>
+          </Link>
+          {/* Eye icon — view product page */}
+          <Link
+            href={product ? `/product/${product.slug}` : `/shop?tag=${packDef.slug}`}
+            aria-label={`View ${packDef.name}`}
+            className="absolute top-2 right-2 w-7 h-7 rounded-full flex items-center justify-center text-white shadow-sm opacity-0 group-hover:opacity-100 transition-opacity"
+            style={{ background: ACCENT_RED }}
           >
-            {product?.images?.[0] ? (
-              <img
-                src={product.images[0]}
-                alt={packDef.name}
-                className="w-full h-full object-contain p-2"
-              />
-            ) : (
-              <div
-                className="w-[60%] h-[60%] rounded-xl"
-                style={{ background: GOLDEN }}
-              />
-            )}
-          </div>
-        </Link>
+            <Eye className="h-3.5 w-3.5" />
+          </Link>
+        </div>
       </div>
 
       {/* Info */}
@@ -213,10 +224,21 @@ function PackCard({ packDef, product }: { packDef: PackDef; product: Product | n
         ) : (
           <Link
             href={`/shop?tag=${packDef.slug}`}
-            className="mt-auto pt-2.5 block w-full text-center h-8 leading-8 rounded-full text-[11px] font-bold transition-all"
+            className="mt-auto pt-2.5 w-full flex items-center justify-center gap-1 h-8 rounded-full text-[11px] font-bold transition-all"
             style={{ background: "#F2D4C4", color: WINE }}
+            onMouseEnter={(e) => {
+              const el = e.currentTarget as HTMLAnchorElement
+              el.style.background = `linear-gradient(135deg, ${ACCENT_ORANGE} 0%, ${ACCENT_RED} 100%)`
+              el.style.color = "white"
+            }}
+            onMouseLeave={(e) => {
+              const el = e.currentTarget as HTMLAnchorElement
+              el.style.background = "#F2D4C4"
+              el.style.color = WINE
+            }}
           >
-            Shop Now
+            <ShoppingBag className="h-3 w-3" />
+            Add To Cart
           </Link>
         )}
       </div>
