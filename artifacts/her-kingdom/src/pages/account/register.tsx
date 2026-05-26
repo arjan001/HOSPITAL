@@ -338,8 +338,8 @@ export default function AccountRegisterPage() {
           </form>
         ) : (
           <form onSubmit={handleSubmit} className="px-8 py-7 space-y-5">
-            <div className="grid grid-cols-2 gap-4">
-              <Field label="Full Name" required error={errors.firstName}>
+            <div className="grid grid-cols-2 gap-4 items-start">
+              <Field label="First Name" required error={errors.firstName}>
                 <InputBox type="text" value={form.firstName} onChange={set("firstName")} placeholder="e.g. Shakila" style={errors.firstName ? { borderColor: ACCENT_RED } : {}} />
               </Field>
               <Field label="Last Name" required error={errors.lastName}>
@@ -361,7 +361,7 @@ export default function AccountRegisterPage() {
               </div>
             </Field>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-2 gap-4 items-start">
               <Field label="Password" required error={errors.password}>
                 <div className="relative">
                   <InputBox type={showPw ? "text" : "password"} value={form.password} onChange={set("password")} placeholder="Min 8 characters" className="pr-10" style={errors.password ? { borderColor: ACCENT_RED } : {}} />
