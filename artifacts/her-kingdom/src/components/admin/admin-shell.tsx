@@ -68,6 +68,18 @@ const COLLAPSE_KEY = "shaniidrx.admin.sidebarCollapsed"
 const EXPANDED_KEY = "shaniidrx.admin.sidebarExpanded"
 const SCROLL_KEY = "shaniidrx.admin.sidebarScrollTop"
 
+// ── Wine sidebar palette ───────────────────────────────────────────────────
+const S_BG         = "#3D0814"          // sidebar background
+const S_BG_TOP     = "#4D0F1E"          // gradient top (slightly lighter)
+const S_BORDER     = "rgba(255,255,255,0.10)"
+const S_TEXT       = "rgba(255,255,255,0.88)"
+const S_MUTED      = "rgba(255,255,255,0.45)"
+const S_HOVER_BG   = "rgba(255,255,255,0.07)"
+const S_ACTIVE_BG  = "rgba(255,255,255,0.14)"
+const S_SEARCH_BG  = "rgba(255,255,255,0.09)"
+const S_ACCENT     = "#F97316"          // orange accent (logo colour)
+const S_ACTIVE_BAR = "#F97316"          // left-edge bar on active leaf
+
 type NavNode = {
   label: string
   href?: string
@@ -273,19 +285,34 @@ function NavSearch({ value, onChange }: { value: string; onChange: (v: string) =
   return (
     <div className="px-4 pt-3 pb-2">
       <div className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 pointer-events-none" style={{ color: S_MUTED }} />
         <input
           type="text"
           value={value}
           onChange={(e) => onChange(e.target.value)}
           placeholder="Search modules..."
-          className="w-full h-9 pl-8 pr-8 text-sm rounded-md border border-border bg-secondary/40 focus:bg-background focus:outline-none focus:border-foreground/40 placeholder:text-muted-foreground"
+          className="w-full h-9 pl-8 pr-8 text-sm rounded-lg outline-none"
+          style={{
+            background: S_SEARCH_BG,
+            border: `1px solid ${S_BORDER}`,
+            color: S_TEXT,
+            caretColor: S_ACCENT,
+          }}
+          onFocus={(e) => {
+            e.currentTarget.style.borderColor = "rgba(249,115,22,0.5)"
+            e.currentTarget.style.boxShadow = "0 0 0 2px rgba(249,115,22,0.18)"
+          }}
+          onBlur={(e) => {
+            e.currentTarget.style.borderColor = S_BORDER
+            e.currentTarget.style.boxShadow = "none"
+          }}
         />
         {value && (
           <button
             type="button"
             onClick={() => onChange("")}
-            className="absolute right-2 top-1/2 -translate-y-1/2 grid place-items-center w-5 h-5 rounded-full text-muted-foreground hover:bg-secondary hover:text-foreground"
+            className="absolute right-2 top-1/2 -translate-y-1/2 grid place-items-center w-5 h-5 rounded-full transition-colors"
+            style={{ color: S_MUTED }}
             aria-label="Clear search"
           >
             <X className="h-3 w-3" />
@@ -315,23 +342,40 @@ function NavLeaf({
   depth: number
   onClick?: () => void
 }) {
-  const padX = collapsed ? "px-0 mx-2 justify-center" : depth === 0 ? "px-6" : "pl-10 pr-4"
+  const padX = collapsed ? "px-0 mx-2 justify-center" : depth === 0 ? "px-3" : "pl-9 pr-3"
   return (
     <Link
       href={item.href || "#"}
       onClick={onClick}
       aria-label={collapsed ? `${item.label}${showBadge ? ` (${pendingOrders} pending)` : ""}` : undefined}
-      className={`group/nav relative flex items-center gap-3 ${padX} py-2 text-sm transition-colors rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-foreground/40 ${
+      className={`group/nav relative flex items-center gap-3 ${padX} py-2 mx-2 text-sm transition-all rounded-lg focus-visible:outline-none`}
+      style={
         isActive
-          ? "bg-foreground text-background font-medium"
-          : "text-muted-foreground hover:text-foreground hover:bg-secondary"
-      }`}
-      onMouseEnter={collapsed ? (e) => showNavTip(e.currentTarget, item.label, showBadge ? pendingOrders : 0, isActive) : undefined}
-      onMouseLeave={collapsed ? hideNavTip : undefined}
+          ? {
+              background: S_ACTIVE_BG,
+              color: "white",
+              fontWeight: 600,
+              borderLeft: depth === 0 && !collapsed ? `3px solid ${S_ACTIVE_BAR}` : undefined,
+              paddingLeft: depth === 0 && !collapsed ? "calc(0.75rem - 3px)" : undefined,
+            }
+          : { color: S_TEXT }
+      }
+      onMouseEnter={(e) => {
+        if (!isActive) (e.currentTarget as HTMLElement).style.background = S_HOVER_BG
+        if (collapsed) showNavTip(e.currentTarget as HTMLElement, item.label, showBadge ? pendingOrders : 0, isActive)
+      }}
+      onMouseLeave={(e) => {
+        if (!isActive) (e.currentTarget as HTMLElement).style.background = "transparent"
+        if (collapsed) hideNavTip()
+      }}
       onFocus={collapsed ? (e) => showNavTip(e.currentTarget, item.label, showBadge ? pendingOrders : 0, isActive) : undefined}
       onBlur={collapsed ? hideNavTip : undefined}
     >
-      <item.icon className="h-4 w-4 flex-shrink-0" aria-hidden="true" />
+      <item.icon
+        className="h-4 w-4 flex-shrink-0"
+        aria-hidden="true"
+        style={{ color: isActive ? S_ACCENT : S_TEXT }}
+      />
       {!collapsed && <span className="flex-1 truncate">{item.label}</span>}
       {showBadge && !collapsed && (
         <span className="flex items-center justify-center min-w-[20px] h-5 px-1.5 text-[10px] font-bold bg-red-500 text-white rounded-full animate-pulse">
@@ -385,11 +429,12 @@ function NavTipPortal() {
       role="tooltip"
     >
       <div
-        className="relative flex items-center gap-2 pl-2.5 pr-3 py-1.5 rounded-lg bg-foreground text-background text-xs font-semibold shadow-lg shadow-black/20 whitespace-nowrap animate-[nav-tip-in_140ms_ease-out]"
+        className="relative flex items-center gap-2 pl-2.5 pr-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap animate-[nav-tip-in_140ms_ease-out]"
+        style={{ background: S_BG_TOP, color: "white", boxShadow: "0 8px 24px -6px rgba(0,0,0,0.5)" }}
       >
         <span
           className="w-1.5 h-1.5 rounded-full"
-          style={{ background: tip.active ? "#F97316" : "rgba(255,255,255,0.55)" }}
+          style={{ background: tip.active ? S_ACCENT : S_MUTED }}
           aria-hidden="true"
         />
         <span>{tip.label}</span>
@@ -404,8 +449,7 @@ function NavTipPortal() {
           style={{
             borderTop: "5px solid transparent",
             borderBottom: "5px solid transparent",
-            borderRight: "6px solid currentColor",
-            color: "var(--foreground, #0a0a0a)",
+            borderRight: `6px solid ${S_BG_TOP}`,
           }}
         />
       </div>
@@ -465,20 +509,20 @@ function NavParent({
         type="button"
         onClick={onToggle}
         aria-expanded={expanded}
-        className={`w-full flex items-center gap-3 px-6 py-2 text-sm rounded-md transition-colors ${
-          active
-            ? "text-foreground font-semibold"
-            : "text-muted-foreground hover:text-foreground hover:bg-secondary"
-        }`}
+        className="w-full flex items-center gap-3 px-3 mx-2 py-2 text-sm rounded-lg transition-all"
+        style={{ color: active ? "white" : S_TEXT, fontWeight: active ? 600 : undefined, width: "calc(100% - 1rem)" }}
+        onMouseEnter={(e) => { if (!active) (e.currentTarget as HTMLElement).style.background = S_HOVER_BG }}
+        onMouseLeave={(e) => { if (!active) (e.currentTarget as HTMLElement).style.background = "transparent" }}
       >
-        <item.icon className="h-4 w-4 flex-shrink-0" />
+        <item.icon className="h-4 w-4 flex-shrink-0" style={{ color: active ? S_ACCENT : S_TEXT }} />
         <span className="flex-1 truncate text-left">{item.label}</span>
         <ChevronDown
           className={`h-3.5 w-3.5 transition-transform ${expanded ? "rotate-0" : "-rotate-90"}`}
+          style={{ color: S_MUTED }}
         />
       </button>
       {expanded && (
-        <div className="mt-0.5 space-y-0.5 border-l border-border ml-[1.875rem]">
+        <div className="mt-0.5 space-y-0.5 ml-5" style={{ borderLeft: `1px solid ${S_BORDER}` }}>
           {item.children?.map((c) => (
             <NavLeaf
               key={c.href}
@@ -507,14 +551,17 @@ function renderGroupedNav(
   onClick?: () => void,
 ) {
   return groups.map((g, gi) => (
-    <div key={g.name || gi} className={gi === 0 ? "" : "mt-2"}>
+    <div key={g.name || gi} className={gi === 0 ? "" : "mt-1"}>
       {g.name && !collapsed && (
-        <div className="px-6 pt-3 pb-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70">
+        <div
+          className="px-5 pt-3 pb-1 text-[10px] font-bold uppercase"
+          style={{ color: S_MUTED, letterSpacing: "0.12em" }}
+        >
           {g.name}
         </div>
       )}
       {g.name && collapsed && gi !== 0 && (
-        <div className="my-2 mx-3 border-t border-border" />
+        <div className="my-2 mx-3" style={{ borderTop: `1px solid ${S_BORDER}` }} />
       )}
       {g.items.map((item) =>
         item.children && item.children.length > 0 ? (
@@ -684,13 +731,14 @@ export function AdminShell({ children, title }: { children: ReactNode; title: st
 
   return (
     <div className="min-h-screen text-foreground" style={{ background: "#FFFBF5" }}>
+      {/* Mobile top bar */}
       <header className="lg:hidden flex items-center justify-between h-14 px-4 border-b border-border sticky top-0 z-50" style={{ background: "#FFFBF5" }}>
         <button type="button" onClick={() => setSidebarOpen(true)}>
           <Menu className="h-5 w-5" />
           <span className="sr-only">Open menu</span>
         </button>
-        <Link href="/admin" className="font-serif text-lg font-bold">
-          Shaniid RX Admin
+        <Link href="/admin" className="font-black text-base">
+          Shaniid <span style={{ color: S_ACCENT }}>Rx</span>
         </Link>
         <Link href="/" className="text-xs text-muted-foreground hover:text-foreground">
           View Store
@@ -698,29 +746,60 @@ export function AdminShell({ children, title }: { children: ReactNode; title: st
       </header>
 
       <div className="flex w-full overflow-x-hidden">
-        <aside className={`hidden lg:flex flex-col ${sidebarWidth} h-screen border-r border-border fixed inset-y-0 left-0 transition-[width] duration-200`} style={{ background: "#FFFBF5" }}>
-          <div className={`${collapsed ? "p-3" : "p-6"} border-b border-border flex items-center ${collapsed ? "justify-center" : "justify-between"} gap-2`}>
+
+        {/* ── Desktop sidebar ───────────────────────────────────────────── */}
+        <aside
+          className={`hidden lg:flex flex-col ${sidebarWidth} h-screen fixed inset-y-0 left-0 transition-[width] duration-200`}
+          style={{
+            background: `linear-gradient(180deg, ${S_BG_TOP} 0%, ${S_BG} 100%)`,
+            borderRight: `1px solid ${S_BORDER}`,
+          }}
+        >
+          {/* Logo / brand header */}
+          <div
+            className={`flex items-center gap-3 ${collapsed ? "justify-center p-3" : "px-5 py-4"}`}
+            style={{ borderBottom: `1px solid ${S_BORDER}` }}
+          >
             {collapsed ? (
-              <Link href="/admin" className="font-serif text-lg font-bold" title="Shaniid RX Admin">
-                <span style={{ color: "#3D0814" }}>S</span>
-                <span style={{ color: "#F97316" }}>X</span>
+              <Link href="/admin" title="Shaniid RX Admin" className="flex flex-col items-center leading-none gap-0.5">
+                <span className="font-black text-base" style={{ color: "white" }}>S</span>
+                <span className="font-black text-base" style={{ color: S_ACCENT }}>X</span>
               </Link>
             ) : (
-              <div className="min-w-0">
-                <Link href="/admin" className="font-serif text-xl font-bold block truncate">
-                  Shaniid RX Admin
+              <>
+                <div
+                  className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 font-black text-sm select-none"
+                  style={{ background: S_ACCENT, color: "white" }}
+                >
+                  Rx
+                </div>
+                <Link href="/admin" className="min-w-0 block">
+                  <p className="font-black text-[15px] leading-tight truncate" style={{ color: "white" }}>
+                    Shaniid Rx
+                  </p>
+                  <p className="text-[11px] mt-0.5 truncate" style={{ color: S_MUTED }}>
+                    Manage Shaniid Rx Store
+                  </p>
                 </Link>
-                <p className="text-xs text-muted-foreground mt-1">Manage Shaniid RX Store</p>
-              </div>
+              </>
             )}
           </div>
 
           {!collapsed && <NavSearch value={search} onChange={setSearch} />}
 
-          <nav ref={navRef} className="flex-1 pb-3 overflow-y-auto overflow-x-hidden">
+          <nav
+            ref={navRef}
+            className="flex-1 pb-3 overflow-y-auto overflow-x-hidden wine-sidebar-scroll"
+          >
+            <style>{`
+              .wine-sidebar-scroll::-webkit-scrollbar { width: 3px; }
+              .wine-sidebar-scroll::-webkit-scrollbar-track { background: transparent; }
+              .wine-sidebar-scroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.18); border-radius: 99px; }
+              .wine-sidebar-scroll::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.32); }
+            `}</style>
             {filteredGroups.length === 0 && !collapsed ? (
-              <p className="px-6 py-6 text-xs text-muted-foreground">
-                No modules match “{search}”.
+              <p className="px-5 py-6 text-xs" style={{ color: S_MUTED }}>
+                No modules match "{search}".
               </p>
             ) : (
               renderGroupedNav(
@@ -734,35 +813,53 @@ export function AdminShell({ children, title }: { children: ReactNode; title: st
             )}
           </nav>
 
-          <div className={`border-t border-border ${collapsed ? "p-2" : "p-4"} space-y-3`}>
+          {/* Bottom: user profile + actions */}
+          <div
+            className={`${collapsed ? "p-2" : "px-4 py-4"} space-y-2`}
+            style={{ borderTop: `1px solid ${S_BORDER}` }}
+          >
             {currentUser && !collapsed && (
               <Link
                 href="/admin/profile"
-                className="flex items-center gap-3 -mx-1 px-1 py-1 rounded-md hover:bg-secondary transition-colors"
+                className="flex items-center gap-3 px-2 py-2 rounded-lg transition-all"
                 title="My Profile"
+                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = S_HOVER_BG }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent" }}
               >
-                <div className="w-8 h-8 rounded-full bg-secondary flex items-center justify-center flex-shrink-0">
-                  <UserCircle className="h-4 w-4 text-muted-foreground" />
+                <div
+                  className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 font-bold text-sm select-none"
+                  style={{ background: S_ACCENT, color: "white" }}
+                >
+                  {currentUser.display_name[0].toUpperCase()}
                 </div>
                 <div className="min-w-0 flex-1">
-                  <p className="text-xs font-medium truncate">{currentUser.display_name}</p>
-                  <p className="text-[10px] text-muted-foreground truncate">{roleBadge}</p>
+                  <p className="text-xs font-semibold truncate" style={{ color: "white" }}>{currentUser.display_name}</p>
+                  <p className="text-[10px] truncate" style={{ color: S_MUTED }}>{roleBadge}</p>
                 </div>
               </Link>
             )}
             {!collapsed && (
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-3 px-2">
                 <button
                   type="button"
                   onClick={handleLogout}
                   disabled={loggingOut}
-                  className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
+                  className="flex items-center gap-1.5 text-xs transition-colors"
+                  style={{ color: S_MUTED }}
+                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = "white" }}
+                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = S_MUTED }}
                 >
-                  <LogOut className="h-4 w-4" />
+                  <LogOut className="h-3.5 w-3.5" />
                   {loggingOut ? "Signing out..." : "Sign Out"}
                 </button>
-                <span className="text-border">|</span>
-                <Link href="/" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
+                <span style={{ color: S_BORDER }}>|</span>
+                <Link
+                  href="/"
+                  className="text-xs transition-colors"
+                  style={{ color: S_MUTED }}
+                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = "white" }}
+                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = S_MUTED }}
+                >
                   View Store
                 </Link>
               </div>
@@ -770,7 +867,16 @@ export function AdminShell({ children, title }: { children: ReactNode; title: st
             <button
               type="button"
               onClick={() => setCollapsed((c) => !c)}
-              className={`w-full flex items-center ${collapsed ? "justify-center" : "justify-between"} gap-2 text-xs text-muted-foreground hover:text-foreground hover:bg-secondary rounded-md px-2 py-2 transition-colors`}
+              className={`w-full flex items-center ${collapsed ? "justify-center" : "justify-between"} gap-2 text-xs rounded-lg px-2 py-2 transition-all`}
+              style={{ color: S_MUTED }}
+              onMouseEnter={(e) => {
+                ;(e.currentTarget as HTMLElement).style.background = S_HOVER_BG
+                ;(e.currentTarget as HTMLElement).style.color = "white"
+              }}
+              onMouseLeave={(e) => {
+                ;(e.currentTarget as HTMLElement).style.background = "transparent"
+                ;(e.currentTarget as HTMLElement).style.color = S_MUTED
+              }}
               aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
               aria-expanded={!collapsed}
             >
@@ -786,6 +892,7 @@ export function AdminShell({ children, title }: { children: ReactNode; title: st
           </div>
         </aside>
 
+        {/* ── Mobile drawer ─────────────────────────────────────────────── */}
         {sidebarOpen && (
           <>
             <div
@@ -795,31 +902,65 @@ export function AdminShell({ children, title }: { children: ReactNode; title: st
               tabIndex={-1}
               aria-label="Close sidebar"
             />
-            <aside className="fixed inset-y-0 left-0 w-72 z-50 lg:hidden flex flex-col" style={{ background: "#FFFBF5" }}>
-              <div className="flex items-center justify-between p-4 border-b border-border">
-                <Link href="/admin" className="font-serif text-lg font-bold">
-                  Shaniid RX Admin
-                </Link>
-                <button type="button" onClick={() => setSidebarOpen(false)}>
+            <aside
+              className="fixed inset-y-0 left-0 w-72 z-50 lg:hidden flex flex-col"
+              style={{
+                background: `linear-gradient(180deg, ${S_BG_TOP} 0%, ${S_BG} 100%)`,
+              }}
+            >
+              {/* Mobile logo header */}
+              <div
+                className="flex items-center justify-between px-5 py-4"
+                style={{ borderBottom: `1px solid ${S_BORDER}` }}
+              >
+                <div className="flex items-center gap-3">
+                  <div
+                    className="w-8 h-8 rounded-xl flex items-center justify-center font-black text-sm select-none"
+                    style={{ background: S_ACCENT, color: "white" }}
+                  >
+                    Rx
+                  </div>
+                  <span className="font-black text-[15px]" style={{ color: "white" }}>
+                    Shaniid Rx
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSidebarOpen(false)}
+                  className="rounded-lg p-1.5 transition-colors"
+                  style={{ color: S_MUTED }}
+                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = "white" }}
+                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = S_MUTED }}
+                >
                   <X className="h-5 w-5" />
                 </button>
               </div>
+
+              {/* Mobile user row */}
               {currentUser && (
-                <div className="px-4 py-3 border-b border-border flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-full bg-secondary flex items-center justify-center flex-shrink-0">
-                    <UserCircle className="h-5 w-5 text-muted-foreground" />
+                <div
+                  className="px-4 py-3 flex items-center gap-3"
+                  style={{ borderBottom: `1px solid ${S_BORDER}` }}
+                >
+                  <div
+                    className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 font-bold text-sm select-none"
+                    style={{ background: S_ACCENT, color: "white" }}
+                  >
+                    {currentUser.display_name[0].toUpperCase()}
                   </div>
                   <div className="min-w-0">
-                    <p className="text-sm font-medium truncate">{currentUser.display_name}</p>
-                    <p className="text-xs text-muted-foreground">{roleBadge}</p>
+                    <p className="text-sm font-semibold truncate" style={{ color: "white" }}>{currentUser.display_name}</p>
+                    <p className="text-xs" style={{ color: S_MUTED }}>{roleBadge}</p>
                   </div>
                 </div>
               )}
+
               <NavSearch value={search} onChange={setSearch} />
-              <nav className="flex-1 pb-3 overflow-y-auto">
+
+              <nav className="flex-1 pb-3 overflow-y-auto wine-sidebar-scroll">
                 {filteredGroups.length === 0 ? (
-                  <p className="px-6 py-6 text-xs text-muted-foreground">
-                    No modules match “{search}”.
+                  <p className="px-5 py-6 text-xs" style={{ color: S_MUTED }}>
+                    No modules match "{search}".
                   </p>
                 ) : (
                   renderGroupedNav(
@@ -833,12 +974,19 @@ export function AdminShell({ children, title }: { children: ReactNode; title: st
                   )
                 )}
               </nav>
-              <div className="p-4 border-t border-border flex items-center gap-4">
+
+              <div
+                className="p-4 flex items-center gap-4"
+                style={{ borderTop: `1px solid ${S_BORDER}` }}
+              >
                 <button
                   type="button"
                   onClick={handleLogout}
                   disabled={loggingOut}
-                  className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"
+                  className="flex items-center gap-2 text-sm transition-colors"
+                  style={{ color: S_MUTED }}
+                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = "white" }}
+                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = S_MUTED }}
                 >
                   <LogOut className="h-4 w-4" />
                   {loggingOut ? "Signing out..." : "Sign Out"}
@@ -848,6 +996,7 @@ export function AdminShell({ children, title }: { children: ReactNode; title: st
           </>
         )}
 
+        {/* ── Main content area ─────────────────────────────────────────── */}
         <main className={`flex-1 min-w-0 max-w-full ${mainOffset} transition-[margin] duration-200`}>
           <div className="hidden lg:flex items-center justify-between h-14 px-8 border-b border-border sticky top-0 z-30" style={{ background: "#FFFBF5" }}>
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
