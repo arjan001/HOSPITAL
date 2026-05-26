@@ -1,3 +1,26 @@
+/**
+ * Addresses module — customer delivery address book.
+ *
+ * Routes (all scoped to the session cookie / req.sessionId):
+ *   GET    /api/v2/me/addresses          — list all addresses for the session
+ *   POST   /api/v2/me/addresses          — create a new address
+ *   PUT    /api/v2/me/addresses/:id      — update a specific address
+ *   DELETE /api/v2/me/addresses/:id      — remove a specific address
+ *
+ * Data model:
+ *   AccountAddress[] per sessionId stored in InMemoryRepository<AccountAddress>.
+ *   When a new address is created with isDefault=true, all other addresses for
+ *   that session are automatically flipped to isDefault=false.
+ *
+ * Postgres swap:
+ *   Replace `new InMemoryRepository<AccountAddress>()` in AddressesService
+ *   with a Drizzle-backed implementation against the `addresses` table.
+ *   No controller changes needed.
+ *
+ * Note on @Inject(AddressesService):
+ *   tsx/esbuild does not emit emitDecoratorMetadata. All injected dependencies
+ *   MUST use explicit @Inject(Token) — this is a project-wide rule.
+ */
 import {
   Body,
   Controller,

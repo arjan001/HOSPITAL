@@ -1,3 +1,33 @@
+/**
+ * AdminCms module — generic key-value CMS store.
+ *
+ * Routes:
+ *   GET    /api/v2/admin/cms/:key   — retrieve a CMS document by key
+ *   PUT    /api/v2/admin/cms/:key   — upsert a CMS document
+ *   DELETE /api/v2/admin/cms/:key   — remove a CMS document
+ *
+ * This module is the server-side counterpart to `her-kingdom/src/lib/cms-store.ts`.
+ * The storefront's cmsStore:
+ *   1. Returns localStorage snapshot immediately (zero-latency UI).
+ *   2. GET /api/v2/admin/cms/:key in the background to hydrate from the server.
+ *   3. PUT /api/v2/admin/cms/:key after every admin write (best-effort).
+ *
+ * Keys that power admin modules (non-exhaustive):
+ *   banners, hero-banners, categories, popup-offer, website-settings,
+ *   footer, custom-pages, message-templates, delivery-locations, …
+ *
+ * Local-only keys (never hit this endpoint — see cms-store.ts):
+ *   audit-log, user-*, customer-*
+ *
+ * Postgres swap:
+ *   Replace the in-memory `Map<key, unknown>` in CmsService with a
+ *   Drizzle `upsert` against an `admin_cms (key TEXT PRIMARY KEY, value JSONB)`
+ *   table. No client changes needed — the storefront's fetch URLs are identical.
+ *
+ * Note on @Inject(CmsService):
+ *   tsx/esbuild does not emit emitDecoratorMetadata. Explicit @Inject(Token)
+ *   is required on every controller constructor — project-wide rule.
+ */
 import {
   Body,
   Controller,

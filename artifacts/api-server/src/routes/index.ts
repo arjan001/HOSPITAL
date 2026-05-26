@@ -1,3 +1,22 @@
+/**
+ * api-server root router.
+ *
+ * Mounts every sub-router under the `/api` prefix that app.ts already
+ * establishes. Grouped into:
+ *
+ *   Public routes    — no auth, consumed by the React storefront
+ *   Admin routes     — gated by requireAdmin in each sub-router
+ *   Auth / payments  — Clerk helpers, PayHero legacy stub, Daily.co video
+ *
+ * Adding a new route:
+ *   1. Create `src/routes/api/<feature>.ts` exporting an Express Router.
+ *   2. Import it here and add `router.use("/<feature>", featureRouter)`.
+ *   3. Document the endpoint in `docs/API_DOCUMENTATION.md`.
+ *
+ * Strangler note:
+ *   When a route is ported to api-nest (/api/v2), remove it from here and
+ *   drop the corresponding file. Don't leave dead routers in this file.
+ */
 import { Router, type IRouter } from "express";
 import healthRouter from "./health.js";
 import productsRouter from "./api/products.js";

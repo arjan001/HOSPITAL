@@ -1,3 +1,23 @@
+/**
+ * Wishlist module — customer saved-products list.
+ *
+ * Routes (all scoped to the session cookie / req.sessionId):
+ *   GET    /api/v2/me/wishlist          — list wishlist items for the session
+ *   POST   /api/v2/me/wishlist          — add a product slug to the wishlist
+ *   DELETE /api/v2/me/wishlist/:id      — remove an item by its wishlist record ID
+ *
+ * Data model:
+ *   WishlistItem[] per sessionId stored in InMemoryRepository<WishlistItem>.
+ *   Duplicate slugs are rejected (409 Conflict) — one entry per product per session.
+ *
+ * Postgres swap:
+ *   Replace `new InMemoryRepository<WishlistItem>()` in WishlistService with
+ *   a Drizzle-backed implementation. No controller changes.
+ *
+ * Note on @Inject(WishlistService):
+ *   tsx/esbuild does not emit emitDecoratorMetadata. Explicit @Inject(Token)
+ *   is required on every controller constructor — project-wide rule.
+ */
 import {
   Body,
   Controller,

@@ -1,3 +1,32 @@
+/**
+ * Orders module — customer order management.
+ *
+ * Routes (all scoped to the session cookie / req.sessionId):
+ *   GET  /api/v2/me/orders          — list all orders for the session
+ *   GET  /api/v2/me/orders/:id      — fetch a specific order
+ *   POST /api/v2/me/orders          — place a new order
+ *
+ * Data model:
+ *   AccountOrder[] per sessionId in InMemoryRepository<AccountOrder>.
+ *   Each order captures: line items, subtotal, deliveryFee, total, currency (KSH),
+ *   status, paymentMethod, customer info, and shippingAddress.
+ *
+ * Order lifecycle:
+ *   pending → paid (after Paystack callback) → fulfilled (after dispatch) | cancelled
+ *
+ * Paystack integration:
+ *   After a successful POST /api/v2/payments/paystack/charge, the storefront
+ *   polls /status until "success", then creates the order here with status="paid".
+ *
+ * Postgres swap:
+ *   Replace `new InMemoryRepository<AccountOrder>()` in OrdersService with
+ *   a Drizzle-backed implementation against the `orders` + `order_lines` tables.
+ *   No controller changes.
+ *
+ * Note on @Inject(OrdersService):
+ *   tsx/esbuild does not emit emitDecoratorMetadata. Explicit @Inject(Token)
+ *   is required on every controller constructor — project-wide rule.
+ */
 import {
   Body,
   Controller,

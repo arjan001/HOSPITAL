@@ -1,3 +1,29 @@
+/**
+ * AdminOrders module — order fulfillment and management for pharmacy staff.
+ *
+ * Routes:
+ *   GET    /api/v2/admin/orders              — list all orders (paginated, filterable)
+ *   GET    /api/v2/admin/orders/:id          — fetch a single order + line items
+ *   PUT    /api/v2/admin/orders/:id          — update order status / assign courier
+ *   DELETE /api/v2/admin/orders/:id          — cancel and remove an order
+ *   GET    /api/v2/admin/orders/stats        — KPI counts by status
+ *   POST   /api/v2/admin/orders/:id/notes    — add a fulfillment note
+ *
+ * Filter params (GET /admin/orders):
+ *   status, paymentMethod, from, to, search (customer name / order number)
+ *
+ * Status lifecycle:
+ *   pending → paid → processing → dispatched → delivered | cancelled | refunded
+ *
+ * Relationship with customer OrdersModule:
+ *   Both modules share the same in-memory store (via AdminOrdersService
+ *   reading from OrdersService's repository). When Postgres lands, both
+ *   point to the same `orders` table — only the filter/pagination differs.
+ *
+ * Note on @Inject(AdminOrdersService):
+ *   tsx/esbuild does not emit emitDecoratorMetadata. Explicit @Inject(Token)
+ *   is required on every controller constructor — project-wide rule.
+ */
 import {
   Body,
   Controller,

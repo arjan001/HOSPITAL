@@ -1,3 +1,29 @@
+/**
+ * Uploads module — binary file storage for the NestJS backend.
+ *
+ * Routes:
+ *   POST /api/v2/uploads   — accept a base64-encoded file and persist it
+ *                            via the Storage seam. Returns { url, key }.
+ *
+ * Storage:
+ *   Uses `common/storage.ts` (local disk today, S3 later).
+ *   Uploaded files are served back from UPLOAD_URL_PREFIX (/api/v2/uploads/*)
+ *   via express.static in main.ts, gated by the shaniidrx_sid session cookie.
+ *
+ * Body limit:
+ *   main.ts raises express.json({ limit: "8mb" }) so base64-encoded
+ *   prescription scans (~5 MB raw → ~6.7 MB encoded) fit without truncation.
+ *
+ * S3 swap path:
+ *   1. Implement S3Storage in common/storage.ts.
+ *   2. Return it from getStorage() when AWS_S3_BUCKET is set.
+ *   3. Remove the express.static mount in main.ts.
+ *   4. No changes to this controller needed.
+ *
+ * Note on @Inject(UploadsService):
+ *   tsx/esbuild does not emit emitDecoratorMetadata. Explicit @Inject(Token)
+ *   is required on every controller constructor — project-wide rule.
+ */
 import {
   Body,
   Controller,

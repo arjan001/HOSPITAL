@@ -1,3 +1,28 @@
+/**
+ * api-server — Express application factory.
+ *
+ * This is the **legacy** Express backend that backs the storefront catalogue,
+ * admin routes, Clerk proxy, and the PayHero stub. It runs on port 8080 and
+ * is mounted at `/api` by the Replit reverse proxy.
+ *
+ * Middleware stack (in order):
+ *   1. pino-http       — structured request/response logging
+ *   2. clerkProxyMiddleware — forwards /api/__clerk/* to Clerk's cluster so
+ *                         the browser treats auth as first-party (no CORS)
+ *   3. cors            — allows credentials from the Vite SPA origin
+ *   4. express.json / urlencoded — request body parsing
+ *   5. clerkMiddleware — attaches Clerk auth context to every request so
+ *                         downstream route guards can call getAuth(req)
+ *   6. express.static  — serves uploaded files from local disk; removable
+ *                         once we swap Storage to S3
+ *   7. /api router     — all feature routes (see routes/index.ts)
+ *   8. Global error handler — degrades "Backend disabled" 500s to 503s so
+ *                         the storefront can render an empty-state gracefully
+ *
+ * Migration note:
+ *   New feature modules go to api-nest (/api/v2), not here. This server will
+ *   shrink route by route as the NestJS Strangler migration lands.
+ */
 import express, { type Express, type NextFunction, type Request, type Response } from "express";
 import cors from "cors";
 import pinoHttp from "pino-http";

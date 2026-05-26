@@ -1,3 +1,27 @@
+/**
+ * Profile module — customer / guest profile management.
+ *
+ * Routes (all scoped to the session cookie):
+ *   GET  /api/v2/me      — return the profile for the current session.
+ *                          Creates a blank profile on first access.
+ *   PUT  /api/v2/me      — patch name, email, phone, or notification prefs.
+ *
+ * Data model:
+ *   One Profile per sessionId. Stored in InMemoryRepository<Profile>.
+ *   Postgres swap: replace `new InMemoryRepository<Profile>()` in
+ *   ProfileService with a Drizzle-backed implementation — controller unchanged.
+ *
+ * Clerk migration:
+ *   When Clerk JWT lands, SessionMiddleware sets req.sessionId = clerkUserId.
+ *   The profile lookup then naturally scopes to the authenticated user with
+ *   zero code changes in this file.
+ *
+ * Why explicit @Inject(ProfileService):
+ *   tsx / esbuild does NOT emit emitDecoratorMetadata, so Nest cannot infer
+ *   constructor parameter types. Every controller and service that receives
+ *   injected dependencies must use explicit @Inject(Token). This is a
+ *   project-wide rule — do not remove these decorators.
+ */
 import { Body, Controller, Get, Inject, Injectable, Module, Put, Req } from "@nestjs/common"
 import type { Request } from "express"
 import { InMemoryRepository, newId } from "../common/repository"

@@ -1,3 +1,36 @@
+/**
+ * Prescriptions module — prescription upload, storage, and admin review.
+ *
+ * Routes:
+ *   POST  /api/v2/prescriptions              — upload a new prescription (base64 image/PDF)
+ *   GET   /api/v2/prescriptions              — list all prescriptions for the session
+ *   GET   /api/v2/prescriptions/:id          — fetch a single prescription
+ *   PATCH /api/v2/prescriptions/:id/status   — admin: update review status
+ *                                              (pending → reviewing → approved | rejected)
+ *   GET   /api/v2/prescriptions/admin/all    — admin: list all prescriptions across sessions
+ *
+ * Data model:
+ *   Prescription {
+ *     id, sessionId, patientName, patientPhone, notes,
+ *     fileUrl,       — served from /api/v2/uploads/* (gated by session cookie)
+ *     fileName, fileType, fileSize,
+ *     status: "pending" | "reviewing" | "approved" | "rejected",
+ *     adminNotes, reviewedAt, createdAt, updatedAt
+ *   }
+ *
+ * File handling:
+ *   Accepts base64-encoded file content in the POST body.
+ *   Decodes and saves via Storage.put() → local disk today, S3 later.
+ *   Max body size is 8 MB (set in main.ts to accommodate prescription scans).
+ *
+ * Postgres swap:
+ *   Replace `new InMemoryRepository<Prescription>()` in PrescriptionsService
+ *   with a Drizzle-backed implementation. No controller changes.
+ *
+ * Note on @Inject(PrescriptionsService):
+ *   tsx/esbuild does not emit emitDecoratorMetadata. Explicit @Inject(Token)
+ *   is required on every controller constructor — project-wide rule.
+ */
 import {
   Body,
   Controller,

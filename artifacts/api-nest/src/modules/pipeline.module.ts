@@ -1,3 +1,37 @@
+/**
+ * Pipeline module — background task orchestration and campaign delivery.
+ *
+ * This module provides the server-side engine for the admin Campaigns UI
+ * (email / SMS / WhatsApp sequences). A pipeline is a named sequence of
+ * steps; each step fires a message to a target audience after a delay.
+ *
+ * Routes:
+ *   GET    /api/v2/pipeline/pipelines              — list all pipelines
+ *   POST   /api/v2/pipeline/pipelines              — create a pipeline
+ *   GET    /api/v2/pipeline/pipelines/:id          — get pipeline detail + steps
+ *   PUT    /api/v2/pipeline/pipelines/:id          — update pipeline config
+ *   DELETE /api/v2/pipeline/pipelines/:id          — delete a pipeline
+ *   POST   /api/v2/pipeline/pipelines/:id/activate — start execution
+ *   POST   /api/v2/pipeline/pipelines/:id/pause    — pause execution
+ *   GET    /api/v2/pipeline/jobs                   — list all scheduled jobs
+ *   POST   /api/v2/pipeline/jobs/:id/run           — trigger a job immediately
+ *   GET    /api/v2/pipeline/jobs/:id/logs          — execution log for a job
+ *
+ * Step types:
+ *   email | sms | whatsapp | delay | condition | webhook
+ *
+ * Storage:
+ *   In-memory Maps (pipelines, steps, jobs, logs). Postgres swap = Drizzle
+ *   pipeline + job tables; no controller changes.
+ *
+ * Integration:
+ *   Steps of type "email" delegate to EmailModule, "sms"/"whatsapp" to
+ *   the SMS provider (Twilio / Africa's Talking — env-gated, not yet wired).
+ *
+ * Note on @Inject(PipelineService):
+ *   tsx/esbuild does not emit emitDecoratorMetadata. Explicit @Inject(Token)
+ *   is required on every controller constructor — project-wide rule.
+ */
 import {
   Body,
   Controller,

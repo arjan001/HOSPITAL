@@ -1,3 +1,25 @@
+/**
+ * Email module — transactional email dispatch.
+ *
+ * Routes:
+ *   POST /api/v2/email/send      — send a single transactional email
+ *   GET  /api/v2/email/templates — list available templates
+ *   POST /api/v2/email/preview   — render a template with sample data
+ *
+ * Today the module logs to console (dev stub). To connect a real provider:
+ *   1. Choose a provider (Resend, SendGrid, SES).
+ *   2. Add its SDK to api-nest's package.json.
+ *   3. Implement `EmailProvider.send()` in this file.
+ *   4. Set the required env var (e.g. RESEND_API_KEY) and read it in the service.
+ *   5. No controller changes needed.
+ *
+ * Templates use {{token}} interpolation (same convention as message-templates.tsx).
+ * Common tokens: {{patientName}}, {{orderNumber}}, {{deliveryDate}}, {{trackingUrl}}.
+ *
+ * Note on @Inject(EmailService):
+ *   tsx/esbuild does not emit emitDecoratorMetadata. Explicit @Inject(Token)
+ *   is required on every controller constructor — project-wide rule.
+ */
 import {
   Body,
   Controller,

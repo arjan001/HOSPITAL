@@ -1,3 +1,33 @@
+/**
+ * Chat module — doctor-patient and support chat rooms.
+ *
+ * Routes:
+ *   GET    /api/v2/chat/rooms               — list all rooms for the current session
+ *   POST   /api/v2/chat/rooms               — create a new chat room
+ *   GET    /api/v2/chat/rooms/:id           — get a room + its messages
+ *   POST   /api/v2/chat/rooms/:id/messages  — send a message to a room
+ *   DELETE /api/v2/chat/rooms/:id           — close / archive a room
+ *   GET    /api/v2/chat/admin/rooms         — admin: list all rooms across sessions
+ *   POST   /api/v2/chat/admin/rooms/:id/messages — admin: send a message to any room
+ *
+ * Data model:
+ *   ChatRoom  { id, sessionId, subject, status: "open"|"closed", createdAt }
+ *   ChatMessage { id, roomId, sessionId, role: "user"|"agent"|"doctor",
+ *                 content, createdAt }
+ *
+ * Access control:
+ *   AdminGuard — a lightweight CanActivate that checks for the
+ *   `x-admin-token` request header. This is a placeholder; real RBAC
+ *   comes with the NestJS Roles module in Phase 2.
+ *
+ * Postgres swap:
+ *   Replace InMemoryRepository<ChatRoom> and InMemoryRepository<ChatMessage>
+ *   in ChatService with Drizzle-backed implementations. No controller changes.
+ *
+ * Note on @Inject(ChatService):
+ *   tsx/esbuild does not emit emitDecoratorMetadata. Explicit @Inject(Token)
+ *   is required on every controller constructor — project-wide rule.
+ */
 import {
   Body,
   CanActivate,

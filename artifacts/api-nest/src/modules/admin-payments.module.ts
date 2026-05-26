@@ -1,3 +1,28 @@
+/**
+ * AdminPayments module — payment transaction ledger for pharmacy staff.
+ *
+ * Routes:
+ *   GET /api/v2/admin/payments               — list all payment records
+ *   GET /api/v2/admin/payments/stats         — aggregated totals by status/method
+ *   GET /api/v2/admin/payments/:reference    — fetch a single payment record
+ *
+ * Filter params (GET /admin/payments):
+ *   status (pending|success|failed), method (mpesa|card|cod), from, to, search
+ *
+ * Data source:
+ *   Reads from the PaystackModule's in-memory payment store (shared reference).
+ *   When Paystack payments are written to Postgres, this module reads the
+ *   `paystack_payments` table instead — no controller changes.
+ *
+ * Relationship with PaystackModule:
+ *   PaystackModule owns the payment record lifecycle (create on charge,
+ *   update on callback). AdminPaymentsModule is read-only — it surfaces
+ *   records for reconciliation and dispute resolution.
+ *
+ * Note on @Inject(AdminPaymentsService):
+ *   tsx/esbuild does not emit emitDecoratorMetadata. Explicit @Inject(Token)
+ *   is required on every controller constructor — project-wide rule.
+ */
 import {
   Controller,
   Get,

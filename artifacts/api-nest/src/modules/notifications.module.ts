@@ -1,3 +1,30 @@
+/**
+ * Notifications module — in-app notification queue.
+ *
+ * Routes:
+ *   GET    /api/v2/notifications               — list unread notifications for the session
+ *   POST   /api/v2/notifications               — create a notification (internal use)
+ *   PATCH  /api/v2/notifications/:id/read      — mark a single notification as read
+ *   POST   /api/v2/notifications/mark-all-read — mark all as read for the session
+ *   DELETE /api/v2/notifications/:id           — dismiss a notification
+ *   GET    /api/v2/notifications/admin/all     — admin: list all notifications cross-session
+ *   POST   /api/v2/notifications/admin/broadcast — admin: push to all sessions
+ *
+ * Notification types (non-exhaustive):
+ *   order_update, prescription_ready, prescription_rejected,
+ *   consultation_reminder, support_reply, promo_alert
+ *
+ * Storage:
+ *   InMemoryRepository<Notification> per sessionId.
+ *   Postgres swap: replace repo with Drizzle-backed implementation — no controller changes.
+ *
+ * Future: wire SSE (Server-Sent Events) or WebSocket push instead of
+ * client polling. The NestJS @Sse decorator in chat.module.ts shows the pattern.
+ *
+ * Note on @Inject(NotificationsService):
+ *   tsx/esbuild does not emit emitDecoratorMetadata. Explicit @Inject(Token)
+ *   is required on every controller constructor — project-wide rule.
+ */
 import {
   Body,
   Controller,

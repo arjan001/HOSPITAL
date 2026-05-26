@@ -1,7 +1,26 @@
-// Thin client + SWR hooks for the NestJS user backend (api-nest).
-// Routes live behind /api/v2 and use a cookie-based guest session today.
-// When Clerk lands, the cookie is replaced by a Bearer token but this client
-// stays the same — only the auth header changes.
+/**
+ * api-nest.ts — Thin HTTP client + SWR hooks for the NestJS backend (/api/v2).
+ *
+ * All requests include `credentials: "include"` so the `shaniidrx_sid` session
+ * cookie is forwarded automatically. When Clerk JWT auth lands, add an
+ * `Authorization: Bearer <token>` header here — nothing else changes.
+ *
+ * Exports:
+ *   nestFetch<T>(path, init?)     — raw fetch wrapper, throws on non-2xx
+ *   apiNest                       — typed method object (health, me, addresses, …)
+ *   useMeProfile()                — SWR hook: GET /me
+ *   useMeAddresses()              — SWR hook: GET /me/addresses
+ *   useMeWishlist()               — SWR hook: GET /me/wishlist
+ *   useMeOrders()                 — SWR hook: GET /me/orders
+ *
+ * Type exports (used by account components):
+ *   MeProfile, AccountAddress, AccountWishlistItem, AccountOrder, AccountOrderLine
+ *
+ * Pattern:
+ *   Components read via SWR hooks; mutations call apiNest.* directly and then
+ *   call the SWR mutate() to revalidate. SWR cache keys are stable strings
+ *   (e.g. "/me", "/me/addresses") so globalMutate("/me") works from anywhere.
+ */
 
 import useSWR, { mutate as globalMutate } from "swr"
 
