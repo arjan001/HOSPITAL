@@ -2,7 +2,7 @@
 
 import React from "react"
 import { Link } from "wouter"
-import { Eye, Plus, Star, ArrowRight } from "lucide-react"
+import { Eye, ShoppingBag, Star, ArrowRight } from "lucide-react"
 import { ProductImage } from "./product-image"
 
 const TEXT_WINE = "#3D0814"
@@ -203,13 +203,12 @@ function CarePackCard({ pack }: { pack: CarePack }) {
 
       <Link
         href={pack.href}
-        className="mt-3 flex items-center justify-center gap-1.5 h-10 rounded-full font-semibold text-sm transition-transform hover:scale-[1.02] text-white"
-        style={{
-          background: `linear-gradient(135deg, ${ACCENT_ORANGE} 0%, ${ACCENT_RED} 100%)`,
-          boxShadow: "0 10px 22px -10px rgba(185, 28, 28, 0.55)",
-        }}
+        className="mt-3 flex items-center justify-center gap-1.5 h-10 rounded-full font-semibold text-sm transition-all"
+        style={{ background: "#F2D4C4", color: TEXT_WINE }}
+        onMouseEnter={(e) => { const el = e.currentTarget as HTMLAnchorElement; el.style.background = `linear-gradient(135deg, ${ACCENT_ORANGE} 0%, ${ACCENT_RED} 100%)`; el.style.color = "white" }}
+        onMouseLeave={(e) => { const el = e.currentTarget as HTMLAnchorElement; el.style.background = "#F2D4C4"; el.style.color = TEXT_WINE }}
       >
-        <Plus className="h-4 w-4" />
+        <ShoppingBag className="h-4 w-4" />
         Add To Cart
       </Link>
     </div>
