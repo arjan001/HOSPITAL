@@ -74,7 +74,8 @@ const S_BG_TOP     = "#4D0F1E"          // gradient top (slightly lighter)
 const S_BORDER     = "rgba(255,255,255,0.10)"
 const S_TEXT       = "rgba(255,255,255,0.88)"
 const S_MUTED      = "rgba(255,255,255,0.45)"
-const S_HOVER_BG   = "rgba(255,255,255,0.07)"
+const S_HOVER_BG   = "#EAB64D"
+const S_HOVER_TEXT = "#3D0814"
 const S_ACTIVE_BG  = "rgba(255,255,255,0.14)"
 const S_SEARCH_BG  = "rgba(255,255,255,0.09)"
 const S_ACCENT     = "#F97316"          // orange accent (logo colour)
@@ -361,11 +362,17 @@ function NavLeaf({
           : { color: S_TEXT }
       }
       onMouseEnter={(e) => {
-        if (!isActive) (e.currentTarget as HTMLElement).style.background = S_HOVER_BG
+        if (!isActive) {
+          ;(e.currentTarget as HTMLElement).style.background = S_HOVER_BG
+          ;(e.currentTarget as HTMLElement).style.color = S_HOVER_TEXT
+        }
         if (collapsed) showNavTip(e.currentTarget as HTMLElement, item.label, showBadge ? pendingOrders : 0, isActive)
       }}
       onMouseLeave={(e) => {
-        if (!isActive) (e.currentTarget as HTMLElement).style.background = "transparent"
+        if (!isActive) {
+          ;(e.currentTarget as HTMLElement).style.background = "transparent"
+          ;(e.currentTarget as HTMLElement).style.color = S_TEXT
+        }
         if (collapsed) hideNavTip()
       }}
       onFocus={collapsed ? (e) => showNavTip(e.currentTarget, item.label, showBadge ? pendingOrders : 0, isActive) : undefined}
@@ -511,8 +518,8 @@ function NavParent({
         aria-expanded={expanded}
         className="w-full flex items-center gap-3 px-3 mx-2 py-2 text-sm rounded-lg transition-all"
         style={{ color: active ? "white" : S_TEXT, fontWeight: active ? 600 : undefined, width: "calc(100% - 1rem)" }}
-        onMouseEnter={(e) => { if (!active) (e.currentTarget as HTMLElement).style.background = S_HOVER_BG }}
-        onMouseLeave={(e) => { if (!active) (e.currentTarget as HTMLElement).style.background = "transparent" }}
+        onMouseEnter={(e) => { if (!active) { ;(e.currentTarget as HTMLElement).style.background = S_HOVER_BG; (e.currentTarget as HTMLElement).style.color = S_HOVER_TEXT } }}
+        onMouseLeave={(e) => { if (!active) { ;(e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = S_TEXT } }}
       >
         <item.icon className="h-4 w-4 flex-shrink-0" style={{ color: active ? S_ACCENT : S_TEXT }} />
         <span className="flex-1 truncate text-left">{item.label}</span>
@@ -823,8 +830,8 @@ export function AdminShell({ children, title }: { children: ReactNode; title: st
                 href="/admin/profile"
                 className="flex items-center gap-3 px-2 py-2 rounded-lg transition-all"
                 title="My Profile"
-                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = S_HOVER_BG }}
-                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent" }}
+                onMouseEnter={(e) => { ;(e.currentTarget as HTMLElement).style.background = S_HOVER_BG; (e.currentTarget as HTMLElement).style.color = S_HOVER_TEXT }}
+                onMouseLeave={(e) => { ;(e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "white" }}
               >
                 <div
                   className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 font-bold text-sm select-none"
@@ -871,7 +878,7 @@ export function AdminShell({ children, title }: { children: ReactNode; title: st
               style={{ color: S_MUTED }}
               onMouseEnter={(e) => {
                 ;(e.currentTarget as HTMLElement).style.background = S_HOVER_BG
-                ;(e.currentTarget as HTMLElement).style.color = "white"
+                ;(e.currentTarget as HTMLElement).style.color = S_HOVER_TEXT
               }}
               onMouseLeave={(e) => {
                 ;(e.currentTarget as HTMLElement).style.background = "transparent"
