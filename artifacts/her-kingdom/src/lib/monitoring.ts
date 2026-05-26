@@ -51,7 +51,7 @@ interface InitOptions {
 const STATE = {
   endpoint: "/api/v2/monitoring/events",
   environment: typeof location !== "undefined" && location.hostname === "localhost" ? "development" : "production",
-  release: "her-kingdom@dev",
+  release: "shaniid@dev",
   enabled: true,
   userId: undefined as string | undefined,
   installed: false,

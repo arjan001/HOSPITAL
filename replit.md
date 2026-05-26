@@ -6,7 +6,7 @@ The trusted pharmaceutical infrastructure for Africa — a digital storefront an
 
 - `pnpm --filter @workspace/api-server run dev` — run the legacy Express API server (port 8080, mounted at `/api`)
 - `pnpm --filter @workspace/api-nest run dev` — run the NestJS user backend (port 8090, mounted at `/api/v2`)
-- `pnpm --filter @workspace/her-kingdom run dev` — run the storefront / admin
+- `pnpm --filter @workspace/shaniid run dev` — run the storefront / admin
 - `pnpm run typecheck` — full typecheck across all packages
 - `pnpm run build` — typecheck + build all packages
 - `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
