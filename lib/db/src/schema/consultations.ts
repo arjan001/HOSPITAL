@@ -1,6 +1,7 @@
 import { boolean, integer, jsonb, pgTable, text, timestamp } from "drizzle-orm/pg-core"
 import { createInsertSchema, createSelectSchema } from "drizzle-zod"
 import { z } from "zod/v4"
+import { users } from "./users"
 
 export type ConsultationStatus =
   | "pending"
@@ -31,7 +32,9 @@ export const doctors = pgTable("doctors", {
 
 export const consultations = pgTable("consultations", {
   id: text("id").primaryKey(),
-  userId: text("user_id"),
+  // Nullable because consultations can be booked anonymously (phone only)
+  // until the visitor signs up.
+  userId: text("user_id").references(() => users.id, { onDelete: "set null" }),
   doctorId: text("doctor_id").references(() => doctors.id, { onDelete: "set null" }),
   type: text("type").notNull(),
   specialty: text("specialty").notNull(),

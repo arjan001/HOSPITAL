@@ -30,12 +30,14 @@ import {
   Injectable,
   Module,
   Query,
+  UseGuards,
 } from "@nestjs/common"
 import {
   AdminOrdersModule,
   AdminOrdersService,
   type AdminOrderRecord,
 } from "./admin-orders.module"
+import { AdminGuard } from "../common/admin-guard"
 
 /**
  * Admin Payments view.
@@ -147,6 +149,7 @@ class AdminPaymentsService {
   }
 }
 
+@UseGuards(AdminGuard)
 @Controller("admin/payments")
 class AdminPaymentsController {
   constructor(

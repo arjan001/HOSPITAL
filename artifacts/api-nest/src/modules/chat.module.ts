@@ -30,10 +30,8 @@
  */
 import {
   Body,
-  CanActivate,
   Controller,
   Delete,
-  ExecutionContext,
   Get,
   HttpException,
   HttpStatus,
@@ -49,20 +47,7 @@ import {
 import type { Request } from "express"
 import { Observable, Subject, interval, map, merge } from "rxjs"
 import { newId } from "../common/repository"
-
-@Injectable()
-class AdminGuard implements CanActivate {
-  canActivate(ctx: ExecutionContext): boolean {
-    const req = ctx.switchToHttp().getRequest<Request>()
-    const expected = process.env.ADMIN_API_TOKEN?.trim()
-    const provided =
-      (req.header("x-admin-token") || "").trim() ||
-      (req.header("authorization") || "").replace(/^Bearer\s+/i, "").trim()
-    if (expected && provided && provided === expected) return true
-    if (process.env.NODE_ENV !== "production") return true
-    throw new HttpException("Unauthorized", HttpStatus.UNAUTHORIZED)
-  }
-}
+import { AdminGuard } from "../common/admin-guard"
 
 export type ChatSender = "patient" | "staff"
 export type ChatStatus = "sent" | "delivered" | "read"

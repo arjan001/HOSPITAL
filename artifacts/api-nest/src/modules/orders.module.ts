@@ -85,7 +85,13 @@ function toLine(raw: Partial<OrderLine>): OrderLine {
   }
 }
 
-function seedOrdersFor(sid: string): Order[] {
+/**
+ * Optional demo seed for local development. Disabled by default; opt in by
+ * setting `SEED_DEMO_ORDERS=1` in the environment. Used to be auto-applied
+ * on every new session, which surprised QA and production-like testing —
+ * that auto-injection has been removed.
+ */
+function seedOrdersFor(): Order[] {
   const now = Date.now()
   const day = 24 * 60 * 60 * 1000
   const mk = (
@@ -108,9 +114,9 @@ function seedOrdersFor(sid: string): Order[] {
       status,
       paymentMethod,
       customer: {
-        fullName: "Aisha Mwangi",
+        fullName: "Demo Customer",
         phone: "+254 712 345 678",
-        email: "aisha@example.com",
+        email: "demo@example.com",
       },
       shippingAddress: address,
       createdAt: new Date(now - offsetDays * day).toISOString(),
@@ -120,23 +126,6 @@ function seedOrdersFor(sid: string): Order[] {
     mk(1, "fulfilled", "mpesa",
       [
         { productSlug: "panadol-extra-24s", name: "Panadol Extra 24 tabs", unitPrice: 250, quantity: 2 },
-        { productSlug: "vitamin-c-1000mg", name: "Vitamin C 1000mg (30 tabs)", unitPrice: 650, quantity: 1 },
-      ],
-      200,
-      { line1: "Apt 4B, Riverside Lane", city: "Nairobi", region: "Westlands" },
-    ),
-    mk(7, "fulfilled", "card",
-      [
-        { productSlug: "ventolin-inhaler-100mcg", name: "Ventolin Inhaler 100mcg", unitPrice: 950, quantity: 1 },
-        { productSlug: "amoxicillin-500mg-21s", name: "Amoxicillin 500mg (21 caps)", unitPrice: 480, quantity: 1 },
-      ],
-      250,
-      { line1: "House 12, Garden Estate", city: "Nairobi", region: "Roysambu" },
-    ),
-    mk(3, "paid", "mpesa",
-      [
-        { productSlug: "metformin-500mg-100s", name: "Metformin 500mg (100 tabs)", unitPrice: 720, quantity: 1 },
-        { productSlug: "amlodipine-5mg-30s", name: "Amlodipine 5mg (30 tabs)", unitPrice: 410, quantity: 2 },
       ],
       200,
       { line1: "Apt 4B, Riverside Lane", city: "Nairobi", region: "Westlands" },
@@ -144,21 +133,15 @@ function seedOrdersFor(sid: string): Order[] {
     mk(0, "pending", "mpesa",
       [
         { productSlug: "paracetamol-500mg-100s", name: "Paracetamol 500mg (100 tabs)", unitPrice: 320, quantity: 1 },
-        { productSlug: "zinc-tab-30s", name: "Zinc 25mg (30 tabs)", unitPrice: 450, quantity: 1 },
-        { productSlug: "thermometer-digital", name: "Digital Thermometer", unitPrice: 800, quantity: 1 },
       ],
       150,
       { line1: "Apt 4B, Riverside Lane", city: "Nairobi", region: "Westlands" },
     ),
-    mk(21, "cancelled", "cod",
-      [
-        { productSlug: "ibuprofen-400mg-20s", name: "Ibuprofen 400mg (20 tabs)", unitPrice: 280, quantity: 1 },
-      ],
-      150,
-      { line1: "House 12, Garden Estate", city: "Nairobi", region: "Roysambu" },
-    ),
   ]
 }
+
+const SHOULD_SEED =
+  process.env.SEED_DEMO_ORDERS === "1" || process.env.SEED_DEMO_ORDERS === "true"
 
 @Injectable()
 class OrdersService {
@@ -166,10 +149,11 @@ class OrdersService {
   private seeded = new Set<string>()
 
   private ensureSeeded(sid: string) {
+    if (!SHOULD_SEED) return
     if (this.seeded.has(sid)) return
     this.seeded.add(sid)
     if (this.repo.listFor(sid).length === 0) {
-      for (const o of seedOrdersFor(sid)) this.repo.add(sid, o)
+      for (const o of seedOrdersFor()) this.repo.add(sid, o)
     }
   }
 

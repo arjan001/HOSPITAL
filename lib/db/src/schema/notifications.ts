@@ -1,6 +1,7 @@
 import { boolean, pgTable, text, timestamp } from "drizzle-orm/pg-core"
 import { createInsertSchema, createSelectSchema } from "drizzle-zod"
 import { z } from "zod/v4"
+import { users } from "./users"
 
 export type NotificationLevel = "info" | "success" | "warning" | "alert" | "error"
 export type NotificationAudience = "admin" | "doctor" | "pharmacist" | (string & {})
@@ -22,7 +23,9 @@ export type SupportTicketCategory = "order" | "prescription" | "payment" | "acco
 
 export const supportTickets = pgTable("support_tickets", {
   id: text("id").primaryKey(),
-  userId: text("user_id"),
+  // Nullable because contact-form tickets can be filed by guests via the
+  // public storefront. On user deletion the ticket survives but is detached.
+  userId: text("user_id").references(() => users.id, { onDelete: "set null" }),
   subject: text("subject").notNull(),
   category: text("category"),
   status: text("status").notNull().default("open"),

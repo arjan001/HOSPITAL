@@ -1,14 +1,19 @@
 import { pgTable, text, timestamp } from "drizzle-orm/pg-core"
 import { createInsertSchema, createSelectSchema } from "drizzle-zod"
 import { z } from "zod/v4"
+import { users } from "./users"
+import { uploads } from "./uploads"
 
 export type PrescriptionStatus = "pending" | "approved" | "rejected" | "info_requested"
 
 export const prescriptions = pgTable("prescriptions", {
   id: text("id").primaryKey(),
   rxNumber: text("rx_number").unique().notNull(),
-  userId: text("user_id"),
-  uploadId: text("upload_id").notNull(),
+  // Nullable because a guest visitor can upload an Rx before signing up.
+  userId: text("user_id").references(() => users.id, { onDelete: "set null" }),
+  uploadId: text("upload_id")
+    .notNull()
+    .references(() => uploads.id, { onDelete: "restrict" }),
   patientName: text("patient_name").notNull(),
   patientPhone: text("patient_phone"),
   notes: text("notes"),

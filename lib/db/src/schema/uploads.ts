@@ -1,10 +1,14 @@
 import { integer, pgTable, text, timestamp } from "drizzle-orm/pg-core"
 import { createInsertSchema, createSelectSchema } from "drizzle-zod"
 import { z } from "zod/v4"
+import { users } from "./users"
 
 export const uploads = pgTable("uploads", {
   id: text("id").primaryKey(),
-  userId: text("user_id"),
+  // Nullable because guest visitors can upload (e.g. prescription images
+  // before sign-up). On user deletion we keep the upload row and clear the
+  // owner so admin audit trails survive.
+  userId: text("user_id").references(() => users.id, { onDelete: "set null" }),
   namespace: text("namespace"),
   filename: text("filename").notNull(),
   contentType: text("content_type").notNull(),
@@ -17,7 +21,9 @@ export const uploads = pgTable("uploads", {
 
 export const wishlistItems = pgTable("wishlist_items", {
   id: text("id").primaryKey(),
-  userId: text("user_id").notNull(),
+  userId: text("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
   productSlug: text("product_slug").notNull(),
   productName: text("product_name").notNull(),
   imageUrl: text("image_url"),

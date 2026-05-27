@@ -28,7 +28,9 @@ import {
   Injectable,
   Module,
   Post,
+  UseGuards,
 } from "@nestjs/common"
+import { AdminGuard } from "../common/admin-guard"
 
 const SCRAPE_TIMEOUT_MS = 10_000
 const MAX_URLS_PER_REQUEST = 20
@@ -383,6 +385,7 @@ class WebScraperService {
 
 /* ─────────────────────── controller ─────────────────────── */
 
+@UseGuards(AdminGuard)
 @Controller("admin/catalog")
 class WebScraperController {
   constructor(@Inject(WebScraperService) private readonly svc: WebScraperService) {}

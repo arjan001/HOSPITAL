@@ -12,12 +12,15 @@
  *                                                    URL server-side to avoid
  *                                                    browser CORS)
  *
- * Categories are persisted into the cms key "categories" via the existing
- * AdminCmsController loopback (cmsStore is the single source of truth for
- * categories today). Products are forwarded to the legacy Express API
- * (`POST /api/admin/products`) because that's where the storefront still
- * reads from — when the products module ports to NestJS, swap the loopback
- * URL only.
+ * Both categories AND products are persisted into the cmsStore via the
+ * AdminCmsController loopback (`/api/v2/admin/cms/:key`) using the keys
+ * "categories" and "products" respectively. The storefront `cmsStore.get`
+ * helper reads these same keys, so imports are visible immediately.
+ *
+ * Earlier revisions forwarded product imports to the legacy Express
+ * `/api/admin/products` endpoint, which is backed by a no-op stub and
+ * therefore silently dropped all writes. That bug is now fixed by
+ * routing through the same cmsStore seam as categories.
  */
 
 import {
@@ -29,15 +32,19 @@ import {
   Injectable,
   Module,
   Post,
+  UseGuards,
 } from "@nestjs/common"
+import { AdminGuard } from "../common/admin-guard"
 
 /* ─────────────────────── shared CMS loopback ─────────────────────── */
 
 const NEST_PORT = process.env.PORT || 8090
 const NEST_BASE = `http://127.0.0.1:${NEST_PORT}/api/v2/admin/cms`
-const LEGACY_PORT = process.env.LEGACY_API_PORT || 8080
-const LEGACY_PRODUCTS = `http://127.0.0.1:${LEGACY_PORT}/api/admin/products`
 const CALL_TIMEOUT_MS = 6_000
+const INTERNAL_TOKEN = process.env.ADMIN_API_TOKEN?.trim()
+const INTERNAL_HEADERS: Record<string, string> = INTERNAL_TOKEN
+  ? { "x-admin-token": INTERNAL_TOKEN }
+  : {}
 
 async function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
   return await Promise.race([
@@ -50,7 +57,7 @@ async function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
 
 async function cmsGet<T>(key: string, fallback: T): Promise<T> {
   const res = await withTimeout(
-    fetch(`${NEST_BASE}/${encodeURIComponent(key)}`),
+    fetch(`${NEST_BASE}/${encodeURIComponent(key)}`, { headers: INTERNAL_HEADERS }),
     CALL_TIMEOUT_MS,
   )
   if (res.status === 404) return fallback
@@ -68,7 +75,7 @@ async function cmsPut<T>(key: string, value: T): Promise<void> {
   const res = await withTimeout(
     fetch(`${NEST_BASE}/${encodeURIComponent(key)}`, {
       method: "PUT",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...INTERNAL_HEADERS },
       body: JSON.stringify(value),
     }),
     CALL_TIMEOUT_MS,
@@ -240,7 +247,37 @@ class CatalogImportService {
 
   async importProducts(body: ImportBody) {
     const rows = pickRows(body)
+    const mode = body.mode === "replace" ? "replace" : "upsert"
+
+    type CmsProduct = {
+      id: string
+      name: string
+      slug: string
+      price: number
+      originalPrice?: number
+      description: string
+      category: string
+      categorySlug: string
+      images: string[]
+      tags: string[]
+      variations: { type: string; options: string[] }[]
+      isNew: boolean
+      isOnOffer: boolean
+      offerPercentage: number
+      inStock: boolean
+      stockCount: number
+      lowStockThreshold: number
+      createdAt: string
+    }
+
+    const existing = mode === "replace" ? [] : await cmsGet<CmsProduct[]>("products", [])
+    const bySlug = new Map(existing.map((p) => [p.slug, p]))
+    const categories = await cmsGet<{ slug: string; name: string }[]>("categories", [])
+    const categoryName = new Map(categories.map((c) => [c.slug, c.name]))
+
     const results: { row: number; ok: boolean; id?: string; reason?: string }[] = []
+    let created = 0
+    let updated = 0
 
     for (let idx = 0; idx < rows.length; idx++) {
       const row = rows[idx]
@@ -261,14 +298,17 @@ class CatalogImportService {
       }
 
       const slug = (row.slug || row.Slug || slugify(name)).trim()
-      const payload = {
+      const prev = bySlug.get(slug)
+      const record: CmsProduct = {
+        id: prev?.id ?? newId("prd"),
         name,
         slug,
         price,
         originalPrice: row.originalPrice || row["Original Price"]
-          ? Number(row.originalPrice || row["Original Price"])
-          : null,
-        description: row.description || row.Description || "",
+          ? Number(row.originalPrice || row["Original Price"]) || undefined
+          : undefined,
+        description: row.description || row.Description || prev?.description || "",
+        category: categoryName.get(categorySlug) || prev?.category || categorySlug,
         categorySlug,
         images: (row.images || row["Image URLs (pipe separated)"] || "")
           .split(/[|\n]/)
@@ -278,6 +318,14 @@ class CatalogImportService {
           .split(",")
           .map((s) => s.trim())
           .filter(Boolean),
+        variations: [
+          ...(row["Sizes (comma separated)"]
+            ? [{ type: "Size", options: row["Sizes (comma separated)"].split(",").map((s) => s.trim()).filter(Boolean) }]
+            : []),
+          ...(row["Colors (comma separated)"]
+            ? [{ type: "Color", options: row["Colors (comma separated)"].split(",").map((s) => s.trim()).filter(Boolean) }]
+            : []),
+        ].filter((v) => v.options.length > 0),
         isNew: ["yes", "true", "1"].includes(
           (row.isNew || row["Is New (yes/no)"] || "").toLowerCase(),
         ),
@@ -288,37 +336,38 @@ class CatalogImportService {
         inStock: !["no", "false", "0"].includes(
           (row.inStock || row["In Stock (yes/no)"] || "yes").toLowerCase(),
         ),
-        stockCount: row.stockCount ? Number(row.stockCount) : undefined,
+        stockCount: row.stockCount ? Number(row.stockCount) || 0 : prev?.stockCount ?? 0,
+        lowStockThreshold: prev?.lowStockThreshold ?? 5,
+        createdAt: prev?.createdAt ?? new Date().toISOString(),
       }
 
-      try {
-        const res = await withTimeout(
-          fetch(LEGACY_PRODUCTS, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload),
-          }),
-          CALL_TIMEOUT_MS,
-        )
-        if (!res.ok) {
-          results.push({ row: idx + 2, ok: false, reason: `legacy api ${res.status}` })
-        } else {
-          const json = (await res.json().catch(() => ({}))) as { id?: string }
-          results.push({ row: idx + 2, ok: true, id: json.id })
-        }
-      } catch (err) {
-        results.push({
-          row: idx + 2,
-          ok: false,
-          reason: err instanceof Error ? err.message : "unknown",
-        })
+      if (prev) {
+        const i = existing.findIndex((p) => p.id === prev.id)
+        if (i >= 0) existing[i] = record
+        updated++
+      } else {
+        existing.push(record)
+        created++
       }
+      bySlug.set(record.slug, record)
+      results.push({ row: idx + 2, ok: true, id: record.id })
+    }
+
+    try {
+      await cmsPut("products", existing)
+    } catch (err) {
+      throw new HttpException(
+        `Failed to persist products: ${err instanceof Error ? err.message : "unknown"}`,
+        HttpStatus.BAD_GATEWAY,
+      )
     }
 
     return {
       ok: results.every((r) => r.ok),
+      mode,
       total: rows.length,
-      created: results.filter((r) => r.ok).length,
+      created,
+      updated,
       failed: results.filter((r) => !r.ok).length,
       results,
     }
@@ -361,6 +410,7 @@ class CatalogImportService {
 
 /* ─────────────────────── Controllers ─────────────────────── */
 
+@UseGuards(AdminGuard)
 @Controller("admin/catalog")
 class CatalogImportController {
   constructor(@Inject(CatalogImportService) private readonly svc: CatalogImportService) {}

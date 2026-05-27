@@ -1,13 +1,16 @@
 import { integer, jsonb, pgTable, text, timestamp } from "drizzle-orm/pg-core"
 import { createInsertSchema, createSelectSchema } from "drizzle-zod"
 import { z } from "zod/v4"
+import { orders } from "./orders"
 
 export type PaymentProvider = "payhero" | "paystack" | "card"
 export type PaymentRecordStatus = "pending" | "success" | "failed" | "cancelled" | "refunded"
 
 export const payments = pgTable("payments", {
   id: text("id").primaryKey(),
-  orderId: text("order_id"),
+  // Nullable because pending charges may arrive (webhook) before we
+  // create the order row, and admin refunds may detach the order.
+  orderId: text("order_id").references(() => orders.id, { onDelete: "set null" }),
   reference: text("reference").unique().notNull(),
   provider: text("provider").notNull(),
   method: text("method").notNull().default("mpesa"),

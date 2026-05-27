@@ -12,7 +12,8 @@ import { useState } from "react"
 import { Link } from "wouter"
 import { useCmsDoc } from "@/lib/cms-store"
 import {
-  getPortalSessionForType, setPortalSession, clearPortalSession, type PortalSession,
+  getPortalSessionForType, loginPartner, signOutPartner,
+  submitPartnerOrder, type PortalSession,
 } from "@/lib/portal-auth"
 import type { Clinic } from "@/components/admin/clinics"
 import {
@@ -140,6 +141,8 @@ function PlaceOrderTab({ clinic }: { clinic: Clinic }) {
   const [lines, setLines] = useState<OrderLine[]>([{ name: "", qty: 1, unitPrice: 0, patientName: "" }])
   const [notes, setNotes] = useState("")
   const [submitted, setSubmitted] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
+  const [submitError, setSubmitError] = useState("")
 
   const total = lines.reduce((s, l) => s + l.qty * l.unitPrice, 0)
   const creditAvailable = clinic.creditLimit - clinic.creditUsed
@@ -159,7 +162,16 @@ function PlaceOrderTab({ clinic }: { clinic: Clinic }) {
         </div>
         <h3 className="font-bold text-gray-800 text-lg">Order submitted!</h3>
         <p className="text-gray-500 mt-2 text-sm">Your order of KSH {total.toLocaleString()} has been sent to Shaniid RX. You'll receive a confirmation email shortly.</p>
-        <Button className="mt-6 text-white" style={{ background: WINE }} onClick={() => { setSubmitted(false); setLines([{ name: "", qty: 1, unitPrice: 0, patientName: "" }]); setNotes("") }}>
+        <Button
+          className="mt-6 text-white"
+          style={{ background: WINE }}
+          onClick={() => {
+            setSubmitted(false)
+            setSubmitError("")
+            setLines([{ name: "", qty: 1, unitPrice: 0, patientName: "" }])
+            setNotes("")
+          }}
+        >
           Place another order
         </Button>
       </div>
@@ -223,9 +235,39 @@ function PlaceOrderTab({ clinic }: { clinic: Clinic }) {
           placeholder="Urgency level, delivery instructions, cold chain requirements…" rows={3} className="mt-2" />
       </div>
 
-      <Button disabled={!canPlace} onClick={() => setSubmitted(true)}
-        className="w-full h-11 text-white font-semibold gap-2" style={{ background: canPlace ? WINE : undefined }}>
-        <ShoppingCart className="h-4 w-4" />Submit order to Shaniid RX
+      {submitError && (
+        <div className="flex items-center gap-2 p-3 rounded-lg bg-red-50 border border-red-200 text-sm text-red-700">
+          <AlertTriangle className="h-4 w-4 flex-shrink-0" />
+          {submitError}
+        </div>
+      )}
+
+      <Button
+        disabled={!canPlace || submitting}
+        onClick={async () => {
+          setSubmitError("")
+          setSubmitting(true)
+          try {
+            await submitPartnerOrder("clinic", "order", {
+              clinicId: clinic.id,
+              clinicName: clinic.clinicName,
+              lines,
+              notes,
+              total,
+              creditAvailable,
+            })
+            setSubmitted(true)
+          } catch (err) {
+            setSubmitError(err instanceof Error ? err.message : "Failed to submit order. Try again.")
+          } finally {
+            setSubmitting(false)
+          }
+        }}
+        className="w-full h-11 text-white font-semibold gap-2"
+        style={{ background: canPlace ? WINE : undefined }}
+      >
+        <ShoppingCart className="h-4 w-4" />
+        {submitting ? "Submitting…" : "Submit order to Shaniid RX"}
       </Button>
     </div>
   )
@@ -495,18 +537,29 @@ export default function ClinicPortal() {
   const [session, setSession] = useState<PortalSession | null>(() => getPortalSessionForType("clinic"))
   const [loginError, setLoginError] = useState("")
 
-  const handleLogin = (email: string, code: string) => {
-    const match = clinics.find(c => c.email.toLowerCase() === email && c.portalCode.toUpperCase() === code)
-    if (!match) { setLoginError("Email or portal code is incorrect. Please check and try again."); return }
-    if (match.status === "rejected") { setLoginError("Your facility onboarding was not approved. Contact clinics@shaniidrx.com."); return }
-    const s: PortalSession = {
-      portalType: "clinic", partnerId: match.id, partnerName: match.clinicName,
-      portalCode: code, email, loginAt: new Date().toISOString(),
+  const handleLogin = async (email: string, code: string) => {
+    setLoginError("")
+    const localMatch = clinics.find(
+      (c) => c.email.toLowerCase() === email && c.portalCode.toUpperCase() === code,
+    )
+    if (localMatch?.status === "rejected") {
+      setLoginError("Your facility onboarding was not approved. Contact clinics@shaniidrx.com.")
+      return
     }
-    setPortalSession(s); setSession(s); setLoginError("")
+    try {
+      const s = await loginPartner("clinic", email, code)
+      setSession(s)
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Email or portal code is incorrect. Please check and try again."
+      setLoginError(message)
+    }
   }
 
-  const handleLogout = () => { clearPortalSession(); setSession(null) }
+  const handleLogout = () => {
+    void signOutPartner("clinic")
+    setSession(null)
+  }
 
   if (!session) return <ClinicLoginPage onLogin={handleLogin} error={loginError} />
 

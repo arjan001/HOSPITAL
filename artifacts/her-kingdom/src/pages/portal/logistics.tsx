@@ -12,7 +12,7 @@ import { useState } from "react"
 import { Link } from "wouter"
 import { useCmsDoc } from "@/lib/cms-store"
 import {
-  getPortalSessionForType, setPortalSession, clearPortalSession, type PortalSession,
+  getPortalSessionForType, loginPartner, signOutPartner, type PortalSession,
 } from "@/lib/portal-auth"
 import type { LogisticsPartner, LogisticsVehicle } from "@/components/admin/logistics-partners"
 import {
@@ -488,18 +488,29 @@ export default function LogisticsPortal() {
   const [session, setSession] = useState<PortalSession | null>(() => getPortalSessionForType("logistics"))
   const [loginError, setLoginError] = useState("")
 
-  const handleLogin = (email: string, code: string) => {
-    const match = partners.find(p => p.email.toLowerCase() === email && p.portalCode.toUpperCase() === code)
-    if (!match) { setLoginError("Email or portal code is incorrect. Please check and try again."); return }
-    if (match.status === "suspended" || match.status === "inactive") { setLoginError("Your account is not active. Contact logistics@shaniidrx.com."); return }
-    const s: PortalSession = {
-      portalType: "logistics", partnerId: match.id, partnerName: match.companyName,
-      portalCode: code, email, loginAt: new Date().toISOString(),
+  const handleLogin = async (email: string, code: string) => {
+    setLoginError("")
+    const localMatch = partners.find(
+      (p) => p.email.toLowerCase() === email && p.portalCode.toUpperCase() === code,
+    )
+    if (localMatch?.status === "suspended" || localMatch?.status === "inactive") {
+      setLoginError("Your account is not active. Contact logistics@shaniidrx.com.")
+      return
     }
-    setPortalSession(s); setSession(s); setLoginError("")
+    try {
+      const s = await loginPartner("logistics", email, code)
+      setSession(s)
+    } catch (err) {
+      setLoginError(
+        err instanceof Error ? err.message : "Email or portal code is incorrect. Please check and try again.",
+      )
+    }
   }
 
-  const handleLogout = () => { clearPortalSession(); setSession(null) }
+  const handleLogout = () => {
+    void signOutPartner("logistics")
+    setSession(null)
+  }
 
   if (!session) return <LogisticsLoginPage onLogin={handleLogin} error={loginError} />
 

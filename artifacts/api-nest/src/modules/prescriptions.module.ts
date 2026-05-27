@@ -44,9 +44,11 @@ import {
   Patch,
   Post,
   Req,
+  UseGuards,
 } from "@nestjs/common"
 import type { Request } from "express"
 import { InMemoryRepository, newId } from "../common/repository"
+import { AdminGuard } from "../common/admin-guard"
 
 export type PrescriptionStatus = "pending" | "verified" | "dispensed" | "rejected"
 export type PaymentMethod = "cash" | "insurance" | "unknown"
@@ -107,6 +109,9 @@ function nextRxNumber(): string {
 @Injectable()
 class PrescriptionsService {
   private repo = new InMemoryRepository<Prescription>()
+  // Tracks which session owns which prescription id — admin endpoints don't
+  // know the patient's sessionId but still need to read/update records.
+  private ownerOf = new Map<string, string>()
 
   list(sid: string): Prescription[] {
     return [...this.repo.listFor(sid)].sort((a, b) => b.createdAt.localeCompare(a.createdAt))
@@ -116,6 +121,30 @@ class PrescriptionsService {
     const r = this.repo.findById(sid, id)
     if (!r) throw new HttpException("Prescription not found", HttpStatus.NOT_FOUND)
     return r
+  }
+
+  /** Admin-only: list every prescription across all sessions, newest first. */
+  listAll(): Prescription[] {
+    const all: Prescription[] = []
+    for (const sid of this.ownerOf.values()) {
+      // ownerOf may contain duplicates per prescription, dedupe by `id`.
+    }
+    // Walk distinct sessions via Set so we don't process duplicates.
+    const sessions = new Set(this.ownerOf.values())
+    for (const sid of sessions) {
+      for (const rx of this.repo.listFor(sid)) all.push(rx)
+    }
+    return all.sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+  }
+
+  /** Admin-only: find a prescription by id without knowing the session. */
+  findAnywhere(id: string): { sid: string; rx: Prescription } {
+    const sid = this.ownerOf.get(id)
+    if (sid) {
+      const rx = this.repo.findById(sid, id)
+      if (rx) return { sid, rx }
+    }
+    throw new HttpException("Prescription not found", HttpStatus.NOT_FOUND)
   }
 
   create(sid: string, data: CreateInput): Prescription {
@@ -151,6 +180,7 @@ class PrescriptionsService {
       createdAt: now,
       updatedAt: now,
     }
+    this.ownerOf.set(rec.id, sid)
     return this.repo.add(sid, rec)
   }
 
@@ -233,8 +263,48 @@ class MyPrescriptionsController {
   }
 }
 
+@UseGuards(AdminGuard)
+@Controller("admin/prescriptions")
+class AdminPrescriptionsController {
+  constructor(@Inject(PrescriptionsService) private readonly svc: PrescriptionsService) {}
+
+  @Get()
+  list() {
+    return this.svc.listAll()
+  }
+
+  @Get(":id")
+  get(@Param("id") id: string) {
+    return this.svc.findAnywhere(id).rx
+  }
+
+  @Patch(":id")
+  patch(@Param("id") id: string, @Body() body: UpdateInput) {
+    const { sid } = this.svc.findAnywhere(id)
+    const safe: UpdateInput = {}
+    if (body?.status) safe.status = body.status
+    if (typeof body?.pharmacistNote === "string") safe.pharmacistNote = body.pharmacistNote
+    if (typeof body?.rejectedReason === "string") safe.rejectedReason = body.rejectedReason
+    if (Array.isArray(body?.approvedDrugs)) safe.approvedDrugs = body.approvedDrugs
+    return this.svc.update(sid, id, safe)
+  }
+
+  @Patch(":id/status")
+  patchStatus(@Param("id") id: string, @Body() body: { status?: PrescriptionStatus; reason?: string }) {
+    const { sid } = this.svc.findAnywhere(id)
+    if (!body?.status) {
+      throw new HttpException("status is required", HttpStatus.BAD_REQUEST)
+    }
+    const patch: UpdateInput = { status: body.status }
+    if (body.status === "rejected" && typeof body.reason === "string") {
+      patch.rejectedReason = body.reason
+    }
+    return this.svc.update(sid, id, patch)
+  }
+}
+
 @Module({
-  controllers: [MyPrescriptionsController],
+  controllers: [MyPrescriptionsController, AdminPrescriptionsController],
   providers: [PrescriptionsService],
 })
 export class PrescriptionsModule {}

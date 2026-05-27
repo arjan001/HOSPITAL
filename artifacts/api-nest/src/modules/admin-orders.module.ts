@@ -38,7 +38,9 @@ import {
   Patch,
   Post,
   Query,
+  UseGuards,
 } from "@nestjs/common"
+import { AdminGuard } from "../common/admin-guard"
 
 /**
  * Admin Sales & Orders backend.
@@ -238,6 +240,7 @@ class AdminOrdersService {
   }
 }
 
+@UseGuards(AdminGuard)
 @Controller("admin/orders")
 class AdminOrdersController {
   constructor(

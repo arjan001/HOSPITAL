@@ -13,7 +13,7 @@ import { useState } from "react"
 import { Link } from "wouter"
 import { useCmsDoc } from "@/lib/cms-store"
 import {
-  getPortalSessionForType, setPortalSession, clearPortalSession, type PortalSession,
+  getPortalSessionForType, loginPartner, signOutPartner, type PortalSession,
 } from "@/lib/portal-auth"
 import type { Supplier } from "@/components/admin/suppliers"
 import {
@@ -457,28 +457,27 @@ export default function SupplierPortal() {
   const [session, setSession] = useState<PortalSession | null>(() => getPortalSessionForType("supplier"))
   const [loginError, setLoginError] = useState("")
 
-  const handleLogin = (email: string, code: string) => {
-    const match = suppliers.find(s =>
-      s.email.toLowerCase() === email && s.portalCode.toUpperCase() === code)
-    if (!match) {
-      setLoginError("Email or portal code is incorrect. Please check and try again.")
-      return
-    }
-    if (match.status === "suspended" || match.status === "blacklisted") {
+  const handleLogin = async (email: string, code: string) => {
+    setLoginError("")
+    const localMatch = suppliers.find(
+      (s) => s.email.toLowerCase() === email && s.portalCode.toUpperCase() === code,
+    )
+    if (localMatch?.status === "suspended" || localMatch?.status === "blacklisted") {
       setLoginError("Your account has been suspended. Contact support@shaniidrx.com for assistance.")
       return
     }
-    const s: PortalSession = {
-      portalType: "supplier", partnerId: match.id, partnerName: match.companyName,
-      portalCode: code, email, loginAt: new Date().toISOString(),
+    try {
+      const s = await loginPartner("supplier", email, code)
+      setSession(s)
+    } catch (err) {
+      setLoginError(
+        err instanceof Error ? err.message : "Email or portal code is incorrect. Please check and try again.",
+      )
     }
-    setPortalSession(s)
-    setSession(s)
-    setLoginError("")
   }
 
   const handleLogout = () => {
-    clearPortalSession()
+    void signOutPartner("supplier")
     setSession(null)
   }
 

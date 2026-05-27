@@ -1,7 +1,7 @@
 "use client"
 
-import { useState, useEffect, useRef } from "react"
-import { apiFetch, authedFetcher as fetcher } from "@/lib/api-client"
+import { useState, useRef } from "react"
+import { apiFetch } from "@/lib/api-client"
 
 import { toast } from "sonner"
 import { Plus, Pencil, Trash2, X, Upload, Search, Download, FileUp, ImagePlus, Loader2, Eye, AlertTriangle, PackageX, PackageCheck } from "lucide-react"
@@ -16,16 +16,21 @@ import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import useSWR from "swr"
+import { useCmsCollection, newId, slugify } from "@/lib/cms-store"
 import { usePagination } from "@/hooks/use-pagination"
 import { PaginationControls } from "@/components/pagination-controls"
+import { useCategoryOptions } from "./products-helpers"
 
-
-interface CategoryOption {
-  id: string
-  name: string
-  slug: string
-}
+/**
+ * Single source of truth for the admin catalog. Persisted through the
+ * cmsStore single-seam (localStorage cache + NestJS `/api/v2/admin/cms/:key`),
+ * NOT through the no-op legacy Express `/api/admin/products` routes.
+ *
+ * The storefront still reads `/api/products` (dev fixtures) until the
+ * NestJS catalog endpoints land — but admin writes here are now persisted
+ * and visible across reloads.
+ */
+export const PRODUCTS_CMS_KEY = "products"
 
 interface ProductForm {
   name: string
@@ -64,8 +69,8 @@ const emptyForm: ProductForm = {
 }
 
 export function AdminProducts() {
-  const { data: products = [], mutate: mutateProducts } = useSWR<Product[]>("/api/products", fetcher)
-  const { data: categories = [] } = useSWR<CategoryOption[]>("/api/categories", fetcher)
+  const { items: products, upsert, remove, set: setProducts } = useCmsCollection<Product>(PRODUCTS_CMS_KEY, [])
+  const categories = useCategoryOptions()
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [form, setForm] = useState<ProductForm>(emptyForm)
@@ -141,18 +146,18 @@ export function AdminProducts() {
     setIsModalOpen(true)
   }
 
-  const handleSave = async () => {
-    const slug = form.name
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/(^-|-$)/g, "")
+  const handleSave = () => {
+    const slug = slugify(form.name)
+    const existing = editingId ? products.find((p) => p.id === editingId) : undefined
+    const matchedCategory = categories.find((c) => c.slug === form.category)
 
-    const body = {
-      id: editingId || undefined,
+    const record: Product = {
+      id: editingId || newId("prd"),
       name: form.name,
       slug,
       price: Number.parseFloat(form.price) || 0,
-      originalPrice: form.originalPrice ? Number.parseFloat(form.originalPrice) : null,
+      originalPrice: form.originalPrice ? Number.parseFloat(form.originalPrice) : undefined,
+      category: matchedCategory?.name || form.category,
       categorySlug: form.category,
       collection: form.collection,
       description: form.description,
@@ -162,20 +167,15 @@ export function AdminProducts() {
       offerPercentage: form.offerPercentage ? Number.parseInt(form.offerPercentage) : 0,
       inStock: form.inStock,
       stockCount: Number.parseInt(form.stockCount) || 0,
-      lowStockThreshold: Number.parseInt(form.lowStockThreshold) || 0,
+      lowStockThreshold: Number.parseInt(form.lowStockThreshold) || 5,
       variations: form.variations,
       tags: form.tags.split(",").map((t) => t.trim()).filter(Boolean),
+      createdAt: existing?.createdAt ?? new Date().toISOString(),
     }
 
     try {
-      const res = await apiFetch("/api/admin/products", {
-        method: editingId ? "PUT" : "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      })
-      mutateProducts()
-      if (res.ok) toast.success(editingId ? "Product updated" : "Product created")
-      else toast.error("Failed to save product")
+      upsert(record)
+      toast.success(editingId ? "Product updated" : "Product created")
     } catch (err) {
       console.error("Save failed:", err)
       toast.error("Failed to save product")
@@ -184,13 +184,11 @@ export function AdminProducts() {
     setIsModalOpen(false)
   }
 
-  const handleDelete = async (id: string) => {
+  const handleDelete = (id: string) => {
     if (!confirm("Delete this product?")) return
     try {
-      const res = await apiFetch(`/api/admin/products?id=${id}`, { method: "DELETE" })
-      mutateProducts()
-      if (res.ok) toast.success("Product deleted")
-      else toast.error("Failed to delete product")
+      remove(id)
+      toast.success("Product deleted")
     } catch (err) {
       console.error("Delete failed:", err)
       toast.error("Failed to delete product")
@@ -359,38 +357,43 @@ export function AdminProducts() {
     setIsImporting(true)
     setImportProgress({ done: 0, total: importPreview.length })
 
-    let successCount = 0
+    const next: Product[] = [...products]
     for (const row of importPreview) {
-      const slug = row["Name"].toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "")
-      const body = {
+      const slug = slugify(row["Name"])
+      const matchedCategory = categories.find((c) => c.slug === row["Category Slug"])
+      const record: Product = {
+        id: newId("prd"),
         name: row["Name"],
         slug,
         price: parseFloat(row["Price"]) || 0,
-        originalPrice: row["Original Price"] ? parseFloat(row["Original Price"]) : null,
+        originalPrice: row["Original Price"] ? parseFloat(row["Original Price"]) : undefined,
+        category: matchedCategory?.name || row["Category Slug"] || "",
         categorySlug: row["Category Slug"],
         description: row["Description"] || "",
-        images: (row["Image URLs (pipe separated)"] || "").split("|").map(s => s.trim()).filter(Boolean),
-        tags: (row["Tags (comma separated)"] || "").split(",").map(s => s.trim()).filter(Boolean),
+        images: (row["Image URLs (pipe separated)"] || "").split("|").map((s) => s.trim()).filter(Boolean),
+        tags: (row["Tags (comma separated)"] || "").split(",").map((s) => s.trim()).filter(Boolean),
         isNew: (row["Is New (yes/no)"] || "").toLowerCase() === "yes",
         isOnOffer: (row["Is On Offer (yes/no)"] || "").toLowerCase() === "yes",
         offerPercentage: parseInt(row["Offer %"]) || 0,
         inStock: (row["In Stock (yes/no)"] || "yes").toLowerCase() !== "no",
+        stockCount: 0,
+        lowStockThreshold: 5,
         variations: [
-          ...(row["Sizes (comma separated)"] ? [{ type: "Size", options: row["Sizes (comma separated)"].split(",").map(s => s.trim()).filter(Boolean) }] : []),
-          ...(row["Colors (comma separated)"] ? [{ type: "Color", options: row["Colors (comma separated)"].split(",").map(s => s.trim()).filter(Boolean) }] : []),
-        ].filter(v => v.options.length > 0),
+          ...(row["Sizes (comma separated)"] ? [{ type: "Size", options: row["Sizes (comma separated)"].split(",").map((s) => s.trim()).filter(Boolean) }] : []),
+          ...(row["Colors (comma separated)"] ? [{ type: "Color", options: row["Colors (comma separated)"].split(",").map((s) => s.trim()).filter(Boolean) }] : []),
+        ].filter((v) => v.options.length > 0),
+        createdAt: new Date().toISOString(),
       }
-
-      try {
-        const res = await apiFetch("/api/admin/products", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
-        if (res.ok) successCount++
-      } catch { /* continue */ }
-      setImportProgress(prev => ({ ...prev, done: prev.done + 1 }))
+      next.push(record)
+      setImportProgress((prev) => ({ ...prev, done: prev.done + 1 }))
+      // Yield to the event loop so progress paints. cmsStore writes are sync
+      // local + async server PUT, so we batch into a single write at the end.
+      await new Promise((r) => setTimeout(r, 0))
     }
 
+    setProducts(next)
     setIsImporting(false)
     setImportDone(true)
-    mutateProducts()
   }
 
   const resetImport = () => {
@@ -430,14 +433,13 @@ export function AdminProducts() {
     URL.revokeObjectURL(url)
   }
 
-  const handleBulkDelete = async () => {
+  const handleBulkDelete = () => {
     if (!confirm(`Delete ${selectedIds.size} product${selectedIds.size === 1 ? "" : "s"}? This cannot be undone.`)) return
-    for (const id of selectedIds) {
-      await apiFetch(`/api/admin/products?id=${id}`, { method: "DELETE" })
-    }
+    const remaining = products.filter((p) => !selectedIds.has(p.id))
+    const removedCount = products.length - remaining.length
+    setProducts(remaining)
     setSelectedIds(new Set())
-    mutateProducts()
-    toast.success(`Deleted ${selectedIds.size} product${selectedIds.size === 1 ? "" : "s"}`)
+    toast.success(`Deleted ${removedCount} product${removedCount === 1 ? "" : "s"}`)
   }
 
   const toggleSelect = (id: string) => {

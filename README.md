@@ -219,14 +219,15 @@ Internal API calls from the SPA must always use the base-prefixed helpers — ne
 ### Key Library Files (`src/lib/`)
 | File | Purpose |
 |---|---|
-| `cms-store.ts` | **Single CMS seam.** All admin-managed content (banners, categories, settings, pages, footer, popup, audit log, templates) goes through `cmsStore("key")` / `useCmsDoc("key")`. Backed by localStorage today; swap backend = one file. |
+| `cms-store.ts` | **Single CMS seam.** All admin-managed content (banners, categories, settings, pages, footer, popup, audit log, templates) goes through `cmsStore.get/set` / `useCmsDoc("key")`. Hybrid: localStorage cache + background sync to `/api/v2/admin/cms/:key` for non-local keys. Audit log + `user-*` / `customer-*` keys stay local-only. |
+| `api.ts` | Typed fetch client for the legacy Express API (`/api/*`). Sends `credentials: "include"` and forwards `x-admin-token` when present. |
 | `api-nest.ts` | Typed fetch client for `/api/v2` (NestJS). |
 | `types.ts` | Shared TypeScript types across the storefront. |
 | `cart-context.tsx` | React Context for cart state (items, quantity, subtotal). |
 | `wishlist-context.tsx` | React Context for wishlist (mirrors to NestJS wishlist API). |
 | `use-customer-mirror.ts` | On sign-in, upserts Clerk user into the NestJS customer profile. |
 | `analytics-store.ts` | Client-side analytics event tracking. |
-| `legacy-store.ts` | No-op stub for legacy Supabase calls (returns empty reads, soft-error writes). |
+| `legacy-store.ts` | Lives in `artifacts/api-server/src/lib/`, not the storefront. No-op stub for the removed Supabase admin store (returns empty reads, soft-error writes). |
 
 ### Clerk Integration (Storefront)
 - `ClerkProvider` wraps the entire SPA in `App.tsx`
@@ -287,7 +288,7 @@ constructor(@Inject(PaystackService) private readonly svc: PaystackService) {}
 |---|---|---|
 | `ProfileModule` | `GET/PUT /api/v2/me` | Customer profile — display name, email, phone, gender, date of birth |
 | `AddressesModule` | `/api/v2/me/addresses` | CRUD delivery addresses per session |
-| `WishlistModule` | `/api/v2/me/wishlist` | Add / remove / list wishlist items by product ID |
+| `WishlistModule` | `/api/v2/me/wishlist` | Add / list wishlist items; `DELETE /me/wishlist/:productSlug` removes by **product slug** (not product id) |
 | `OrdersModule` | `/api/v2/me/orders` | Customer order history per session |
 | `PaystackModule` | `/api/v2/payments/paystack` | M-Pesa STK push, status polling, HMAC webhook |
 
@@ -320,21 +321,22 @@ Phone must be a valid Safaricom number; normalised to E.164 `254XXXXXXXXX` inter
 | `AdminOrdersModule` | `/api/v2/admin/orders` | Admin order management |
 | `AdminPaymentsModule` | `/api/v2/admin/payments` | Admin payment records view |
 | `AdminCmsModule` | `/api/v2/admin/cms` | NestJS-backed CMS (future swap from localStorage) |
-| `CatalogImportModule` | `/api/v2/admin/catalog-import` | Bulk product import processing |
-| `WebScraperModule` | `/api/v2/admin/scraper` | Catalog sourcing via web scraping |
+| `CatalogImportModule` | `/api/v2/admin/catalog/{categories,products}/import`, `/api/v2/admin/catalog/google-sheet` | Bulk CSV / Google-Sheets import. Both categories AND products persist into cmsStore (`categories` / `products` keys). Token-gated by `AdminGuard`. |
+| `WebScraperModule` | `POST /api/v2/admin/catalog/scrape-url` | Server-side scrape of product listing pages (avoids browser CORS). Token-gated. |
+| `PartnersModule` | `/api/v2/partners/:type/{auth,signout,orders}` | Server-side login + submission endpoints for the supplier / clinic / logistics portals. |
 
 #### Infrastructure Modules
 
 | Module | Route prefix | Description |
 |---|---|---|
-| `HealthModule` | `GET /api/v2/health` | Uptime check — returns `{ status: "ok" }` |
+| `HealthModule` | `GET /api/v2/healthz` | Uptime check — returns `{ ok: true, service: "api-nest", ts }` |
 | `PrescriptionsModule` | `/api/v2/prescriptions` | Prescription upload + status tracking |
 | `UploadsModule` | `/api/v2/uploads` | File upload handling |
 | `ChatModule` | `/api/v2/chat` | Patient ↔ pharmacist / doctor messaging |
 | `MonitoringModule` | `/api/v2/monitoring` | Internal telemetry + error tracking |
-| `EmailModule` | `/api/v2/email` | Transactional email dispatch |
+| `EmailModule` | `/api/v2/notifications/email/{status,send}` | Resend-backed transactional email dispatch; returns 503 when `RESEND_API_KEY` is unset |
 | `NotificationsModule` | `/api/v2/notifications` | Push / in-app notifications |
-| `PipelineModule` | `/api/v2/pipeline` | Background job / workflow pipeline |
+| `PipelineModule` | `/api/v2/admin/pipeline/{sourcing,trading,qa,logistics,communications,status}` | Server-side automation (sourcing scan, margin recompute, expiry scan, rider auto-assign, template-driven send). Token-gated by `AdminGuard`. |
 
 ---
 
@@ -389,12 +391,12 @@ handlers so every request carries the Clerk auth context.
 
 | Path | Description |
 |---|---|
-| `/api/auth/*` | Clerk auth proxy endpoints |
+| `/api/auth/*` | Legacy stub auth endpoints (not the Clerk proxy — the real Clerk Frontend API proxy is mounted at `/api/__clerk`). |
 | `/api/payments/payhero/stk` | PayHero M-Pesa STK push (**deprecated, use Paystack**) |
 | `/api/payments/payhero/status` | PayHero payment status poll |
 | `/api/payments/payhero/callback` | PayHero webhook |
-| `/api/video/daily` | Daily.co room creation for telemedicine consultations |
-| `GET /api/health` | Express health check |
+| `/api/video/{room,token,heartbeat,end,active,status}` | Daily.co integration — create rooms, mint meeting tokens, heartbeat, end call, live status. Powered by `DAILY_API_KEY`. |
+| `GET /api/healthz` | Express health check |
 
 ---
 
@@ -445,9 +447,11 @@ All tables are defined in `lib/db/src/schema/` and managed via Drizzle ORM.
 | `consultations.ts` | `consultations` — doctor booking records |
 | `uploads.ts` | `uploads` — file upload metadata |
 | `payments.ts` | `payments` — payment records (pending Drizzle port; in-memory today) |
-| `chat.ts` | `chat_messages`, `chat_rooms` |
+| `chat.ts` | `chat_threads`, `chat_messages` |
 | `notifications.ts` | `notifications` — per-user notification records |
-| `cms.ts` | `cms_documents` — future NestJS-backed CMS storage |
+| `cms.ts` | `cms_docs`, `audit_log` — backs the cmsStore single-seam |
+| `notifications.ts` | `notifications`, `support_tickets`, `support_messages` |
+| `relations.ts` | Drizzle `relations()` declarations wiring every FK above (centralised so the relational query API works). |
 
 ---
 
@@ -482,9 +486,24 @@ Browser → Clerk JS SDK → Replit-managed Clerk tenant
 - `/checkout` — no auth required
 - All storefront browsing routes
 
-### Admin Auth — Hardcoded (temporary)
-`requireAdmin` middleware is a pass-through. Admin identity is hardcoded in `admin-shell.tsx`
-as the local super-admin. Full RBAC (roles + permissions) module is in Phase 2.
+### Admin Auth — Shared token (interim)
+
+Every NestJS admin controller is wrapped in the shared `AdminGuard`
+(`artifacts/api-nest/src/common/admin-guard.ts`):
+
+- If `ADMIN_API_TOKEN` is set, every request must present that token in
+  the `x-admin-token` header (or `Authorization: Bearer …`). Anything else
+  is rejected with 401.
+- If `ADMIN_API_TOKEN` is unset, the guard **fails closed in production**
+  (or when `ADMIN_REQUIRE_TOKEN=1`) and otherwise allows the call so local
+  devs can hit `/api/v2/admin/*` without configuring a token.
+
+The Express `requireAdmin` middleware follows the same model — the
+previous behaviour of auto-passing any non-production request even when
+a token was configured has been closed off.
+
+Admin identity in the SPA is still hardcoded in `admin-shell.tsx` (the
+local super-admin chip). Full RBAC and Clerk-admin SSO are in Phase 2.
 
 ### NestJS Session
 Cookie name: `shaniidrx_sid`
@@ -798,22 +817,24 @@ Phase 3 (future):
 
 ## 20. Known Gotchas
 
-1. **`/api/admin/products` PUT is full-replace.** It wipes `product_images` and
-   `product_variations` before reinserting. Never call it with a stale cached object. Use
-   per-row stock updates for partial changes.
+1. **`/api/admin/products` is legacy / no-op.** The Express admin product routes route
+   through `legacy-store.ts` (no persistence). The admin Products page now writes to the
+   cmsStore `products` key instead — do not add new code that talks to `/api/admin/products`.
 
 2. **`cmsStore` is the only CMS path.** Bypassing it breaks the audit log and prevents
-   the future NestJS migration from working cleanly.
+   the NestJS migration from working cleanly. The `audit-log`, `user-*` and `customer-*`
+   keys are deliberately local-only; everything else syncs to `/api/v2/admin/cms/:key`.
 
-3. **Supabase is fully removed.** `lib/legacy-store.ts` returns no-ops. Do not import from
-   any Supabase stub or add new code that depends on those routes.
+3. **Supabase is fully removed.** `artifacts/api-server/src/lib/legacy-store.ts` returns
+   no-ops. Do not import from any Supabase stub or add new code that depends on those routes.
 
-4. **Pre-existing TypeScript errors** exist in `analytics-store`, `security.ts`,
-   `traffic-classifier`, `contact-inquiries`, `pages/contact`, and `tags.name`. These are
-   out-of-scope for current work; do not chase them when validating a focused change.
+4. **Pre-existing TypeScript errors** exist in `security.ts`, `traffic-classifier`,
+   `contact-inquiries`, `pages/contact`, and `tags.name`. These are out-of-scope for current
+   work; do not chase them when validating a focused change.
 
 5. **NestJS `@Inject()` is mandatory** on every controller constructor. `tsx` does not emit
-   decorator metadata, so NestJS cannot infer types automatically.
+   decorator metadata, so NestJS cannot infer types automatically. The shared `AdminGuard`
+   also uses `@Inject(Reflector)` for the same reason.
 
 6. **Tailwind `optimize: false`** is required in the Vite config. Removing it breaks
    `@clerk/themes/shadcn.css`.
@@ -821,8 +842,18 @@ Phase 3 (future):
 7. **Admin sidebar hover states use `onMouseEnter`/`onMouseLeave`**, not CSS classes.
    Inline styles override class-based hover utilities in React.
 
-8. **NestJS in-memory stores reset on restart.** Profile, addresses, wishlist, orders, and
-   payment records are all in RAM. This is intentional until the Drizzle swap lands.
+8. **NestJS in-memory stores reset on restart.** Profile, addresses, wishlist, orders,
+   prescriptions, payment records, partner sessions and submissions are all in RAM.
+   Intentional until the Drizzle swap lands.
+
+9. **`AdminGuard` blocks unauthenticated writes in production.** When `ADMIN_API_TOKEN` is
+   set, the storefront's cmsStore PUTs to `/api/v2/admin/cms/:key` need to either share the
+   token (server-to-server) or be replaced by a Clerk-admin JWT flow. Dev/staging without
+   the token still works for backwards compatibility.
+
+10. **`SEED_DEMO_ORDERS` env flag.** OrdersModule no longer auto-injects fake orders into
+    every new session. Set `SEED_DEMO_ORDERS=1` if you want the demo data back for a
+    screenshot or onboarding flow.
 
 ---
 
@@ -866,7 +897,12 @@ emojis in UI copy, aggressive pricing language.
   to support cross-device persistence.
 - **Drizzle repository swap** — replace all `InMemoryRepository<T>` instances with Drizzle-backed
   implementations one module at a time (no controller changes).
-- **Admin auth** — replace the `requireAdmin` pass-through with Clerk-issued admin JWT claims
-  validated in `api-nest`.
+- **Admin auth** — replace the shared `ADMIN_API_TOKEN` (interim) with Clerk-issued admin
+  JWT claims validated in `api-nest`. The Phase-1 `AdminGuard` already wraps every admin
+  controller, so only the token check inside it needs to swap.
+- **Partner-portal Clerk migration** — the new server-side `PartnersModule` validates email
+  + portal-code today and stamps the session cookie. Phase 2 swaps the body of
+  `authenticate()` for a Clerk JWT verifier with `partnerType` custom claim; UI calls
+  (`loginPartner`, `submitPartnerOrder`) stay identical.
 - **Decommission `api-server`** — once Catalog and Admin modules port to `api-nest`, delete
   the legacy Express server entirely.

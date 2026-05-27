@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react"
 import { useUser } from "@clerk/react"
 import { cmsStore } from "@/lib/cms-store"
+import { apiNest } from "@/lib/api-nest"
 
 export type CustomerRecord = {
   id: string
@@ -77,16 +78,28 @@ export function useCustomerMirror(): void {
       ? "phone"
       : "unknown"
 
+    const fullName = user.fullName || [user.firstName, user.lastName].filter(Boolean).join(" ")
+    const email = user.primaryEmailAddress?.emailAddress || ""
+    const phone = user.primaryPhoneNumber?.phoneNumber || ""
+
     upsertCustomer({
       id: user.id,
-      fullName: user.fullName || [user.firstName, user.lastName].filter(Boolean).join(" "),
+      fullName,
       firstName: user.firstName || "",
       lastName: user.lastName || "",
-      email: user.primaryEmailAddress?.emailAddress || "",
-      phone: user.primaryPhoneNumber?.phoneNumber || "",
+      email,
+      phone,
       imageUrl: user.imageUrl,
       source,
       createdAt: user.createdAt ? new Date(user.createdAt as unknown as string).toISOString() : undefined,
     })
+
+    // Mirror into the NestJS Profile module so server-side customer-facing
+    // endpoints (orders, addresses, wishlist) see the user's identity.
+    // Best-effort: if the server is unreachable, we still have the cmsStore
+    // mirror so admin views work.
+    void apiNest
+      .updateMe({ fullName, email, phone })
+      .catch(() => undefined)
   }, [isSignedIn, user])
 }

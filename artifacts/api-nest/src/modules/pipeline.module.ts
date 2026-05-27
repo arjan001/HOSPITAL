@@ -42,10 +42,12 @@ import {
   Injectable,
   Module,
   Post,
+  UseGuards,
 } from "@nestjs/common"
 import { AdminCmsModule } from "./admin-cms.module"
 import { EmailModule, EmailService } from "./email.module"
 import { NotificationsModule, NotificationsService } from "./notifications.module"
+import { AdminGuard } from "../common/admin-guard"
 
 /**
  * Pipeline automation — server-side intelligence layer on top of cmsStore.
@@ -63,13 +65,17 @@ import { NotificationsModule, NotificationsService } from "./notifications.modul
  *   - Logistics      → auto-assign riders to deliveries, SLA scan
  *   - Communications → resolve template + send (email via EmailService)
  *
- * All endpoints require no auth today (admin gate is a TODO when Clerk
- * admin SSO lands). Endpoints are idempotent — running an automation twice
- * yields the same result if upstream data didn't change.
+ * All admin pipeline endpoints are gated by `AdminGuard` (token-based today,
+ * Clerk-admin once that lands). Endpoints are idempotent — running an
+ * automation twice yields the same result if upstream data didn't change.
  */
 
 const CMS_BASE = `http://127.0.0.1:${process.env.PORT || 8090}/api/v2/admin/cms`
 const CMS_TIMEOUT_MS = 4_000
+const INTERNAL_TOKEN = process.env.ADMIN_API_TOKEN?.trim()
+const INTERNAL_HEADERS: Record<string, string> = INTERNAL_TOKEN
+  ? { "x-admin-token": INTERNAL_TOKEN }
+  : {}
 
 async function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
   return await Promise.race([
@@ -80,7 +86,10 @@ async function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
 
 async function cmsGet<T>(key: string, fallback: T): Promise<T> {
   try {
-    const res = await withTimeout(fetch(`${CMS_BASE}/${encodeURIComponent(key)}`), CMS_TIMEOUT_MS)
+    const res = await withTimeout(
+      fetch(`${CMS_BASE}/${encodeURIComponent(key)}`, { headers: INTERNAL_HEADERS }),
+      CMS_TIMEOUT_MS,
+    )
     if (res.status === 404) return fallback
     if (!res.ok) {
       throw new HttpException(`CMS read failed for ${key}: ${res.status}`, HttpStatus.BAD_GATEWAY)
@@ -101,7 +110,7 @@ async function cmsPut<T>(key: string, value: T): Promise<void> {
     const res = await withTimeout(
       fetch(`${CMS_BASE}/${encodeURIComponent(key)}`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...INTERNAL_HEADERS },
         body: JSON.stringify(value),
       }),
       CMS_TIMEOUT_MS,
@@ -304,6 +313,7 @@ class SourcingAutomationService {
   }
 }
 
+@UseGuards(AdminGuard)
 @Controller("admin/pipeline/sourcing")
 class SourcingPipelineController {
   constructor(
@@ -423,6 +433,7 @@ class TradingAutomationService {
   }
 }
 
+@UseGuards(AdminGuard)
 @Controller("admin/pipeline/trading")
 class TradingPipelineController {
   constructor(
@@ -523,6 +534,7 @@ class QaAutomationService {
   }
 }
 
+@UseGuards(AdminGuard)
 @Controller("admin/pipeline/qa")
 class QaPipelineController {
   constructor(
@@ -608,6 +620,7 @@ class LogisticsAutomationService {
   }
 }
 
+@UseGuards(AdminGuard)
 @Controller("admin/pipeline/logistics")
 class LogisticsPipelineController {
   constructor(
@@ -701,6 +714,7 @@ class CommunicationsAutomationService {
   }
 }
 
+@UseGuards(AdminGuard)
 @Controller("admin/pipeline/communications")
 class CommunicationsPipelineController {
   constructor(@Inject(CommunicationsAutomationService) private readonly svc: CommunicationsAutomationService) {}
@@ -722,6 +736,7 @@ class CommunicationsPipelineController {
 
 /* ---------- Pipeline status ---------- */
 
+@UseGuards(AdminGuard)
 @Controller("admin/pipeline")
 class PipelineStatusController {
   @Get("status")

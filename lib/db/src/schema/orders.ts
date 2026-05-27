@@ -1,6 +1,7 @@
 import { integer, pgTable, text, timestamp } from "drizzle-orm/pg-core"
 import { createInsertSchema, createSelectSchema } from "drizzle-zod"
 import { z } from "zod/v4"
+import { users } from "./users"
 
 export type OrderStatus =
   | "pending"
@@ -17,7 +18,9 @@ export type PaymentMethod = "mpesa" | "card" | "cod"
 export const orders = pgTable("orders", {
   id: text("id").primaryKey(),
   orderNumber: text("order_number").unique().notNull(),
-  userId: text("user_id"),
+  // Nullable because guest checkout is supported; on user deletion the order
+  // record is kept (regulatory / accounting) and userId is cleared.
+  userId: text("user_id").references(() => users.id, { onDelete: "set null" }),
   status: text("status").notNull().default("pending"),
   paymentMethod: text("payment_method").notNull(),
   paymentStatus: text("payment_status").notNull().default("pending"),

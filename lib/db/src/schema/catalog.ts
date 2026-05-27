@@ -1,4 +1,4 @@
-import { boolean, integer, jsonb, pgTable, text, timestamp } from "drizzle-orm/pg-core"
+import { boolean, integer, jsonb, pgTable, text, timestamp, type AnyPgColumn } from "drizzle-orm/pg-core"
 import { createInsertSchema, createSelectSchema } from "drizzle-zod"
 import { z } from "zod/v4"
 
@@ -8,7 +8,9 @@ export const categories = pgTable("categories", {
   slug: text("slug").unique().notNull(),
   description: text("description"),
   imageUrl: text("image_url"),
-  parentId: text("parent_id"),
+  parentId: text("parent_id").references((): AnyPgColumn => categories.id, {
+    onDelete: "set null",
+  }),
   sortOrder: integer("sort_order").notNull().default(0),
   seoTitle: text("seo_title"),
   seoDescription: text("seo_description"),

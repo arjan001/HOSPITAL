@@ -22,10 +22,11 @@
  */
 import {
   Body, Controller, Delete, Get, HttpException, HttpStatus, Inject,
-  Injectable, Module, Param, Post, Put, Query, Req,
+  Injectable, Module, Param, Post, Put, Query, Req, UseGuards,
 } from "@nestjs/common"
 import type { Request } from "express"
 import { randomUUID } from "node:crypto"
+import { AdminGuard, Public } from "../common/admin-guard"
 
 /* ---------- types ---------- */
 
@@ -179,6 +180,10 @@ class MonitoringStore {
 @Injectable()
 class MonitoringService {
   constructor(@Inject(MonitoringStore) private readonly store: MonitoringStore) {}
+
+  clearAll(): void {
+    this.store.clear()
+  }
 
   ingest(payload: { events: Partial<MonitoringEvent>[] }, req: Request) {
     if (!this.store.config.ingestEnabled) {
@@ -377,10 +382,14 @@ function round2(n: number): number { return Math.round(n * 100) / 100 }
 
 /* ---------- controller ---------- */
 
+@UseGuards(AdminGuard)
 @Controller("monitoring")
 class MonitoringController {
   constructor(@Inject(MonitoringService) private readonly svc: MonitoringService) {}
 
+  // Browser ingestion is anonymous: every visitor's SDK posts errors here
+  // without an admin token. Everything else is admin-only.
+  @Public()
   @Post("events")
   ingest(@Req() req: Request, @Body() body: { events: Partial<MonitoringEvent>[] }) {
     return this.svc.ingest(body, req)
@@ -400,8 +409,7 @@ class MonitoringController {
 
   @Delete("events")
   clear() {
-    // NOTE: protect with admin auth once the admin module ships.
-    this.svc["store"].clear()
+    this.svc.clearAll()
     return { ok: true }
   }
 

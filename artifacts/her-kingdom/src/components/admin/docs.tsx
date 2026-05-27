@@ -5,6 +5,7 @@ import { BookOpen, Code2, Download, RefreshCw } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
+import { AdminShell } from "./admin-shell"
 
 const DOCS = [
   { id: "training", label: "Training Manual", file: "TRAINING_MANUAL.md", icon: BookOpen },
@@ -119,35 +120,37 @@ export function AdminDocs() {
   const [tab, setTab] = useState<DocId>("training")
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-[#3D0814]">Documentation</CardTitle>
-        <p className="text-sm text-muted-foreground">
-          Training manual and API reference for the Shaniid RX platform. These render the same
-          Markdown shipped under <code>/docs</code> in the repo.
-        </p>
-      </CardHeader>
-      <CardContent>
-        <Tabs value={tab} onValueChange={(v) => setTab(v as DocId)}>
-          <TabsList>
-            {DOCS.map((d) => {
-              const Icon = d.icon
-              return (
-                <TabsTrigger key={d.id} value={d.id}>
-                  <Icon className="mr-1.5 h-4 w-4" />
-                  {d.label}
-                </TabsTrigger>
-              )
-            })}
-          </TabsList>
-          {DOCS.map((d) => (
-            <TabsContent key={d.id} value={d.id} className="mt-4">
-              <DocViewer file={d.file} onSwitchTab={setTab} />
-            </TabsContent>
-          ))}
-        </Tabs>
-      </CardContent>
-    </Card>
+    <AdminShell title="Documentation">
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-[#3D0814]">Documentation</CardTitle>
+          <p className="text-sm text-muted-foreground">
+            Training manual and API reference for the Shaniid RX platform. These render the same
+            Markdown shipped under <code>/docs</code> in the repo.
+          </p>
+        </CardHeader>
+        <CardContent>
+          <Tabs value={tab} onValueChange={(v) => setTab(v as DocId)}>
+            <TabsList>
+              {DOCS.map((d) => {
+                const Icon = d.icon
+                return (
+                  <TabsTrigger key={d.id} value={d.id}>
+                    <Icon className="mr-1.5 h-4 w-4" />
+                    {d.label}
+                  </TabsTrigger>
+                )
+              })}
+            </TabsList>
+            {DOCS.map((d) => (
+              <TabsContent key={d.id} value={d.id} className="mt-4">
+                <DocViewer file={d.file} onSwitchTab={setTab} />
+              </TabsContent>
+            ))}
+          </Tabs>
+        </CardContent>
+      </Card>
+    </AdminShell>
   )
 }
 
