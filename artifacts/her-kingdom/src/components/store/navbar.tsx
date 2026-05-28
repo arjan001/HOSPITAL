@@ -248,7 +248,7 @@ export function Navbar() {
             <div className="flex items-center gap-2 lg:gap-4 shrink-0">
               <Link
                 href="/delivery"
-                className="hidden md:inline-flex items-center gap-2 h-10 px-4 rounded-full text-sm font-semibold transition-shadow hover:shadow-md"
+                className="hidden lg:inline-flex items-center gap-2 h-10 px-4 rounded-full text-sm font-semibold transition-shadow hover:shadow-md"
                 style={{ background: PILL_BG, border: `1px solid ${PILL_BORDER}`, color: TEXT_WINE }}
               >
                 <Package className="h-4 w-4" style={{ color: ACCENT_RED }} />
