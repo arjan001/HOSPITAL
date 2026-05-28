@@ -632,22 +632,22 @@ export function CheckoutPage() {
   const freeProgress     = Math.min(100, Math.round((totalPrice / freeShippingThreshold) * 100))
 
   /* ── Phone validation ──
-     Normalize to digits only (mirror of server-side `isValidPhone`) so the
-     client check matches what the API will accept. The old fallback counted
-     any non-stripped chars, which let letters / pasted junk through and the
-     server then rejected the order with a vague "Invalid phone number format". */
-  const digitsOnly  = formData.phone.replace(/\D/g, "")
-  const hasLeading  = formData.phone.trim().startsWith("+")
+     Use the resolved phone (formData → savedAddress → mpesaPhone) so the
+     check matches exactly what buildOrderPayload sends. Mirror of server-side
+     isValidPhone in api-server/src/lib/security.ts. */
+  const digitsOnly  = (formData.phone || savedAddress?.phone || mpesaPhone || "").replace(/\D/g, "")
+  const hasLeading  = (formData.phone || savedAddress?.phone || mpesaPhone || "").trim().startsWith("+")
   const cleanPhone  = (hasLeading ? "+" : "") + digitsOnly
   const isPhoneValid =
     /^(\+?254[17]\d{8}|0[17]\d{8}|011\d{7})$/.test(cleanPhone) ||
     (digitsOnly.length >= 9 && digitsOnly.length <= 15)
 
   /* ── Build payload ── */
+  const resolvedPhone = formData.phone || savedAddress?.phone || mpesaPhone || ""
   const buildOrderPayload = (via: string) => ({
-    customerName:     formData.name,
+    customerName:     formData.name || savedAddress?.name || "",
     customerEmail:    formData.email || undefined,
-    customerPhone:    formData.phone,
+    customerPhone:    resolvedPhone,
     deliveryLocationId: deliveryLocation || undefined,
     deliveryAddress:  formData.address,
     deliveryFee:      freeShipping ? 0 : deliveryFee,
@@ -1628,6 +1628,10 @@ export function CheckoutPage() {
                     <button
                       onClick={() => {
                         setFormError("")
+                        if (!isPhoneValid) {
+                          setFormError("Please enter a valid phone number (e.g. 0712345678 or +254712345678).")
+                          return
+                        }
                         if (paymentMethod === "mpesa")     { setShowPaystack(true);    return }
                         /* COD: place order directly */
                         ;(async () => {
@@ -1637,7 +1641,10 @@ export function CheckoutPage() {
                             const res  = await fetch("/api/orders", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) })
                             const data = await res.json().catch(() => ({}))
                             if (!res.ok || !data?.orderNumber) {
-                              setFormError(data?.error || "We couldn't place the order. Please try again.")
+                              const msg = data?.hint
+                                ? `${data.error}: ${data.hint}`
+                                : (data?.error || "We couldn't place the order. Please try again.")
+                              setFormError(msg)
                               return
                             }
                             {
