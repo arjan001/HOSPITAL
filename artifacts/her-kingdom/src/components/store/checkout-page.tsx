@@ -15,7 +15,6 @@ import "leaflet/dist/leaflet.css"
 import { TopBar } from "./top-bar"
 import { Navbar } from "./navbar"
 import { Footer } from "./footer"
-import { MpesaPaymentModal } from "./mpesa-payment-modal"
 import { PaystackPaymentModal } from "./paystack-payment-modal"
 import { cmsStore } from "@/lib/cms-store"
 import { upsertAdminOrder, type AdminOrderStatus } from "@/lib/orders-store"
@@ -530,13 +529,13 @@ export function CheckoutPage() {
   const [shippingType,     setShippingType]     = useState<"ondemand" | "scheduled">("ondemand")
   const [scheduledDate,    setScheduledDate]    = useState("")
   const [scheduledTime,    setScheduledTime]    = useState("")
-  const [paymentMethod,    setPaymentMethod]    = useState<"mpesa" | "payhero" | "cod">("payhero")
+  const [paymentMethod,    setPaymentMethod]    = useState<"mpesa" | "cod">("mpesa")
   const [mpesaPhone,       setMpesaPhone]       = useState("")
 
   /* ── Payment / order ── */
   type OrderSuccess = {
     orderNumber: string
-    paymentMethod: "mpesa" | "payhero" | "cod" | "whatsapp"
+    paymentMethod: "mpesa" | "cod" | "whatsapp"
     customerName: string
     customerPhone: string
     customerEmail?: string
@@ -552,10 +551,6 @@ export function CheckoutPage() {
     placedAt: string
   }
   const [orderResult,     setOrderResult]     = useState<OrderSuccess | null>(null)
-  /* MpesaPaymentModal is kept imported + rendered so the old PayHero code path
-     stays in tree (zero-touch rollback). It just never opens — Paystack is the
-     live M-PESA processor now. */
-  const [showMpesa,       setShowMpesa]       = useState(false)
   const [showPaystack,    setShowPaystack]    = useState(false)
   const [isSubmitting,    setIsSubmitting]    = useState(false)
   const [formError,       setFormError]       = useState("")
@@ -831,7 +826,7 @@ export function CheckoutPage() {
     setOrderResult(snap)
     void persistOrderToAccount(snap)
     clearCart()
-    setTimeout(() => setShowMpesa(false), 1500)
+    setTimeout(() => setShowPaystack(false), 1500)
   }
 
   /* ── Validate delivery before step 3 ── */
@@ -857,7 +852,7 @@ export function CheckoutPage() {
   ─────────────────────────────────────────────────────────*/
   if (orderResult) {
     const isWhatsApp = orderResult.orderNumber === "WhatsApp"
-    const isMpesa    = orderResult.paymentMethod === "mpesa" || orderResult.paymentMethod === "payhero"
+    const isMpesa    = orderResult.paymentMethod === "mpesa"
     const isCod      = orderResult.paymentMethod === "cod"
     const trackUrl   = isWhatsApp ? "/track-order" : `/track-order/${orderResult.orderNumber}`
 
@@ -1526,7 +1521,7 @@ export function CheckoutPage() {
                   <div className="space-y-3">
                     {([
                       {
-                        key: "payhero",
+                        key: "mpesa",
                         icon: Smartphone,
                         title: "M-PESA",
                         badge: "",
@@ -1578,8 +1573,8 @@ export function CheckoutPage() {
                     })}
                   </div>
 
-                  {/* M-PESA phone field — shown for both Paystack and PayHero M-PESA options */}
-                  {(paymentMethod === "mpesa" || paymentMethod === "payhero") && (
+                  {/* M-PESA phone number input */}
+                  {paymentMethod === "mpesa" && (
                     <div className="rounded-xl border border-gray-200 bg-white p-5">
                       <label className="text-sm font-semibold text-gray-900 block mb-2">M-PESA phone number</label>
                       <div className="relative">
@@ -1634,7 +1629,6 @@ export function CheckoutPage() {
                       onClick={() => {
                         setFormError("")
                         if (paymentMethod === "mpesa")     { setShowPaystack(true);    return }
-                        if (paymentMethod === "payhero")   { setShowMpesa(true);        return }
                         /* COD: place order directly */
                         ;(async () => {
                           try {
@@ -1698,17 +1692,6 @@ export function CheckoutPage() {
         onClose={() => setShowAddressModal(false)}
         onSave={a => { setSavedAddress(a); setFormError("") }}
         initial={savedAddress || { name: formData.name, phone: formData.phone }}
-      />
-
-      <MpesaPaymentModal
-        isOpen={showMpesa}
-        onClose={() => setShowMpesa(false)}
-        total={grandTotal}
-        defaultPhone={formData.phone || savedAddress?.phone || ""}
-        customerName={formData.name  || savedAddress?.name  || ""}
-        createPendingOrder={createMpesaPendingOrder}
-        onPaymentConfirmed={handleMpesaConfirmed}
-        onPaymentFailed={r => trackAbandoned(`mpesa_${r}`, "payment_failed")}
       />
 
       <PaystackPaymentModal

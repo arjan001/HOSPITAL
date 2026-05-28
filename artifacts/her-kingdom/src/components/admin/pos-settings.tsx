@@ -8,7 +8,7 @@
  */
 import { useEffect, useState } from "react"
 import {
-  Save, Printer, Receipt as ReceiptIcon, Banknote, Smartphone, CreditCard,
+  Save, Printer, Receipt as ReceiptIcon, Banknote, Smartphone,
   FileSignature, Percent, RotateCcw,
 } from "lucide-react"
 import { notify } from "@/lib/notify"
@@ -24,7 +24,6 @@ const WINE = "#3D0814"
 const METHOD_META: Record<PaymentMethod, { label: string; icon: typeof Banknote }> = {
   cash:   { label: "Cash",   icon: Banknote },
   mpesa:  { label: "M-Pesa", icon: Smartphone },
-  card:   { label: "Card",   icon: CreditCard },
   credit: { label: "Credit / IOU", icon: FileSignature },
 }
 

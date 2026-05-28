@@ -321,7 +321,7 @@ export const PAGE_SEO = {
   paymentsPolicy: {
     title: "Payments Policy | Her Kingdom — M-PESA, Card & Cash on Delivery",
     description:
-      "How payments work at Her Kingdom — M-PESA STK push via PayHero, card payments, processing times, gift packaging, free delivery above KSh 7,000, receipts, and WhatsApp support.",
+      "How payments work at Shaniid RX — M-PESA STK push and Cash on Delivery, processing times, free delivery above KSh 7,000, receipts, and WhatsApp support.",
   },
   checkout: {
     title: "Checkout | Her Kingdom",
@@ -609,7 +609,7 @@ const INTENT_EXTRA_WISHLIST = [
 ]
 
 const INTENT_EXTRA_PAYMENTS = [
-  "Her Kingdom PayHero M-PESA Kenya",
+  "Shaniid RX M-PESA Kenya",
   "Her Kingdom STK push Kenya",
   "Her Kingdom card payment Kenya",
   "Her Kingdom Visa payment Kenya",
@@ -686,7 +686,7 @@ export const PAGE_KEYWORDS = {
     ...INTENT_EXTRA_WISHLIST,
   ],
   paymentsPolicy: [
-    "payments policy", "Her Kingdom payments", "M-PESA STK push", "PayHero M-PESA Kenya",
+    "payments policy", "Her Kingdom payments", "M-PESA STK push", "Shaniid RX M-PESA Kenya",
     "Kenya jewelry payments", "pay jewelry online Kenya", "card payment jewelry Kenya",
     "cash on delivery jewelry Nairobi", "delivery policy Kenya", "free delivery above KSh 7000",
     "Her Kingdom payment methods", "jewelry receipt Her Kingdom",

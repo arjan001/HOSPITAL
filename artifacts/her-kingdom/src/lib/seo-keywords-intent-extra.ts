@@ -1136,7 +1136,7 @@ export const INTENT_SEO_KEYWORDS_EXTRA: readonly string[] = [
   "Her Kingdom discreet packaging Kenya",
   "Her Kingdom secure checkout Kenya",
   "Her Kingdom secure payment Kenya",
-  "Her Kingdom PayHero M-PESA Kenya",
+  "Shaniid RX M-PESA Kenya",
   "Her Kingdom STK push Kenya",
   "Her Kingdom cash on delivery Nairobi",
   "Her Kingdom pay on delivery Nairobi",

@@ -2,7 +2,7 @@
  * api-server — Express application factory.
  *
  * This is the **legacy** Express backend that backs the storefront catalogue,
- * admin routes, Clerk proxy, and the PayHero stub. It runs on port 8080 and
+ * admin routes and Clerk proxy. It runs on port 8080 and
  * is mounted at `/api` by the Replit reverse proxy.
  *
  * Middleware stack (in order):
