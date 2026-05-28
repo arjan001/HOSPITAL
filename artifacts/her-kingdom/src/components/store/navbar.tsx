@@ -590,6 +590,15 @@ export function Navbar() {
                 )}
               </div>
 
+              {/* Mobile account icon */}
+              <Link
+                href={isSignedIn ? "/account" : "/sign-in"}
+                className="md:hidden relative p-2 w-10 h-10 flex items-center justify-center"
+                aria-label="Account"
+              >
+                <User className="h-5 w-5" style={{ color: ACCENT_RED }} />
+              </Link>
+
               {/* Mobile wishlist + cart icons */}
               <Link
                 href="/wishlist"
