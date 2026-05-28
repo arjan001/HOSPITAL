@@ -29,9 +29,12 @@ import {
   Param,
   Post,
   Req,
+  UseGuards,
 } from "@nestjs/common"
 import type { Request } from "express"
 import { newId } from "../common/repository"
+import { EmailModule, EmailService } from "./email.module"
+import { AdminGuard } from "../common/admin-guard"
 
 const CMS_BASE = `http://127.0.0.1:${process.env.PORT || 8090}/api/v2/admin/cms`
 const CMS_TIMEOUT_MS = 4_000
@@ -103,8 +106,16 @@ export type PartnerSubmission = {
   createdAt: string
 }
 
+const PORTAL_PATHS: Record<PartnerType, string> = {
+  supplier: "/portal/supplier",
+  clinic: "/portal/clinic",
+  logistics: "/portal/logistics",
+}
+
 @Injectable()
 class PartnersService {
+  constructor(@Inject(EmailService) private readonly email: EmailService) {}
+
   /**
    * In-memory map keyed by req.sessionId → partner stamp. Cleared on
    * process restart; that's intentional today (matches the rest of the
@@ -113,6 +124,28 @@ class PartnersService {
   private sessions = new Map<string, PartnerStamp>()
   /** All partner submissions, newest-first. */
   private submissions: PartnerSubmission[] = []
+
+  async sendWelcome(input: {
+    type: string
+    name: string
+    email: string
+    portalCode: string
+  }): Promise<{ ok: boolean; reason?: string; skipped?: boolean }> {
+    const t = input?.type === "supplier" ? "supplier" : input?.type === "clinic" ? "clinic" : "logistics"
+    const baseUrl = process.env.PUBLIC_APP_URL?.trim() || "https://shaniidrx.com"
+    return this.email.send({
+      to: input.email,
+      template: "partner.welcome",
+      subject: "Your Shaniid RX partner portal access",
+      data: {
+        name: input.name || input.email,
+        partnerType: t,
+        email: input.email,
+        portalCode: input.portalCode,
+        portalUrl: `${baseUrl}${PORTAL_PATHS[t]}`,
+      },
+    })
+  }
 
   private assertType(t: string): PartnerType {
     if (t === "supplier" || t === "clinic" || t === "logistics") return t
@@ -214,6 +247,27 @@ class PartnersService {
   }
 }
 
+@Controller("partners/welcome")
+class PartnerWelcomeController {
+  constructor(@Inject(PartnersService) private readonly svc: PartnersService) {}
+
+  @Post()
+  async send(@Body() body: { type?: string; name?: string; email?: string; portalCode?: string }) {
+    if (!body?.email) throw new HttpException("email is required", HttpStatus.BAD_REQUEST)
+    if (!body?.portalCode) throw new HttpException("portalCode is required", HttpStatus.BAD_REQUEST)
+    const r = await this.svc.sendWelcome({
+      type: body.type ?? "supplier",
+      name: body.name ?? body.email,
+      email: body.email,
+      portalCode: body.portalCode,
+    })
+    if (!r.ok && r.skipped) {
+      throw new HttpException({ ok: false, hint: r.reason }, HttpStatus.SERVICE_UNAVAILABLE)
+    }
+    return r
+  }
+}
+
 @Controller("partners/:type")
 class PartnersController {
   constructor(@Inject(PartnersService) private readonly svc: PartnersService) {}
@@ -254,7 +308,8 @@ class PartnersController {
 }
 
 @Module({
-  controllers: [PartnersController],
+  imports: [EmailModule],
+  controllers: [PartnerWelcomeController, PartnersController],
   providers: [PartnersService],
 })
 export class PartnersModule {}

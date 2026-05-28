@@ -21,7 +21,7 @@ import { upsertAdminOrder, type AdminOrderStatus } from "@/lib/orders-store"
 import { apiNest, refreshAccount, type AccountOrder } from "@/lib/api-nest"
 import { useCart } from "@/lib/cart-context"
 import { formatPrice } from "@/lib/format"
-import type { DeliveryLocation } from "@/lib/types"
+import type { DeliveryLocation, DeliveryJob } from "@/lib/types"
 import { useStoreContact } from "@/hooks/use-store-contact"
 
 /* ── Brand tokens ─────────────────────────────────────────── */
@@ -823,6 +823,39 @@ export function CheckoutPage() {
         mpesaPhone: result.phone,
       })
     } catch { /* localStorage best-effort */ }
+
+    // Auto-assign a delivery job to the best-matching logistics partner.
+    if (fulfilmentMode === "delivery") {
+      try {
+        type LP = { id: string; status: string; coverageCounties: string[]; activeDeliveries: number }
+        const allPartners = cmsStore.get<LP[]>("logistics-partners", [])
+        const county = (savedAddress?.region || "").toLowerCase()
+        const active = allPartners.filter(p => p.status === "active")
+        const matched = active.filter(p => p.coverageCounties.some(c => c.toLowerCase() === county))
+        const pool = matched.length > 0 ? matched : active
+        if (pool.length > 0) {
+          const partner = pool.reduce((best, p) => p.activeDeliveries < best.activeDeliveries ? p : best)
+          const now = new Date().toISOString()
+          const job: DeliveryJob = {
+            id: `job-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+            orderNumber: result.orderNumber,
+            orderId: result.orderNumber,
+            customerName: formData.name || savedAddress?.name || "",
+            phone: result.phone || formData.phone || "",
+            address: [savedAddress?.address, savedAddress?.apartment, savedAddress?.area].filter(Boolean).join(", ") || formData.address,
+            county: savedAddress?.region || county,
+            items: items.map(i => ({ name: i.product.name, qty: i.quantity })),
+            partnerId: partner.id,
+            status: "assigned",
+            createdAt: now,
+            updatedAt: now,
+          }
+          const existing = cmsStore.get<DeliveryJob[]>("delivery-jobs", [])
+          cmsStore.set("delivery-jobs", [...existing, job])
+        }
+      } catch { /* best-effort — never block checkout */ }
+    }
+
     setOrderResult(snap)
     void persistOrderToAccount(snap)
     clearCart()

@@ -8,7 +8,7 @@
  * delivery confirmation, KYC status, and performance metrics.
  */
 
-import { useState } from "react"
+import { useState, useMemo } from "react"
 import { Link } from "wouter"
 import { useCmsDoc } from "@/lib/cms-store"
 import {
@@ -26,10 +26,13 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 
-const WINE   = "#3D0814"
-const ORANGE = "#F97316"
-const GREEN  = "#15803D"
-const PURPLE = "#7C3AED"
+const WINE    = "#3D0814"
+const ORANGE  = "#F97316"
+const GREEN   = "#15803D"
+const PURPLE  = "#7C3AED"
+const S_TEXT  = "rgba(255,255,255,0.88)"
+const S_MUTED = "rgba(255,255,255,0.45)"
+const S_BORDER= "rgba(255,255,255,0.10)"
 
 /* ─── Login Page ─────────────────────────────────────────────── */
 
@@ -127,6 +130,18 @@ function LogisticsLoginPage({ onLogin, error }: {
   )
 }
 
+/* ─── Delivery Job Types ─────────────────────────────────────── */
+
+export type { DeliveryJobStatus, DeliveryJob } from "@/lib/types"
+import type { DeliveryJobStatus, DeliveryJob } from "@/lib/types"
+
+const JOB_STATUS_CONFIG: Record<DeliveryJobStatus, { label: string; color: string; bg: string; icon: typeof CheckCircle2 }> = {
+  assigned:   { label: "Assigned",   color: "#1D4ED8", bg: "#EFF6FF", icon: Clock       },
+  picked_up:  { label: "Picked Up",  color: ORANGE,   bg: "#FFF7ED", icon: Navigation   },
+  delivered:  { label: "Delivered",  color: GREEN,    bg: "#F0FDF4", icon: CheckCircle2 },
+  failed:     { label: "Failed",     color: "#DC2626", bg: "#FEF2F2", icon: XCircle      },
+}
+
 /* ─── Vehicle Card ───────────────────────────────────────────── */
 
 function VehicleCard({ vehicle }: { vehicle: LogisticsVehicle }) {
@@ -186,8 +201,20 @@ function LogisticsDashboard({ partner, session, onLogout }: {
     })
   }
 
+  const [deliveryJobs, setDeliveryJobs] = useCmsDoc<DeliveryJob[]>("delivery-jobs", [])
+  const myJobs = useMemo(() => deliveryJobs.filter(j => j.partnerId === partner.id)
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt)), [deliveryJobs, partner.id])
+  const activeJobs    = myJobs.filter(j => j.status === "assigned" || j.status === "picked_up")
+  const completedJobs = myJobs.filter(j => j.status === "delivered" || j.status === "failed")
+
+  const updateJobStatus = (jobId: string, status: DeliveryJobStatus) => {
+    setDeliveryJobs(prev => prev.map(j =>
+      j.id === jobId ? { ...j, status, updatedAt: new Date().toISOString() } : j
+    ))
+  }
+
   const kycDocs = ["hasInsurance", "hasRegistration", "hasDriverLicenses", "hasSafetyTraining"]
-  const kycPct  = kycDocs.filter(k => (partner as Record<string, unknown>)[k]).length / kycDocs.length * 100
+  const kycPct  = kycDocs.filter(k => (partner as unknown as Record<string, unknown>)[k]).length / kycDocs.length * 100
 
   const available  = partner.vehicles.filter(v => v.status === "available").length
   const onDelivery = partner.vehicles.filter(v => v.status === "on_delivery").length
@@ -199,50 +226,53 @@ function LogisticsDashboard({ partner, session, onLogout }: {
       {/* ── Mobile overlay sidebar ─────────────────────────────── */}
       {mobileOpen && (
         <div className="fixed inset-0 z-50 md:hidden">
-          <div className="absolute inset-0 bg-black/50" onClick={() => setMobileOpen(false)} />
-          <aside className="absolute left-0 top-0 bottom-0 w-72 flex flex-col bg-white shadow-2xl overflow-y-auto">
-            <div className="px-5 py-5 border-b flex items-center justify-between" style={{ background: WINE }}>
+          <div className="absolute inset-0 bg-black/60" onClick={() => setMobileOpen(false)} />
+          <aside className="absolute left-0 top-0 bottom-0 w-72 flex flex-col overflow-y-auto shadow-2xl" style={{ background: WINE }}>
+            <div className="px-5 py-5 flex items-center justify-between" style={{ borderBottom: `1px solid ${S_BORDER}` }}>
               <div>
-                <div className="flex items-center gap-2 mb-1">
-                  <img src="/logo.svg" alt="" className="h-6 w-6 brightness-0 invert" onError={e => { (e.target as HTMLImageElement).style.display = "none" }} />
-                  <span className="text-white font-bold">Shaniid RX</span>
+                <div className="flex items-center gap-2 mb-0.5">
+                  <img src="/logo.svg" alt="" className="h-5 w-5 brightness-0 invert" onError={e => { (e.target as HTMLImageElement).style.display = "none" }} />
+                  <span className="font-bold text-sm" style={{ color: S_TEXT }}>Shaniid RX</span>
                 </div>
-                <p className="text-white/60 text-xs">Logistics Portal</p>
+                <p className="text-xs" style={{ color: S_MUTED }}>Logistics Portal</p>
               </div>
-              <button onClick={() => setMobileOpen(false)} className="text-white/70 hover:text-white p-1 rounded-lg"><X className="h-5 w-5" /></button>
+              <button onClick={() => setMobileOpen(false)} className="p-1.5 rounded-lg hover:bg-white/10 transition-colors" style={{ color: S_MUTED }}><X className="h-5 w-5" /></button>
             </div>
-            <div className="px-5 py-4 border-b">
-              <div className="h-10 w-10 rounded-xl flex items-center justify-center mb-2" style={{ background: `${PURPLE}20` }}>
-                <Truck className="h-5 w-5" style={{ color: PURPLE }} />
+            <div className="px-5 py-4" style={{ borderBottom: `1px solid ${S_BORDER}` }}>
+              <div className="h-10 w-10 rounded-xl flex items-center justify-center mb-2" style={{ background: "rgba(255,255,255,0.15)" }}>
+                <Truck className="h-5 w-5" style={{ color: ORANGE }} />
               </div>
-              <p className="font-bold text-gray-800 text-sm leading-tight">{partner.companyName}</p>
-              <p className="text-xs text-gray-400 mt-0.5">{partner.county}</p>
-              <span className={`inline-block mt-1.5 text-[11px] font-semibold px-2 py-0.5 rounded-full capitalize ${partner.status === "active" ? "text-green-700 bg-green-50" : "text-amber-700 bg-amber-50"}`}>{partner.status}</span>
+              <p className="font-semibold text-sm leading-tight" style={{ color: S_TEXT }}>{partner.companyName}</p>
+              <p className="text-xs mt-0.5" style={{ color: S_MUTED }}>{partner.county}</p>
+              <span className={`inline-block mt-1.5 text-[11px] font-semibold px-2 py-0.5 rounded-full capitalize ${partner.status === "active" ? "text-green-300 bg-green-900/40" : "text-amber-300 bg-amber-900/40"}`}>{partner.status}</span>
             </div>
-            <div className="px-5 py-3 border-b bg-gray-50 space-y-1.5">
-              <p className="text-xs font-semibold text-gray-500 mb-1">Fleet ({partner.vehicles.length})</p>
+            <div className="px-5 py-3 space-y-1.5" style={{ borderBottom: `1px solid ${S_BORDER}`, background: "rgba(0,0,0,0.15)" }}>
+              <p className="text-xs font-semibold mb-1" style={{ color: S_MUTED }}>Fleet ({partner.vehicles.length})</p>
               {[
-                { label: "Available", count: available, color: GREEN },
+                { label: "Available", count: available, color: "#4ADE80" },
                 { label: "On delivery", count: onDelivery, color: ORANGE },
-                { label: "Maintenance", count: maintenance, color: "#F59E0B" },
+                { label: "Maintenance", count: maintenance, color: "#FCD34D" },
               ].map(({ label, count, color }) => (
                 <div key={label} className="flex items-center justify-between text-xs">
-                  <span className="text-gray-500">{label}</span>
+                  <span style={{ color: S_MUTED }}>{label}</span>
                   <span className="font-bold" style={{ color }}>{count}</span>
                 </div>
               ))}
             </div>
-            <nav className="flex-1 px-3 py-4 space-y-1">
+            <nav className="flex-1 px-3 py-4 space-y-0.5">
               {LOG_TABS.map(({ id, label, icon: Icon }) => (
                 <button key={id} onClick={() => { setTab(id); setMobileOpen(false) }}
-                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${tab === id ? "text-white shadow-sm" : "text-gray-600 hover:bg-gray-50"}`}
-                  style={tab === id ? { background: WINE } : {}}>
+                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all relative hover:bg-white/10"
+                  style={tab === id ? { background: "rgba(255,255,255,0.12)", color: ORANGE } : { color: S_TEXT }}>
+                  {tab === id && <span className="absolute left-0 inset-y-2 w-0.5 rounded-r" style={{ background: ORANGE }} />}
                   <Icon className="h-4 w-4 flex-shrink-0" />{label}
                 </button>
               ))}
             </nav>
-            <div className="px-5 py-4 border-t">
-              <button onClick={onLogout} className="flex items-center gap-2 text-sm text-gray-400 hover:text-red-500 transition-colors"><LogOut className="h-4 w-4" />Sign out</button>
+            <div className="px-5 py-4" style={{ borderTop: `1px solid ${S_BORDER}` }}>
+              <button onClick={onLogout} className="flex items-center gap-2 text-sm transition-colors hover:text-orange-400" style={{ color: S_MUTED }}>
+                <LogOut className="h-4 w-4" />Sign out
+              </button>
             </div>
           </aside>
         </div>
@@ -250,76 +280,77 @@ function LogisticsDashboard({ partner, session, onLogout }: {
 
       {/* ── Desktop collapsible sidebar ────────────────────────── */}
       <aside
-        className="hidden md:flex flex-shrink-0 flex-col border-r border-gray-100 bg-white transition-all duration-200"
-        style={{ width: collapsed ? 64 : 256 }}
+        className="hidden md:flex flex-shrink-0 flex-col transition-all duration-200"
+        style={{ width: collapsed ? 64 : 256, background: WINE, borderRight: `1px solid ${S_BORDER}` }}
       >
-        <div className="flex items-center border-b overflow-hidden" style={{ background: WINE, minHeight: 64 }}>
+        <div className="flex items-center overflow-hidden" style={{ borderBottom: `1px solid ${S_BORDER}`, minHeight: 64 }}>
           {collapsed ? (
             <div className="flex-1 flex items-center justify-center py-5">
-              <img src="/logo.svg" alt="" className="h-6 w-6 brightness-0 invert" onError={e => { (e.target as HTMLImageElement).style.display = "none" }} />
+              <img src="/logo.svg" alt="" className="h-5 w-5 brightness-0 invert" onError={e => { (e.target as HTMLImageElement).style.display = "none" }} />
             </div>
           ) : (
-            <div className="flex-1 px-5 py-5">
-              <div className="flex items-center gap-2 mb-1">
-                <img src="/logo.svg" alt="" className="h-6 w-6 brightness-0 invert" onError={e => { (e.target as HTMLImageElement).style.display = "none" }} />
-                <span className="text-white font-bold">Shaniid RX</span>
+            <div className="flex-1 px-5 py-4">
+              <div className="flex items-center gap-2 mb-0.5">
+                <img src="/logo.svg" alt="" className="h-5 w-5 brightness-0 invert" onError={e => { (e.target as HTMLImageElement).style.display = "none" }} />
+                <span className="font-bold text-sm" style={{ color: S_TEXT }}>Shaniid RX</span>
               </div>
-              <p className="text-white/60 text-xs">Logistics Portal</p>
+              <p className="text-xs" style={{ color: S_MUTED }}>Logistics Portal</p>
             </div>
           )}
         </div>
 
         {collapsed ? (
-          <div className="flex items-center justify-center py-4 border-b">
-            <div className="h-9 w-9 rounded-xl flex items-center justify-center" style={{ background: `${PURPLE}20` }}>
-              <Truck className="h-5 w-5" style={{ color: PURPLE }} />
+          <div className="flex items-center justify-center py-4" style={{ borderBottom: `1px solid ${S_BORDER}` }}>
+            <div className="h-9 w-9 rounded-xl flex items-center justify-center" style={{ background: "rgba(255,255,255,0.15)" }}>
+              <Truck className="h-4 w-4" style={{ color: ORANGE }} />
             </div>
           </div>
         ) : (
-          <div className="px-5 py-4 border-b">
-            <div className="h-10 w-10 rounded-xl flex items-center justify-center mb-2" style={{ background: `${PURPLE}20` }}>
-              <Truck className="h-5 w-5" style={{ color: PURPLE }} />
+          <div className="px-5 py-4" style={{ borderBottom: `1px solid ${S_BORDER}` }}>
+            <div className="h-10 w-10 rounded-xl flex items-center justify-center mb-2" style={{ background: "rgba(255,255,255,0.15)" }}>
+              <Truck className="h-5 w-5" style={{ color: ORANGE }} />
             </div>
-            <p className="font-bold text-gray-800 text-sm leading-tight">{partner.companyName}</p>
-            <p className="text-xs text-gray-400 mt-0.5">{partner.county}</p>
-            <span className={`inline-block mt-1.5 text-[11px] font-semibold px-2 py-0.5 rounded-full capitalize ${partner.status === "active" ? "text-green-700 bg-green-50" : "text-amber-700 bg-amber-50"}`}>{partner.status}</span>
+            <p className="font-semibold text-sm leading-tight" style={{ color: S_TEXT }}>{partner.companyName}</p>
+            <p className="text-xs mt-0.5" style={{ color: S_MUTED }}>{partner.county}</p>
+            <span className={`inline-block mt-1.5 text-[11px] font-semibold px-2 py-0.5 rounded-full capitalize ${partner.status === "active" ? "text-green-300 bg-green-900/40" : "text-amber-300 bg-amber-900/40"}`}>{partner.status}</span>
           </div>
         )}
 
         {!collapsed && (
-          <div className="px-5 py-3 border-b bg-gray-50 space-y-1.5">
-            <p className="text-xs font-semibold text-gray-500 mb-1">Fleet ({partner.vehicles.length})</p>
+          <div className="px-5 py-3 space-y-1.5" style={{ borderBottom: `1px solid ${S_BORDER}`, background: "rgba(0,0,0,0.15)" }}>
+            <p className="text-xs font-semibold mb-1" style={{ color: S_MUTED }}>Fleet ({partner.vehicles.length})</p>
             {[
-              { label: "Available", count: available, color: GREEN },
+              { label: "Available", count: available, color: "#4ADE80" },
               { label: "On delivery", count: onDelivery, color: ORANGE },
-              { label: "Maintenance", count: maintenance, color: "#F59E0B" },
+              { label: "Maintenance", count: maintenance, color: "#FCD34D" },
             ].map(({ label, count, color }) => (
               <div key={label} className="flex items-center justify-between text-xs">
-                <span className="text-gray-500">{label}</span>
+                <span style={{ color: S_MUTED }}>{label}</span>
                 <span className="font-bold" style={{ color }}>{count}</span>
               </div>
             ))}
           </div>
         )}
 
-        <nav className="flex-1 px-2 py-4 space-y-1">
+        <nav className="flex-1 px-2 py-4 space-y-0.5">
           {LOG_TABS.map(({ id, label, icon: Icon }) => (
             <button key={id} onClick={() => setTab(id)} title={collapsed ? label : undefined}
-              className={`w-full flex items-center rounded-xl text-sm font-medium transition-all ${collapsed ? "justify-center px-0 py-2.5" : "gap-3 px-3 py-2.5"} ${tab === id ? "text-white shadow-sm" : "text-gray-600 hover:bg-gray-50"}`}
-              style={tab === id ? { background: WINE } : {}}>
+              className={`w-full flex items-center rounded-lg text-sm font-medium transition-all relative hover:bg-white/10 ${collapsed ? "justify-center px-0 py-2.5" : "gap-3 px-3 py-2.5"}`}
+              style={tab === id ? { background: "rgba(255,255,255,0.12)", color: ORANGE } : { color: S_TEXT }}>
+              {tab === id && !collapsed && <span className="absolute left-0 inset-y-2 w-0.5 rounded-r" style={{ background: ORANGE }} />}
               <Icon className="h-4 w-4 flex-shrink-0" />
               {!collapsed && <span>{label}</span>}
             </button>
           ))}
         </nav>
 
-        <div className="border-t">
+        <div style={{ borderTop: `1px solid ${S_BORDER}` }}>
           <div className={`py-3 flex items-center ${collapsed ? "flex-col gap-2 px-2" : "px-5 justify-between"}`}>
-            <button onClick={onLogout} title="Sign out" className="flex items-center gap-2 text-sm text-gray-400 hover:text-red-500 transition-colors">
+            <button onClick={onLogout} title="Sign out" className="flex items-center gap-2 text-sm transition-colors hover:text-orange-400" style={{ color: S_MUTED }}>
               <LogOut className="h-4 w-4" />{!collapsed && <span>Sign out</span>}
             </button>
             <button onClick={toggleSidebar} title={collapsed ? "Expand" : "Collapse"}
-              className="flex items-center justify-center h-7 w-7 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors">
+              className="flex items-center justify-center h-7 w-7 rounded-lg hover:bg-white/10 transition-colors" style={{ color: S_MUTED }}>
               {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
             </button>
           </div>
@@ -351,10 +382,10 @@ function LogisticsDashboard({ partner, session, onLogout }: {
             <div className="space-y-6">
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                 {[
-                  { icon: Package,    label: "Active Deliveries",  value: partner.activeDeliveries,           color: WINE   },
-                  { icon: Truck,      label: "Total Fleet",         value: partner.vehicles.length,            color: PURPLE },
-                  { icon: TrendingUp, label: "On-Time Rate",        value: `${partner.onTimeRate}%`,           color: GREEN  },
-                  { icon: Activity,   label: "Total Deliveries",    value: partner.totalDeliveries,            color: ORANGE },
+                  { icon: Package,    label: "Active Deliveries",  value: activeJobs.length || partner.activeDeliveries, color: WINE   },
+                  { icon: Truck,      label: "Total Fleet",         value: partner.vehicles.length,                      color: PURPLE },
+                  { icon: TrendingUp, label: "On-Time Rate",        value: `${partner.onTimeRate}%`,                     color: GREEN  },
+                  { icon: Activity,   label: "Total Deliveries",    value: myJobs.filter(j => j.status === "delivered").length || partner.totalDeliveries, color: ORANGE },
                 ].map(({ icon: Icon, label, value, color }) => (
                   <div key={label} className="bg-white rounded-xl border border-gray-100 p-4 flex items-start gap-3 shadow-sm">
                     <div className="h-10 w-10 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: `${color}15` }}>
@@ -427,18 +458,124 @@ function LogisticsDashboard({ partner, session, onLogout }: {
 
           {/* DELIVERIES */}
           {tab === "deliveries" && (
-            <div className="space-y-4">
-              <p className="text-sm text-gray-500">Active and recent delivery assignments for your fleet</p>
-              {partner.activeDeliveries === 0 ? (
+            <div className="space-y-5">
+              {/* Summary row */}
+              <div className="grid grid-cols-3 gap-3">
+                {[
+                  { label: "Active", value: activeJobs.length, color: "#1D4ED8" },
+                  { label: "Delivered today", value: completedJobs.filter(j => j.status === "delivered" && j.updatedAt?.slice(0,10) === new Date().toISOString().slice(0,10)).length, color: GREEN },
+                  { label: "Failed", value: completedJobs.filter(j => j.status === "failed").length, color: "#DC2626" },
+                ].map(({ label, value, color }) => (
+                  <div key={label} className="bg-white rounded-xl border border-gray-100 p-4 text-center shadow-sm">
+                    <p className="text-2xl font-bold" style={{ color }}>{value}</p>
+                    <p className="text-xs text-gray-500 mt-0.5">{label}</p>
+                  </div>
+                ))}
+              </div>
+
+              {/* Active jobs */}
+              {activeJobs.length > 0 && (
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-700 mb-3">Active Deliveries ({activeJobs.length})</h3>
+                  <div className="space-y-3">
+                    {activeJobs.map(job => {
+                      const cfg = JOB_STATUS_CONFIG[job.status]
+                      const StatusIcon = cfg.icon
+                      return (
+                        <div key={job.id} className="bg-white rounded-xl border border-gray-100 p-4 shadow-sm">
+                          <div className="flex items-start justify-between gap-3 mb-3">
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <span className="font-mono font-bold text-sm text-gray-800">#{job.orderNumber}</span>
+                                <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full flex items-center gap-1"
+                                  style={{ color: cfg.color, background: cfg.bg }}>
+                                  <StatusIcon className="h-3 w-3" />{cfg.label}
+                                </span>
+                              </div>
+                              <p className="text-sm font-medium text-gray-700 mt-0.5">{job.customerName}</p>
+                            </div>
+                            <div className="text-xs text-gray-400 text-right flex-shrink-0">
+                              {new Date(job.createdAt).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}
+                            </div>
+                          </div>
+                          <div className="flex items-start gap-1.5 mb-3">
+                            <MapPin className="h-3.5 w-3.5 text-gray-400 mt-0.5 flex-shrink-0" />
+                            <p className="text-xs text-gray-600">{job.address}{job.county ? `, ${job.county}` : ""}</p>
+                          </div>
+                          {job.items.length > 0 && (
+                            <div className="mb-3 flex flex-wrap gap-1.5">
+                              {job.items.map((item, i) => (
+                                <span key={i} className="text-[11px] bg-gray-50 border border-gray-100 rounded-full px-2 py-0.5 text-gray-600">
+                                  {item.qty}× {item.name}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                          {job.phone && (
+                            <div className="flex items-center gap-1.5 text-xs text-gray-500 mb-3">
+                              <Phone className="h-3.5 w-3.5" />{job.phone}
+                            </div>
+                          )}
+                          <div className="flex gap-2">
+                            {job.status === "assigned" && (
+                              <button onClick={() => updateJobStatus(job.id, "picked_up")}
+                                className="flex-1 text-xs font-semibold py-2 rounded-lg border transition-colors hover:opacity-90 text-white"
+                                style={{ background: ORANGE }}>
+                                Mark Picked Up
+                              </button>
+                            )}
+                            {job.status === "picked_up" && (
+                              <button onClick={() => updateJobStatus(job.id, "delivered")}
+                                className="flex-1 text-xs font-semibold py-2 rounded-lg border transition-colors text-white"
+                                style={{ background: GREEN }}>
+                                Mark Delivered
+                              </button>
+                            )}
+                            <button onClick={() => updateJobStatus(job.id, "failed")}
+                              className="flex-1 text-xs font-semibold py-2 rounded-lg border border-red-200 text-red-600 hover:bg-red-50 transition-colors">
+                              Report Failed
+                            </button>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Completed jobs */}
+              {completedJobs.length > 0 && (
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-700 mb-3">Recent History</h3>
+                  <div className="space-y-2">
+                    {completedJobs.slice(0, 10).map(job => {
+                      const cfg = JOB_STATUS_CONFIG[job.status]
+                      const StatusIcon = cfg.icon
+                      return (
+                        <div key={job.id} className="bg-white rounded-xl border border-gray-100 p-3 flex items-center gap-3">
+                          <div className="h-8 w-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: cfg.bg }}>
+                            <StatusIcon className="h-4 w-4" style={{ color: cfg.color }} />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="font-mono text-xs font-bold text-gray-700">#{job.orderNumber}</p>
+                            <p className="text-xs text-gray-500 truncate">{job.customerName} · {job.county}</p>
+                          </div>
+                          <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full flex-shrink-0"
+                            style={{ color: cfg.color, background: cfg.bg }}>{cfg.label}</span>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Empty state */}
+              {myJobs.length === 0 && (
                 <div className="bg-white rounded-xl border border-gray-100 p-10 text-center text-gray-400">
                   <Package className="h-10 w-10 mx-auto mb-3 opacity-20" />
-                  <p className="font-medium">No active deliveries</p>
-                  <p className="text-sm mt-1">Delivery assignments appear here once you're activated and routes are assigned.</p>
+                  <p className="font-medium text-gray-600">No deliveries yet</p>
+                  <p className="text-sm mt-1 max-w-xs mx-auto">Delivery assignments will appear here once orders are confirmed and routed to your fleet.</p>
                 </div>
-              ) : (
-                <p className="text-sm text-gray-500 bg-white p-5 rounded-xl border border-gray-100">
-                  Live delivery assignments will be available with Phase 2 database integration.
-                </p>
               )}
             </div>
           )}
@@ -528,7 +665,7 @@ function LogisticsDashboard({ partner, session, onLogout }: {
                   { key: "hasDriverLicenses", label: "Driver Licenses (all drivers)" },
                   { key: "hasSafetyTraining", label: "Safety / Cold Chain Training Certs" },
                 ].map(({ key, label }) => {
-                  const has = (partner as Record<string, unknown>)[key] as boolean
+                  const has = (partner as unknown as Record<string, unknown>)[key] as boolean
                   return (
                     <div key={key} className={`flex items-center gap-3 p-4 rounded-xl border mb-2 ${has ? "bg-green-50 border-green-200" : "bg-gray-50 border-gray-200"}`}>
                       {has ? <CheckCircle2 className="h-5 w-5 text-green-600" /> : <XCircle className="h-5 w-5 text-gray-400" />}

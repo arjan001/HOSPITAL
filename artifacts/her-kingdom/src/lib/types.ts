@@ -129,3 +129,24 @@ export interface GiftSelection {
   messageTo?: string
   messageNote?: string
 }
+
+/* ─── Delivery Jobs ─────────────────────────────────────────────────────── */
+
+export type DeliveryJobStatus = "assigned" | "picked_up" | "delivered" | "failed"
+
+export interface DeliveryJob {
+  id: string
+  orderNumber: string
+  orderId: string
+  customerName: string
+  phone?: string
+  address: string
+  county: string
+  items: { name: string; qty: number }[]
+  partnerId: string
+  vehicleId?: string
+  status: DeliveryJobStatus
+  notes?: string
+  createdAt: string
+  updatedAt: string
+}

@@ -523,7 +523,7 @@ function SupplierDrawer({ supplier, open, onClose, onUpdate }: {
                 { key: "hasFdaCert", label: "FDA / KEBS / Pharmacy Board Certificate" },
                 { key: "hasInsurance", label: "Product Liability Insurance" },
               ].map(({ key, label }) => {
-                const has = (supplier as Record<string, unknown>)[key] as boolean
+                const has = (supplier as unknown as Record<string, unknown>)[key] as boolean
                 return (
                   <div key={key} className={`flex items-center gap-3 p-3 rounded-lg border ${has ? "bg-green-50 border-green-200" : "bg-gray-50 border-gray-200"}`}>
                     {has ? <CheckCircle2 className="h-5 w-5 text-green-600 flex-shrink-0" /> : <XCircle className="h-5 w-5 text-gray-400 flex-shrink-0" />}
@@ -583,11 +583,19 @@ export function AdminSuppliers() {
   }), [suppliers])
 
   const saveSupplier = (sup: Supplier) => {
+    const isNew = !suppliers.find(s => s.id === sup.id)
     setSuppliers(prev => {
       const idx = prev.findIndex(s => s.id === sup.id)
       if (idx >= 0) { const next = [...prev]; next[idx] = sup; return next }
       return [...prev, sup]
     })
+    if (isNew && sup.email) {
+      fetch("/api/v2/partners/welcome", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: "supplier", name: sup.companyName, email: sup.email, portalCode: sup.portalCode }),
+      }).catch(() => undefined)
+    }
   }
 
   const deleteSupplier = (id: string) => {
@@ -596,7 +604,7 @@ export function AdminSuppliers() {
   }
 
   return (
-    <AdminShell title="Suppliers" subtitle="Manage verified medicine suppliers and their KYC">
+    <AdminShell title="Suppliers">
       <div className="space-y-5">
         {/* KPIs */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">

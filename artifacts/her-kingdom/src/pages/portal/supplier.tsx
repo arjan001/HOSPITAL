@@ -27,9 +27,12 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 
-const WINE   = "#3D0814"
-const ORANGE = "#F97316"
-const GREEN  = "#15803D"
+const WINE    = "#3D0814"
+const ORANGE  = "#F97316"
+const GREEN   = "#15803D"
+const S_TEXT  = "rgba(255,255,255,0.88)"
+const S_MUTED = "rgba(255,255,255,0.45)"
+const S_BORDER= "rgba(255,255,255,0.10)"
 
 /* ─── Login Page ─────────────────────────────────────────────── */
 
@@ -196,7 +199,7 @@ function SupplierDashboard({ supplier, session, onLogout }: {
     { key: "hasFdaCert",  label: "FDA / KEBS Certificate" },
     { key: "hasInsurance",label: "Liability Insurance" },
   ]
-  const kycPct = kycDocs.filter(d => (supplier as Record<string, unknown>)[d.key]).length / kycDocs.length * 100
+  const kycPct = kycDocs.filter(d => (supplier as unknown as Record<string, unknown>)[d.key]).length / kycDocs.length * 100
 
   const statusInfo: Record<string, { label: string; color: string; bg: string }> = {
     pending:    { label: "Pending Verification", color: "#92400E", bg: "#FEF3C7" },
@@ -212,44 +215,47 @@ function SupplierDashboard({ supplier, session, onLogout }: {
       {/* ── Mobile overlay sidebar ─────────────────────────────── */}
       {mobileOpen && (
         <div className="fixed inset-0 z-50 md:hidden">
-          <div className="absolute inset-0 bg-black/50" onClick={() => setMobileOpen(false)} />
-          <aside className="absolute left-0 top-0 bottom-0 w-72 flex flex-col bg-white shadow-2xl overflow-y-auto">
-            <div className="px-5 py-5 border-b flex items-center justify-between" style={{ background: WINE }}>
+          <div className="absolute inset-0 bg-black/60" onClick={() => setMobileOpen(false)} />
+          <aside className="absolute left-0 top-0 bottom-0 w-72 flex flex-col overflow-y-auto shadow-2xl" style={{ background: WINE }}>
+            <div className="px-5 py-5 flex items-center justify-between" style={{ borderBottom: `1px solid ${S_BORDER}` }}>
               <div>
-                <div className="flex items-center gap-2 mb-1">
-                  <img src="/logo.svg" alt="" className="h-6 w-6 brightness-0 invert" onError={e => { (e.target as HTMLImageElement).style.display = "none" }} />
-                  <span className="text-white font-bold">Shaniid RX</span>
+                <div className="flex items-center gap-2 mb-0.5">
+                  <img src="/logo.svg" alt="" className="h-5 w-5 brightness-0 invert" onError={e => { (e.target as HTMLImageElement).style.display = "none" }} />
+                  <span className="font-bold text-sm" style={{ color: S_TEXT }}>Shaniid RX</span>
                 </div>
-                <p className="text-white/60 text-xs">Supplier Portal</p>
+                <p className="text-xs" style={{ color: S_MUTED }}>Supplier Portal</p>
               </div>
-              <button onClick={() => setMobileOpen(false)} className="text-white/70 hover:text-white p-1 rounded-lg"><X className="h-5 w-5" /></button>
+              <button onClick={() => setMobileOpen(false)} className="p-1.5 rounded-lg hover:bg-white/10 transition-colors" style={{ color: S_MUTED }}><X className="h-5 w-5" /></button>
             </div>
-            <div className="px-5 py-4 border-b">
-              <div className="h-10 w-10 rounded-xl flex items-center justify-center text-white font-bold text-lg mb-2" style={{ background: WINE }}>{supplier.companyName[0]}</div>
-              <p className="font-bold text-gray-800 text-sm leading-tight">{supplier.companyName}</p>
-              <p className="text-xs text-gray-400 mt-0.5">{supplier.city}, {supplier.country}</p>
+            <div className="px-5 py-4" style={{ borderBottom: `1px solid ${S_BORDER}` }}>
+              <div className="h-10 w-10 rounded-xl flex items-center justify-center text-white font-bold text-lg mb-2" style={{ background: ORANGE }}>{supplier.companyName[0]}</div>
+              <p className="font-semibold text-sm leading-tight" style={{ color: S_TEXT }}>{supplier.companyName}</p>
+              <p className="text-xs mt-0.5" style={{ color: S_MUTED }}>{supplier.city}, {supplier.country}</p>
               <span className="inline-block mt-1.5 text-[11px] font-semibold px-2 py-0.5 rounded-full" style={{ color: si.color, background: si.bg }}>{si.label}</span>
             </div>
-            <nav className="flex-1 px-3 py-4 space-y-1">
+            <nav className="flex-1 px-3 py-4 space-y-0.5">
               {TABS.map(({ id, label, icon: Icon }) => (
                 <button key={id} onClick={() => { setTab(id); setMobileOpen(false) }}
-                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${tab === id ? "text-white shadow-sm" : "text-gray-600 hover:bg-gray-50"}`}
-                  style={tab === id ? { background: WINE } : {}}>
+                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all relative hover:bg-white/10"
+                  style={tab === id ? { background: "rgba(255,255,255,0.12)", color: ORANGE } : { color: S_TEXT }}>
+                  {tab === id && <span className="absolute left-0 inset-y-2 w-0.5 rounded-r" style={{ background: ORANGE }} />}
                   <Icon className="h-4 w-4 flex-shrink-0" />{label}
                 </button>
               ))}
             </nav>
-            <div className="px-5 py-4 border-t">
+            <div className="px-5 py-4" style={{ borderTop: `1px solid ${S_BORDER}` }}>
               <div className="flex items-center justify-between mb-1.5">
-                <span className="text-xs text-gray-500 font-medium">Trust Score</span>
+                <span className="text-xs font-medium" style={{ color: S_MUTED }}>Trust Score</span>
                 <span className="text-xs font-bold" style={{ color: kycPct === 100 ? GREEN : ORANGE }}>{kycPct === 100 ? "Sealed ✓" : `${kycPct.toFixed(0)}%`}</span>
               </div>
-              <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+              <div className="h-1.5 rounded-full overflow-hidden" style={{ background: S_BORDER }}>
                 <div className="h-full rounded-full" style={{ width: `${kycPct}%`, background: kycPct === 100 ? GREEN : ORANGE }} />
               </div>
             </div>
-            <div className="px-5 py-4 border-t">
-              <button onClick={onLogout} className="flex items-center gap-2 text-sm text-gray-400 hover:text-red-500 transition-colors"><LogOut className="h-4 w-4" />Sign out</button>
+            <div className="px-5 py-4" style={{ borderTop: `1px solid ${S_BORDER}` }}>
+              <button onClick={onLogout} className="flex items-center gap-2 text-sm transition-colors hover:text-orange-400" style={{ color: S_MUTED }}>
+                <LogOut className="h-4 w-4" />Sign out
+              </button>
             </div>
           </aside>
         </div>
@@ -257,43 +263,44 @@ function SupplierDashboard({ supplier, session, onLogout }: {
 
       {/* ── Desktop collapsible sidebar ────────────────────────── */}
       <aside
-        className="hidden md:flex flex-shrink-0 flex-col border-r border-gray-100 bg-white transition-all duration-200"
-        style={{ width: collapsed ? 64 : 256 }}
+        className="hidden md:flex flex-shrink-0 flex-col transition-all duration-200"
+        style={{ width: collapsed ? 64 : 256, background: WINE, borderRight: `1px solid ${S_BORDER}` }}
       >
-        <div className="flex items-center border-b overflow-hidden" style={{ background: WINE, minHeight: 64 }}>
+        <div className="flex items-center overflow-hidden" style={{ borderBottom: `1px solid ${S_BORDER}`, minHeight: 64 }}>
           {collapsed ? (
             <div className="flex-1 flex items-center justify-center py-5">
-              <img src="/logo.svg" alt="" className="h-6 w-6 brightness-0 invert" onError={e => { (e.target as HTMLImageElement).style.display = "none" }} />
+              <img src="/logo.svg" alt="" className="h-5 w-5 brightness-0 invert" onError={e => { (e.target as HTMLImageElement).style.display = "none" }} />
             </div>
           ) : (
-            <div className="flex-1 px-5 py-5">
-              <div className="flex items-center gap-2 mb-1">
-                <img src="/logo.svg" alt="" className="h-6 w-6 brightness-0 invert" onError={e => { (e.target as HTMLImageElement).style.display = "none" }} />
-                <span className="text-white font-bold">Shaniid RX</span>
+            <div className="flex-1 px-5 py-4">
+              <div className="flex items-center gap-2 mb-0.5">
+                <img src="/logo.svg" alt="" className="h-5 w-5 brightness-0 invert" onError={e => { (e.target as HTMLImageElement).style.display = "none" }} />
+                <span className="font-bold text-sm" style={{ color: S_TEXT }}>Shaniid RX</span>
               </div>
-              <p className="text-white/60 text-xs">Supplier Portal</p>
+              <p className="text-xs" style={{ color: S_MUTED }}>Supplier Portal</p>
             </div>
           )}
         </div>
 
         {collapsed ? (
-          <div className="flex items-center justify-center py-4 border-b">
-            <div className="h-9 w-9 rounded-xl flex items-center justify-center text-white font-bold" style={{ background: WINE }}>{supplier.companyName[0]}</div>
+          <div className="flex items-center justify-center py-4" style={{ borderBottom: `1px solid ${S_BORDER}` }}>
+            <div className="h-9 w-9 rounded-xl flex items-center justify-center text-white font-bold" style={{ background: ORANGE }}>{supplier.companyName[0]}</div>
           </div>
         ) : (
-          <div className="px-5 py-4 border-b">
-            <div className="h-10 w-10 rounded-xl flex items-center justify-center text-white font-bold text-lg mb-2" style={{ background: WINE }}>{supplier.companyName[0]}</div>
-            <p className="font-bold text-gray-800 text-sm leading-tight">{supplier.companyName}</p>
-            <p className="text-xs text-gray-400 mt-0.5">{supplier.city}, {supplier.country}</p>
+          <div className="px-5 py-4" style={{ borderBottom: `1px solid ${S_BORDER}` }}>
+            <div className="h-10 w-10 rounded-xl flex items-center justify-center text-white font-bold text-lg mb-2" style={{ background: ORANGE }}>{supplier.companyName[0]}</div>
+            <p className="font-semibold text-sm leading-tight" style={{ color: S_TEXT }}>{supplier.companyName}</p>
+            <p className="text-xs mt-0.5" style={{ color: S_MUTED }}>{supplier.city}, {supplier.country}</p>
             <span className="inline-block mt-1.5 text-[11px] font-semibold px-2 py-0.5 rounded-full" style={{ color: si.color, background: si.bg }}>{si.label}</span>
           </div>
         )}
 
-        <nav className="flex-1 px-2 py-4 space-y-1">
+        <nav className="flex-1 px-2 py-4 space-y-0.5">
           {TABS.map(({ id, label, icon: Icon }) => (
             <button key={id} onClick={() => setTab(id)} title={collapsed ? label : undefined}
-              className={`w-full flex items-center rounded-xl text-sm font-medium transition-all ${collapsed ? "justify-center px-0 py-2.5" : "gap-3 px-3 py-2.5"} ${tab === id ? "text-white shadow-sm" : "text-gray-600 hover:bg-gray-50"}`}
-              style={tab === id ? { background: WINE } : {}}>
+              className={`w-full flex items-center rounded-lg text-sm font-medium transition-all relative hover:bg-white/10 ${collapsed ? "justify-center px-0 py-2.5" : "gap-3 px-3 py-2.5"}`}
+              style={tab === id ? { background: "rgba(255,255,255,0.12)", color: ORANGE } : { color: S_TEXT }}>
+              {tab === id && !collapsed && <span className="absolute left-0 inset-y-2 w-0.5 rounded-r" style={{ background: ORANGE }} />}
               <Icon className="h-4 w-4 flex-shrink-0" />
               {!collapsed && <span>{label}</span>}
             </button>
@@ -301,24 +308,24 @@ function SupplierDashboard({ supplier, session, onLogout }: {
         </nav>
 
         {!collapsed && (
-          <div className="px-5 py-4 border-t">
+          <div className="px-5 py-4" style={{ borderTop: `1px solid ${S_BORDER}` }}>
             <div className="flex items-center justify-between mb-1.5">
-              <span className="text-xs text-gray-500 font-medium">Trust Score</span>
+              <span className="text-xs font-medium" style={{ color: S_MUTED }}>Trust Score</span>
               <span className="text-xs font-bold" style={{ color: kycPct === 100 ? GREEN : ORANGE }}>{kycPct === 100 ? "Sealed ✓" : `${kycPct.toFixed(0)}%`}</span>
             </div>
-            <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+            <div className="h-1.5 rounded-full overflow-hidden" style={{ background: S_BORDER }}>
               <div className="h-full rounded-full transition-all" style={{ width: `${kycPct}%`, background: kycPct === 100 ? GREEN : ORANGE }} />
             </div>
           </div>
         )}
 
-        <div className="border-t">
+        <div style={{ borderTop: `1px solid ${S_BORDER}` }}>
           <div className={`py-3 flex items-center ${collapsed ? "flex-col gap-2 px-2" : "px-5 justify-between"}`}>
-            <button onClick={onLogout} title="Sign out" className="flex items-center gap-2 text-sm text-gray-400 hover:text-red-500 transition-colors">
+            <button onClick={onLogout} title="Sign out" className="flex items-center gap-2 text-sm transition-colors hover:text-orange-400" style={{ color: S_MUTED }}>
               <LogOut className="h-4 w-4" />{!collapsed && <span>Sign out</span>}
             </button>
             <button onClick={toggleSidebar} title={collapsed ? "Expand" : "Collapse"}
-              className="flex items-center justify-center h-7 w-7 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors">
+              className="flex items-center justify-center h-7 w-7 rounded-lg hover:bg-white/10 transition-colors" style={{ color: S_MUTED }}>
               {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
             </button>
           </div>
@@ -461,7 +468,7 @@ function SupplierDashboard({ supplier, session, onLogout }: {
 
                 <div className="space-y-3">
                   {kycDocs.map(({ key, label }) => {
-                    const has = (supplier as Record<string, unknown>)[key] as boolean
+                    const has = (supplier as unknown as Record<string, unknown>)[key] as boolean
                     return (
                       <div key={key} className={`flex items-center gap-3 p-4 rounded-xl border ${has ? "bg-green-50 border-green-200" : "bg-gray-50 border-gray-200"}`}>
                         {has ? <CheckCircle2 className="h-5 w-5 text-green-600" /> : <XCircle className="h-5 w-5 text-gray-400" />}

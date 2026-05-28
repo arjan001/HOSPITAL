@@ -57,6 +57,7 @@ export type EmailTemplate =
   | "order.receipt"
   | "consultation.booked"
   | "support.ticket.reply"
+  | "partner.welcome"
   | "generic"
 
 export type SendEmailInput = {
@@ -86,6 +87,7 @@ const TEMPLATE_SUBJECT: Record<EmailTemplate, string> = {
   "order.receipt":          "Your Shaniid RX order receipt",
   "consultation.booked":    "Your Shaniid RX consultation is confirmed",
   "support.ticket.reply":   "An update on your Shaniid RX support ticket",
+  "partner.welcome":        "Your Shaniid RX partner portal access",
   "generic":                "Shaniid RX",
 }
 
@@ -114,6 +116,31 @@ function renderTemplateHtml(template: EmailTemplate, data: Record<string, unknow
           <p>Your support ticket <b>${String(data.ticketId ?? "")}</b> has a new reply from our team:</p>
           <blockquote style="border-left:3px solid ${BRAND_WINE};padding:8px 14px;color:#374151;">${String(data.message ?? "")}</blockquote>
           <p><a href="${String(data.url ?? "https://shaniidrx.com/account/support")}" style="background:linear-gradient(135deg,${BRAND_ORANGE},${BRAND_RED});color:#fff;padding:12px 22px;border-radius:9999px;text-decoration:none;font-weight:600;">View ticket</a></p>`
+      case "partner.welcome": {
+        const portalType = typeof data.partnerType === "string" ? data.partnerType : "partner"
+        const portalUrl = String(data.portalUrl ?? `https://shaniidrx.com/portal/${portalType}`)
+        const pEmail = typeof data.email === "string" ? data.email : ""
+        const pCode  = String(data.portalCode ?? "")
+        const portalLabel = portalType === "supplier" ? "Supplier" : portalType === "clinic" ? "Clinic" : "Logistics"
+        return `<p>Hello ${name},</p>
+          <p>Your <b>Shaniid RX ${portalLabel} Portal</b> account has been created. Use the credentials below to sign in:</p>
+          <table style="background:#FFFBF5;border-radius:10px;width:100%;border:1px solid #F2DCC8;margin:14px 0;border-collapse:collapse;">
+            <tr style="border-bottom:1px solid #F2DCC8;">
+              <td style="padding:10px 14px;font-size:12px;color:#6b5a60;white-space:nowrap;">Portal URL</td>
+              <td style="padding:10px 14px;font-weight:600;font-size:13px;word-break:break-all;">${portalUrl}</td>
+            </tr>
+            <tr style="border-bottom:1px solid #F2DCC8;">
+              <td style="padding:10px 14px;font-size:12px;color:#6b5a60;white-space:nowrap;">Email</td>
+              <td style="padding:10px 14px;font-weight:600;font-size:13px;">${pEmail}</td>
+            </tr>
+            <tr>
+              <td style="padding:10px 14px;font-size:12px;color:#6b5a60;white-space:nowrap;">Portal Code</td>
+              <td style="padding:10px 14px;font-weight:700;font-size:16px;letter-spacing:0.08em;color:${BRAND_WINE};">${pCode}</td>
+            </tr>
+          </table>
+          <p style="font-size:13px;color:#6b5a60;">Keep your portal code private — it authenticates you alongside your email. If you have questions contact us at <a href="mailto:support@shaniidrx.com" style="color:${BRAND_ORANGE};">support@shaniidrx.com</a>.</p>
+          <p><a href="${portalUrl}" style="background:linear-gradient(135deg,${BRAND_ORANGE},${BRAND_RED});color:#fff;padding:12px 22px;border-radius:9999px;text-decoration:none;font-weight:600;">Access your portal</a></p>`
+      }
       default:
         return `<p>${String(data.message ?? "Hello from Shaniid RX.")}</p>`
     }

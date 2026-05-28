@@ -381,7 +381,7 @@ function PartnerDrawer({ partner, open, onClose, onUpdate }: {
 
   const setStatus = (s: PartnerStatus) => onUpdate({ ...partner, status: s, activatedAt: s === "active" ? new Date().toISOString() : partner.activatedAt })
   const kycDocs = ["hasInsurance", "hasRegistration", "hasDriverLicenses", "hasSafetyTraining"]
-  const kycPct = kycDocs.filter(k => (partner as Record<string, unknown>)[k]).length / kycDocs.length * 100
+  const kycPct = kycDocs.filter(k => (partner as unknown as Record<string, unknown>)[k]).length / kycDocs.length * 100
 
   return (
     <Sheet open={open} onOpenChange={onClose}>
@@ -548,7 +548,7 @@ function PartnerDrawer({ partner, open, onClose, onUpdate }: {
                 { key: "hasDriverLicenses", label: "Driver Licenses (all drivers)" },
                 { key: "hasSafetyTraining", label: "Safety / Cold Chain Training Certs" },
               ].map(({ key, label }) => {
-                const has = (partner as Record<string, unknown>)[key] as boolean
+                const has = (partner as unknown as Record<string, unknown>)[key] as boolean
                 return (
                   <div key={key} className={`flex items-center gap-3 p-3 rounded-lg border ${has ? "bg-green-50 border-green-200" : "bg-gray-50 border-gray-200"}`}>
                     {has ? <CheckCircle2 className="h-5 w-5 text-green-600" /> : <XCircle className="h-5 w-5 text-gray-400" />}
@@ -601,15 +601,23 @@ export function AdminLogisticsPartners() {
   }), [partners])
 
   const savePartner = (p: LogisticsPartner) => {
+    const isNew = !partners.find(x => x.id === p.id)
     setPartners(prev => {
       const idx = prev.findIndex(x => x.id === p.id)
       if (idx >= 0) { const n = [...prev]; n[idx] = p; return n }
       return [...prev, p]
     })
+    if (isNew && p.email) {
+      fetch("/api/v2/partners/welcome", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: "logistics", name: p.companyName, email: p.email, portalCode: p.portalCode }),
+      }).catch(() => undefined)
+    }
   }
 
   return (
-    <AdminShell title="Logistics Partners" subtitle="Onboard and manage delivery companies in the Shaniid RX network">
+    <AdminShell title="Logistics Partners">
       <div className="space-y-5">
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <KpiCard icon={Building2} label="Total Partners" value={kpis.total} color={PURPLE} />

@@ -454,7 +454,7 @@ function ClinicDrawer({ clinic, open, onClose, onUpdate, onTrade }: {
   const setStatus = (s: ClinicStatus) => onUpdate({ ...clinic, status: s, approvedAt: s === "approved" ? new Date().toISOString() : clinic.approvedAt })
   const creditUsedPct = Math.min(100, (clinic.creditUsed / clinic.creditLimit) * 100)
   const kycDocs = ["hasLicense", "hasNhifCert", "hasPinCert", "hasDirectorId"]
-  const kycPct = kycDocs.filter(k => (clinic as Record<string, unknown>)[k]).length / kycDocs.length * 100
+  const kycPct = kycDocs.filter(k => (clinic as unknown as Record<string, unknown>)[k]).length / kycDocs.length * 100
 
   return (
     <Sheet open={open} onOpenChange={onClose}>
@@ -573,7 +573,7 @@ function ClinicDrawer({ clinic, open, onClose, onUpdate, onTrade }: {
                 { key: "hasPinCert", label: "KRA PIN Certificate" },
                 { key: "hasDirectorId", label: "Medical Director ID" },
               ].map(({ key, label }) => {
-                const has = (clinic as Record<string, unknown>)[key] as boolean
+                const has = (clinic as unknown as Record<string, unknown>)[key] as boolean
                 return (
                   <div key={key} className={`flex items-center gap-3 p-3 rounded-lg border ${has ? "bg-green-50 border-green-200" : "bg-gray-50 border-gray-200"}`}>
                     {has ? <CheckCircle2 className="h-5 w-5 text-green-600" /> : <XCircle className="h-5 w-5 text-gray-400" />}
@@ -659,15 +659,23 @@ export function AdminClinics() {
   }), [clinics])
 
   const saveClinic = (c: Clinic) => {
+    const isNew = !clinics.find(x => x.id === c.id)
     setClinics(prev => {
       const idx = prev.findIndex(x => x.id === c.id)
       if (idx >= 0) { const n = [...prev]; n[idx] = c; return n }
       return [...prev, c]
     })
+    if (isNew && c.email) {
+      fetch("/api/v2/partners/welcome", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: "clinic", name: c.clinicName, email: c.email, portalCode: c.portalCode }),
+      }).catch(() => undefined)
+    }
   }
 
   return (
-    <AdminShell title="Clinics & Partners" subtitle="Onboard healthcare facilities and manage trade-on-behalf orders">
+    <AdminShell title="Clinics & Partners">
       <div className="space-y-5">
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <KpiCard icon={Stethoscope} label="Total Clinics" value={kpis.total} />
