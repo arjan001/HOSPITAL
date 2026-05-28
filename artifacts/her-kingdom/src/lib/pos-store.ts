@@ -17,7 +17,7 @@
 import { cmsStore, useCmsDoc, newId } from "./cms-store"
 import type { Product } from "./types"
 
-export type PaymentMethod = "cash" | "mpesa" | "card" | "credit"
+export type PaymentMethod = "cash" | "mpesa" | "credit"
 
 export interface PosSettings {
   registerName: string
@@ -55,7 +55,7 @@ export const DEFAULT_POS_SETTINGS: PosSettings = {
   currency: "KSh",
   requireOpeningFloat: true,
   defaultOpeningFloat: 2000,
-  enabledMethods: ["cash", "mpesa", "card", "credit"],
+  enabledMethods: ["cash", "mpesa", "credit"],
   defaultMethod: "cash",
   autoPrint: true,
   maxDiscountPercent: 20,
@@ -298,7 +298,6 @@ export function summariseShift(
   const byMethod: Record<PaymentMethod, { count: number; total: number }> = {
     cash:   { count: 0, total: 0 },
     mpesa:  { count: 0, total: 0 },
-    card:   { count: 0, total: 0 },
     credit: { count: 0, total: 0 },
   }
   for (const t of own) {

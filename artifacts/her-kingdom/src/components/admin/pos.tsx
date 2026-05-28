@@ -17,7 +17,7 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import useSWR from "swr"
 import {
   Search, Pill, Plus, Minus, Trash2, Pause, Play, Percent, Printer,
-  CreditCard, Smartphone, Banknote, FileSignature, X, ShieldCheck,
+  Smartphone, Banknote, FileSignature, X, ShieldCheck,
   ClipboardList, Clock, AlertTriangle, CheckCircle2, User as UserIcon,
   Receipt as ReceiptIcon, ChevronRight, Calculator,
 } from "lucide-react"
@@ -47,7 +47,6 @@ const CASHIER_NAME = "Counter Cashier" // TODO swap with Clerk user when admin a
 const METHOD_META: Record<PaymentMethod, { label: string; icon: typeof Banknote }> = {
   cash:   { label: "Cash",   icon: Banknote },
   mpesa:  { label: "M-Pesa", icon: Smartphone },
-  card:   { label: "Card",   icon: CreditCard },
   credit: { label: "Credit", icon: FileSignature },
 }
 
@@ -477,8 +476,8 @@ export function AdminPos() {
 
               {/* Payment method */}
               <div className="px-4 pt-3 border-t" style={{ borderColor: PEACH_LINE }}>
-                <div className="grid grid-cols-4 gap-1.5">
-                  {(["cash", "mpesa", "card", "credit"] as PaymentMethod[]).map((m) => {
+                <div className="grid grid-cols-3 gap-1.5">
+                  {(["cash", "mpesa", "credit"] as PaymentMethod[]).map((m) => {
                     const Icon = METHOD_META[m].icon
                     const enabled = settings.enabledMethods.includes(m)
                     const active = paymentMethod === m
@@ -557,7 +556,7 @@ export function AdminPos() {
                       const orderNumber = `POS-${Date.now().toString(36).toUpperCase()}`
                       setMpesaStage("pushing"); setMpesaMessage("Sending request to your phone…")
                       try {
-                        const res = await fetch("/api/payments/payhero/stk", {
+                        const res = await fetch("/api/v2/payments/paystack/charge", {
                           method: "POST",
                           headers: { "Content-Type": "application/json" },
                           body: JSON.stringify({
@@ -584,7 +583,7 @@ export function AdminPos() {
                         }, 1000)
                         mpesaTimers.current.poll = setInterval(async () => {
                           try {
-                            const r = await fetch(`/api/payments/payhero/status?orderNumber=${encodeURIComponent(orderNumber)}`)
+                            const r = await fetch(`/api/v2/payments/paystack/status?orderNumber=${encodeURIComponent(orderNumber)}`)
                             const d = await r.json().catch(() => ({}))
                             if (!r.ok) return
                             if (d.status === "success") {
@@ -607,19 +606,6 @@ export function AdminPos() {
                       stopMpesaTimers(); setMpesaStage("idle"); setMpesaMessage(""); setPaymentRef("")
                     }}
                   />
-                )}
-
-                {paymentMethod === "card" && (
-                  <div className="mt-3">
-                    <label className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">Card auth code (optional)</label>
-                    <input
-                      value={paymentRef}
-                      onChange={(e) => setPaymentRef(e.target.value)}
-                      placeholder="Last 4 / auth ref"
-                      className="w-full h-10 px-2.5 rounded-lg border text-sm font-mono bg-white outline-none focus:ring-2 mt-1"
-                      style={{ borderColor: PEACH_LINE }}
-                    />
-                  </div>
                 )}
 
                 {paymentMethod === "credit" && (

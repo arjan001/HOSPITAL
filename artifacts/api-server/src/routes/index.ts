@@ -4,9 +4,12 @@
  * Mounts every sub-router under the `/api` prefix that app.ts already
  * establishes. Grouped into:
  *
- *   Public routes    — no auth, consumed by the React storefront
- *   Admin routes     — gated by requireAdmin in each sub-router
- *   Auth / payments  — Clerk helpers, PayHero legacy stub, Daily.co video
+ *   Public routes  — no auth, consumed by the React storefront
+ *   Admin routes   — gated by requireAdmin in each sub-router
+ *   Auth / video   — Clerk helpers, Daily.co video
+ *
+ * Payments: M-Pesa is handled entirely by the NestJS api-nest service
+ * at /api/v2/payments/paystack. There are no payment routes here.
  *
  * Adding a new route:
  *   1. Create `src/routes/api/<feature>.ts` exporting an Express Router.
@@ -44,7 +47,6 @@ import adminGiftItemsRouter from "./api/admin/gift-items.js";
 import adminSettingsRouter from "./api/admin/settings.js";
 import adminAnalyticsRouter from "./api/admin/analytics.js";
 import authRouter from "./api/auth.js";
-import payheroRouter from "./api/payments/payhero.js";
 import videoDailyRouter from "./api/video/daily.js";
 
 const router: IRouter = Router();
@@ -78,7 +80,6 @@ router.use("/admin/gift-items", adminGiftItemsRouter);
 router.use("/admin/settings", adminSettingsRouter);
 router.use("/admin/analytics", adminAnalyticsRouter);
 router.use("/auth", authRouter);
-router.use("/payments/payhero", payheroRouter);
 router.use("/video", videoDailyRouter);
 
 export default router;
