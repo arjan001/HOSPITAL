@@ -13,7 +13,7 @@ import { useState } from "react"
 import { Link } from "wouter"
 import { useCmsDoc } from "@/lib/cms-store"
 import {
-  getPortalSessionForType, loginPartner, signOutPartner, type PortalSession,
+  getPortalSessionForType, loginPartnerLocal, signOutPartner, type PortalSession,
 } from "@/lib/portal-auth"
 import type { Supplier } from "@/components/admin/suppliers"
 import {
@@ -457,23 +457,21 @@ export default function SupplierPortal() {
   const [session, setSession] = useState<PortalSession | null>(() => getPortalSessionForType("supplier"))
   const [loginError, setLoginError] = useState("")
 
-  const handleLogin = async (email: string, code: string) => {
+  const handleLogin = (email: string, code: string) => {
     setLoginError("")
     const localMatch = suppliers.find(
-      (s) => s.email.toLowerCase() === email && s.portalCode.toUpperCase() === code,
+      (s) => s.email.toLowerCase() === email.trim().toLowerCase() && s.portalCode.toUpperCase() === code.trim().toUpperCase(),
     )
-    if (localMatch?.status === "suspended" || localMatch?.status === "blacklisted") {
+    if (!localMatch) {
+      setLoginError("Invalid email or portal code. Please check and try again.")
+      return
+    }
+    if (localMatch.status === "suspended" || localMatch.status === "blacklisted") {
       setLoginError("Your account has been suspended. Contact support@shaniidrx.com for assistance.")
       return
     }
-    try {
-      const s = await loginPartner("supplier", email, code)
-      setSession(s)
-    } catch (err) {
-      setLoginError(
-        err instanceof Error ? err.message : "Email or portal code is incorrect. Please check and try again.",
-      )
-    }
+    const s = loginPartnerLocal("supplier", localMatch.id, localMatch.supplierName || email, email, code)
+    setSession(s)
   }
 
   const handleLogout = () => {

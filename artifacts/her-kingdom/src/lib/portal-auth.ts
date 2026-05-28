@@ -70,6 +70,31 @@ export function clearPortalSession(): void {
  * module. On success, both the server (via `shaniidrx_sid` cookie) and
  * the local cache are updated.
  */
+/**
+ * Client-side login — used while partner records live in browser localStorage.
+ * Builds a PortalSession directly from data already in the cmsStore without
+ * making a server round-trip. Call this when you've already verified the
+ * email + portalCode match against the local store.
+ */
+export function loginPartnerLocal(
+  type: PortalType,
+  partnerId: string,
+  partnerName: string,
+  email: string,
+  portalCode: string,
+): PortalSession {
+  const session: PortalSession = {
+    portalType: type,
+    partnerId,
+    partnerName,
+    portalCode: portalCode.trim().toUpperCase(),
+    email: email.trim().toLowerCase(),
+    loginAt: new Date().toISOString(),
+  }
+  setPortalSession(session)
+  return session
+}
+
 export async function loginPartner(
   type: PortalType,
   email: string,

@@ -12,7 +12,7 @@ import { useState } from "react"
 import { Link } from "wouter"
 import { useCmsDoc } from "@/lib/cms-store"
 import {
-  getPortalSessionForType, loginPartner, signOutPartner, type PortalSession,
+  getPortalSessionForType, loginPartnerLocal, signOutPartner, type PortalSession,
 } from "@/lib/portal-auth"
 import type { LogisticsPartner, LogisticsVehicle } from "@/components/admin/logistics-partners"
 import {
@@ -488,23 +488,21 @@ export default function LogisticsPortal() {
   const [session, setSession] = useState<PortalSession | null>(() => getPortalSessionForType("logistics"))
   const [loginError, setLoginError] = useState("")
 
-  const handleLogin = async (email: string, code: string) => {
+  const handleLogin = (email: string, code: string) => {
     setLoginError("")
     const localMatch = partners.find(
-      (p) => p.email.toLowerCase() === email && p.portalCode.toUpperCase() === code,
+      (p) => p.email.toLowerCase() === email.trim().toLowerCase() && p.portalCode.toUpperCase() === code.trim().toUpperCase(),
     )
-    if (localMatch?.status === "suspended" || localMatch?.status === "inactive") {
+    if (!localMatch) {
+      setLoginError("Invalid email or portal code. Please check and try again.")
+      return
+    }
+    if (localMatch.status === "suspended" || localMatch.status === "inactive") {
       setLoginError("Your account is not active. Contact logistics@shaniidrx.com.")
       return
     }
-    try {
-      const s = await loginPartner("logistics", email, code)
-      setSession(s)
-    } catch (err) {
-      setLoginError(
-        err instanceof Error ? err.message : "Email or portal code is incorrect. Please check and try again.",
-      )
-    }
+    const s = loginPartnerLocal("logistics", localMatch.id, localMatch.companyName || email, email, code)
+    setSession(s)
   }
 
   const handleLogout = () => {

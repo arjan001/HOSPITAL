@@ -12,7 +12,7 @@ import { useState } from "react"
 import { Link } from "wouter"
 import { useCmsDoc } from "@/lib/cms-store"
 import {
-  getPortalSessionForType, loginPartner, signOutPartner,
+  getPortalSessionForType, loginPartnerLocal, signOutPartner,
   submitPartnerOrder, type PortalSession,
 } from "@/lib/portal-auth"
 import type { Clinic } from "@/components/admin/clinics"
@@ -537,23 +537,21 @@ export default function ClinicPortal() {
   const [session, setSession] = useState<PortalSession | null>(() => getPortalSessionForType("clinic"))
   const [loginError, setLoginError] = useState("")
 
-  const handleLogin = async (email: string, code: string) => {
+  const handleLogin = (email: string, code: string) => {
     setLoginError("")
     const localMatch = clinics.find(
-      (c) => c.email.toLowerCase() === email && c.portalCode.toUpperCase() === code,
+      (c) => c.email.toLowerCase() === email.trim().toLowerCase() && c.portalCode.toUpperCase() === code.trim().toUpperCase(),
     )
-    if (localMatch?.status === "rejected") {
+    if (!localMatch) {
+      setLoginError("Invalid email or portal code. Please check and try again.")
+      return
+    }
+    if (localMatch.status === "rejected") {
       setLoginError("Your facility onboarding was not approved. Contact clinics@shaniidrx.com.")
       return
     }
-    try {
-      const s = await loginPartner("clinic", email, code)
-      setSession(s)
-    } catch (err) {
-      const message =
-        err instanceof Error ? err.message : "Email or portal code is incorrect. Please check and try again."
-      setLoginError(message)
-    }
+    const s = loginPartnerLocal("clinic", localMatch.id, localMatch.clinicName || email, email, code)
+    setSession(s)
   }
 
   const handleLogout = () => {
