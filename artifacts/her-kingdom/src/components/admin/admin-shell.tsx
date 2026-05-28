@@ -200,7 +200,7 @@ const NAV_GROUPS: NavGroup[] = [
         icon: Truck,
         children: [
           { label: "Partner Registry",      href: "/admin/logistics-partners",   icon: Building2 },
-          { label: "Delivery Operations",  href: "/admin/logistics",            icon: Truck },
+          { label: "Delivery Operations",  href: "/admin/logistics",            icon: Truck, hasBadge: true },
           { label: "Delivery Locations",   href: "/admin/delivery-locations",   icon: Truck },
           { label: "Inventory Optimization", href: "/admin/logistics/inventory", icon: Warehouse },
           { label: "Lead Time Monitoring", href: "/admin/logistics/lead-time",  icon: Timer },
@@ -465,7 +465,7 @@ function NavTipPortal() {
 }
 
 function NavParent({
-  item, pathname, collapsed, expanded, onToggle, onClick,
+  item, pathname, collapsed, expanded, onToggle, onClick, badgeCounts,
 }: {
   item: NavNode
   pathname: string
@@ -473,6 +473,7 @@ function NavParent({
   expanded: boolean
   onToggle: () => void
   onClick?: () => void
+  badgeCounts: Record<string, number>
 }) {
   const anyChildActive = !!item.children?.some((c) => isActiveHref(pathname, c.href))
   const selfActive = isActiveHref(pathname, item.href)
@@ -497,8 +498,8 @@ function NavParent({
             key={c.href}
             item={c}
             isActive={isActiveHref(pathname, c.href)}
-            showBadge={false}
-            pendingOrders={0}
+            showBadge={!!c.hasBadge && (badgeCounts[c.href ?? ""] ?? 0) > 0}
+            pendingOrders={badgeCounts[c.href ?? ""] ?? 0}
             collapsed
             depth={0}
             onClick={onClick}
@@ -533,8 +534,8 @@ function NavParent({
               key={c.href}
               item={c}
               isActive={isActiveHref(pathname, c.href)}
-              showBadge={false}
-              pendingOrders={0}
+              showBadge={!!c.hasBadge && (badgeCounts[c.href ?? ""] ?? 0) > 0}
+              pendingOrders={badgeCounts[c.href ?? ""] ?? 0}
               collapsed={false}
               depth={1}
               onClick={onClick}
@@ -549,7 +550,7 @@ function NavParent({
 function renderGroupedNav(
   groups: NavGroup[],
   pathname: string,
-  pendingOrders: number,
+  badgeCounts: Record<string, number>,
   collapsed: boolean,
   expanded: Record<string, boolean>,
   toggleExpanded: (label: string) => void,
@@ -578,14 +579,15 @@ function renderGroupedNav(
             expanded={!!expanded[item.label]}
             onToggle={() => toggleExpanded(item.label)}
             onClick={onClick}
+            badgeCounts={badgeCounts}
           />
         ) : (
           <NavLeaf
             key={item.href}
             item={item}
             isActive={isActiveHref(pathname, item.href)}
-            showBadge={!!item.hasBadge && pendingOrders > 0}
-            pendingOrders={pendingOrders}
+            showBadge={!!item.hasBadge && (badgeCounts[item.href ?? ""] ?? 0) > 0}
+            pendingOrders={badgeCounts[item.href ?? ""] ?? 0}
             collapsed={collapsed}
             depth={0}
             onClick={onClick}
@@ -648,6 +650,7 @@ export function AdminShell({ children, title }: { children: ReactNode; title: st
   const [loggingOut, setLoggingOut] = useState(false)
   const { items: ordersList } = useAdminOrders()
   const pendingOrders = ordersList.filter((o) => o.status === "pending").length
+  const dispatchReady = ordersList.filter((o) => o.status === "confirmed").length
   const [search, setSearch] = useState("")
 
   useEffect(() => {
@@ -810,7 +813,7 @@ export function AdminShell({ children, title }: { children: ReactNode; title: st
               renderGroupedNav(
                 collapsed ? NAV_GROUPS : filteredGroups,
                 pathname,
-                pendingOrders,
+                { "/admin/orders": pendingOrders, "/admin/logistics": dispatchReady },
                 collapsed,
                 searchAwareExpanded,
                 toggleExpanded,
@@ -967,7 +970,7 @@ export function AdminShell({ children, title }: { children: ReactNode; title: st
                   renderGroupedNav(
                     filteredGroups,
                     pathname,
-                    pendingOrders,
+                    { "/admin/orders": pendingOrders, "/admin/logistics": dispatchReady },
                     false,
                     searchAwareExpanded,
                     toggleExpanded,

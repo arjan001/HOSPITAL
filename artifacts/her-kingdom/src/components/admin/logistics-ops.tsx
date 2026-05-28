@@ -20,8 +20,10 @@ import {
   Truck, MapPin, Route, Boxes, Snowflake, Users, AlertTriangle,
   CheckCircle2, XCircle, Plus, Pencil, Trash2, ArrowRight, Settings2,
   Timer, Wallet, Activity, Layers, ClipboardCheck, PackageCheck,
+  Bell, Zap, CalendarClock, PackageSearch,
 } from "lucide-react"
 import { useCmsDoc, newId } from "@/lib/cms-store"
+import { useAdminOrders, type AdminOrderRecord } from "@/lib/orders-store"
 import { AdminShell } from "./admin-shell"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -284,10 +286,11 @@ function SectionHeader({ title, blurb, action }: { title: string; blurb?: string
 // =====================================================================
 
 type TabKey =
-  | "overview" | "zones" | "riders" | "batches" | "routing"
+  | "dispatch" | "overview" | "zones" | "riders" | "batches" | "routing"
   | "tracking" | "cold-chain" | "exceptions" | "settings"
 
 const TABS: { key: TabKey; label: string; icon: typeof Truck }[] = [
+  { key: "dispatch",   label: "Dispatch Queue",    icon: Bell },
   { key: "overview",   label: "Overview",          icon: Activity },
   { key: "zones",      label: "Zoning",            icon: MapPin },
   { key: "riders",     label: "Riders",            icon: Users },
@@ -299,8 +302,32 @@ const TABS: { key: TabKey; label: string; icon: typeof Truck }[] = [
   { key: "settings",   label: "Settings",          icon: Settings2 },
 ]
 
+// =====================================================================
+// Dispatch Queue helpers
+// =====================================================================
+
+function parseSchedule(notes: string): { isScheduled: boolean; scheduledAt: Date | null } {
+  const m = (notes ?? "").match(/Scheduled for (\d{4}-\d{2}-\d{2})\s+(\d{2}:\d{2})/)
+  if (!m) return { isScheduled: false, scheduledAt: null }
+  return { isScheduled: true, scheduledAt: new Date(`${m[1]}T${m[2]}`) }
+}
+
+function matchZone(address: string, zones: Zone[]): Zone | null {
+  if (!address) return null
+  const addr = address.toLowerCase()
+  for (const z of zones) {
+    const areas = z.areas
+      .toLowerCase()
+      .split(/[,;]+/)
+      .map((a) => a.trim())
+      .filter((a) => a.length > 2)
+    if (areas.some((a) => addr.includes(a))) return z
+  }
+  return null
+}
+
 export function AdminLogisticsOps() {
-  const [tab, setTab] = useState<TabKey>("overview")
+  const [tab, setTab] = useState<TabKey>("dispatch")
   const [zones, setZones] = useCmsDoc<Zone[]>(KEYS.zones, DEFAULT_ZONES)
   const [riders, setRiders] = useCmsDoc<Rider[]>(KEYS.riders, DEFAULT_RIDERS)
   const [batches, setBatches] = useCmsDoc<Batch[]>(KEYS.batches, [])
@@ -309,9 +336,35 @@ export function AdminLogisticsOps() {
   const [exceptions, setExceptions] = useCmsDoc<ExceptionItem[]>(KEYS.exceptions, [])
   const [config, setConfig] = useCmsDoc<LogisticsConfig>(KEYS.config, DEFAULT_CONFIG)
 
+  const { items: allOrders } = useAdminOrders()
+
   const zoneById = useMemo(() => new Map(zones.map((z) => [z.id, z])), [zones])
   const riderById = useMemo(() => new Map(riders.map((r) => [r.id, r])), [riders])
   const batchById = useMemo(() => new Map(batches.map((b) => [b.id, b])), [batches])
+
+  const batchedOrderNos = useMemo(
+    () => new Set(batches.flatMap((b) => b.orderIds)),
+    [batches],
+  )
+
+  const confirmedOrders = useMemo(
+    () =>
+      allOrders
+        .filter((o) => o.status === "confirmed" && !batchedOrderNos.has(o.orderNo))
+        .slice()
+        .sort((a, b) => {
+          const sa = parseSchedule(a.notes)
+          const sb = parseSchedule(b.notes)
+          if (sa.isScheduled === sb.isScheduled) {
+            if (sa.isScheduled && sa.scheduledAt && sb.scheduledAt) {
+              return sa.scheduledAt.getTime() - sb.scheduledAt.getTime()
+            }
+            return (a.createdAt ?? "").localeCompare(b.createdAt ?? "")
+          }
+          return sa.isScheduled ? 1 : -1
+        }),
+    [allOrders, batchedOrderNos],
+  )
 
   const runAutoAssign = async () => {
     try {
@@ -378,7 +431,14 @@ export function AdminLogisticsOps() {
         </div>
 
         {/* KPI strip */}
-        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3">
+          <KpiCard
+            label="Ready for dispatch"
+            value={confirmedOrders.length}
+            hint={confirmedOrders.length > 0 ? "Tap Dispatch Queue to plan" : "All clear"}
+            icon={Bell}
+            accent={confirmedOrders.length > 0 ? "amber" : "emerald"}
+          />
           <KpiCard label="Open batches" value={kpis.openBatches} hint="Planned / dispatched / in progress" icon={Boxes} />
           <KpiCard label="In flight" value={kpis.inFlight} hint="Assigned, dispatched or out for delivery" icon={Truck} accent="sky" />
           <KpiCard label="Active riders" value={`${kpis.activeRiders}/${riders.length}`} hint="Available for dispatch" icon={Users} accent="emerald" />
@@ -393,6 +453,8 @@ export function AdminLogisticsOps() {
           <div className="flex gap-1 -mb-px overflow-x-auto">
             {TABS.map((t) => {
               const Icon = t.icon
+              const isDispatch = t.key === "dispatch"
+              const dispatchCount = isDispatch ? confirmedOrders.length : 0
               return (
                 <button
                   key={t.key}
@@ -404,13 +466,29 @@ export function AdminLogisticsOps() {
                       : "border-transparent text-muted-foreground hover:text-foreground"
                   }`}
                 >
-                  <Icon className="h-3.5 w-3.5" /> {t.label}
+                  <Icon className={`h-3.5 w-3.5 ${isDispatch && dispatchCount > 0 ? "animate-pulse text-amber-600" : ""}`} />
+                  {t.label}
+                  {isDispatch && dispatchCount > 0 && (
+                    <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 text-[10px] font-bold bg-amber-500 text-white rounded-full">
+                      {dispatchCount > 99 ? "99+" : dispatchCount}
+                    </span>
+                  )}
                 </button>
               )
             })}
           </div>
         </div>
 
+        {tab === "dispatch" && (
+          <DispatchQueueTab
+            confirmedOrders={confirmedOrders}
+            zones={zones}
+            riders={riders}
+            batches={batches} setBatches={setBatches}
+            deliveries={deliveries} setDeliveries={setDeliveries}
+            config={config}
+          />
+        )}
         {tab === "overview" && (
           <OverviewTab
             deliveries={deliveries}
@@ -462,6 +540,366 @@ export function AdminLogisticsOps() {
         {tab === "settings" && <SettingsTab config={config} setConfig={setConfig} />}
       </div>
     </AdminShell>
+  )
+}
+
+// =====================================================================
+// Dispatch Queue
+// =====================================================================
+
+function DispatchQueueTab({
+  confirmedOrders, zones, riders, batches, setBatches,
+  deliveries, setDeliveries, config,
+}: {
+  confirmedOrders: AdminOrderRecord[]
+  zones: Zone[]
+  riders: Rider[]
+  batches: Batch[]
+  setBatches: (next: Batch[] | ((prev: Batch[]) => Batch[])) => void
+  deliveries: Delivery[]
+  setDeliveries: (next: Delivery[] | ((prev: Delivery[]) => Delivery[])) => void
+  config: LogisticsConfig
+}) {
+  const [planning, setPlanning] = useState(false)
+  const [lastPlan, setLastPlan] = useState<{ batches: number; deliveries: number } | null>(null)
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+
+  const toggleSelect = (orderNo: string) =>
+    setSelected((prev) => {
+      const next = new Set(prev)
+      if (next.has(orderNo)) next.delete(orderNo)
+      else next.add(orderNo)
+      return next
+    })
+
+  const toggleAll = () =>
+    setSelected((prev) =>
+      prev.size === confirmedOrders.length
+        ? new Set()
+        : new Set(confirmedOrders.map((o) => o.orderNo)),
+    )
+
+  const autoPlan = (ordersToProcess: AdminOrderRecord[]) => {
+    if (ordersToProcess.length === 0) return
+    setPlanning(true)
+
+    const byZone = new Map<string | null, AdminOrderRecord[]>()
+    for (const order of ordersToProcess) {
+      const zone = matchZone(order.address || order.location, zones)
+      const key = zone?.id ?? null
+      const existing = byZone.get(key) ?? []
+      byZone.set(key, [...existing, order])
+    }
+
+    const newBatches: Batch[] = []
+    const newDeliveries: Delivery[] = []
+
+    for (const [zoneId, orders] of byZone) {
+      const zone = zoneId ? zones.find((z) => z.id === zoneId) ?? null : null
+      const rider = config.autoAssignRiders
+        ? riders.find(
+            (r) =>
+              r.active &&
+              (r.zoneId === zoneId || r.zoneId === null) &&
+              (!zone?.coldChainCapable || r.coldChainCapable),
+          ) ?? null
+        : null
+
+      const chunkSize = config.targetOrdersPerBatch
+      for (let i = 0; i < orders.length; i += chunkSize) {
+        const chunk = orders.slice(i, i + chunkSize)
+        const batchRef = nextBatchRef([...batches, ...newBatches])
+        const batch: Batch = {
+          id: newId("bat"),
+          ref: batchRef,
+          zoneId: zoneId,
+          riderId: rider?.id ?? null,
+          scheduledAt: new Date().toISOString(),
+          status: "planned",
+          orderIds: chunk.map((o) => o.orderNo),
+          coldChain: zone?.coldChainCapable ?? false,
+          createdAt: new Date().toISOString(),
+        }
+        newBatches.push(batch)
+
+        for (const order of chunk) {
+          const sched = parseSchedule(order.notes)
+          const delivery: Delivery = {
+            id: newId("del"),
+            orderRef: order.orderNo,
+            customerName: order.customer,
+            customerPhone: order.phone,
+            address: order.address || order.location,
+            zoneId,
+            batchId: batch.id,
+            riderId: rider?.id ?? null,
+            status: "assigned",
+            attempts: 0,
+            codAmount: order.paymentMethod === "cod" ? order.total : 0,
+            estimatedCost: Math.round(config.costCapPerDelivery * 0.75),
+            createdAt: new Date().toISOString(),
+            slaHours: zone?.slaHours ?? config.targetSlaHours,
+            ...(sched.scheduledAt ? { dispatchedAt: sched.scheduledAt.toISOString() } : {}),
+          }
+          newDeliveries.push(delivery)
+        }
+      }
+    }
+
+    setBatches((prev) => [...prev, ...newBatches])
+    setDeliveries((prev) => [...prev, ...newDeliveries])
+    setLastPlan({ batches: newBatches.length, deliveries: newDeliveries.length })
+    setSelected(new Set())
+    setPlanning(false)
+  }
+
+  const rush = confirmedOrders.filter((o) => !parseSchedule(o.notes).isScheduled)
+  const scheduled = confirmedOrders.filter((o) => parseSchedule(o.notes).isScheduled)
+
+  if (confirmedOrders.length === 0) {
+    return (
+      <div className="space-y-4">
+        {lastPlan && (
+          <div className="flex items-center gap-3 px-4 py-3 rounded-sm border border-emerald-200 bg-emerald-50">
+            <CheckCircle2 className="h-4 w-4 text-emerald-700 flex-shrink-0" />
+            <p className="text-sm text-emerald-900">
+              Plan created — <span className="font-semibold">{lastPlan.batches} batch{lastPlan.batches !== 1 ? "es" : ""}</span> and{" "}
+              <span className="font-semibold">{lastPlan.deliveries} delivery record{lastPlan.deliveries !== 1 ? "s" : ""}</span> added. Head to Batches &amp; Dispatch to review.
+            </p>
+          </div>
+        )}
+        <EmptyState
+          icon={PackageSearch}
+          title="Dispatch queue is clear"
+          blurb="All confirmed orders have been assigned to a batch. New confirmed orders will appear here automatically."
+        />
+      </div>
+    )
+  }
+
+  const selectable = selected.size > 0 ? confirmedOrders.filter((o) => selected.has(o.orderNo)) : confirmedOrders
+
+  return (
+    <div className="space-y-4">
+      {/* Alert banner */}
+      <div className="flex flex-wrap items-center gap-3 px-4 py-3 rounded-sm border border-amber-200 bg-amber-50">
+        <Bell className="h-4 w-4 text-amber-700 flex-shrink-0 animate-pulse" />
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-semibold text-amber-900">
+            {confirmedOrders.length} confirmed order{confirmedOrders.length !== 1 ? "s" : ""} awaiting dispatch
+          </p>
+          <p className="text-xs text-amber-700 mt-0.5">
+            {rush.length > 0 && `${rush.length} on-demand`}
+            {rush.length > 0 && scheduled.length > 0 && " · "}
+            {scheduled.length > 0 && `${scheduled.length} scheduled`}
+            {" — "}select rows to plan a subset, or auto-plan all at once.
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          {selected.size > 0 && (
+            <button
+              type="button"
+              disabled={planning}
+              onClick={() => autoPlan(selectable)}
+              className="px-3 py-1.5 text-xs font-semibold rounded-sm border border-[#3D0814] text-[#3D0814] hover:bg-[#3D0814]/5 disabled:opacity-50"
+            >
+              Plan {selected.size} selected
+            </button>
+          )}
+          <button
+            type="button"
+            disabled={planning}
+            onClick={() => autoPlan(confirmedOrders)}
+            className="px-3 py-1.5 text-xs font-semibold rounded-sm bg-[#3D0814] text-white hover:bg-[#6B0F1A] disabled:opacity-50 inline-flex items-center gap-1.5"
+          >
+            <Zap className="h-3.5 w-3.5" />
+            {planning ? "Planning…" : `Auto-plan all ${confirmedOrders.length}`}
+          </button>
+        </div>
+      </div>
+
+      {lastPlan && (
+        <div className="flex items-center gap-3 px-4 py-3 rounded-sm border border-emerald-200 bg-emerald-50">
+          <CheckCircle2 className="h-4 w-4 text-emerald-700 flex-shrink-0" />
+          <p className="text-sm text-emerald-900">
+            Last plan — <span className="font-semibold">{lastPlan.batches} batch{lastPlan.batches !== 1 ? "es" : ""}</span> and{" "}
+            <span className="font-semibold">{lastPlan.deliveries} delivery record{lastPlan.deliveries !== 1 ? "s" : ""}</span> created. Remaining orders shown below.
+          </p>
+        </div>
+      )}
+
+      {/* Rush orders */}
+      {rush.length > 0 && (
+        <DispatchGroup
+          label="On-demand / Rush"
+          icon={Zap}
+          accent="rose"
+          orders={rush}
+          zones={zones}
+          selected={selected}
+          onToggle={toggleSelect}
+          onToggleAll={() => {
+            const allSelected = rush.every((o) => selected.has(o.orderNo))
+            setSelected((prev) => {
+              const next = new Set(prev)
+              if (allSelected) rush.forEach((o) => next.delete(o.orderNo))
+              else rush.forEach((o) => next.add(o.orderNo))
+              return next
+            })
+          }}
+        />
+      )}
+
+      {/* Scheduled orders */}
+      {scheduled.length > 0 && (
+        <DispatchGroup
+          label="Scheduled deliveries"
+          icon={CalendarClock}
+          accent="sky"
+          orders={scheduled}
+          zones={zones}
+          selected={selected}
+          onToggle={toggleSelect}
+          onToggleAll={() => {
+            const allSelected = scheduled.every((o) => selected.has(o.orderNo))
+            setSelected((prev) => {
+              const next = new Set(prev)
+              if (allSelected) scheduled.forEach((o) => next.delete(o.orderNo))
+              else scheduled.forEach((o) => next.add(o.orderNo))
+              return next
+            })
+          }}
+        />
+      )}
+
+      {/* Select-all / deselect-all row */}
+      <div className="flex items-center justify-between text-xs text-muted-foreground">
+        <button type="button" onClick={toggleAll} className="hover:underline">
+          {selected.size === confirmedOrders.length ? "Deselect all" : `Select all ${confirmedOrders.length}`}
+        </button>
+        {selected.size > 0 && (
+          <span>{selected.size} selected</span>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function DispatchGroup({
+  label, icon: Icon, accent, orders, zones, selected, onToggle, onToggleAll,
+}: {
+  label: string
+  icon: typeof Zap
+  accent: "rose" | "sky"
+  orders: AdminOrderRecord[]
+  zones: Zone[]
+  selected: Set<string>
+  onToggle: (orderNo: string) => void
+  onToggleAll: () => void
+}) {
+  const accentMap = {
+    rose: { bg: "bg-rose-50 border-rose-200", badge: "bg-rose-100 text-rose-800", icon: "text-rose-600" },
+    sky:  { bg: "bg-sky-50 border-sky-200",   badge: "bg-sky-100 text-sky-800",   icon: "text-sky-600" },
+  }
+  const cls = accentMap[accent]
+  const allChecked = orders.every((o) => selected.has(o.orderNo))
+
+  return (
+    <div className="border border-border rounded-sm overflow-hidden">
+      <div className={`flex items-center gap-2 px-4 py-2.5 border-b border-border ${cls.bg}`}>
+        <input
+          type="checkbox"
+          className="h-3.5 w-3.5 rounded"
+          checked={allChecked}
+          onChange={onToggleAll}
+        />
+        <Icon className={`h-3.5 w-3.5 ${cls.icon}`} />
+        <span className="text-xs font-semibold uppercase tracking-wide">{label}</span>
+        <span className={`ml-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold ${cls.badge}`}>
+          {orders.length}
+        </span>
+      </div>
+      <table className="w-full text-sm">
+        <thead className="bg-secondary text-xs text-muted-foreground">
+          <tr>
+            <th className="w-8 px-3 py-2" />
+            <th className="text-left px-3 py-2 font-medium">Order</th>
+            <th className="text-left px-3 py-2 font-medium">Customer</th>
+            <th className="text-left px-3 py-2 font-medium hidden md:table-cell">Address</th>
+            <th className="text-left px-3 py-2 font-medium hidden lg:table-cell">Zone</th>
+            <th className="text-left px-3 py-2 font-medium hidden sm:table-cell">Items</th>
+            <th className="text-right px-3 py-2 font-medium">Total</th>
+            <th className="text-left px-3 py-2 font-medium hidden lg:table-cell">Scheduled</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-border">
+          {orders.map((order) => {
+            const sched = parseSchedule(order.notes)
+            const zone = matchZone(order.address || order.location, zones)
+            const isChecked = selected.has(order.orderNo)
+            return (
+              <tr
+                key={order.orderNo}
+                className={`hover:bg-secondary/40 cursor-pointer ${isChecked ? "bg-secondary/60" : ""}`}
+                onClick={() => onToggle(order.orderNo)}
+              >
+                <td className="px-3 py-2.5">
+                  <input
+                    type="checkbox"
+                    className="h-3.5 w-3.5 rounded"
+                    checked={isChecked}
+                    onChange={() => onToggle(order.orderNo)}
+                    onClick={(e) => e.stopPropagation()}
+                  />
+                </td>
+                <td className="px-3 py-2.5">
+                  <p className="font-medium text-[13px]">{order.orderNo}</p>
+                  <p className="text-[11px] text-muted-foreground">{order.paymentMethod === "cod" ? "COD" : order.paymentMethod?.toUpperCase()}</p>
+                </td>
+                <td className="px-3 py-2.5">
+                  <p className="font-medium text-[13px] truncate max-w-[140px]">{order.customer}</p>
+                  <p className="text-[11px] text-muted-foreground">{order.phone}</p>
+                </td>
+                <td className="px-3 py-2.5 hidden md:table-cell">
+                  <p className="text-[12px] text-muted-foreground truncate max-w-[200px]">{order.address || order.location || "—"}</p>
+                </td>
+                <td className="px-3 py-2.5 hidden lg:table-cell">
+                  {zone ? (
+                    <Badge className="text-[10px] font-medium bg-[#3D0814]/10 text-[#3D0814] border-0">
+                      {zone.name}
+                    </Badge>
+                  ) : (
+                    <span className="text-[11px] text-muted-foreground">Unmatched</span>
+                  )}
+                </td>
+                <td className="px-3 py-2.5 hidden sm:table-cell">
+                  <p className="text-[12px] text-muted-foreground">
+                    {order.items?.length ?? 0} item{order.items?.length !== 1 ? "s" : ""}
+                  </p>
+                </td>
+                <td className="px-3 py-2.5 text-right">
+                  <p className="font-medium text-[13px]">KES {order.total?.toLocaleString()}</p>
+                </td>
+                <td className="px-3 py-2.5 hidden lg:table-cell">
+                  {sched.isScheduled && sched.scheduledAt ? (
+                    <p className="text-[11px] text-sky-700 font-medium">
+                      {sched.scheduledAt.toLocaleString("en-KE", {
+                        month: "short", day: "numeric",
+                        hour: "2-digit", minute: "2-digit",
+                      })}
+                    </p>
+                  ) : (
+                    <Badge className="text-[10px] font-medium bg-rose-100 text-rose-800 border-0">
+                      ASAP
+                    </Badge>
+                  )}
+                </td>
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
+    </div>
   )
 }
 
