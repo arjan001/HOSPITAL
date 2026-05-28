@@ -21,7 +21,7 @@ import {
   AlertTriangle, CheckCircle2, XCircle, Eye, EyeOff, ArrowRight,
   Clock, Shield, User, Plus, Trash2, Package, BarChart3,
   Star, Building2, Hash, Mail, Phone, MapPin, Users, FileText,
-  ChevronLeft, ChevronRight,
+  ChevronLeft, ChevronRight, Menu, X,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -290,6 +290,7 @@ function ClinicDashboard({ clinic, session, onLogout }: {
   clinic: Clinic; session: PortalSession; onLogout: () => void
 }) {
   const [tab, setTab] = useState<ClinicTab>("overview")
+  const [mobileOpen, setMobileOpen] = useState(false)
   const [collapsed, setCollapsed] = useState(() => {
     try { return localStorage.getItem("shaniidrx.clinic.sidebar") === "collapsed" } catch { return false }
   })
@@ -315,9 +316,58 @@ function ClinicDashboard({ clinic, session, onLogout }: {
 
   return (
     <div className="min-h-screen flex" style={{ background: "#f8f7f5" }}>
-      {/* Sidebar */}
+      {/* ── Mobile overlay sidebar ─────────────────────────────── */}
+      {mobileOpen && (
+        <div className="fixed inset-0 z-50 md:hidden">
+          <div className="absolute inset-0 bg-black/50" onClick={() => setMobileOpen(false)} />
+          <aside className="absolute left-0 top-0 bottom-0 w-72 flex flex-col bg-white shadow-2xl overflow-y-auto">
+            <div className="px-5 py-5 border-b flex items-center justify-between" style={{ background: WINE }}>
+              <div>
+                <div className="flex items-center gap-2 mb-1">
+                  <img src="/logo.svg" alt="" className="h-6 w-6 brightness-0 invert" onError={e => { (e.target as HTMLImageElement).style.display = "none" }} />
+                  <span className="text-white font-bold">Shaniid RX</span>
+                </div>
+                <p className="text-white/60 text-xs">Clinic Portal</p>
+              </div>
+              <button onClick={() => setMobileOpen(false)} className="text-white/70 hover:text-white p-1 rounded-lg"><X className="h-5 w-5" /></button>
+            </div>
+            <div className="px-5 py-4 border-b">
+              <div className="h-10 w-10 rounded-xl flex items-center justify-center mb-2" style={{ background: `${WINE}15` }}>
+                <Stethoscope className="h-5 w-5" style={{ color: WINE }} />
+              </div>
+              <p className="font-bold text-gray-800 text-sm leading-tight">{clinic.clinicName}</p>
+              <p className="text-xs text-gray-400 mt-0.5 capitalize">{clinic.clinicType.replace("_", " ")} · {clinic.county}</p>
+              <span className="inline-block mt-1.5 text-[11px] font-semibold px-2 py-0.5 rounded-full capitalize" style={{ color: tc.color, background: tc.bg }}>{clinic.tier} partner</span>
+            </div>
+            <div className="px-5 py-3 border-b bg-gray-50">
+              <div className="flex justify-between text-xs mb-1">
+                <span className="text-gray-500">Credit available</span>
+                <span className="font-bold" style={{ color: WINE }}>{(100 - creditUsedPct).toFixed(0)}%</span>
+              </div>
+              <div className="h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                <div className="h-full rounded-full" style={{ width: `${creditUsedPct}%`, background: creditUsedPct > 80 ? "#B91C1C" : WINE }} />
+              </div>
+              <p className="text-[10px] text-gray-400 mt-1">KSH {(clinic.creditLimit - clinic.creditUsed).toLocaleString()} of {clinic.creditLimit.toLocaleString()}</p>
+            </div>
+            <nav className="flex-1 px-3 py-4 space-y-1">
+              {CLINIC_TABS.map(({ id, label, icon: Icon }) => (
+                <button key={id} onClick={() => { setTab(id); setMobileOpen(false) }}
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${tab === id ? "text-white shadow-sm" : "text-gray-600 hover:bg-gray-50"}`}
+                  style={tab === id ? { background: WINE } : {}}>
+                  <Icon className="h-4 w-4 flex-shrink-0" />{label}
+                </button>
+              ))}
+            </nav>
+            <div className="px-5 py-4 border-t">
+              <button onClick={onLogout} className="flex items-center gap-2 text-sm text-gray-400 hover:text-red-500 transition-colors"><LogOut className="h-4 w-4" />Sign out</button>
+            </div>
+          </aside>
+        </div>
+      )}
+
+      {/* ── Desktop collapsible sidebar ────────────────────────── */}
       <aside
-        className="flex-shrink-0 flex flex-col border-r border-gray-100 bg-white transition-all duration-200"
+        className="hidden md:flex flex-shrink-0 flex-col border-r border-gray-100 bg-white transition-all duration-200"
         style={{ width: collapsed ? 64 : 256 }}
       >
         {/* Header */}
@@ -412,20 +462,25 @@ function ClinicDashboard({ clinic, session, onLogout }: {
       </aside>
 
       {/* Main */}
-      <div className="flex-1 overflow-auto">
-        <div className="bg-white border-b px-8 py-4 flex items-center justify-between sticky top-0 z-10">
-          <div>
-            <h1 className="font-bold text-lg text-gray-800">{CLINIC_TABS.find(t => t.id === tab)?.label}</h1>
-            <p className="text-xs text-gray-400 mt-0.5">{clinic.clinicName} · {clinic.portalCode}</p>
+      <div className="flex-1 overflow-auto min-w-0">
+        <div className="bg-white border-b px-4 md:px-8 py-4 flex items-center justify-between sticky top-0 z-10">
+          <div className="flex items-center gap-3">
+            <button onClick={() => setMobileOpen(true)} className="md:hidden p-2 rounded-lg hover:bg-gray-100 -ml-1">
+              <Menu className="h-5 w-5 text-gray-600" />
+            </button>
+            <div>
+              <h1 className="font-bold text-lg text-gray-800">{CLINIC_TABS.find(t => t.id === tab)?.label}</h1>
+              <p className="text-xs text-gray-400 mt-0.5">{clinic.clinicName} · {clinic.portalCode}</p>
+            </div>
           </div>
           {clinic.status !== "approved" && (
             <span className="flex items-center gap-1 text-xs font-medium px-2.5 py-1 rounded-full" style={{ color: "#92400E", background: "#FEF3C7" }}>
-              <Clock className="h-3 w-3" />KYC under review
+              <Clock className="h-3 w-3" /><span className="hidden sm:inline">KYC under review</span>
             </span>
           )}
         </div>
 
-        <div className="p-8">
+        <div className="p-4 md:p-8">
           {/* OVERVIEW */}
           {tab === "overview" && (
             <div className="space-y-6">

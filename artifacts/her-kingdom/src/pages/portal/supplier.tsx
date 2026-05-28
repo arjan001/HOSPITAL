@@ -20,8 +20,8 @@ import {
   Building2, ShieldCheck, LogOut, Package, ClipboardList,
   BarChart3, User, AlertTriangle, CheckCircle2, XCircle,
   Eye, EyeOff, ArrowRight, Star, Truck, TrendingUp,
-  Bell, Copy, RefreshCw, ChevronRight, Hash, Mail, Phone,
-  MapPin, CreditCard, FileText, Shield, Clock, Boxes,
+  Bell, Copy, RefreshCw, ChevronRight, ChevronLeft, Hash, Mail, Phone,
+  MapPin, CreditCard, FileText, Shield, Clock, Boxes, Menu, X,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -178,6 +178,18 @@ function SupplierDashboard({ supplier, session, onLogout }: {
   onLogout: () => void
 }) {
   const [tab, setTab] = useState<Tab>("overview")
+  const [collapsed, setCollapsed] = useState(() => {
+    try { return localStorage.getItem("shaniidrx.supplier.sidebar") === "collapsed" } catch { return false }
+  })
+  const [mobileOpen, setMobileOpen] = useState(false)
+
+  const toggleSidebar = () => {
+    setCollapsed(prev => {
+      const next = !prev
+      try { localStorage.setItem("shaniidrx.supplier.sidebar", next ? "collapsed" : "expanded") } catch {}
+      return next
+    })
+  }
 
   const kycDocs = [
     { key: "hasLicense",  label: "Business License" },
@@ -196,87 +208,147 @@ function SupplierDashboard({ supplier, session, onLogout }: {
 
   return (
     <div className="min-h-screen flex" style={{ background: "#f8f7f5" }}>
-      {/* Sidebar */}
-      <aside className="w-64 flex-shrink-0 flex flex-col border-r border-gray-100 bg-white">
-        {/* Brand */}
-        <div className="px-5 py-5 border-b" style={{ background: WINE }}>
-          <div className="flex items-center gap-2 mb-3">
-            <img src="/logo.svg" alt="" className="h-6 w-6 brightness-0 invert" onError={e => { (e.target as HTMLImageElement).style.display = "none" }} />
-            <span className="text-white font-bold">Shaniid RX</span>
-          </div>
-          <p className="text-white/60 text-xs">Supplier Portal</p>
+
+      {/* ── Mobile overlay sidebar ─────────────────────────────── */}
+      {mobileOpen && (
+        <div className="fixed inset-0 z-50 md:hidden">
+          <div className="absolute inset-0 bg-black/50" onClick={() => setMobileOpen(false)} />
+          <aside className="absolute left-0 top-0 bottom-0 w-72 flex flex-col bg-white shadow-2xl overflow-y-auto">
+            <div className="px-5 py-5 border-b flex items-center justify-between" style={{ background: WINE }}>
+              <div>
+                <div className="flex items-center gap-2 mb-1">
+                  <img src="/logo.svg" alt="" className="h-6 w-6 brightness-0 invert" onError={e => { (e.target as HTMLImageElement).style.display = "none" }} />
+                  <span className="text-white font-bold">Shaniid RX</span>
+                </div>
+                <p className="text-white/60 text-xs">Supplier Portal</p>
+              </div>
+              <button onClick={() => setMobileOpen(false)} className="text-white/70 hover:text-white p-1 rounded-lg"><X className="h-5 w-5" /></button>
+            </div>
+            <div className="px-5 py-4 border-b">
+              <div className="h-10 w-10 rounded-xl flex items-center justify-center text-white font-bold text-lg mb-2" style={{ background: WINE }}>{supplier.companyName[0]}</div>
+              <p className="font-bold text-gray-800 text-sm leading-tight">{supplier.companyName}</p>
+              <p className="text-xs text-gray-400 mt-0.5">{supplier.city}, {supplier.country}</p>
+              <span className="inline-block mt-1.5 text-[11px] font-semibold px-2 py-0.5 rounded-full" style={{ color: si.color, background: si.bg }}>{si.label}</span>
+            </div>
+            <nav className="flex-1 px-3 py-4 space-y-1">
+              {TABS.map(({ id, label, icon: Icon }) => (
+                <button key={id} onClick={() => { setTab(id); setMobileOpen(false) }}
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${tab === id ? "text-white shadow-sm" : "text-gray-600 hover:bg-gray-50"}`}
+                  style={tab === id ? { background: WINE } : {}}>
+                  <Icon className="h-4 w-4 flex-shrink-0" />{label}
+                </button>
+              ))}
+            </nav>
+            <div className="px-5 py-4 border-t">
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="text-xs text-gray-500 font-medium">Trust Score</span>
+                <span className="text-xs font-bold" style={{ color: kycPct === 100 ? GREEN : ORANGE }}>{kycPct === 100 ? "Sealed ✓" : `${kycPct.toFixed(0)}%`}</span>
+              </div>
+              <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                <div className="h-full rounded-full" style={{ width: `${kycPct}%`, background: kycPct === 100 ? GREEN : ORANGE }} />
+              </div>
+            </div>
+            <div className="px-5 py-4 border-t">
+              <button onClick={onLogout} className="flex items-center gap-2 text-sm text-gray-400 hover:text-red-500 transition-colors"><LogOut className="h-4 w-4" />Sign out</button>
+            </div>
+          </aside>
+        </div>
+      )}
+
+      {/* ── Desktop collapsible sidebar ────────────────────────── */}
+      <aside
+        className="hidden md:flex flex-shrink-0 flex-col border-r border-gray-100 bg-white transition-all duration-200"
+        style={{ width: collapsed ? 64 : 256 }}
+      >
+        <div className="flex items-center border-b overflow-hidden" style={{ background: WINE, minHeight: 64 }}>
+          {collapsed ? (
+            <div className="flex-1 flex items-center justify-center py-5">
+              <img src="/logo.svg" alt="" className="h-6 w-6 brightness-0 invert" onError={e => { (e.target as HTMLImageElement).style.display = "none" }} />
+            </div>
+          ) : (
+            <div className="flex-1 px-5 py-5">
+              <div className="flex items-center gap-2 mb-1">
+                <img src="/logo.svg" alt="" className="h-6 w-6 brightness-0 invert" onError={e => { (e.target as HTMLImageElement).style.display = "none" }} />
+                <span className="text-white font-bold">Shaniid RX</span>
+              </div>
+              <p className="text-white/60 text-xs">Supplier Portal</p>
+            </div>
+          )}
         </div>
 
-        {/* Supplier identity */}
-        <div className="px-5 py-4 border-b">
-          <div className="h-10 w-10 rounded-xl flex items-center justify-center text-white font-bold text-lg mb-2" style={{ background: WINE }}>
-            {supplier.companyName[0]}
+        {collapsed ? (
+          <div className="flex items-center justify-center py-4 border-b">
+            <div className="h-9 w-9 rounded-xl flex items-center justify-center text-white font-bold" style={{ background: WINE }}>{supplier.companyName[0]}</div>
           </div>
-          <p className="font-bold text-gray-800 text-sm leading-tight">{supplier.companyName}</p>
-          <p className="text-xs text-gray-400 mt-0.5">{supplier.city}, {supplier.country}</p>
-          <span className="inline-block mt-1.5 text-[11px] font-semibold px-2 py-0.5 rounded-full" style={{ color: si.color, background: si.bg }}>
-            {si.label}
-          </span>
-        </div>
+        ) : (
+          <div className="px-5 py-4 border-b">
+            <div className="h-10 w-10 rounded-xl flex items-center justify-center text-white font-bold text-lg mb-2" style={{ background: WINE }}>{supplier.companyName[0]}</div>
+            <p className="font-bold text-gray-800 text-sm leading-tight">{supplier.companyName}</p>
+            <p className="text-xs text-gray-400 mt-0.5">{supplier.city}, {supplier.country}</p>
+            <span className="inline-block mt-1.5 text-[11px] font-semibold px-2 py-0.5 rounded-full" style={{ color: si.color, background: si.bg }}>{si.label}</span>
+          </div>
+        )}
 
-        {/* Nav */}
-        <nav className="flex-1 px-3 py-4 space-y-1">
+        <nav className="flex-1 px-2 py-4 space-y-1">
           {TABS.map(({ id, label, icon: Icon }) => (
-            <button key={id} onClick={() => setTab(id)}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
-                tab === id
-                  ? "text-white shadow-sm"
-                  : "text-gray-600 hover:bg-gray-50"
-              }`}
+            <button key={id} onClick={() => setTab(id)} title={collapsed ? label : undefined}
+              className={`w-full flex items-center rounded-xl text-sm font-medium transition-all ${collapsed ? "justify-center px-0 py-2.5" : "gap-3 px-3 py-2.5"} ${tab === id ? "text-white shadow-sm" : "text-gray-600 hover:bg-gray-50"}`}
               style={tab === id ? { background: WINE } : {}}>
               <Icon className="h-4 w-4 flex-shrink-0" />
-              {label}
+              {!collapsed && <span>{label}</span>}
             </button>
           ))}
         </nav>
 
-        {/* Trust Seal status */}
-        <div className="px-5 py-4 border-t">
-          <div className="flex items-center justify-between mb-1.5">
-            <span className="text-xs text-gray-500 font-medium">Trust Score</span>
-            <span className="text-xs font-bold" style={{ color: kycPct === 100 ? GREEN : ORANGE }}>
-              {kycPct === 100 ? "Sealed ✓" : `${kycPct.toFixed(0)}%`}
-            </span>
+        {!collapsed && (
+          <div className="px-5 py-4 border-t">
+            <div className="flex items-center justify-between mb-1.5">
+              <span className="text-xs text-gray-500 font-medium">Trust Score</span>
+              <span className="text-xs font-bold" style={{ color: kycPct === 100 ? GREEN : ORANGE }}>{kycPct === 100 ? "Sealed ✓" : `${kycPct.toFixed(0)}%`}</span>
+            </div>
+            <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+              <div className="h-full rounded-full transition-all" style={{ width: `${kycPct}%`, background: kycPct === 100 ? GREEN : ORANGE }} />
+            </div>
           </div>
-          <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
-            <div className="h-full rounded-full transition-all" style={{ width: `${kycPct}%`, background: kycPct === 100 ? GREEN : ORANGE }} />
-          </div>
-        </div>
+        )}
 
-        {/* Logout */}
-        <div className="px-5 py-4 border-t">
-          <button onClick={onLogout} className="flex items-center gap-2 text-sm text-gray-400 hover:text-red-500 transition-colors">
-            <LogOut className="h-4 w-4" />Sign out
-          </button>
+        <div className="border-t">
+          <div className={`py-3 flex items-center ${collapsed ? "flex-col gap-2 px-2" : "px-5 justify-between"}`}>
+            <button onClick={onLogout} title="Sign out" className="flex items-center gap-2 text-sm text-gray-400 hover:text-red-500 transition-colors">
+              <LogOut className="h-4 w-4" />{!collapsed && <span>Sign out</span>}
+            </button>
+            <button onClick={toggleSidebar} title={collapsed ? "Expand" : "Collapse"}
+              className="flex items-center justify-center h-7 w-7 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors">
+              {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
+            </button>
+          </div>
         </div>
       </aside>
 
       {/* Main */}
-      <div className="flex-1 overflow-auto">
+      <div className="flex-1 overflow-auto min-w-0">
         {/* Top bar */}
-        <div className="bg-white border-b px-8 py-4 flex items-center justify-between sticky top-0 z-10">
-          <div>
-            <h1 className="font-bold text-lg text-gray-800">
-              {TABS.find(t => t.id === tab)?.label}
-            </h1>
-            <p className="text-xs text-gray-400 mt-0.5">Welcome back, {supplier.contactPerson || supplier.companyName}</p>
+        <div className="bg-white border-b px-4 md:px-8 py-4 flex items-center justify-between sticky top-0 z-10">
+          <div className="flex items-center gap-3">
+            <button onClick={() => setMobileOpen(true)} className="md:hidden p-2 rounded-lg hover:bg-gray-100 -ml-1">
+              <Menu className="h-5 w-5 text-gray-600" />
+            </button>
+            <div>
+              <h1 className="font-bold text-lg text-gray-800">{TABS.find(t => t.id === tab)?.label}</h1>
+              <p className="text-xs text-gray-400 mt-0.5">Welcome back, {supplier.contactPerson || supplier.companyName}</p>
+            </div>
           </div>
           <div className="flex items-center gap-3">
-            <span className="text-xs text-gray-400 font-mono">{supplier.portalCode}</span>
+            <span className="hidden sm:block text-xs text-gray-400 font-mono">{supplier.portalCode}</span>
             {supplier.status === "pending" && (
               <span className="flex items-center gap-1 text-xs font-medium px-2.5 py-1 rounded-full" style={{ color: "#92400E", background: "#FEF3C7" }}>
-                <Clock className="h-3 w-3" />KYC under review
+                <Clock className="h-3 w-3" /><span className="hidden sm:inline">KYC under review</span>
               </span>
             )}
           </div>
         </div>
 
-        <div className="p-8">
+        <div className="p-4 md:p-8">
           {/* ── OVERVIEW ── */}
           {tab === "overview" && (
             <div className="space-y-6">
@@ -470,7 +542,7 @@ export default function SupplierPortal() {
       setLoginError("Your account has been suspended. Contact support@shaniidrx.com for assistance.")
       return
     }
-    const s = loginPartnerLocal("supplier", localMatch.id, localMatch.supplierName || email, email, code)
+    const s = loginPartnerLocal("supplier", localMatch.id, localMatch.companyName || email, email, code)
     setSession(s)
   }
 
