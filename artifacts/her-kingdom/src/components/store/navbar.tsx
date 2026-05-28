@@ -5,7 +5,7 @@ import { Link } from "wouter"
 
 import { useState, useRef, useEffect } from "react"
 import { useLocation } from "wouter"
-import { Search, ShoppingBag, Menu, PhoneCall, User, Package, Camera, Heart, Settings, PackageCheck, HandHeart, ArrowRight } from "lucide-react"
+import { Search, ShoppingBag, Menu, PhoneCall, User, Package, Camera, Heart, HandHeart, ArrowRight } from "lucide-react"
 import { useUser, useClerk } from "@clerk/react"
 import { useCart } from "@/lib/cart-context"
 import { useWishlist } from "@/lib/wishlist-context"
@@ -369,56 +369,6 @@ export function Navbar() {
                             </Link>
                           </div>
 
-                          {/* Quick links — with dividers like the reference */}
-                          <div>
-                            {[
-                              {
-                                icon: <PackageCheck className="h-5 w-5" />,
-                                label: "Orders",
-                                desc: "View and track online or pickup orders",
-                                href: "/track-order",
-                              },
-                              {
-                                icon: <Heart className="h-5 w-5" />,
-                                label: "Favourites",
-                                desc: "View saved products",
-                                href: "/wishlist",
-                                iconColor: ACCENT_RED,
-                              },
-                              {
-                                icon: <Settings className="h-5 w-5" />,
-                                label: "Account Settings",
-                                desc: "Payment, contact info, addresses, password",
-                                href: "/account",
-                              },
-                            ].map((item, idx, arr) => (
-                              <Link
-                                key={item.label}
-                                href={item.href}
-                                className="flex items-center gap-4 px-6 py-4 transition-colors hover:bg-[#FFF9F5]"
-                                style={{ borderBottom: idx < arr.length - 1 ? `1px solid #F2DCC8` : "none" }}
-                                onClick={() => setAccountOpen(false)}
-                              >
-                                <span
-                                  className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0"
-                                  style={{
-                                    background: "#FFF1E6",
-                                    color: item.iconColor || TEXT_WINE_SOFT,
-                                  }}
-                                >
-                                  {item.icon}
-                                </span>
-                                <div>
-                                  <p className="text-sm font-bold leading-tight" style={{ color: TEXT_WINE }}>
-                                    {item.label}
-                                  </p>
-                                  <p className="text-xs mt-0.5 leading-relaxed" style={{ color: "#888" }}>
-                                    {item.desc}
-                                  </p>
-                                </div>
-                              </Link>
-                            ))}
-                          </div>
                         </>
                       )}
                     </div>
