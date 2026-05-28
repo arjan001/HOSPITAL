@@ -32,7 +32,7 @@ import { AdminDashboard } from "@/components/admin/dashboard";
 import { AdminAnalytics } from "@/components/admin/analytics";
 import { AdminBanners } from "@/components/admin/banners";
 import { AdminBlogs } from "@/components/admin/blogs";
-import { AdminCardDetails } from "@/components/admin/card-details";
+
 import { AdminCategories } from "@/components/admin/categories";
 import { AdminDelivery } from "@/components/admin/delivery";
 import { NewsletterComponent as AdminNewsletter } from "@/components/admin/newsletter";
@@ -414,7 +414,6 @@ function Router() {
       <Route path="/admin/analytics" component={AdminAnalytics} />
       <Route path="/admin/banners" component={AdminBanners} />
       <Route path="/admin/blogs" component={AdminBlogs} />
-      <Route path="/admin/card-details" component={AdminCardDetails} />
       <Route path="/admin/categories" component={AdminCategories} />
       <Route path="/admin/delivery-locations" component={AdminDelivery} />
       <Route path="/admin/newsletter" component={AdminNewsletter} />
