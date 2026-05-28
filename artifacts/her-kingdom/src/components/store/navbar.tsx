@@ -267,7 +267,9 @@ export function Navbar() {
                   className="inline-flex flex-col items-center justify-center gap-0.5 transition-opacity hover:opacity-80 w-12"
                   style={{ color: TEXT_WINE }}
                 >
-                  <User className="h-5 w-5" style={{ color: ACCENT_RED }} />
+                  <span className="relative">
+                    <User className="h-5 w-5" style={{ color: ACCENT_RED }} />
+                  </span>
                   <span className="text-[11px] font-semibold leading-none">Account</span>
                 </button>
 
