@@ -10,6 +10,7 @@ import { CartProvider } from "@/lib/cart-context";
 import { WishlistProvider } from "@/lib/wishlist-context";
 import { PageViewTracker } from "@/components/page-view-tracker";
 import { ErrorBoundary } from "@/components/error-boundary";
+import { BackToTop } from "@/components/store/back-to-top";
 
 // Store pages
 import { LandingPage } from "@/components/store/landing-page";
@@ -492,7 +493,12 @@ function Router() {
 }
 
 function GlobalOverlays() {
-  return <PopupOffer />;
+  return (
+    <>
+      <PopupOffer />
+      <BackToTop />
+    </>
+  );
 }
 
 function ClerkProviderWithRoutes() {

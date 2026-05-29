@@ -2,7 +2,7 @@
 
 import { Link } from "wouter"
 import useSWR from "swr"
-import { Facebook, Instagram, Twitter, Youtube, Linkedin, Mail, ArrowUp } from "lucide-react"
+import { Facebook, Instagram, Twitter, Youtube, Linkedin, Mail } from "lucide-react"
 import { SeoLinkCloud } from "./seo-link-cloud"
 import { useCmsDoc, useCmsCollection } from "@/lib/cms-store"
 import { FOOTER_DEFAULTS, type FooterSettings as CmsFooterSettings } from "@/components/admin/footer-cms"
@@ -20,7 +20,6 @@ const TEXT_MUTED     = "#6B7280"
 const BORDER_PEACH   = "#F2DCC8"
 const BORDER_LIGHT   = "#EFEBE3"
 const ACCENT_RED     = "#B91C1C"
-const ACCENT_ORG     = "#F97316"
 
 type FooterSettings = {
   store_email?: string
@@ -87,10 +86,6 @@ export function Footer() {
     { href: pick(cms.social.youtube,   s.footer_youtube,   DEFAULTS.footer_youtube),   icon: <Youtube   className="h-3.5 w-3.5" fill="currentColor" />, label: "YouTube",   bg: "#FF0000" },
     { href: `mailto:${cms.contactEmail || s.store_email || DEFAULTS.store_email}`,     icon: <Mail      className="h-3.5 w-3.5" />,                    label: "Email",     bg: ACCENT_RED },
   ]
-
-  const handleScrollTop = () => {
-    if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" })
-  }
 
   return (
     <footer style={{ background: BG_WHITE, color: TEXT_WINE }}>
@@ -194,20 +189,6 @@ export function Footer() {
       {/* ─── Bottom bar ──────────────────────────────────────── */}
       <div style={{ background: BG_BAR, borderTop: `1px solid ${BORDER_LIGHT}` }}>
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 pt-5 pb-4 sm:py-4 flex flex-col md:flex-row items-center justify-between gap-3 relative">
-          {/* Back-to-top — floats top-right on desktop, inline above content on mobile */}
-          <button
-            type="button"
-            onClick={handleScrollTop}
-            aria-label="Back to top"
-            className="md:absolute md:-top-7 md:right-4 lg:right-8 w-11 h-11 sm:w-12 sm:h-12 rounded-full flex items-center justify-center text-white shadow-lg transition-transform hover:-translate-y-0.5 -mt-10 md:mt-0 self-end md:self-auto mr-1 md:mr-0"
-            style={{
-              background: `linear-gradient(135deg, ${ACCENT_ORG} 0%, ${ACCENT_RED} 100%)`,
-              boxShadow: "0 8px 20px -6px rgba(185,28,28,0.45)",
-            }}
-          >
-            <ArrowUp className="h-5 w-5" />
-          </button>
-
           <p className="text-[11px] sm:text-xs leading-relaxed text-center md:text-left order-2 md:order-1" style={{ color: TEXT_MUTED }}>
             {copyright}
           </p>

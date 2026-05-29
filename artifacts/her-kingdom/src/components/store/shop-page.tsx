@@ -347,7 +347,12 @@ export function ShopPage({ seoIntro }: { seoIntro?: ReactNode } = {}) {
   const queryParam = searchParams.get("q") || ""
   const tagParam = searchParams.get("tag") || ""
 
-  const { data: productsData } = useSWR<Product[]>("/api/products", safeFetcher)
+  const {
+    data: productsData,
+    error: productsError,
+    isLoading: productsLoading,
+    mutate: refetchProducts,
+  } = useSWR<Product[]>("/api/products", safeFetcher)
   const products = asArray<Product>(productsData)
   const categories = useCategories()
 
@@ -796,7 +801,49 @@ export function ShopPage({ seoIntro }: { seoIntro?: ReactNode } = {}) {
                   </div>
                 </div>
 
-                {filtered.length === 0 ? (
+                {productsLoading && products.length === 0 ? (
+                  <div
+                    className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-4 lg:gap-5"
+                    aria-busy="true"
+                    aria-label="Loading products"
+                  >
+                    {Array.from({ length: 8 }).map((_, i) => (
+                      <div
+                        key={i}
+                        className="rounded-2xl overflow-hidden animate-pulse"
+                        style={{ background: "#FFF6EE", border: `1px solid ${PEACH_BORDER}` }}
+                      >
+                        <div className="aspect-square" style={{ background: "#F6E8DA" }} />
+                        <div className="p-3 space-y-2">
+                          <div className="h-3 rounded" style={{ background: "#F2DCC8", width: "60%" }} />
+                          <div className="h-3 rounded" style={{ background: "#F2DCC8", width: "85%" }} />
+                          <div className="h-4 rounded mt-3" style={{ background: "#F2DCC8", width: "40%" }} />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : productsError && products.length === 0 ? (
+                  <div
+                    className="text-center py-20 rounded-2xl"
+                    style={{ background: "#FFF6EE", border: `1px solid ${PEACH_BORDER}` }}
+                    role="alert"
+                  >
+                    <p className="text-sm font-medium" style={{ color: TEXT_WINE }}>
+                      We couldn't load products right now.
+                    </p>
+                    <p className="text-xs mt-1" style={{ color: TEXT_WINE_SOFT }}>
+                      Please check your connection and try again.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => void refetchProducts()}
+                      className="mt-4 inline-flex items-center rounded-full px-5 py-2 text-sm font-semibold text-white transition-transform hover:-translate-y-0.5"
+                      style={{ background: `linear-gradient(135deg, #F97316 0%, ${ACCENT_RED} 100%)` }}
+                    >
+                      Try again
+                    </button>
+                  </div>
+                ) : filtered.length === 0 ? (
                   <div
                     className="text-center py-20 rounded-2xl"
                     style={{ background: "#FFF6EE", border: `1px solid ${PEACH_BORDER}` }}

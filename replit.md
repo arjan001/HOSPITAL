@@ -96,7 +96,28 @@ Admin: dashboard with KPIs/sparklines/low-stock alerts, products (with CSV impor
 - **Session model.** `SessionMiddleware` issues a `shaniidrx_sid` cookie per browser and writes `req.sessionId`. All services read from `req.sessionId`. When Clerk lands, replace the middleware body with a JWT verifier that sets `req.sessionId = clerkUserId` — services don't change.
 - **Database swap.** Each service uses either `Map<sid, T[]>` directly (profile) or the generic `InMemoryRepository<T>` in `src/common/repository.ts`. Postgres swap = implement the same surface against Drizzle (`packages/db`) and swap the import in each module. No controller changes.
 - **Don't add `ValidationPipe`** unless you also install `class-validator` + `class-transformer`. Today each controller validates inputs manually; future Zod DTOs go through `nestjs-zod`.
-- **Modules shipped:** `health`, `profile` (`/me`), `addresses` (`/me/addresses`), `wishlist` (`/me/wishlist`), `orders` (`/me/orders`). Cart, payments, prescriptions, consultations, and admin modules are pending.
+- **Modules shipped:** `health`, `profile` (`/me`), `addresses` (`/me/addresses`), `wishlist` (`/me/wishlist`), `orders` (`/me/orders`), `paystack` (`/payments/paystack/{charge,status,callback}`). Cart, prescriptions, consultations, and admin modules are pending.
+
+### Resilience & abuse protection (api-nest)
+
+This is the documented "settings"/hardening layer that protects every `/api/v2` route, **including admin/settings endpoints as they port over**. All of it lives in `src/common/` and is mounted globally so new modules inherit it for free.
+
+- **Rate limiting / bot protection — `src/common/rate-limit.middleware.ts`.** Sliding-window in-memory counter applied to *all* `/api/v2` traffic.
+  - **Tunables (env):** `RATE_LIMIT_WINDOW_MS` (default `60000`), `RATE_LIMIT_MAX` (default `600` req/window). Sized for the ~1000-users/hour target with headroom for normal browsing + admin work; lower `RATE_LIMIT_MAX` to clamp down harder on bots.
+  - **Client identity (anti-spoofing).** `x-forwarded-for` is only trusted when `TRUST_PROXY=1` (set this in deployment, where Replit's proxy sets the header). Otherwise the key is the raw socket address, which a client cannot forge. The signed `shaniidrx_sid` cookie is folded into the key so a shared NAT/egress IP can't starve every user behind it — and because the cookie is signed it can't be forged to dodge a limit.
+  - **Response contract.** Sets `X-RateLimit-Limit/Remaining/Reset` on every response; on breach returns `429` with `Retry-After` and a friendly JSON error.
+  - **Scaling note.** Single-instance store. When scaling horizontally, swap the backing `Map` for Redis behind the same middleware surface — no controller changes.
+- **Global error handling — `AllExceptionsFilter`.** Catches everything, normalizes to a stable JSON shape (`statusCode`, `error`, `timestamp`), and avoids leaking internals. New modules don't need their own try/catch plumbing for the response shape.
+- **Session secret fails closed.** `SESSION_SECRET` is required to sign the sid cookie; the app refuses to start with an unsigned/insecure session rather than silently degrading.
+- **SSRF guard.** Outbound fetches (e.g. payment callbacks) validate the target host before calling.
+- **Front-end safety net.** Storefront wraps routes in an `ErrorBoundary`; data hooks surface non-silent errors (e.g. wishlist, shop product list) with explicit loading/error/empty UI instead of blank or misleading states.
+
+### DB-schema discipline (REQUIRED for any follow-up change)
+
+**Any change that adds or alters persisted data MUST land the matching schema in `packages/db` in the same change** — even while a module is still on the in-memory repo. The in-memory repos (`InMemoryRepository<T>` / `Map<sid, T[]>`) are deliberately shaped to mirror the eventual Drizzle tables, so:
+- New entity/field → add/extend the Drizzle table + Zod schema in `packages/db` first, then mirror the shape in the in-memory repo.
+- Run `pnpm --filter @workspace/db run push` (dev) to apply, and regenerate API types via `pnpm --filter @workspace/api-spec run codegen` when the OpenAPI surface changes.
+- Never let the runtime shape drift from `packages/db`; the Postgres swap depends on them staying identical.
 
 ## Gotchas
 
