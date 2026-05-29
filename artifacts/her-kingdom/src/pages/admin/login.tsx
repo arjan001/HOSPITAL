@@ -102,9 +102,9 @@ export function AdminLoginPage() {
             {/* Logo + badge */}
             <div className="mb-8 text-center">
               <img
-                src="/logo.svg"
+                src="/logo-rx.png"
                 alt="Shaniid RX"
-                className="mx-auto mb-5 h-10"
+                className="mx-auto mb-5 h-16 w-auto object-contain"
                 onError={(e) => {
                   ;(e.target as HTMLImageElement).style.display = "none"
                 }}

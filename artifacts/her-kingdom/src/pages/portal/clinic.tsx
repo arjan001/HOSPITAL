@@ -56,7 +56,7 @@ function ClinicLoginPage({ onLogin, error }: {
       <div className="hidden lg:flex w-1/2 flex-col justify-between p-12" style={{ background: WINE }}>
         <div>
           <div className="flex items-center gap-2.5">
-            <img src="/logo.svg" alt="Shaniid RX" className="h-8 w-8 brightness-0 invert" onError={e => { (e.target as HTMLImageElement).style.display = "none" }} />
+            <img src="/logo-rx.png" alt="Shaniid RX" className="h-9 w-auto object-contain" onError={e => { (e.target as HTMLImageElement).style.display = "none" }} />
             <span className="text-white font-bold text-xl tracking-tight">Shaniid RX</span>
           </div>
           <p className="text-white/60 text-sm mt-1">Healthcare Facility Portal</p>
@@ -86,10 +86,7 @@ function ClinicLoginPage({ onLogin, error }: {
       <div className="flex-1 flex items-center justify-center p-6">
         <div className="w-full max-w-md">
           <div className="lg:hidden flex items-center gap-2 mb-8">
-            <div className="h-8 w-8 rounded-lg flex items-center justify-center" style={{ background: WINE }}>
-              <Stethoscope className="h-5 w-5 text-white" />
-            </div>
-            <span className="font-bold text-lg" style={{ color: WINE }}>Shaniid RX</span>
+            <img src="/logo-rx.png" alt="Shaniid RX" className="h-10 w-auto object-contain" />
           </div>
 
           <h1 className="text-2xl font-bold text-gray-800 mb-1">Clinic sign in</h1>
@@ -346,7 +343,7 @@ function ClinicDashboard({ clinic, session, onLogout }: {
             <div className="px-5 py-5 flex items-center justify-between" style={{ borderBottom: `1px solid ${S_BORDER}` }}>
               <div>
                 <div className="flex items-center gap-2 mb-0.5">
-                  <img src="/logo.svg" alt="" className="h-5 w-5 brightness-0 invert" onError={e => { (e.target as HTMLImageElement).style.display = "none" }} />
+                  <img src="/logo-rx.png" alt="" className="h-6 w-auto object-contain" onError={e => { (e.target as HTMLImageElement).style.display = "none" }} />
                   <span className="font-bold text-sm" style={{ color: S_TEXT }}>Shaniid RX</span>
                 </div>
                 <p className="text-xs" style={{ color: S_MUTED }}>Clinic Portal</p>
@@ -399,14 +396,14 @@ function ClinicDashboard({ clinic, session, onLogout }: {
           {!collapsed ? (
             <div className="flex-1 px-5 py-4">
               <div className="flex items-center gap-2 mb-0.5">
-                <img src="/logo.svg" alt="" className="h-5 w-5 brightness-0 invert" onError={e => { (e.target as HTMLImageElement).style.display = "none" }} />
+                <img src="/logo-rx.png" alt="" className="h-6 w-auto object-contain" onError={e => { (e.target as HTMLImageElement).style.display = "none" }} />
                 <span className="font-bold text-sm" style={{ color: S_TEXT }}>Shaniid RX</span>
               </div>
               <p className="text-xs" style={{ color: S_MUTED }}>Clinic Portal</p>
             </div>
           ) : (
             <div className="flex-1 flex items-center justify-center py-5">
-              <img src="/logo.svg" alt="" className="h-5 w-5 brightness-0 invert" onError={e => { (e.target as HTMLImageElement).style.display = "none" }} />
+              <img src="/logo-rx.png" alt="" className="h-6 w-auto object-contain" onError={e => { (e.target as HTMLImageElement).style.display = "none" }} />
             </div>
           )}
         </div>

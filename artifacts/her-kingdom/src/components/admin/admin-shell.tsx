@@ -804,8 +804,8 @@ export function AdminShell({ children, title }: { children: ReactNode; title: st
           <Menu className="h-5 w-5" />
           <span className="sr-only">Open menu</span>
         </button>
-        <Link href="/admin" className="font-black text-base">
-          Shaniid <span style={{ color: S_ACCENT }}>Rx</span>
+        <Link href="/admin" className="block flex-shrink-0">
+          <img src="/logo-rx.png" alt="Shaniid RX" className="h-8 w-auto object-contain" />
         </Link>
         <Link href="/" className="text-xs text-muted-foreground hover:text-foreground">
           View Store
@@ -828,25 +828,24 @@ export function AdminShell({ children, title }: { children: ReactNode; title: st
             style={{ borderBottom: `1px solid ${S_BORDER}` }}
           >
             {collapsed ? (
-              /* Collapsed: clip the SVG to show just the shield mark */
+              /* Collapsed: the Rx mark is self-contained, show it directly */
               <Link
                 href="/admin"
                 title="Shaniid RX Admin"
-                className="flex-shrink-0 overflow-hidden"
-                style={{ width: 36, height: 32 }}
+                className="flex-shrink-0"
               >
                 <img
-                  src="/logo.svg"
+                  src="/logo-rx.png"
                   alt="Shaniid RX"
-                  style={{ height: 32, width: "auto", filter: "brightness(0) invert(1)", flexShrink: 0, display: "block" }}
+                  style={{ height: 34, width: "auto", flexShrink: 0, display: "block" }}
                 />
               </Link>
             ) : (
               <Link href="/admin" className="block flex-shrink-0">
                 <img
-                  src="/logo.svg"
+                  src="/logo-rx.png"
                   alt="Shaniid RX"
-                  style={{ height: 34, width: "auto", maxWidth: 180, filter: "brightness(0) invert(1)", display: "block" }}
+                  style={{ height: 40, width: "auto", maxWidth: 180, display: "block" }}
                 />
               </Link>
             )}
@@ -982,9 +981,9 @@ export function AdminShell({ children, title }: { children: ReactNode; title: st
               >
                 <Link href="/admin" className="block flex-shrink-0">
                   <img
-                    src="/logo.svg"
+                    src="/logo-rx.png"
                     alt="Shaniid RX"
-                    style={{ height: 32, width: "auto", maxWidth: 160, filter: "brightness(0) invert(1)", display: "block" }}
+                    style={{ height: 38, width: "auto", maxWidth: 160, display: "block" }}
                   />
                 </Link>
                 <button
