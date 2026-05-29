@@ -56,7 +56,7 @@ function SupplierLoginPage({ onLogin, error }: {
       <div className="hidden lg:flex w-1/2 flex-col justify-between p-12" style={{ background: WINE }}>
         <div>
           <div className="flex items-center gap-2.5">
-            <img src="/logo-rx.png" alt="Shaniid RX" className="h-9 w-auto object-contain" onError={e => { (e.target as HTMLImageElement).style.display = "none" }} />
+            <img src="/logo-rx.png" alt="Shaniid RX" className="h-12 w-auto object-contain" onError={e => { (e.target as HTMLImageElement).style.display = "none" }} />
             <span className="text-white font-bold text-xl tracking-tight">Shaniid RX</span>
           </div>
           <p className="text-white/60 text-sm mt-1">Supplier Partner Portal</p>
@@ -88,7 +88,7 @@ function SupplierLoginPage({ onLogin, error }: {
       <div className="flex-1 flex items-center justify-center p-6">
         <div className="w-full max-w-md">
           <div className="lg:hidden flex items-center gap-2 mb-8">
-            <img src="/logo-rx.png" alt="Shaniid RX" className="h-10 w-auto object-contain" />
+            <img src="/logo-rx.png" alt="Shaniid RX" className="h-14 w-auto object-contain" />
           </div>
 
           <h1 className="text-2xl font-bold text-gray-800 mb-1">Supplier sign in</h1>

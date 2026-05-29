@@ -104,7 +104,7 @@ export function AdminLoginPage() {
               <img
                 src="/logo-rx.png"
                 alt="Shaniid RX"
-                className="mx-auto mb-5 h-16 w-auto object-contain"
+                className="mx-auto mb-5 h-24 w-auto object-contain"
                 onError={(e) => {
                   ;(e.target as HTMLImageElement).style.display = "none"
                 }}
