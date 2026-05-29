@@ -47,6 +47,7 @@ import {
 import { AdminCmsModule } from "./admin-cms.module"
 import { EmailModule, EmailService } from "./email.module"
 import { NotificationsModule, NotificationsService } from "./notifications.module"
+import { WhatsAppModule, WhatsAppService } from "./whatsapp.module"
 import { AdminGuard } from "../common/admin-guard"
 
 /**
@@ -221,6 +222,8 @@ type MessageTemplate = {
   subject: string
   body: string
   enabled: boolean
+  /** Meta-approved WhatsApp template name (for channel === "whatsapp"). */
+  whatsappTemplateName?: string
 }
 
 /* ---------- Sourcing ---------- */
@@ -711,7 +714,10 @@ function interpolate(tpl: string, vars: Record<string, string | number>): string
 
 @Injectable()
 class CommunicationsAutomationService {
-  constructor(@Inject(EmailService) private readonly email: EmailService) {}
+  constructor(
+    @Inject(EmailService) private readonly email: EmailService,
+    @Inject(WhatsAppService) private readonly whatsapp: WhatsAppService,
+  ) {}
 
   async send(input: {
     templateId: string
@@ -739,7 +745,33 @@ class CommunicationsAutomationService {
       })
       return { ok: result.ok, channel: "email", preview: subject, skipped: result.skipped, reason: result.reason }
     }
-    // SMS / WhatsApp transports not wired yet — record intent.
+
+    if (tpl.channel === "whatsapp" && this.whatsapp.isEnabled()) {
+      // The template body is already fully interpolated here, so we send it as
+      // a WhatsApp *text* message. We deliberately do NOT pass `whatsappTemplateName`:
+      // a Meta template send needs ordered body parameters, and templates don't
+      // carry a reliable {{token}} → positional-param mapping. Text sends are
+      // valid within the 24h customer-service window; for proactively-initiated
+      // Meta template messages, call WhatsAppService.send({ templateName, variables })
+      // directly with an explicit ordered `variables` array.
+      const result = await this.whatsapp.send({
+        to: input.to,
+        body,
+      })
+      // Only fall through to the outbox when the provider was unconfigured;
+      // a genuine send attempt (success or hard failure) is reported directly.
+      if (!result.skipped) {
+        return {
+          ok: result.ok,
+          channel: "whatsapp",
+          preview: subject || body.slice(0, 60),
+          skipped: false,
+          reason: result.reason,
+        }
+      }
+    }
+
+    // SMS, or WhatsApp with no provider configured — record intent in the outbox.
     const log = await cmsGet<unknown[]>("communications.outbox", [])
     await cmsPut("communications.outbox", [
       {
@@ -828,7 +860,7 @@ class PipelineStatusController {
 }
 
 @Module({
-  imports: [AdminCmsModule, EmailModule, NotificationsModule],
+  imports: [AdminCmsModule, EmailModule, NotificationsModule, WhatsAppModule],
   controllers: [
     SourcingPipelineController,
     TradingPipelineController,

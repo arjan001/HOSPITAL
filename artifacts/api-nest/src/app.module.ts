@@ -51,6 +51,7 @@ import { EmailModule } from "./modules/email.module"
 import { NotificationsModule } from "./modules/notifications.module"
 import { PipelineModule } from "./modules/pipeline.module"
 import { PartnersModule } from "./modules/partners.module"
+import { WhatsAppModule } from "./modules/whatsapp.module"
 
 @Module({
   imports: [
@@ -80,6 +81,7 @@ import { PartnersModule } from "./modules/partners.module"
     NotificationsModule,
     PipelineModule,
     PartnersModule,
+    WhatsAppModule,
   ],
   providers: [
     // Global catch-all exception filter: normalises every error response and

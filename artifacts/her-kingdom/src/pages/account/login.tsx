@@ -35,6 +35,7 @@
 import { useEffect, useState } from "react"
 import { Link, useLocation } from "wouter"
 import { useUser } from "@clerk/react"
+import { getSafeRedirect, buildRedirectQuery } from "@/lib/auth-redirect"
 /* The default `@clerk/react` `useSignIn` returns the new "signals" API
    (no `isLoaded` / `authenticateWithRedirect` / `setActive`). This page
    uses the legacy resource API which still ships at `/legacy`. */
@@ -66,6 +67,15 @@ export default function AccountLoginPage() {
   const [, navigate] = useLocation()
   const { isSignedIn } = useUser()
   const { isLoaded, signIn, setActive } = useSignIn()
+
+  /* Where to land after a successful sign-in. Gated pages (e.g.
+     /upload-prescription) send the user here with `?redirect=<path>`; we
+     validate it as a same-origin relative path and fall back to /user. */
+  const redirectParam = getSafeRedirect(
+    typeof window !== "undefined" ? window.location.search : "",
+  )
+  const redirectTo = redirectParam || "/user"
+  const redirectQuery = buildRedirectQuery(redirectParam)
 
   const [step, setStep]       = useState<Step>("signin")
   const [email, setEmail]     = useState("")
@@ -114,7 +124,7 @@ export default function AccountLoginPage() {
       })
       if (attempt.status === "complete") {
         await setActive({ session: attempt.createdSessionId })
-        navigate("/user")
+        navigate(redirectTo)
       } else {
         setError("Reset needs another step. Please try signing in normally.")
       }
@@ -133,8 +143,8 @@ export default function AccountLoginPage() {
   }
 
   useEffect(() => {
-    if (isSignedIn) navigate("/user")
-  }, [isSignedIn, navigate])
+    if (isSignedIn) navigate(redirectTo)
+  }, [isSignedIn, navigate, redirectTo])
 
   if (isSignedIn) return null
 
@@ -148,7 +158,7 @@ export default function AccountLoginPage() {
       const attempt = await signIn.create({ identifier, password })
       if (attempt.status === "complete") {
         await setActive({ session: attempt.createdSessionId })
-        navigate("/user")
+        navigate(redirectTo)
       } else {
         setError("Additional verification required. Please check your email or try Google sign-in below.")
       }
@@ -175,7 +185,7 @@ export default function AccountLoginPage() {
       await signIn.authenticateWithRedirect({
         strategy: "oauth_google",
         redirectUrl: `${BASE_PATH}/account/sso-callback`,
-        redirectUrlComplete: `${BASE_PATH}/user`,
+        redirectUrlComplete: `${BASE_PATH}${redirectTo}`,
       })
     } catch (err) {
       setGoogleLoading(false)
@@ -473,7 +483,7 @@ export default function AccountLoginPage() {
               <p className="text-center text-sm" style={{ color: "rgba(255,255,255,0.85)" }}>
                 New here?{" "}
                 <Link
-                  href="/account/register"
+                  href={`/account/register${redirectQuery}`}
                   className="font-bold hover:underline"
                   style={{ color: "#fff" }}
                 >

@@ -285,11 +285,13 @@ function SsoCallbackPage() {
 }
 
 function ProtectedAccount({ children }: { children: React.ReactNode }) {
+  const [location] = useLocation();
+  const loginTarget = `/account/login?redirect=${encodeURIComponent(location)}`;
   return (
     <>
       <Show when="signed-in">{children}</Show>
       <Show when="signed-out">
-        <Redirect to="/account/login" />
+        <Redirect to={loginTarget} />
       </Show>
     </>
   );
@@ -407,7 +409,9 @@ function Router() {
       <Route path="/user">
         {() => <ProtectedAccount><DashboardPage /></ProtectedAccount>}
       </Route>
-      <Route path="/upload-prescription" component={UploadPrescriptionPage} />
+      <Route path="/upload-prescription">
+        {() => <ProtectedAccount><UploadPrescriptionPage /></ProtectedAccount>}
+      </Route>
       <Route path="/speak-to-a-doctor" component={SpeakToADoctorPage} />
       <Route path="/doctor" component={DoctorPanelPage} />
       <Route path="/account/support" component={AccountSupportPage} />

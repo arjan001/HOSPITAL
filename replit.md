@@ -96,7 +96,18 @@ Admin: dashboard with KPIs/sparklines/low-stock alerts, products (with CSV impor
 - **Session model.** `SessionMiddleware` issues a `shaniidrx_sid` cookie per browser and writes `req.sessionId`. All services read from `req.sessionId`. When Clerk lands, replace the middleware body with a JWT verifier that sets `req.sessionId = clerkUserId` — services don't change.
 - **Database swap.** Each service uses either `Map<sid, T[]>` directly (profile) or the generic `InMemoryRepository<T>` in `src/common/repository.ts`. Postgres swap = implement the same surface against Drizzle (`packages/db`) and swap the import in each module. No controller changes.
 - **Don't add `ValidationPipe`** unless you also install `class-validator` + `class-transformer`. Today each controller validates inputs manually; future Zod DTOs go through `nestjs-zod`.
-- **Modules shipped:** `health`, `profile` (`/me`), `addresses` (`/me/addresses`), `wishlist` (`/me/wishlist`), `orders` (`/me/orders`), `paystack` (`/payments/paystack/{charge,status,callback}`). Cart, prescriptions, consultations, and admin modules are pending.
+- **Modules shipped:** `health`, `profile` (`/me`), `addresses` (`/me/addresses`), `wishlist` (`/me/wishlist`), `orders` (`/me/orders`), `paystack` (`/payments/paystack/{charge,status,callback}`), `whatsapp` (`/notifications/whatsapp/{status,send}`). Cart, prescriptions, consultations, and admin modules are pending.
+
+### WhatsApp integration (`/api/v2/notifications/whatsapp`)
+
+- **Provider decision (May 2026): Meta WhatsApp Cloud API is the primary provider**, because the storefront message templates already carry Meta-approved template names (`whatsappTemplateName`, e.g. `order_confirmation_v1`). A **Twilio** WhatsApp transport is supported as a drop-in alternative (handy before a Meta Business account / template approval exists).
+- **Where:** `artifacts/api-nest/src/modules/whatsapp.module.ts` (`WhatsAppService`, modelled on `email.module.ts`). Exposes `GET /status` (admin) for provider readiness and `POST /send` (admin) to dispatch.
+- **Env-gated, fails soft.** When no provider is configured, `send()` returns `{ ok:false, skipped:true }` instead of throwing — callers fall back to the outbox. Nothing breaks if WhatsApp is never switched on.
+  - **Meta:** `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_API_VERSION` (default `v21.0`).
+  - **Twilio:** `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_WHATSAPP_FROM`.
+  - **Override:** `WHATSAPP_PROVIDER` = `meta` | `twilio` (otherwise auto-detected from whichever credentials are present).
+- **Wired into the Communications pipeline.** `CommunicationsAutomationService.send()` (`pipeline.module.ts`) sends WhatsApp via `WhatsAppService` when a provider is configured; if unconfigured it still queues to the `communications.outbox` cmsStore key (previous behaviour). The pipeline sends the **fully-interpolated body as a WhatsApp text message** (valid within Meta's 24h customer-service window) — it deliberately does NOT send a Meta *template* there, because templates need ordered positional params and we don't track a reliable `{{token}}`→param mapping per template. To send a proactively-initiated Meta template message, call `WhatsAppService.send({ templateName, variables: string[] })` directly with an explicit ordered `variables` array. WhatsApp template presets live in `message-templates.tsx` (channel `whatsapp`, each carrying `whatsappTemplateName`): account_registration, password_reset_otp, order_confirmation, prescription_verified, consultation_reminder, prescription_received (upload), prescription_ready_for_pickup, payment_received, order_dispatched, order_delivered, login_otp.
+- **Auto-send-on-trigger (e.g. fire a WhatsApp the moment a prescription is uploaded) is NOT yet wired** — that needs customer-phone plumbing + a trigger→template resolver. The provider + templates are ready for it.
 
 ### Resilience & abuse protection (api-nest)
 

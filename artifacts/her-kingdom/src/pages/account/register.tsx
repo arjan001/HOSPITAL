@@ -5,6 +5,7 @@ import { useSignUp } from "@clerk/react/legacy"
 import { Eye, EyeOff, ArrowRight, Info, Check, Mail, Loader2 } from "lucide-react"
 import { Seo } from "@/components/seo"
 import { upsertCustomer } from "@/lib/use-customer-mirror"
+import { getSafeRedirect, buildRedirectQuery } from "@/lib/auth-redirect"
 
 const WINE          = "#3D0814"
 const WINE_SOFT     = "#6B0F1A"
@@ -64,6 +65,15 @@ export default function AccountRegisterPage() {
   const { isSignedIn } = useUser()
   const { isLoaded, signUp, setActive } = useSignUp()
 
+  /* Where to land after a successful sign-up. Gated pages (e.g.
+     /upload-prescription) send the user here with `?redirect=<path>`; we
+     validate it as a same-origin relative path and fall back to /user. */
+  const redirectParam = getSafeRedirect(
+    typeof window !== "undefined" ? window.location.search : "",
+  )
+  const redirectTo = redirectParam || "/user"
+  const redirectQuery = buildRedirectQuery(redirectParam)
+
   const [step, setStep] = useState<"form" | "verify">("form")
   const [sendingCode, setSendingCode] = useState(false)
   const [form, setForm] = useState({
@@ -86,8 +96,8 @@ export default function AccountRegisterPage() {
   const [code, setCode]               = useState("")
 
   useEffect(() => {
-    if (isSignedIn) navigate("/user")
-  }, [isSignedIn, navigate])
+    if (isSignedIn) navigate(redirectTo)
+  }, [isSignedIn, navigate, redirectTo])
 
   if (isSignedIn) return null
 
@@ -153,7 +163,7 @@ export default function AccountRegisterPage() {
             source: "email",
           })
         }
-        navigate("/user")
+        navigate(redirectTo)
         return
       }
 
@@ -193,7 +203,7 @@ export default function AccountRegisterPage() {
             source: "email",
           })
         }
-        navigate("/user")
+        navigate(redirectTo)
       } else {
         setTopError("Verification incomplete. Please double-check the code and try again.")
       }
@@ -225,7 +235,7 @@ export default function AccountRegisterPage() {
       await signUp.authenticateWithRedirect({
         strategy: "oauth_google",
         redirectUrl: `${BASE_PATH}/account/sso-callback`,
-        redirectUrlComplete: `${BASE_PATH}/user`,
+        redirectUrlComplete: `${BASE_PATH}${redirectTo}`,
       })
     } catch (err) {
       setGoogleLoading(false)
@@ -480,7 +490,7 @@ export default function AccountRegisterPage() {
 
             <p className="text-center text-sm" style={{ color: "rgba(255,255,255,0.85)" }}>
               Already have your Account?{" "}
-              <Link href="/account/login" className="font-bold hover:underline" style={{ color: "#fff" }}>
+              <Link href={`/account/login${redirectQuery}`} className="font-bold hover:underline" style={{ color: "#fff" }}>
                 Login
               </Link>
             </p>
