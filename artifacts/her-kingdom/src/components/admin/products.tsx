@@ -7,7 +7,7 @@ import { toast } from "sonner"
 import { Plus, Pencil, Trash2, X, Upload, Search, Download, FileUp, ImagePlus, Loader2, Eye, AlertTriangle, PackageX, PackageCheck } from "lucide-react"
 import { AdminShell } from "./admin-shell"
 import { formatPrice } from "@/lib/format"
-import { isVideoUrl } from "@/lib/media-utils"
+import { isVideoUrl, compressImage } from "@/lib/media-utils"
 import type { Product, ProductVariation } from "@/lib/types"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -204,7 +204,19 @@ export function AdminProducts() {
       .replace(/[^a-z0-9]+/g, "-")
       .replace(/(^-|-$)/g, "") || "product"
 
-    for (const file of Array.from(files)) {
+    const MAX_MB = 5
+
+    for (const rawFile of Array.from(files)) {
+      let file = rawFile
+      if (file.size > MAX_MB * 1024 * 1024) {
+        toast.info(`Compressing ${file.name}…`)
+        file = await compressImage(rawFile, MAX_MB)
+        if (file.size > MAX_MB * 1024 * 1024) {
+          toast.error(`${rawFile.name} is too large to compress below ${MAX_MB}MB — skipped.`)
+          continue
+        }
+      }
+
       const formData = new FormData()
       formData.append("file", file)
       formData.append("productSlug", slug)
@@ -217,6 +229,7 @@ export function AdminProducts() {
         }
       } catch (err) {
         console.error("Upload failed:", err)
+        toast.error(`Upload failed for ${file.name}`)
       }
     }
     setIsUploading(false)

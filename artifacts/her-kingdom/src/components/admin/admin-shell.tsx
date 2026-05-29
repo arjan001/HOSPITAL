@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useMemo, useRef, type ReactNode } from "react"
+import { useEffectivePermissions, type EffectivePermissions } from "@/lib/permissions"
 import { createPortal } from "react-dom"
 import { Link } from "wouter"
 import { useLocation } from "wouter"
@@ -86,6 +87,7 @@ type NavNode = {
   href?: string
   icon: typeof LayoutDashboard
   hasBadge?: boolean
+  perm?: string | string[]   // required permission(s) — omit = visible to all admins
   children?: NavNode[]
 }
 
@@ -97,46 +99,46 @@ type NavGroup = {
 // Order mirrors the Shaniid RX operations flow:
 //   Sourcing → Trading → QA & Assurance → Logistics
 // Customers is its own top-level group (was buried under System).
+// perm = required permission; omit = visible to every authenticated admin.
 const NAV_GROUPS: NavGroup[] = [
   {
     name: "Overview",
     items: [
       { label: "Dashboard", href: "/admin",           icon: LayoutDashboard },
-      { label: "Analytics", href: "/admin/analytics", icon: BarChart3 },
+      { label: "Analytics", href: "/admin/analytics", icon: BarChart3, perm: "analytics.view" },
     ],
   },
   {
     name: "Sales",
     items: [
-      // { label: "Point of Sale",  href: "/admin/pos",          icon: Receipt }, // hidden until client requests POS module
-      { label: "Sales & Orders", href: "/admin/orders",       icon: ShoppingCart, hasBadge: true },
-      { label: "Payments",       href: "/admin/payments",     icon: CreditCard },
+      { label: "Sales & Orders", href: "/admin/orders",   icon: ShoppingCart, hasBadge: true, perm: "orders.view" },
+      { label: "Payments",       href: "/admin/payments", icon: CreditCard, perm: "payments.view" },
     ],
   },
   {
     name: "Customers",
     items: [
-      { label: "All Customers", href: "/admin/customers", icon: UserCircle },
+      { label: "All Customers", href: "/admin/customers", icon: UserCircle, perm: "users.manage" },
     ],
   },
   {
     name: "Pharmacy",
     items: [
-      { label: "Prescriptions",     href: "/admin/prescriptions",  icon: ClipboardList },
-      { label: "Consultations",     href: "/admin/consultations",  icon: Stethoscope },
-      { label: "Clinics & Partners",href: "/admin/clinics",        icon: Building2 },
-      { label: "Doctors",           href: "/admin/doctors",        icon: Stethoscope },
-      { label: "Consultation Settings", href: "/admin/consultation-settings", icon: Timer },
-      { label: "Live Chat",         href: "/admin/chat",           icon: MessagesSquare },
-      { label: "Support Tickets",   href: "/admin/support",        icon: MessageSquare },
+      { label: "Prescriptions",         href: "/admin/prescriptions",          icon: ClipboardList, perm: "rx.view" },
+      { label: "Consultations",         href: "/admin/consultations",          icon: Stethoscope,   perm: "consult.handle" },
+      { label: "Clinics & Partners",    href: "/admin/clinics",                icon: Building2,     perm: "users.manage" },
+      { label: "Doctors",               href: "/admin/doctors",                icon: Stethoscope,   perm: "consult.handle" },
+      { label: "Consultation Settings", href: "/admin/consultation-settings",  icon: Timer,         perm: "consult.handle" },
+      { label: "Live Chat",             href: "/admin/chat",                   icon: MessagesSquare, perm: "chat.respond" },
+      { label: "Support Tickets",       href: "/admin/support",                icon: MessageSquare, perm: "chat.respond" },
     ],
   },
   {
     name: "Catalog",
     items: [
-      { label: "Products",        href: "/admin/products",     icon: Package },
-      { label: "Categories",      href: "/admin/categories",   icon: Tag },
-      { label: "Bulk Import",     href: "/admin/bulk-import",  icon: Upload },
+      { label: "Products",    href: "/admin/products",    icon: Package,     perm: "products.view" },
+      { label: "Categories",  href: "/admin/categories",  icon: Tag,         perm: ["products.view", "categories.manage"] },
+      { label: "Bulk Import", href: "/admin/bulk-import", icon: Upload,      perm: "products.edit" },
     ],
   },
   // Pipeline (per brand brief): Sourcing → Trading → QA → Logistics.
@@ -147,14 +149,15 @@ const NAV_GROUPS: NavGroup[] = [
         label: "Sourcing",
         href: "/admin/sourcing",
         icon: PackageSearch,
+        perm: "sourcing.view",
         children: [
-          { label: "Supplier Registry",     href: "/admin/suppliers",            icon: Building2 },
-          { label: "Sourcing & POs",        href: "/admin/sourcing",             icon: PackageSearch },
-          { label: "Inventory",             href: "/admin/sourcing/inventory",   icon: Boxes },
-          { label: "Demand Forecast",       href: "/admin/sourcing/forecast",    icon: LineChart },
-          { label: "Pricing & Competitor",  href: "/admin/sourcing/pricing",     icon: TrendingUp },
-          { label: "Procurement Automation",href: "/admin/sourcing/automation",  icon: Bot },
-          { label: "Supplier Performance",  href: "/admin/sourcing/performance", icon: Gauge },
+          { label: "Supplier Registry",      href: "/admin/suppliers",            icon: Building2,    perm: "sourcing.view" },
+          { label: "Sourcing & POs",         href: "/admin/sourcing",             icon: PackageSearch, perm: "sourcing.view" },
+          { label: "Inventory",              href: "/admin/sourcing/inventory",   icon: Boxes,        perm: ["sourcing.view", "inventory.view"] },
+          { label: "Demand Forecast",        href: "/admin/sourcing/forecast",    icon: LineChart,    perm: "sourcing.view" },
+          { label: "Pricing & Competitor",   href: "/admin/sourcing/pricing",     icon: TrendingUp,   perm: "sourcing.manage" },
+          { label: "Procurement Automation", href: "/admin/sourcing/automation",  icon: Bot,          perm: "sourcing.manage" },
+          { label: "Supplier Performance",   href: "/admin/sourcing/performance", icon: Gauge,        perm: "sourcing.view" },
         ],
       },
     ],
@@ -166,11 +169,12 @@ const NAV_GROUPS: NavGroup[] = [
         label: "Trading",
         href: "/admin/trading",
         icon: Handshake,
+        perm: "sourcing.manage",
         children: [
-          { label: "Deal Pipeline",       href: "/admin/trading",              icon: Handshake },
-          { label: "Bids & Quotes",       href: "/admin/trading/bids",         icon: Receipt },
-          { label: "Price Negotiation",   href: "/admin/trading/negotiation",  icon: TrendingUp },
-          { label: "Settlements",         href: "/admin/trading/settlements",  icon: Wallet },
+          { label: "Deal Pipeline",     href: "/admin/trading",             icon: Handshake,  perm: "sourcing.manage" },
+          { label: "Bids & Quotes",     href: "/admin/trading/bids",        icon: Receipt,    perm: "sourcing.manage" },
+          { label: "Price Negotiation", href: "/admin/trading/negotiation", icon: TrendingUp, perm: "sourcing.manage" },
+          { label: "Settlements",       href: "/admin/trading/settlements", icon: Wallet,     perm: "sourcing.manage" },
         ],
       },
     ],
@@ -182,11 +186,12 @@ const NAV_GROUPS: NavGroup[] = [
         label: "Quality & Assurance",
         href: "/admin/qa",
         icon: ShieldCheck,
+        perm: "inventory.view",
         children: [
-          { label: "Stock & Dispatch QA", href: "/admin/qa",                   icon: ShieldCheck },
-          { label: "Batch Verification",  href: "/admin/qa/batches",           icon: ClipboardList },
-          { label: "Trust Seal Registry", href: "/admin/qa/trust-seal",        icon: HeartHandshake },
-          { label: "Recalls & Compliance",href: "/admin/qa/recalls",           icon: AlertCircle },
+          { label: "Stock & Dispatch QA", href: "/admin/qa",            icon: ShieldCheck,    perm: "inventory.view" },
+          { label: "Batch Verification",  href: "/admin/qa/batches",    icon: ClipboardList,  perm: "inventory.view" },
+          { label: "Trust Seal Registry", href: "/admin/qa/trust-seal", icon: HeartHandshake, perm: "inventory.edit" },
+          { label: "Recalls & Compliance",href: "/admin/qa/recalls",    icon: AlertCircle,    perm: "inventory.view" },
         ],
       },
     ],
@@ -198,13 +203,14 @@ const NAV_GROUPS: NavGroup[] = [
         label: "Logistics",
         href: "/admin/logistics",
         icon: Truck,
+        perm: "delivery.manage",
         children: [
-          { label: "Partner Registry",      href: "/admin/logistics-partners",   icon: Building2 },
-          { label: "Delivery Operations",  href: "/admin/logistics",            icon: Truck, hasBadge: true },
-          { label: "Delivery Locations",   href: "/admin/delivery-locations",   icon: Truck },
-          { label: "Inventory Optimization", href: "/admin/logistics/inventory", icon: Warehouse },
-          { label: "Lead Time Monitoring", href: "/admin/logistics/lead-time",  icon: Timer },
-          { label: "Retail Emergency Fallback", href: "/admin/logistics/fallback", icon: AlertCircle },
+          { label: "Partner Registry",          href: "/admin/logistics-partners",    icon: Building2,  perm: "delivery.manage" },
+          { label: "Delivery Operations",       href: "/admin/logistics",             icon: Truck,      perm: "delivery.manage", hasBadge: true },
+          { label: "Delivery Locations",        href: "/admin/delivery-locations",    icon: Truck,      perm: "delivery.manage" },
+          { label: "Inventory Optimization",    href: "/admin/logistics/inventory",   icon: Warehouse,  perm: "delivery.manage" },
+          { label: "Lead Time Monitoring",      href: "/admin/logistics/lead-time",   icon: Timer,      perm: "delivery.manage" },
+          { label: "Retail Emergency Fallback", href: "/admin/logistics/fallback",    icon: AlertCircle, perm: "delivery.manage" },
         ],
       },
     ],
@@ -216,13 +222,14 @@ const NAV_GROUPS: NavGroup[] = [
         label: "Integrations",
         href: "/admin/integrations",
         icon: Plug,
+        perm: "integrations.manage",
         children: [
-          { label: "Channels",          href: "/admin/integrations",           icon: Plug },
-          { label: "Message Templates", href: "/admin/integrations/templates", icon: Send },
-          { label: "Email",             href: "/admin/integrations?tab=email", icon: Mail },
-          { label: "SMS",               href: "/admin/integrations?tab=sms",   icon: MessageSquare },
-          { label: "WhatsApp",          href: "/admin/integrations?tab=whatsapp", icon: MessageSquare },
-          { label: "Video (Daily.co)",  href: "/admin/integrations?tab=video", icon: Video },
+          { label: "Channels",          href: "/admin/integrations",              icon: Plug,          perm: "integrations.manage" },
+          { label: "Message Templates", href: "/admin/integrations/templates",    icon: Send,          perm: "integrations.manage" },
+          { label: "Email",             href: "/admin/integrations?tab=email",    icon: Mail,          perm: "integrations.manage" },
+          { label: "SMS",               href: "/admin/integrations?tab=sms",      icon: MessageSquare, perm: "integrations.manage" },
+          { label: "WhatsApp",          href: "/admin/integrations?tab=whatsapp", icon: MessageSquare, perm: "integrations.manage" },
+          { label: "Video (Daily.co)",  href: "/admin/integrations?tab=video",    icon: Video,         perm: "integrations.manage" },
         ],
       },
     ],
@@ -230,49 +237,78 @@ const NAV_GROUPS: NavGroup[] = [
   {
     name: "Storefront CMS",
     items: [
-      { label: "Custom Pages",   href: "/admin/pages",    icon: FileText },
-      { label: "Footer & Links", href: "/admin/footer",   icon: Layers },
-      { label: "Blogs",          href: "/admin/blogs",    icon: BookOpen },
-      { label: "Policies",       href: "/admin/policies", icon: FileText },
+      { label: "Custom Pages",   href: "/admin/pages",    icon: FileText, perm: "cms.pages" },
+      { label: "Footer & Links", href: "/admin/footer",   icon: Layers,   perm: "cms.footer" },
+      { label: "Blogs",          href: "/admin/blogs",    icon: BookOpen, perm: "cms.pages" },
+      { label: "Policies",       href: "/admin/policies", icon: FileText, perm: "cms.pages" },
     ],
   },
   {
     name: "Marketing",
     items: [
-      { label: "Offers & Banners",  href: "/admin/banners",      icon: ImageIcon },
-      { label: "Announcement Bar",  href: "/admin/announcement", icon: MegaphoneAlt },
-      { label: "Popup Offer",       href: "/admin/popup-offer",  icon: Megaphone },
-      { label: "Newsletter",        href: "/admin/newsletter",   icon: Mail },
+      { label: "Offers & Banners",  href: "/admin/banners",      icon: ImageIcon,    perm: "cms.banners" },
+      { label: "Announcement Bar",  href: "/admin/announcement", icon: MegaphoneAlt, perm: "cms.banners" },
+      { label: "Popup Offer",       href: "/admin/popup-offer",  icon: Megaphone,    perm: "cms.banners" },
+      { label: "Newsletter",        href: "/admin/newsletter",   icon: Mail,         perm: "marketing.broadcast" },
       {
         label: "Campaigns",
         href: "/admin/campaigns",
         icon: Send,
+        perm: "marketing.broadcast",
         children: [
-          { label: "Overview",   href: "/admin/campaigns",            icon: Megaphone },
-          { label: "Email",      href: "/admin/campaigns/email",      icon: Mail },
-          { label: "SMS",        href: "/admin/campaigns/sms",        icon: MessageSquare },
-          { label: "Audiences",  href: "/admin/campaigns/audiences",  icon: Users },
-          { label: "Pipelines",  href: "/admin/campaigns/pipelines",  icon: GitBranch },
-          { label: "Send Queue", href: "/admin/campaigns/queue",      icon: ListChecks },
-          { label: "Settings",   href: "/admin/campaigns/settings",   icon: Settings },
+          { label: "Overview",   href: "/admin/campaigns",            icon: Megaphone,     perm: "marketing.broadcast" },
+          { label: "Email",      href: "/admin/campaigns/email",      icon: Mail,          perm: "marketing.broadcast" },
+          { label: "SMS",        href: "/admin/campaigns/sms",        icon: MessageSquare, perm: "marketing.broadcast" },
+          { label: "Audiences",  href: "/admin/campaigns/audiences",  icon: Users,         perm: "marketing.broadcast" },
+          { label: "Pipelines",  href: "/admin/campaigns/pipelines",  icon: GitBranch,     perm: "marketing.broadcast" },
+          { label: "Send Queue", href: "/admin/campaigns/queue",      icon: ListChecks,    perm: "marketing.broadcast" },
+          { label: "Settings",   href: "/admin/campaigns/settings",   icon: Settings,      perm: "marketing.broadcast" },
         ],
       },
-      { label: "Contact Inquiries", href: "/admin/inquiries",    icon: Inbox },
+      { label: "Contact Inquiries", href: "/admin/inquiries", icon: Inbox, perm: "orders.view" },
     ],
   },
   {
     name: "System",
     items: [
-      { label: "Website Settings",    href: "/admin/website-settings", icon: Settings },
-      { label: "Users & Roles",       href: "/admin/users",            icon: Users },
-      { label: "Roles & Permissions", href: "/admin/roles",            icon: Shield },
-      { label: "Audit Log",           href: "/admin/audit-log",        icon: ScrollText },
+      { label: "Website Settings",    href: "/admin/website-settings", icon: Settings,    perm: "cms.settings" },
+      { label: "Users & Roles",       href: "/admin/users",            icon: Users,       perm: "users.manage" },
+      { label: "Roles & Permissions", href: "/admin/roles",            icon: Shield,      perm: "roles.manage" },
+      { label: "Audit Log",           href: "/admin/audit-log",        icon: ScrollText,  perm: "analytics.view" },
       { label: "Documentation",       href: "/admin/docs",             icon: BookOpen },
-      { label: "Settings",            href: "/admin/settings",         icon: Settings },
+      { label: "Settings",            href: "/admin/settings",         icon: Settings,    perm: "cms.settings" },
       { label: "My Profile",          href: "/admin/profile",          icon: UserCircle },
     ],
   },
 ]
+
+/** Filter nav groups to only items the current user has permission to see. */
+function filterGroupsByPerm(groups: NavGroup[], eff: EffectivePermissions): NavGroup[] {
+  const isFull = eff.isSuperAdmin && !eff.viewAsRoleId
+  if (isFull || eff.permissions.has("*")) return groups
+
+  const canSee = (perm?: string | string[]): boolean => {
+    if (!perm) return true
+    const ids = Array.isArray(perm) ? perm : [perm]
+    return ids.some((id) => eff.permissions.has(id))
+  }
+
+  return groups
+    .map((g) => {
+      const items = g.items
+        .map((item) => {
+          if (!canSee(item.perm)) return null
+          if (item.children) {
+            const children = item.children.filter((c) => canSee(c.perm))
+            return { ...item, children }
+          }
+          return item
+        })
+        .filter(Boolean) as NavNode[]
+      return items.length > 0 ? { ...g, items } : null
+    })
+    .filter(Boolean) as NavGroup[]
+}
 
 interface CurrentUser {
   display_name: string
@@ -720,7 +756,9 @@ export function AdminShell({ children, title }: { children: ReactNode; title: st
     navigate("/admin/login")
   }
 
-  const filteredGroups = useMemo(() => filterGroups(NAV_GROUPS, search), [search])
+  const eff = useEffectivePermissions()
+  const permittedGroups = useMemo(() => filterGroupsByPerm(NAV_GROUPS, eff), [eff])
+  const filteredGroups = useMemo(() => filterGroups(permittedGroups, search), [permittedGroups, search])
 
   // Auto-expand any parent whose children matched the search.
   const searchAwareExpanded = useMemo(() => {
@@ -832,7 +870,7 @@ export function AdminShell({ children, title }: { children: ReactNode; title: st
               </p>
             ) : (
               renderGroupedNav(
-                collapsed ? NAV_GROUPS : filteredGroups,
+                collapsed ? permittedGroups : filteredGroups,
                 pathname,
                 { "/admin/orders": pendingOrders, "/admin/logistics": dispatchReady },
                 collapsed,

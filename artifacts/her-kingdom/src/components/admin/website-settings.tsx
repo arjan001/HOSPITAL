@@ -76,6 +76,7 @@ export type WebsiteSettings = {
     freeDeliveryThreshold: number
     taxIncluded: boolean
     minOrderValue: number
+    maxUploadSizeMb: number
   }
   hours: {
     open: string
@@ -156,6 +157,7 @@ export const WEBSITE_DEFAULTS: WebsiteSettings = {
     freeDeliveryThreshold: 5000,
     taxIncluded: true,
     minOrderValue: 0,
+    maxUploadSizeMb: 5,
   },
   hours: {
     open: "08:00",
@@ -555,6 +557,13 @@ export function AdminWebsiteSettings() {
                   <Input label="Free-delivery threshold" type="number" value={String(draft.commerce.freeDeliveryThreshold)} onChange={(v) => update("commerce", { freeDeliveryThreshold: Number(v) || 0 })} />
                   <Input label="Minimum order value" type="number" value={String(draft.commerce.minOrderValue)} onChange={(v) => update("commerce", { minOrderValue: Number(v) || 0 })} />
                   <Toggle label="Prices include tax" checked={draft.commerce.taxIncluded} onChange={(v) => update("commerce", { taxIncluded: v })} />
+                  <Input
+                    label="Max image upload size (MB)"
+                    type="number"
+                    value={String(draft.commerce.maxUploadSizeMb ?? 5)}
+                    onChange={(v) => update("commerce", { maxUploadSizeMb: Math.max(1, Math.min(50, Number(v) || 5)) })}
+                    hint="Images larger than this limit are auto-compressed on upload (1–50 MB). Default: 5 MB."
+                  />
                 </Grid>
               </Section>
             )}

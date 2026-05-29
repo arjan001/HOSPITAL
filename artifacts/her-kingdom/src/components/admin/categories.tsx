@@ -4,7 +4,7 @@ import { useMemo, useState } from "react"
 import useSWR from "swr"
 import {
   Plus, Pencil, Trash2, ArrowUp, ArrowDown, ChevronRight, ChevronDown,
-  Search, ImageIcon, Eye, EyeOff,
+  Search, ImageIcon, Eye, EyeOff, Upload, Loader2,
   Pill, Stethoscope, Heart, HeartPulse, Baby, Sparkles, Leaf,
   ShieldCheck, FlaskConical, Syringe, Eye as EyeLucide, Activity, Tag,
 } from "lucide-react"
@@ -17,6 +17,8 @@ import { Switch } from "@/components/ui/switch"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { useCmsCollection, newId, slugify, cmsStore, type CmsRecord } from "@/lib/cms-store"
 import { safeFetcher, asArray } from "@/lib/fetcher"
+import { apiFetch } from "@/lib/api-client"
+import { compressImage } from "@/lib/media-utils"
 import type { Category as StoreCategory } from "@/lib/types"
 
 const WINE = "#3D0814"
@@ -153,6 +155,34 @@ export function AdminCategories() {
   const [open, setOpen] = useState(false)
   const [editing, setEditing] = useState<CmsCategory | null>(null)
   const [form, setForm] = useState<FormState>(EMPTY_FORM)
+  const [uploading, setUploading] = useState<"image" | "banner" | null>(null)
+
+  const MAX_MB = 5
+
+  const handleImageUpload = async (field: "image" | "banner", files: FileList | null) => {
+    if (!files?.length) return
+    setUploading(field)
+    const rawFile = files[0]
+    let file = rawFile
+    if (file.size > MAX_MB * 1024 * 1024) {
+      file = await compressImage(rawFile, MAX_MB)
+      if (file.size > MAX_MB * 1024 * 1024) {
+        setUploading(null)
+        return
+      }
+    }
+    const formData = new FormData()
+    formData.append("file", file)
+    formData.append("productSlug", "categories")
+    try {
+      const res = await apiFetch("/api/upload", { method: "POST", body: formData })
+      const data = await res.json()
+      if (data.url) setForm((prev) => ({ ...prev, [field]: data.url }))
+    } catch (err) {
+      console.error("Upload failed:", err)
+    }
+    setUploading(null)
+  }
 
   const parents = items.filter((c) => c.parentId === null)
   const childrenOf = useMemo(() => {
@@ -430,18 +460,63 @@ export function AdminCategories() {
             </div>
 
             <div>
-              <Label className="text-sm font-medium mb-1.5 block">Thumbnail Image URL</Label>
-              <Input value={form.image} onChange={(e) => setForm({ ...form, image: e.target.value })} placeholder="/images/categories/medications.png" />
+              <Label className="text-sm font-medium mb-1.5 block">Thumbnail Image</Label>
+              <div className="flex gap-2">
+                <Input
+                  value={form.image}
+                  onChange={(e) => setForm({ ...form, image: e.target.value })}
+                  placeholder="/images/categories/medications.png"
+                  className="flex-1"
+                />
+                <label className="cursor-pointer">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="sr-only"
+                    onChange={(e) => { handleImageUpload("image", e.target.files); e.target.value = "" }}
+                  />
+                  <span
+                    className="inline-flex items-center gap-1.5 h-10 px-3 rounded-md border border-border text-sm transition-colors hover:bg-secondary whitespace-nowrap"
+                    title={`Upload image (auto-compressed to ${MAX_MB}MB)`}
+                  >
+                    {uploading === "image" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+                    Upload
+                  </span>
+                </label>
+              </div>
               {form.image && (
                 <div className="relative w-20 h-20 mt-2 rounded-sm overflow-hidden bg-secondary border border-border">
                   <img src={form.image} alt="" className="w-full h-full object-cover" />
                 </div>
               )}
+              <p className="text-xs text-muted-foreground mt-1">Images over {MAX_MB}MB are auto-compressed on upload.</p>
             </div>
 
             <div>
-              <Label className="text-sm font-medium mb-1.5 block">Category Page Banner URL</Label>
-              <Input value={form.banner} onChange={(e) => setForm({ ...form, banner: e.target.value })} placeholder="/banners/medications.png (optional)" />
+              <Label className="text-sm font-medium mb-1.5 block">Category Page Banner</Label>
+              <div className="flex gap-2">
+                <Input
+                  value={form.banner}
+                  onChange={(e) => setForm({ ...form, banner: e.target.value })}
+                  placeholder="/banners/medications.png (optional)"
+                  className="flex-1"
+                />
+                <label className="cursor-pointer">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="sr-only"
+                    onChange={(e) => { handleImageUpload("banner", e.target.files); e.target.value = "" }}
+                  />
+                  <span
+                    className="inline-flex items-center gap-1.5 h-10 px-3 rounded-md border border-border text-sm transition-colors hover:bg-secondary whitespace-nowrap"
+                    title={`Upload banner (auto-compressed to ${MAX_MB}MB)`}
+                  >
+                    {uploading === "banner" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+                    Upload
+                  </span>
+                </label>
+              </div>
               {form.banner && (
                 <div className="relative w-full h-24 mt-2 rounded-sm overflow-hidden bg-secondary border border-border">
                   <img src={form.banner} alt="" className="w-full h-full object-cover" />

@@ -8,7 +8,7 @@ import {
   setViewAsRoleId,
   setCurrentUserId,
 } from "@/lib/permissions"
-import { Shield, Plus, Trash2, UserPlus, Pencil, X, Lock, Eye, RotateCcw } from "lucide-react"
+import { Shield, Plus, Trash2, UserPlus, Pencil, X, Lock, Eye, RotateCcw, CheckCircle2 } from "lucide-react"
 
 export type Role = {
   id: string
@@ -278,6 +278,7 @@ export function AdminRolesPermissions() {
             </select>
             {eff.viewAsRoleId && (
               <button
+                aria-label="Reset view"
                 onClick={() => setViewAsRoleId(null)}
                 className="h-9 px-3 rounded-md text-xs font-semibold border border-border hover:bg-secondary inline-flex items-center gap-1.5"
               >
@@ -292,7 +293,7 @@ export function AdminRolesPermissions() {
           <aside className="space-y-2">
             <div className="flex items-center justify-between mb-1">
               <h2 className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">Roles</h2>
-              <button onClick={addRole} className="h-7 w-7 rounded-md hover:bg-secondary flex items-center justify-center">
+              <button onClick={addRole} aria-label="New role" className="h-7 w-7 rounded-md hover:bg-secondary flex items-center justify-center">
                 <Plus className="h-4 w-4" />
               </button>
             </div>
@@ -335,12 +336,15 @@ export function AdminRolesPermissions() {
                       </h2>
                     ) : (
                       <input
+                        aria-label="Role name"
+                        placeholder="Role name"
                         className="text-xl font-bold w-full bg-transparent border-b border-transparent hover:border-border focus:border-foreground outline-none"
                         value={active.name}
                         onChange={(e) => updateRole({ name: e.target.value })}
                       />
                     )}
                     <input
+                      aria-label="Role description"
                       className="text-sm w-full bg-transparent text-muted-foreground outline-none"
                       placeholder="Describe what this role does…"
                       value={active.description}
@@ -349,12 +353,18 @@ export function AdminRolesPermissions() {
                     />
                   </div>
                   <div className="flex items-center gap-2">
+                    {!active.builtIn && (
+                      <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-600 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
+                        <CheckCircle2 className="h-3 w-3" /> Autosaved
+                      </span>
+                    )}
                     <input
                       type="color"
                       value={active.color}
                       onChange={(e) => updateRole({ color: e.target.value })}
                       disabled={active.builtIn}
                       className="h-8 w-10 rounded border border-border bg-background cursor-pointer disabled:opacity-50"
+                      title="Role colour"
                     />
                     {!active.builtIn && (
                       <button onClick={() => deleteRole(active.id)} className="h-8 w-8 rounded-md text-destructive hover:bg-destructive/10 flex items-center justify-center">
@@ -364,7 +374,7 @@ export function AdminRolesPermissions() {
                   </div>
                 </div>
 
-                <div className="space-y-4">
+                <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-1">
                   {PERMISSION_GROUPS.map((g) => (
                     <div key={g.group} className="rounded-md border border-border overflow-hidden">
                       <div className="px-3 py-2 bg-muted/40 text-xs uppercase tracking-wider font-semibold text-muted-foreground">

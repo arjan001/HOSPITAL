@@ -48,3 +48,91 @@ export function validateMediaUpload(
 
   return { valid: true, isVideo }
 }
+
+/**
+ * Compress an image file so it fits within `maxSizeMB`.
+ * - GIF and SVG files are returned as-is (canvas can't compress them reliably).
+ * - PNG is converted to WebP for better compression, then falls back to JPEG.
+ * - Uses a binary-search over quality levels to hit the target size.
+ * - Also down-scales the resolution if the pixel count is very large.
+ *
+ * @returns A new File at or below `maxSizeMB`, or the original if already within limit.
+ */
+export async function compressImage(file: File, maxSizeMB = 5): Promise<File> {
+  const targetBytes = maxSizeMB * 1024 * 1024
+
+  // Already within limit — nothing to do
+  if (file.size <= targetBytes) return file
+
+  // Can't compress these with canvas
+  if (file.type === "image/gif" || file.type === "image/svg+xml") return file
+
+  // Load as bitmap
+  let img: ImageBitmap
+  try {
+    img = await createImageBitmap(file)
+  } catch {
+    return file // fallback: return original if decoding fails
+  }
+
+  const canvas = document.createElement("canvas")
+
+  // Cap resolution to ~4 MP to avoid huge canvases
+  let { width, height } = img
+  const MAX_PIXELS = 4_000_000
+  if (width * height > MAX_PIXELS) {
+    const scale = Math.sqrt(MAX_PIXELS / (width * height))
+    width = Math.round(width * scale)
+    height = Math.round(height * scale)
+  }
+  canvas.width = width
+  canvas.height = height
+
+  const ctx = canvas.getContext("2d")
+  if (!ctx) return file
+  ctx.drawImage(img, 0, 0, width, height)
+
+  // Prefer WebP; fall back to JPEG for browsers that don't support WebP encoding
+  const outputType = "image/webp"
+  const fallbackType = "image/jpeg"
+
+  const toBlob = (type: string, quality: number): Promise<Blob | null> =>
+    new Promise((resolve) => canvas.toBlob(resolve, type, quality))
+
+  // Binary-search the quality setting to reach target size
+  let lo = 0.10
+  let hi = 0.92
+  let bestBlob: Blob | null = null
+
+  for (let i = 0; i < 8; i++) {
+    const mid = (lo + hi) / 2
+    const blob = await toBlob(outputType, mid)
+    if (!blob) break
+    if (blob.size <= targetBytes) {
+      bestBlob = blob
+      lo = mid       // can afford higher quality
+    } else {
+      hi = mid       // need lower quality
+    }
+  }
+
+  // If WebP binary search didn't find a winner, try lowest quality
+  if (!bestBlob) {
+    bestBlob = await toBlob(outputType, 0.10)
+  }
+
+  // If WebP still too large (or unsupported), try JPEG at lowest quality
+  if (!bestBlob || bestBlob.size > targetBytes) {
+    const jpegBlob = await toBlob(fallbackType, 0.10)
+    if (jpegBlob && jpegBlob.size < (bestBlob?.size ?? Infinity)) {
+      bestBlob = jpegBlob
+    }
+  }
+
+  // Fallback: return original if we couldn't compress enough
+  if (!bestBlob) return file
+
+  const baseName = file.name.replace(/\.[^.]+$/, "")
+  const ext = bestBlob.type === "image/jpeg" ? ".jpg" : ".webp"
+  return new File([bestBlob], baseName + ext, { type: bestBlob.type })
+}
