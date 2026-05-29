@@ -13,7 +13,8 @@ import { useState } from "react"
 import { Link } from "wouter"
 import { useCmsDoc } from "@/lib/cms-store"
 import {
-  getPortalSessionForType, loginPartnerLocal, signOutPartner, type PortalSession,
+  getPortalSessionForType, loginPartnerLocal, signOutPartner,
+  submitPartnerOrder, type PortalSession,
 } from "@/lib/portal-auth"
 import type { Supplier } from "@/components/admin/suppliers"
 import {
@@ -175,6 +176,34 @@ const TABS: { id: Tab; label: string; icon: typeof Building2 }[] = [
   { id: "profile",   label: "My Profile",        icon: User          },
 ]
 
+type SourcingRequest = {
+  id: string
+  productName: string
+  sku?: string
+  qty: number
+  priority: "low" | "normal" | "high" | "urgent"
+  status: "draft" | "open" | "quoting" | "ordered" | "received" | "cancelled"
+  notes?: string
+  createdAt: string
+  updatedAt: string
+}
+
+const PRIORITY_BADGE: Record<SourcingRequest["priority"], { label: string; color: string; bg: string }> = {
+  low:    { label: "Low",    color: "#374151", bg: "#F3F4F6" },
+  normal: { label: "Normal", color: "#1D4ED8", bg: "#EFF6FF" },
+  high:   { label: "High",   color: "#92400E", bg: "#FEF3C7" },
+  urgent: { label: "Urgent", color: "#991B1B", bg: "#FEE2E2" },
+}
+
+const STATUS_BADGE: Record<SourcingRequest["status"], { label: string; color: string; bg: string }> = {
+  draft:     { label: "Draft",    color: "#6B7280", bg: "#F9FAFB" },
+  open:      { label: "Open",     color: "#065F46", bg: "#D1FAE5" },
+  quoting:   { label: "Quoting",  color: "#1D4ED8", bg: "#EFF6FF" },
+  ordered:   { label: "Ordered",  color: "#92400E", bg: "#FEF3C7" },
+  received:  { label: "Received", color: "#065F46", bg: "#DCFCE7" },
+  cancelled: { label: "Cancelled",color: "#6B7280", bg: "#F3F4F6" },
+}
+
 function SupplierDashboard({ supplier, session, onLogout }: {
   supplier: Supplier
   session: PortalSession
@@ -185,6 +214,40 @@ function SupplierDashboard({ supplier, session, onLogout }: {
     try { return localStorage.getItem("shaniidrx.supplier.sidebar") === "collapsed" } catch { return false }
   })
   const [mobileOpen, setMobileOpen] = useState(false)
+  const [sourcingRequests] = useCmsDoc<SourcingRequest[]>("sourcing-requests", [])
+  const [quoteModal, setQuoteModal] = useState<SourcingRequest | null>(null)
+  const [quotePrice, setQuotePrice] = useState("")
+  const [quoteLeadDays, setQuoteLeadDays] = useState("")
+  const [quoteNotes, setQuoteNotes] = useState("")
+  const [quotingId, setQuotingId] = useState<string | null>(null)
+  const [quotedIds, setQuotedIds] = useState<string[]>([])
+
+  const openRequests = (sourcingRequests ?? []).filter(r => r.status === "open" || r.status === "quoting")
+
+  const submitQuote = async () => {
+    if (!quoteModal || !quotePrice) return
+    setQuotingId(quoteModal.id)
+    try {
+      await submitPartnerOrder("supplier", "order", {
+        sourcingRequestId: quoteModal.id,
+        productName: quoteModal.productName,
+        sku: quoteModal.sku,
+        requestedQty: quoteModal.qty,
+        unitPriceKsh: Number(quotePrice),
+        leadTimeDays: quoteLeadDays ? Number(quoteLeadDays) : undefined,
+        notes: quoteNotes,
+        supplierId: supplier.id,
+        supplierName: supplier.companyName,
+      })
+      setQuotedIds(p => [...p, quoteModal.id])
+      setQuoteModal(null)
+      setQuotePrice("")
+      setQuoteLeadDays("")
+      setQuoteNotes("")
+    } finally {
+      setQuotingId(null)
+    }
+  }
 
   const toggleSidebar = () => {
     setCollapsed(prev => {
@@ -436,15 +499,70 @@ function SupplierDashboard({ supplier, session, onLogout }: {
             </div>
           )}
 
-          {/* ── ORDERS ── */}
+          {/* ── ORDERS / SOURCING REQUESTS ── */}
           {tab === "orders" && (
             <div className="space-y-4">
-              <p className="text-sm text-gray-500">Purchase orders raised by Shaniid RX for your products</p>
-              <div className="bg-white rounded-xl border border-gray-100 p-10 text-center text-gray-400">
-                <ClipboardList className="h-10 w-10 mx-auto mb-3 opacity-20" />
-                <p className="font-medium">No purchase orders yet</p>
-                <p className="text-sm mt-1">POs from Shaniid RX will appear here once your KYC is verified and products are listed.</p>
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-gray-500">Open sourcing requests from Shaniid RX — submit a quote to win the order</p>
+                </div>
+                <span className="text-[11px] font-semibold px-2.5 py-1 rounded-full" style={{ color: WINE, background: `${WINE}12` }}>
+                  {openRequests.length} open
+                </span>
               </div>
+
+              {openRequests.length === 0 ? (
+                <div className="bg-white rounded-xl border border-gray-100 p-10 text-center text-gray-400">
+                  <ClipboardList className="h-10 w-10 mx-auto mb-3 opacity-20" />
+                  <p className="font-medium">No open requests right now</p>
+                  <p className="text-sm mt-1">Shaniid RX posts sourcing requests here when stock needs replenishment. Check back soon.</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {openRequests.map(req => {
+                    const pb = PRIORITY_BADGE[req.priority]
+                    const sb = STATUS_BADGE[req.status]
+                    const alreadyQuoted = quotedIds.includes(req.id)
+                    return (
+                      <div key={req.id} className="bg-white rounded-xl border border-gray-100 p-5">
+                        <div className="flex items-start gap-4">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex flex-wrap items-center gap-2 mb-1">
+                              <p className="font-semibold text-gray-800">{req.productName}</p>
+                              {req.sku && <span className="text-xs text-gray-400 font-mono">SKU: {req.sku}</span>}
+                            </div>
+                            <div className="flex flex-wrap gap-1.5 mb-2">
+                              <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full" style={{ color: sb.color, background: sb.bg }}>{sb.label}</span>
+                              <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full" style={{ color: pb.color, background: pb.bg }}>{pb.label}</span>
+                            </div>
+                            <p className="text-sm text-gray-600">Qty requested: <strong>{req.qty.toLocaleString()} units</strong></p>
+                            {req.notes && <p className="text-xs text-gray-400 mt-1">{req.notes}</p>}
+                            <p className="text-xs text-gray-300 mt-1">{new Date(req.createdAt).toLocaleDateString()}</p>
+                          </div>
+                          <div className="flex-shrink-0">
+                            {alreadyQuoted ? (
+                              <span className="flex items-center gap-1 text-xs font-semibold px-3 py-1.5 rounded-lg" style={{ color: "#065F46", background: "#D1FAE5" }}>
+                                <CheckCircle2 className="h-3.5 w-3.5" />Quote sent
+                              </span>
+                            ) : (
+                              <Button
+                                size="sm"
+                                className="text-white text-xs gap-1"
+                                style={{ background: WINE }}
+                                disabled={supplier.status !== "verified"}
+                                title={supplier.status !== "verified" ? "Complete KYC to submit quotes" : undefined}
+                                onClick={() => { setQuoteModal(req); setQuotePrice(""); setQuoteLeadDays(""); setQuoteNotes("") }}
+                              >
+                                <FileText className="h-3.5 w-3.5" />Submit quote
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
             </div>
           )}
 
@@ -525,6 +643,76 @@ function SupplierDashboard({ supplier, session, onLogout }: {
           )}
         </div>
       </div>
+
+      {/* ── Quote submission modal ── */}
+      {quoteModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+            <div className="flex items-start justify-between p-6 border-b">
+              <div>
+                <h2 className="font-bold text-gray-900 text-lg">Submit a Quote</h2>
+                <p className="text-sm text-gray-500 mt-0.5">{quoteModal.productName}{quoteModal.sku ? ` · ${quoteModal.sku}` : ""}</p>
+              </div>
+              <button onClick={() => setQuoteModal(null)} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="p-6 space-y-4">
+              <div className="p-3 rounded-lg text-sm" style={{ background: `${WINE}08`, color: WINE }}>
+                Shaniid RX needs <strong>{quoteModal.qty.toLocaleString()} units</strong> · Priority: <strong>{quoteModal.priority}</strong>
+                {quoteModal.notes && <p className="mt-1 text-xs opacity-70">{quoteModal.notes}</p>}
+              </div>
+              <div>
+                <Label className="text-sm font-semibold text-gray-700">Unit price (KSH) <span className="text-red-500">*</span></Label>
+                <Input
+                  type="number"
+                  min={0}
+                  value={quotePrice}
+                  onChange={e => setQuotePrice(e.target.value)}
+                  placeholder="e.g. 450"
+                  className="mt-1"
+                />
+              </div>
+              <div>
+                <Label className="text-sm font-semibold text-gray-700">Lead time (days)</Label>
+                <Input
+                  type="number"
+                  min={1}
+                  value={quoteLeadDays}
+                  onChange={e => setQuoteLeadDays(e.target.value)}
+                  placeholder="e.g. 3"
+                  className="mt-1"
+                />
+              </div>
+              <div>
+                <Label className="text-sm font-semibold text-gray-700">Notes (optional)</Label>
+                <Input
+                  value={quoteNotes}
+                  onChange={e => setQuoteNotes(e.target.value)}
+                  placeholder="Minimum order quantity, packaging, delivery terms…"
+                  className="mt-1"
+                />
+              </div>
+              {quotePrice && (
+                <div className="p-3 rounded-lg bg-gray-50 text-sm">
+                  <div className="flex justify-between text-gray-600"><span>Total value</span><span className="font-bold" style={{ color: WINE }}>KSH {(quoteModal.qty * Number(quotePrice)).toLocaleString()}</span></div>
+                </div>
+              )}
+            </div>
+            <div className="flex gap-3 p-6 pt-0">
+              <Button variant="outline" className="flex-1" onClick={() => setQuoteModal(null)}>Cancel</Button>
+              <Button
+                className="flex-1 text-white"
+                style={{ background: WINE }}
+                disabled={!quotePrice || quotingId === quoteModal.id}
+                onClick={submitQuote}
+              >
+                {quotingId === quoteModal.id ? "Sending…" : "Send quote"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

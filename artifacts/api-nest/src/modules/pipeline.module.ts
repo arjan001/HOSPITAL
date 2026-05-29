@@ -319,6 +319,7 @@ class SourcingPipelineController {
   constructor(
     @Inject(SourcingAutomationService) private readonly svc: SourcingAutomationService,
     @Inject(NotificationsService) private readonly notif: NotificationsService,
+    @Inject(EmailService) private readonly email: EmailService,
   ) {}
 
   @Post("scan")
@@ -332,6 +333,19 @@ class SourcingPipelineController {
         body: `${result.flagged.length} item(s) flagged across ${result.rulesEvaluated} active rule(s).`,
         href: "/admin/sourcing/automation",
       })
+      void this.email
+        .send({
+          to: process.env.ADMIN_EMAIL || "admin@shaniidrx.com",
+          template: "admin.low_stock",
+          subject: `[Sourcing] ${result.requestsCreated} replenishment request(s) auto-created`,
+          data: {
+            count: result.requestsCreated,
+            items: result.flagged
+              .map((f) => `${f.productName} (${f.sku}) — ${f.reason}`)
+              .join("\n"),
+          },
+        })
+        .catch(() => undefined)
     }
     return result
   }
@@ -540,6 +554,7 @@ class QaPipelineController {
   constructor(
     @Inject(QaAutomationService) private readonly svc: QaAutomationService,
     @Inject(NotificationsService) private readonly notif: NotificationsService,
+    @Inject(EmailService) private readonly email: EmailService,
   ) {}
 
   @Post("scan-expiry")
@@ -553,6 +568,24 @@ class QaPipelineController {
         body: `${result.warning} item(s) within warning window. Expired stock auto-blocked from dispatch.`,
         href: "/admin/qa/batches",
       })
+      void this.email
+        .send({
+          to: process.env.ADMIN_EMAIL || "admin@shaniidrx.com",
+          template: "admin.low_stock",
+          subject: `[QA Alert] ${result.expired} expired · ${result.critical} critical batch(es) detected`,
+          data: {
+            count: result.expired + result.critical,
+            items: result.flags
+              .filter((f) => f.severity === "expired" || f.severity === "critical")
+              .slice(0, 10)
+              .map(
+                (f) =>
+                  `${f.name} (${f.sku}) — ${f.severity}${f.expiryDate ? `, exp. ${f.expiryDate}` : ""}`,
+              )
+              .join("\n"),
+          },
+        })
+        .catch(() => undefined)
     }
     return result
   }
@@ -626,6 +659,7 @@ class LogisticsPipelineController {
   constructor(
     @Inject(LogisticsAutomationService) private readonly svc: LogisticsAutomationService,
     @Inject(NotificationsService) private readonly notif: NotificationsService,
+    @Inject(EmailService) private readonly email: EmailService,
   ) {}
 
   @Post("auto-assign")
@@ -642,6 +676,26 @@ class LogisticsPipelineController {
             : `${result.assigned} pending delivery(s) auto-assigned.`,
         href: "/admin/logistics",
       })
+    }
+    if (result.assigned > 0) {
+      const partners = await cmsGet<
+        Array<{ email?: string; companyName?: string; portalCode?: string }>
+      >("logistics-partners", [])
+      const baseUrl = process.env.PUBLIC_APP_URL?.trim() || "https://shaniidrx.com"
+      for (const p of partners.filter((p) => p.email)) {
+        void this.email
+          .send({
+            to: p.email!,
+            template: "delivery.job.assigned",
+            subject: `[Shaniid RX] ${result.assigned} delivery job(s) assigned to your fleet`,
+            data: {
+              name: p.companyName || p.email || "Partner",
+              count: result.assigned,
+              portalUrl: `${baseUrl}/portal/logistics`,
+            },
+          })
+          .catch(() => undefined)
+      }
     }
     return result
   }

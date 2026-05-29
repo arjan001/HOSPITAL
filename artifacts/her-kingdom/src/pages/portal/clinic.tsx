@@ -141,7 +141,18 @@ function ClinicLoginPage({ onLogin, error }: {
 
 interface OrderLine { name: string; qty: number; unitPrice: number; patientName: string }
 
-function PlaceOrderTab({ clinic }: { clinic: Clinic }) {
+export interface PlacedOrder {
+  id: string
+  total: number
+  lines: OrderLine[]
+  notes: string
+  createdAt: string
+}
+
+function PlaceOrderTab({ clinic, onOrderPlaced }: {
+  clinic: Clinic
+  onOrderPlaced?: (order: PlacedOrder) => void
+}) {
   const [lines, setLines] = useState<OrderLine[]>([{ name: "", qty: 1, unitPrice: 0, patientName: "" }])
   const [notes, setNotes] = useState("")
   const [submitted, setSubmitted] = useState(false)
@@ -252,7 +263,7 @@ function PlaceOrderTab({ clinic }: { clinic: Clinic }) {
           setSubmitError("")
           setSubmitting(true)
           try {
-            await submitPartnerOrder("clinic", "order", {
+            const sub = await submitPartnerOrder("clinic", "order", {
               clinicId: clinic.id,
               clinicName: clinic.clinicName,
               lines,
@@ -261,6 +272,13 @@ function PlaceOrderTab({ clinic }: { clinic: Clinic }) {
               creditAvailable,
             })
             setSubmitted(true)
+            onOrderPlaced?.({
+              id: (sub as { id?: string }).id ?? `ord_${Date.now()}`,
+              total,
+              lines,
+              notes,
+              createdAt: new Date().toISOString(),
+            })
           } catch (err) {
             setSubmitError(err instanceof Error ? err.message : "Failed to submit order. Try again.")
           } finally {
@@ -294,6 +312,7 @@ function ClinicDashboard({ clinic, session, onLogout }: {
 }) {
   const [tab, setTab] = useState<ClinicTab>("overview")
   const [mobileOpen, setMobileOpen] = useState(false)
+  const [localOrders, setLocalOrders] = useState<PlacedOrder[]>([])
   const [collapsed, setCollapsed] = useState(() => {
     try { return localStorage.getItem("shaniidrx.clinic.sidebar") === "collapsed" } catch { return false }
   })
@@ -531,24 +550,59 @@ function ClinicDashboard({ clinic, session, onLogout }: {
           )}
 
           {/* ORDER */}
-          {tab === "order" && <PlaceOrderTab clinic={clinic} />}
+          {tab === "order" && (
+            <PlaceOrderTab
+              clinic={clinic}
+              onOrderPlaced={order => setLocalOrders(prev => [order, ...prev])}
+            />
+          )}
 
           {/* ORDERS */}
           {tab === "orders" && (
             <div className="space-y-4">
-              <p className="text-sm text-gray-500">Order history for {clinic.clinicName}</p>
-              {clinic.orderCount === 0 ? (
+              <div className="flex items-center justify-between">
+                <p className="text-sm text-gray-500">Order history for {clinic.clinicName}</p>
+                <Button size="sm" className="text-white text-xs" style={{ background: WINE }} onClick={() => setTab("order")}>
+                  <ShoppingCart className="h-3 w-3 mr-1" />Place order
+                </Button>
+              </div>
+              {localOrders.length === 0 ? (
                 <div className="bg-white rounded-xl border border-gray-100 p-10 text-center text-gray-400">
                   <ClipboardList className="h-10 w-10 mx-auto mb-3 opacity-20" />
-                  <p className="font-medium">No orders yet</p>
+                  <p className="font-medium">No orders this session</p>
+                  <p className="text-sm mt-1 text-gray-400">Orders you place will appear here. Full history is available in your admin account.</p>
                   <Button className="mt-4 text-white" style={{ background: WINE }} onClick={() => setTab("order")}>
                     <ShoppingCart className="h-4 w-4 mr-2" />Place your first order
                   </Button>
                 </div>
               ) : (
-                <p className="text-sm text-gray-500 bg-white p-5 rounded-xl border border-gray-100">
-                  Full order history will be available with Phase 2 database integration.
-                </p>
+                <div className="space-y-3">
+                  {localOrders.map((order) => (
+                    <div key={order.id} className="bg-white rounded-xl border border-gray-100 p-5">
+                      <div className="flex items-start justify-between mb-3">
+                        <div>
+                          <p className="font-semibold text-gray-800 text-sm">Order {order.id.slice(0, 14)}…</p>
+                          <p className="text-xs text-gray-400 mt-0.5">{new Date(order.createdAt).toLocaleString()}</p>
+                        </div>
+                        <div className="text-right">
+                          <span className="inline-block text-[11px] font-semibold px-2 py-0.5 rounded-full" style={{ color: "#065F46", background: "#D1FAE5" }}>Submitted</span>
+                          <p className="font-bold mt-1" style={{ color: WINE }}>KSH {order.total.toLocaleString()}</p>
+                        </div>
+                      </div>
+                      <div className="space-y-1">
+                        {order.lines.filter(l => l.name).map((line, i) => (
+                          <div key={i} className="flex items-center justify-between text-xs text-gray-600 py-1 border-b border-gray-50 last:border-0">
+                            <span>{line.name} {line.patientName && <span className="text-gray-400">· {line.patientName}</span>}</span>
+                            <span className="font-medium">× {line.qty} · KSH {(line.qty * line.unitPrice).toLocaleString()}</span>
+                          </div>
+                        ))}
+                      </div>
+                      {order.notes && (
+                        <p className="mt-2 text-xs text-gray-500 italic">{order.notes}</p>
+                      )}
+                    </div>
+                  ))}
+                </div>
               )}
             </div>
           )}

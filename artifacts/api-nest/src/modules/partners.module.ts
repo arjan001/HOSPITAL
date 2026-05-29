@@ -229,7 +229,60 @@ class PartnersService {
     // can see partner-originated submissions across restarts.
     void this.mirrorToCms(rec).catch(() => undefined)
 
+    // Send confirmation emails after order/quote submissions
+    void this.sendSubmissionEmail(rec, stamp, body?.payload).catch(() => undefined)
+
     return rec
+  }
+
+  private async sendSubmissionEmail(
+    rec: PartnerSubmission,
+    stamp: PartnerStamp,
+    payload: unknown,
+  ): Promise<void> {
+    const partners = await cmsGet<PartnerRecord[]>(CMS_KEY_FOR[stamp.partnerType], [])
+    const partner = partners.find((p) => p.id === stamp.partnerId)
+    if (!partner?.email) return
+
+    const baseUrl = process.env.PUBLIC_APP_URL?.trim() || "https://shaniidrx.com"
+    const name =
+      (partner["clinicName"] as string) ||
+      (partner["companyName"] as string) ||
+      (partner["supplierName"] as string) ||
+      (partner.email as string)
+
+    if (rec.kind === "order" && rec.partnerType === "clinic") {
+      const p = payload as Record<string, unknown> | null
+      const total = (p?.["total"] as number) ?? 0
+      const lines = (p?.["lines"] as Array<{ name: string; qty: number }> | undefined) ?? []
+      await this.email.send({
+        to: partner.email as string,
+        template: "order.receipt",
+        subject: `[Shaniid RX] Order received — KSH ${total.toLocaleString()}`,
+        data: {
+          name,
+          orderId: rec.id,
+          total,
+          items: lines.map((l) => `${l.name} × ${l.qty}`).join(", "),
+          portalUrl: `${baseUrl}${PORTAL_PATHS.clinic}`,
+        },
+      })
+    } else if (rec.kind === "order" && rec.partnerType === "supplier") {
+      const p = payload as Record<string, unknown> | null
+      await this.email.send({
+        to: partner.email as string,
+        template: "generic",
+        subject: `[Shaniid RX] Your quote has been received`,
+        data: {
+          name,
+          heading: "Quote received",
+          body: `Thank you for submitting your quote (ref: ${rec.id}). Our sourcing team will review it and get back to you within 2 business days.`,
+          cta_url: `${baseUrl}${PORTAL_PATHS.supplier}`,
+          cta_label: "View your portal",
+          p: p ? JSON.stringify(p).slice(0, 200) : "",
+        },
+      })
+    }
   }
 
   private async mirrorToCms(rec: PartnerSubmission) {
