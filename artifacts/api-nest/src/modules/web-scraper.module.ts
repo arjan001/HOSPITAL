@@ -58,6 +58,43 @@ async function fetchWithTimeout(url: string, ms: number): Promise<Response> {
   }
 }
 
+/* ─────────────────────── SSRF guard ─────────────────────── */
+
+/**
+ * Block hostnames that resolve to internal infrastructure so the scraper can't
+ * be used to reach loopback, private ranges, link-local, or the cloud metadata
+ * endpoint (169.254.169.254). DNS rebinding is out of scope for this literal
+ * check, but it stops the obvious SSRF vectors.
+ */
+function isBlockedHost(hostname: string): boolean {
+  const host = hostname.toLowerCase().replace(/^\[|\]$/g, "")
+  if (
+    host === "localhost" ||
+    host.endsWith(".localhost") ||
+    host.endsWith(".internal") ||
+    host.endsWith(".local")
+  ) {
+    return true
+  }
+  // IPv6 loopback / unspecified / unique-local / link-local.
+  if (host === "::1" || host === "::" || host.startsWith("fc") || host.startsWith("fd") || host.startsWith("fe80")) {
+    return true
+  }
+  // IPv4 literal checks.
+  const m = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/)
+  if (m) {
+    const [a, b] = [Number(m[1]), Number(m[2])]
+    if (a === 10) return true                       // 10.0.0.0/8
+    if (a === 127) return true                      // loopback
+    if (a === 0) return true                        // 0.0.0.0/8
+    if (a === 169 && b === 254) return true         // link-local + metadata
+    if (a === 172 && b >= 16 && b <= 31) return true // 172.16.0.0/12
+    if (a === 192 && b === 168) return true         // 192.168.0.0/16
+    if (a === 100 && b >= 64 && b <= 127) return true // CGNAT 100.64.0.0/10
+  }
+  return false
+}
+
 /* ─────────────────────── HTML extraction helpers ─────────────────────── */
 
 /**
@@ -349,16 +386,26 @@ class WebScraperService {
 
     // Validate URLs before fetching.
     for (const u of urls) {
+      let parsed: URL
       try {
-        const parsed = new URL(u)
-        if (!["http:", "https:"].includes(parsed.protocol)) {
-          throw new HttpException(
-            `Invalid URL "${u}" — only http/https is supported`,
-            HttpStatus.BAD_REQUEST,
-          )
-        }
+        parsed = new URL(u)
       } catch {
         throw new HttpException(`Malformed URL: "${u}"`, HttpStatus.BAD_REQUEST)
+      }
+      if (!["http:", "https:"].includes(parsed.protocol)) {
+        throw new HttpException(
+          `Invalid URL "${u}" — only http/https is supported`,
+          HttpStatus.BAD_REQUEST,
+        )
+      }
+      // SSRF guard: block requests to internal/loopback/link-local addresses
+      // and the cloud metadata endpoint so an admin (or a compromised admin
+      // token) can't pivot the server into the internal network.
+      if (isBlockedHost(parsed.hostname)) {
+        throw new HttpException(
+          `Refusing to fetch internal address "${parsed.hostname}"`,
+          HttpStatus.BAD_REQUEST,
+        )
       }
     }
 

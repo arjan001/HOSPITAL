@@ -20,7 +20,10 @@
  */
 
 import { MiddlewareConsumer, Module, NestModule } from "@nestjs/common"
+import { APP_FILTER } from "@nestjs/core"
 import { SessionMiddleware } from "./common/session.middleware"
+import { RateLimitMiddleware } from "./common/rate-limit.middleware"
+import { AllExceptionsFilter } from "./common/all-exceptions.filter"
 
 // Customer-facing modules
 import { ProfileModule } from "./modules/profile.module"
@@ -78,13 +81,20 @@ import { PartnersModule } from "./modules/partners.module"
     PipelineModule,
     PartnersModule,
   ],
+  providers: [
+    // Global catch-all exception filter: normalises every error response and
+    // records server-side (5xx) failures into the monitoring store.
+    { provide: APP_FILTER, useClass: AllExceptionsFilter },
+  ],
 })
 export class AppModule implements NestModule {
   /**
-   * Apply SessionMiddleware globally so every request — regardless of which
-   * module handles it — has `req.sessionId` available.
+   * Global middleware order matters:
+   *   1. RateLimitMiddleware — reject abusive clients before any work is done.
+   *   2. SessionMiddleware   — issue/verify the signed session cookie and
+   *      attach `req.sessionId` so every controller can scope data per-tenant.
    */
   configure(consumer: MiddlewareConsumer) {
-    consumer.apply(SessionMiddleware).forRoutes("*")
+    consumer.apply(RateLimitMiddleware, SessionMiddleware).forRoutes("*")
   }
 }

@@ -21,7 +21,7 @@
  *   PUT    /monitoring/config                 — update config
  */
 import {
-  Body, Controller, Delete, Get, HttpException, HttpStatus, Inject,
+  Body, Controller, Delete, Get, Global, HttpException, HttpStatus, Inject,
   Injectable, Module, Param, Post, Put, Query, Req, UseGuards,
 } from "@nestjs/common"
 import type { Request } from "express"
@@ -183,6 +183,48 @@ class MonitoringService {
 
   clearAll(): void {
     this.store.clear()
+  }
+
+  /**
+   * Record a server-side error directly into the monitoring store.
+   *
+   * This is the bridge used by the global ExceptionFilter and the process-level
+   * unhandledRejection/uncaughtException handlers so that EVERY system-triggered
+   * error is captured for later reference — not just browser-reported ones.
+   * It never throws (telemetry must not break request handling).
+   */
+  recordServerError(input: {
+    message: string
+    errorType?: string
+    stack?: string
+    url?: string
+    level?: EventLevel
+    context?: Record<string, unknown>
+  }): void {
+    try {
+      if (!this.store.config.ingestEnabled) return
+      const level: EventLevel = input.level ?? "error"
+      const kind: EventKind = "error"
+      const message = String(input.message ?? "").slice(0, 1000) || "(no message)"
+      const errorType = input.errorType ? String(input.errorType).slice(0, 200) : undefined
+      const e: MonitoringEvent = {
+        id: randomUUID(),
+        fingerprint: fingerprint({ kind, level, errorType, message }),
+        kind,
+        level,
+        message,
+        errorType,
+        stack: input.stack ? String(input.stack).slice(0, 12_000) : undefined,
+        url: input.url ? String(input.url).slice(0, 500) : undefined,
+        environment: this.store.config.environment,
+        release: this.store.config.release,
+        context: { ...(input.context ?? {}), source: "server" },
+        receivedAt: new Date().toISOString(),
+      }
+      this.store.push(e)
+    } catch {
+      /* never throw from telemetry */
+    }
   }
 
   ingest(payload: { events: Partial<MonitoringEvent>[] }, req: Request) {
@@ -453,8 +495,12 @@ class MonitoringController {
   }
 }
 
+@Global()
 @Module({
   controllers: [MonitoringController],
   providers: [MonitoringStore, MonitoringService],
+  exports: [MonitoringService],
 })
 export class MonitoringModule {}
+
+export { MonitoringService }

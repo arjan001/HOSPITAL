@@ -18,34 +18,42 @@
  *   change because they only ever read `req.sessionId`.
  *
  * Security notes:
+ *   - The cookie is now SIGNED (HMAC) with SESSION_SECRET via cookie-parser.
+ *     A signed cookie that fails verification is dropped by cookie-parser and
+ *     never appears in req.signedCookies — so an attacker cannot forge or
+ *     iterate session IDs to read another tenant's data (BOLA protection).
  *   - httpOnly: browser JavaScript cannot read the cookie.
  *   - sameSite: "lax": protects against most CSRF vectors.
  *   - secure: true in production so the cookie is only sent over HTTPS.
- *   - The UUID is not a secret; it is scoped data isolation, not auth.
- *     Real auth comes from Clerk JWT verification (planned for Phase 2).
+ *   - The signed UUID is data-isolation scoping, not full auth. Real auth comes
+ *     from Clerk JWT verification (planned for Phase 2).
  */
 
 import { randomUUID } from "node:crypto"
 import { Injectable, type NestMiddleware } from "@nestjs/common"
 import type { Request, Response, NextFunction } from "express"
 
-const SID_COOKIE = "shaniidrx_sid"
+export const SID_COOKIE = "shaniidrx_sid"
 const ONE_YEAR_MS = 1000 * 60 * 60 * 24 * 365
 
 @Injectable()
 export class SessionMiddleware implements NestMiddleware {
   use(req: Request, res: Response, next: NextFunction) {
-    // Read cookies parsed by cookie-parser (mounted in main.ts).
-    const cookies = (req as Request & { cookies?: Record<string, string> }).cookies ?? {}
-    let sid = cookies[SID_COOKIE]
+    // Read VERIFIED signed cookies (cookie-parser, mounted with a secret in
+    // main.ts). A tampered/forged value will not be present here.
+    const signed =
+      (req as Request & { signedCookies?: Record<string, string> }).signedCookies ?? {}
+    let sid = signed[SID_COOKIE]
 
-    // Issue a new session ID when the cookie is missing or looks tampered with.
+    // Issue a new signed session ID when the cookie is missing, malformed, or
+    // failed signature verification.
     if (!sid || typeof sid !== "string" || sid.length < 8) {
       sid = randomUUID()
       res.cookie(SID_COOKIE, sid, {
         httpOnly: true,   // not accessible via document.cookie
         sameSite: "lax",  // sent on same-site navigations, blocked on cross-site POST
         secure: process.env["NODE_ENV"] === "production",
+        signed: true,     // HMAC-signed with SESSION_SECRET
         maxAge: ONE_YEAR_MS,
         path: "/",
       })

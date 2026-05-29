@@ -5,6 +5,25 @@ import express, { type Request, type Response, type NextFunction } from "express
 import cookieParser from "cookie-parser"
 import { AppModule } from "./app.module"
 import { UPLOAD_DISK_ROOT, UPLOAD_URL_PREFIX } from "./common/storage"
+import { MonitoringService } from "./modules/monitoring.module"
+
+// Secret used to HMAC-sign the session cookie. In production it MUST be set so
+// session IDs can't be forged; in dev we fall back to a stable value (matching
+// the ADMIN_API_TOKEN dev-fallback convention).
+const DEV_SESSION_SECRET = "shaniidrx-dev-session-secret-change-me"
+const SESSION_SECRET = process.env["SESSION_SECRET"] || DEV_SESSION_SECRET
+// Fail closed in production: a known/default signing secret means session
+// cookies can be forged, which would break tenant isolation. Refuse to boot
+// rather than run insecurely.
+if (
+  process.env["NODE_ENV"] === "production" &&
+  SESSION_SECRET === DEV_SESSION_SECRET
+) {
+  console.error(
+    "[api-nest] FATAL: SESSION_SECRET must be set to a strong, unique value in production. Refusing to start with the known dev secret.",
+  )
+  process.exit(1)
+}
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
@@ -16,7 +35,9 @@ async function bootstrap() {
     // re-stringification is not safe because object key order isn't stable.
     rawBody: true,
   })
-  app.use(cookieParser())
+  // Pass the secret so cookies set with `{ signed: true }` are HMAC-signed and
+  // verified into req.signedCookies.
+  app.use(cookieParser(SESSION_SECRET))
 
   // Bump body limit to ~8MB so base64-encoded prescription uploads
   // (5MB raw → ~6.7MB encoded) fit comfortably. When we move to direct
@@ -36,7 +57,9 @@ async function bootstrap() {
     UPLOAD_URL_PREFIX,
     (req: Request, res: Response, next: NextFunction) => {
       if (req.method !== "GET" && req.method !== "HEAD") return next()
-      if (!req.cookies?.["shaniidrx_sid"]) {
+      // Signed cookies live in req.signedCookies after cookie-parser verifies
+      // the HMAC; a forged cookie will not be present here.
+      if (!req.signedCookies?.["shaniidrx_sid"]) {
         return res.status(401).json({ error: "Session required" })
       }
       return next()
@@ -48,6 +71,34 @@ async function bootstrap() {
   // NOTE: We deliberately skip Nest's ValidationPipe to avoid pulling in
   // class-validator/class-transformer. Each controller validates its own
   // request shape; when we move to Zod DTOs we'll wire nestjs-zod here.
+
+  // Process-level safety net: capture errors that escape the request lifecycle
+  // (background tasks, fire-and-forget promises) into the monitoring store so
+  // NO system-triggered error goes unrecorded. We log and record but do NOT
+  // exit — a single rejected promise shouldn't take the whole API down under
+  // load.
+  const monitoring = app.get(MonitoringService)
+  process.on("unhandledRejection", (reason: unknown) => {
+    const err = reason instanceof Error ? reason : new Error(String(reason))
+    console.error("[api-nest] unhandledRejection", err)
+    monitoring.recordServerError({
+      message: err.message,
+      errorType: "UnhandledRejection",
+      stack: err.stack,
+      level: "error",
+      context: { kind: "unhandledRejection" },
+    })
+  })
+  process.on("uncaughtException", (err: Error) => {
+    console.error("[api-nest] uncaughtException", err)
+    monitoring.recordServerError({
+      message: err.message,
+      errorType: "UncaughtException",
+      stack: err.stack,
+      level: "fatal",
+      context: { kind: "uncaughtException" },
+    })
+  })
 
   const port = Number(process.env["PORT"] ?? 8090)
   await app.listen(port, "0.0.0.0")

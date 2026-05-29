@@ -53,9 +53,23 @@ function issueToken(): string {
   return t || DEV_TOKEN
 }
 
+/**
+ * In production we refuse to authenticate with the built-in default credentials
+ * unless the operator has explicitly set ADMIN_EMAIL + ADMIN_PASSWORD. This
+ * stops a deploy that forgot to configure admin creds from shipping with the
+ * publicly-known admin@shaniidrx.com / Admin@2024! login.
+ */
+function defaultCredsAllowed(): boolean {
+  if (process.env.NODE_ENV !== "production") return true
+  return Boolean(process.env.ADMIN_EMAIL && process.env.ADMIN_PASSWORD)
+}
+
 @Injectable()
 export class AdminAuthService {
   login(email: string, password: string) {
+    if (!defaultCredsAllowed()) {
+      return null
+    }
     if (email.trim().toLowerCase() !== adminEmail() || password !== adminPassword()) {
       return null
     }

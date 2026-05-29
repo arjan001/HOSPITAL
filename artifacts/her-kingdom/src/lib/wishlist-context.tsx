@@ -11,7 +11,20 @@ import {
 } from "react"
 import { useUser } from "@clerk/react"
 import { apiNest } from "./api-nest"
+import { capture } from "./monitoring"
 import type { Product } from "./types"
+
+// Wishlist server-sync is best-effort: the localStorage cache is the source of
+// truth for the UI, so a failed sync must not block or crash the page. We still
+// report the failure to monitoring so silent data-drift is visible later.
+function reportSyncFailure(action: string) {
+  return (err: unknown) =>
+    capture(err, {
+      level: "warning",
+      errorType: "WishlistSyncError",
+      context: { action },
+    })
+}
 
 interface WishlistContextType {
   items: Product[]
@@ -83,7 +96,7 @@ export function WishlistProvider({ children }: { children: ReactNode }) {
       try {
         for (const product of items) {
           if (product.slug) {
-            await apiNest.addWishlist(product.slug).catch(() => undefined)
+            await apiNest.addWishlist(product.slug).catch(reportSyncFailure("merge-on-signin"))
           }
         }
       } catch {
@@ -99,7 +112,7 @@ export function WishlistProvider({ children }: { children: ReactNode }) {
         return [...prev, product]
       })
       if (isSignedIn && product.slug) {
-        apiNest.addWishlist(product.slug).catch(() => undefined)
+        apiNest.addWishlist(product.slug).catch(reportSyncFailure("add"))
       }
     },
     [isSignedIn],
@@ -119,7 +132,7 @@ export function WishlistProvider({ children }: { children: ReactNode }) {
         return next
       })
       if (isSignedIn && removedSlug) {
-        apiNest.removeWishlist(removedSlug).catch(() => undefined)
+        apiNest.removeWishlist(removedSlug).catch(reportSyncFailure("remove"))
       }
     },
     [isSignedIn],
@@ -131,12 +144,12 @@ export function WishlistProvider({ children }: { children: ReactNode }) {
         const exists = prev.some((p) => p.id === product.id)
         if (exists) {
           if (isSignedIn && product.slug) {
-            apiNest.removeWishlist(product.slug).catch(() => undefined)
+            apiNest.removeWishlist(product.slug).catch(reportSyncFailure("toggle-remove"))
           }
           return prev.filter((p) => p.id !== product.id)
         }
         if (isSignedIn && product.slug) {
-          apiNest.addWishlist(product.slug).catch(() => undefined)
+          apiNest.addWishlist(product.slug).catch(reportSyncFailure("toggle-add"))
         }
         return [...prev, product]
       })
@@ -154,7 +167,7 @@ export function WishlistProvider({ children }: { children: ReactNode }) {
     setItems([])
     if (isSignedIn) {
       for (const p of snapshot) {
-        if (p.slug) apiNest.removeWishlist(p.slug).catch(() => undefined)
+        if (p.slug) apiNest.removeWishlist(p.slug).catch(reportSyncFailure("clear"))
       }
     }
   }, [items, isSignedIn])

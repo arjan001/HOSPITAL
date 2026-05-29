@@ -9,6 +9,7 @@ import NotFound from "@/pages/not-found";
 import { CartProvider } from "@/lib/cart-context";
 import { WishlistProvider } from "@/lib/wishlist-context";
 import { PageViewTracker } from "@/components/page-view-tracker";
+import { ErrorBoundary } from "@/components/error-boundary";
 
 // Store pages
 import { LandingPage } from "@/components/store/landing-page";
@@ -527,7 +528,9 @@ function ClerkProviderWithRoutes() {
         <ScrollToTop />
         <WishlistProvider>
           <CartProvider>
-            <Router />
+            <ErrorBoundary scope="routes">
+              <Router />
+            </ErrorBoundary>
             <GlobalOverlays />
             <PageViewTracker />
           </CartProvider>
