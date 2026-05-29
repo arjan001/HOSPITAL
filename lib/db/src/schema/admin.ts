@@ -1,0 +1,235 @@
+import { boolean, integer, jsonb, pgTable, text, timestamp } from "drizzle-orm/pg-core"
+import { createInsertSchema, createSelectSchema } from "drizzle-zod"
+import { z } from "zod/v4"
+
+/**
+ * admin_users — admin panel accounts, separate from Clerk customer accounts.
+ * Passwords are stored as bcrypt hashes (cost ≥ 12) and are NEVER returned
+ * in API responses. The built-in super-admin can be seeded from env vars
+ * (ADMIN_EMAIL / ADMIN_PASSWORD) and upgraded to a DB-backed account later.
+ */
+export const adminUsers = pgTable("admin_users", {
+  id: text("id").primaryKey(),
+  email: text("email").unique().notNull(),
+  passwordHash: text("password_hash").notNull(),
+  name: text("name").notNull(),
+  role: text("role").notNull().default("pharmacist"),
+  // role values: super_admin | pharmacist | doctor | fulfillment | marketing
+  permissions: jsonb("permissions").$type<string[]>().default([]),
+  active: boolean("active").notNull().default(true),
+  requiresPasswordReset: boolean("requires_password_reset").notNull().default(false),
+  lastLoginAt: timestamp("last_login_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+})
+
+/**
+ * admin_password_resets — one-time tokens for the forgot-password flow.
+ * Tokens expire after 1 hour; consumed tokens are deleted immediately.
+ */
+export const adminPasswordResets = pgTable("admin_password_resets", {
+  id: text("id").primaryKey(),
+  adminUserId: text("admin_user_id")
+    .notNull()
+    .references(() => adminUsers.id, { onDelete: "cascade" }),
+  tokenHash: text("token_hash").notNull(),
+  expiresAt: timestamp("expires_at").notNull(),
+  usedAt: timestamp("used_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+})
+
+/**
+ * patient_notes — sticky notes written by admin staff against a patient record.
+ * patientId links to users.id (Clerk); sessionId covers guest prescription cases.
+ */
+export const patientNotes = pgTable("patient_notes", {
+  id: text("id").primaryKey(),
+  patientId: text("patient_id"),
+  sessionId: text("session_id"),
+  prescriptionId: text("prescription_id"),
+  consultationId: text("consultation_id"),
+  note: text("note").notNull(),
+  color: text("color").notNull().default("yellow"),
+  // color values: yellow | blue | green | red | purple
+  pinned: boolean("pinned").notNull().default(false),
+  createdBy: text("created_by").notNull(),
+  createdByName: text("created_by_name"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+})
+
+/**
+ * sourcing_requests — replenishment requests created by automation or manually.
+ * Auto-created by the low-stock scan in PipelineModule.
+ */
+export const sourcingRequests = pgTable("sourcing_requests", {
+  id: text("id").primaryKey(),
+  sku: text("sku").notNull(),
+  productName: text("product_name").notNull(),
+  currentStock: integer("current_stock").notNull().default(0),
+  reorderPoint: integer("reorder_point").notNull().default(0),
+  quantityNeeded: integer("quantity_needed").notNull(),
+  urgency: text("urgency").notNull().default("normal"),
+  // urgency values: low | normal | high | critical
+  status: text("status").notNull().default("open"),
+  // status values: open | quoting | ordered | received | cancelled
+  notes: text("notes"),
+  assignedSupplierId: text("assigned_supplier_id"),
+  expectedDeliveryAt: timestamp("expected_delivery_at"),
+  fulfilledAt: timestamp("fulfilled_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+})
+
+/**
+ * partner_quotes — quote submissions from supplier partners against sourcing requests.
+ */
+export const partnerQuotes = pgTable("partner_quotes", {
+  id: text("id").primaryKey(),
+  sourcingRequestId: text("sourcing_request_id").references(() => sourcingRequests.id, {
+    onDelete: "cascade",
+  }),
+  supplierId: text("supplier_id").notNull(),
+  supplierName: text("supplier_name").notNull(),
+  supplierEmail: text("supplier_email"),
+  unitPrice: integer("unit_price").notNull(),
+  // stored in smallest currency unit (KES cents or just KES integers)
+  quantity: integer("quantity").notNull(),
+  leadTimeDays: integer("lead_time_days").notNull(),
+  notes: text("notes"),
+  status: text("status").notNull().default("pending"),
+  // status values: pending | accepted | rejected | expired
+  submittedAt: timestamp("submitted_at").defaultNow().notNull(),
+  respondedAt: timestamp("responded_at"),
+})
+
+/**
+ * clinic_orders — orders placed by clinic partners through the clinic portal.
+ * Separate from storefront orders (orders table) to preserve the partner context.
+ */
+export const clinicOrders = pgTable("clinic_orders", {
+  id: text("id").primaryKey(),
+  orderRef: text("order_ref").unique().notNull(),
+  clinicId: text("clinic_id").notNull(),
+  clinicName: text("clinic_name").notNull(),
+  clinicEmail: text("clinic_email"),
+  items: jsonb("items")
+    .$type<{ name: string; qty: number; unitPrice: number; patient?: string }[]>()
+    .notNull(),
+  subtotal: integer("subtotal").notNull(),
+  deliveryFee: integer("delivery_fee").notNull().default(0),
+  total: integer("total").notNull(),
+  status: text("status").notNull().default("pending"),
+  // status values: pending | confirmed | shipped | delivered | cancelled
+  notes: text("notes"),
+  deliveryAddress: text("delivery_address"),
+  creditLine: boolean("credit_line").notNull().default(false),
+  placedAt: timestamp("placed_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+})
+
+/**
+ * delivery_jobs — logistics delivery assignments, linking orders to riders.
+ * Covers both storefront orders and clinic orders.
+ */
+export const deliveryJobs = pgTable("delivery_jobs", {
+  id: text("id").primaryKey(),
+  jobRef: text("job_ref").unique().notNull(),
+  orderId: text("order_id"),
+  orderType: text("order_type").notNull().default("storefront"),
+  // orderType values: storefront | clinic
+  assignedRiderId: text("assigned_rider_id"),
+  assignedRiderName: text("assigned_rider_name"),
+  logisticsPartnerId: text("logistics_partner_id"),
+  pickupAddress: text("pickup_address").notNull(),
+  deliveryAddress: text("delivery_address").notNull(),
+  recipientName: text("recipient_name"),
+  recipientPhone: text("recipient_phone"),
+  status: text("status").notNull().default("pending"),
+  // status values: pending | assigned | in_transit | delivered | failed | cancelled
+  estimatedMinutes: integer("estimated_minutes"),
+  coldChain: boolean("cold_chain").notNull().default(false),
+  notes: text("notes"),
+  proofOfDeliveryUrl: text("proof_of_delivery_url"),
+  assignedAt: timestamp("assigned_at"),
+  pickedUpAt: timestamp("picked_up_at"),
+  deliveredAt: timestamp("delivered_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+})
+
+/**
+ * email_outbox — log of every email send attempt for auditing and retry.
+ * Populated by EmailService; the `payload` column stores template variables
+ * but must not contain raw PII beyond what is already in `recipient`.
+ */
+export const emailOutbox = pgTable("email_outbox", {
+  id: text("id").primaryKey(),
+  template: text("template").notNull(),
+  recipient: text("recipient").notNull(),
+  subject: text("subject").notNull(),
+  status: text("status").notNull().default("pending"),
+  // status values: pending | sent | failed | skipped
+  provider: text("provider").notNull().default("resend"),
+  providerId: text("provider_id"),
+  error: text("error"),
+  payload: jsonb("payload"),
+  sentAt: timestamp("sent_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+})
+
+// ─────────────────────── Zod schemas ───────────────────────
+
+export const insertAdminUserSchema = createInsertSchema(adminUsers).omit({
+  createdAt: true,
+  updatedAt: true,
+})
+export const selectAdminUserSchema = createSelectSchema(adminUsers)
+export type InsertAdminUser = z.infer<typeof insertAdminUserSchema>
+export type AdminUser = typeof adminUsers.$inferSelect
+
+export const insertPatientNoteSchema = createInsertSchema(patientNotes).omit({
+  createdAt: true,
+  updatedAt: true,
+})
+export const selectPatientNoteSchema = createSelectSchema(patientNotes)
+export type InsertPatientNote = z.infer<typeof insertPatientNoteSchema>
+export type PatientNote = typeof patientNotes.$inferSelect
+
+export const insertSourcingRequestSchema = createInsertSchema(sourcingRequests).omit({
+  createdAt: true,
+  updatedAt: true,
+})
+export const selectSourcingRequestSchema = createSelectSchema(sourcingRequests)
+export type InsertSourcingRequest = z.infer<typeof insertSourcingRequestSchema>
+export type SourcingRequest = typeof sourcingRequests.$inferSelect
+
+export const insertPartnerQuoteSchema = createInsertSchema(partnerQuotes).omit({
+  submittedAt: true,
+})
+export const selectPartnerQuoteSchema = createSelectSchema(partnerQuotes)
+export type InsertPartnerQuote = z.infer<typeof insertPartnerQuoteSchema>
+export type PartnerQuote = typeof partnerQuotes.$inferSelect
+
+export const insertClinicOrderSchema = createInsertSchema(clinicOrders).omit({
+  placedAt: true,
+  updatedAt: true,
+})
+export const selectClinicOrderSchema = createSelectSchema(clinicOrders)
+export type InsertClinicOrder = z.infer<typeof insertClinicOrderSchema>
+export type ClinicOrder = typeof clinicOrders.$inferSelect
+
+export const insertDeliveryJobSchema = createInsertSchema(deliveryJobs).omit({
+  createdAt: true,
+  updatedAt: true,
+})
+export const selectDeliveryJobSchema = createSelectSchema(deliveryJobs)
+export type InsertDeliveryJob = z.infer<typeof insertDeliveryJobSchema>
+export type DeliveryJob = typeof deliveryJobs.$inferSelect
+
+export const insertEmailOutboxSchema = createInsertSchema(emailOutbox).omit({
+  createdAt: true,
+})
+export const selectEmailOutboxSchema = createSelectSchema(emailOutbox)
+export type InsertEmailOutbox = z.infer<typeof insertEmailOutboxSchema>
+export type EmailOutbox = typeof emailOutbox.$inferSelect

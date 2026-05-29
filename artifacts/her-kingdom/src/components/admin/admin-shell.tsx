@@ -654,12 +654,30 @@ export function AdminShell({ children, title }: { children: ReactNode; title: st
   const [search, setSearch] = useState("")
 
   useEffect(() => {
+    if (typeof window === "undefined") return
+    const token = window.localStorage.getItem("shaniidrx.admin.token")
+    if (!token) {
+      navigate("/admin/login")
+      return
+    }
+    try {
+      const stored = window.localStorage.getItem("shaniidrx.admin.user")
+      if (stored) {
+        const u = JSON.parse(stored) as { name?: string; email?: string; role?: string }
+        setCurrentUser({
+          display_name: u.name || "Admin",
+          email: u.email || "admin@shaniidrx.com",
+          role: u.role || "super_admin",
+        })
+        return
+      }
+    } catch { /* ignore parse errors */ }
     setCurrentUser({
       display_name: "Admin",
-      email: "admin@shaniidrx.local",
+      email: "admin@shaniidrx.com",
       role: "super_admin",
     })
-  }, [])
+  }, [navigate])
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -695,8 +713,11 @@ export function AdminShell({ children, title }: { children: ReactNode; title: st
         severity: "warning",
       })
     } catch { /* ignore */ }
-    navigate("/")
-    if (typeof window !== "undefined") window.location.reload()
+    if (typeof window !== "undefined") {
+      window.localStorage.removeItem("shaniidrx.admin.token")
+      window.localStorage.removeItem("shaniidrx.admin.user")
+    }
+    navigate("/admin/login")
   }
 
   const filteredGroups = useMemo(() => filterGroups(NAV_GROUPS, search), [search])

@@ -118,6 +118,7 @@ import DoctorPanelPage from "@/pages/doctor/panel";
 import { AdminDoctors } from "@/components/admin/doctors";
 import { AdminPatientDetail } from "@/components/admin/patient-detail";
 import { AdminSupportTickets } from "@/components/admin/support-tickets";
+import { AdminLoginPage } from "@/pages/admin/login";
 
 // Policy pages
 import PolicyPage from "@/pages/policy";
@@ -408,6 +409,8 @@ function Router() {
       <Route path="/speak-to-a-doctor" component={SpeakToADoctorPage} />
       <Route path="/doctor" component={DoctorPanelPage} />
       <Route path="/account/support" component={AccountSupportPage} />
+      {/* Admin login — public, no AdminShell wrapper */}
+      <Route path="/admin/login" component={AdminLoginPage} />
       {/* Admin */}
       <Route path="/admin" component={AdminDashboard} />
       <Route path="/admin/dashboard" component={AdminDashboard} />

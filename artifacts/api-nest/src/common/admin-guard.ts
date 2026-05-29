@@ -54,8 +54,13 @@ export class AdminGuard implements CanActivate {
       (req.header("x-admin-token") || "").trim() ||
       (req.header("authorization") || "").replace(/^Bearer\s+/i, "").trim()
 
+    const DEV_TOKEN = "shaniidrx-admin-dev-token"
+
     if (expected) {
-      if (provided && provided === expected) return true
+      if (provided && provided === expected) {
+        this.attachAdminUser(req, provided)
+        return true
+      }
       throw new HttpException("Unauthorized", HttpStatus.UNAUTHORIZED)
     }
 
@@ -72,6 +77,25 @@ export class AdminGuard implements CanActivate {
         HttpStatus.SERVICE_UNAVAILABLE,
       )
     }
+
+    // Dev convenience: accept the dev token or any non-empty provided value.
+    if (provided && (provided === DEV_TOKEN || !expected)) {
+      this.attachAdminUser(req, provided)
+    } else {
+      this.attachAdminUser(req, DEV_TOKEN)
+    }
     return true
+  }
+
+  /**
+   * Attach a minimal admin identity to the request so controllers can read
+   * who is acting without additional lookups.  Cast to `any` to avoid
+   * extending the Express Request type globally in every module.
+   */
+  private attachAdminUser(req: Request, _token: string) {
+    const email = (process.env.ADMIN_EMAIL || "admin@shaniidrx.com").toLowerCase()
+    const name = process.env.ADMIN_NAME || "Super Admin"
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ;(req as any).adminUser = { role: "super_admin", email, name }
   }
 }

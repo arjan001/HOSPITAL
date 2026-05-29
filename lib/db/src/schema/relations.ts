@@ -20,6 +20,7 @@ import { uploads, wishlistItems } from "./uploads"
 import { payments } from "./payments"
 import { chatThreads, chatMessages } from "./chat"
 import { supportTickets, supportMessages } from "./notifications"
+import { adminUsers, adminPasswordResets, sourcingRequests, partnerQuotes } from "./admin"
 
 /* ─────────────────── users ─────────────────── */
 
@@ -147,5 +148,31 @@ export const supportMessagesRelations = relations(supportMessages, ({ one }) => 
   ticket: one(supportTickets, {
     fields: [supportMessages.ticketId],
     references: [supportTickets.id],
+  }),
+}))
+
+/* ─────────────────── admin ─────────────────── */
+
+export const adminUsersRelations = relations(adminUsers, ({ many }) => ({
+  passwordResets: many(adminPasswordResets),
+}))
+
+export const adminPasswordResetsRelations = relations(adminPasswordResets, ({ one }) => ({
+  adminUser: one(adminUsers, {
+    fields: [adminPasswordResets.adminUserId],
+    references: [adminUsers.id],
+  }),
+}))
+
+/* ─────────────────── sourcing ─────────────────── */
+
+export const sourcingRequestsRelations = relations(sourcingRequests, ({ many }) => ({
+  quotes: many(partnerQuotes),
+}))
+
+export const partnerQuotesRelations = relations(partnerQuotes, ({ one }) => ({
+  sourcingRequest: one(sourcingRequests, {
+    fields: [partnerQuotes.sourcingRequestId],
+    references: [sourcingRequests.id],
   }),
 }))

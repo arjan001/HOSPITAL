@@ -30,11 +30,13 @@ import { OrdersModule } from "./modules/orders.module"
 import { PaystackModule } from "./modules/paystack.module"
 
 // Admin modules
+import { AdminAuthModule } from "./modules/admin-auth.module"
 import { AdminOrdersModule } from "./modules/admin-orders.module"
 import { AdminPaymentsModule } from "./modules/admin-payments.module"
 import { AdminCmsModule } from "./modules/admin-cms.module"
 import { CatalogImportModule } from "./modules/catalog-import.module"
 import { WebScraperModule } from "./modules/web-scraper.module"
+import { PatientNotesModule } from "./modules/patient-notes.module"
 
 // Infrastructure modules
 import { HealthModule } from "./modules/health.module"
@@ -57,11 +59,13 @@ import { PartnersModule } from "./modules/partners.module"
     PaystackModule,
 
     // Admin
+    AdminAuthModule,
     AdminOrdersModule,
     AdminPaymentsModule,
     AdminCmsModule,
     CatalogImportModule,
     WebScraperModule,
+    PatientNotesModule,
 
     // Infrastructure
     HealthModule,
