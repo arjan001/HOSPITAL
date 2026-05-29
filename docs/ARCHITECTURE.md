@@ -291,38 +291,49 @@ implementation against the `admin_cms` table. No client changes needed.
 
 ### api-nest modules (`/api/v2`)
 
-#### Customer-facing
+> Routes verified against `@Controller`/method decorators. Guard legend: **session** = signed `shaniidrx_sid` cookie (`SessionMiddleware`); **admin** = `AdminGuard` (`x-admin-token` / Bearer); **public** = `@Public()`. See `docs/API_DOCUMENTATION.md` §1–§2 for full detail.
+
+#### Authentication
+
+| Module | Controller | Routes | Guard | Description |
+|---|---|---|---|---|
+| `AdminAuthModule` | `AdminAuthController` | `POST /admin/auth/login`, `POST /admin/auth/forgot-password`, `GET /admin/auth/me` | public / public / token | Admin email+password login → issues the admin token |
+| `PartnersModule` | `PartnerWelcome` + `PartnersController` | `POST /partners/welcome`, `POST /partners/:type/auth`, `POST /partners/:type/signout`, `GET/POST /partners/:type/orders` | public / session | Server-side supplier/clinic/logistics portal auth + actions |
+
+#### Customer-facing (session)
 
 | Module | Controller | Routes | Description |
 |---|---|---|---|
-| `ProfileModule` | `ProfileController` | `GET /me`, `PUT /me` | Guest/customer profile (name, email, phone, preferences) |
+| `ProfileModule` | `ProfileController` | `GET /me`, `PUT /me` | Guest/customer profile |
 | `AddressesModule` | `AddressesController` | `GET/POST /me/addresses`, `PUT/DELETE /me/addresses/:id` | Delivery address book |
-| `WishlistModule` | `WishlistController` | `GET/POST /me/wishlist`, `DELETE /me/wishlist/:id` | Saved products list |
+| `WishlistModule` | `WishlistController` | `GET/POST /me/wishlist`, `DELETE /me/wishlist/:productSlug` | Saved products list |
 | `OrdersModule` | `OrdersController` | `GET/POST /me/orders`, `GET /me/orders/:id` | Customer order history |
-| `PaystackModule` | `PaystackController` | `POST /payments/paystack/charge`, `GET /payments/paystack/status`, `POST /payments/paystack/callback` | M-Pesa STK push via Paystack |
+| `PrescriptionsModule` | `PrescriptionsController` (+ admin) | `GET/POST /me/prescriptions`, `GET/PATCH /me/prescriptions/:id`; admin: `GET /admin/prescriptions`, `GET/PATCH /admin/prescriptions/:id`, `PATCH /admin/prescriptions/:id/status` | Upload + pharmacist review/dispense |
+| `ChatModule` | `ChatController` | `GET /chat/me`, `GET/POST /chat/me/messages`, `POST /chat/me/read`, `GET /chat/me/stream` (SSE); admin: `…/chat/admin/threads…`, `GET /chat/admin/stream` (SSE) | Customer ↔ pharmacist chat |
+| `NotificationsModule` | notifications + support | `GET /me/notifications`, `POST /me/notifications/read`, `GET/POST /me/support/tickets`, `POST /me/support/tickets/:id/messages`; admin mirrors under `/admin/...` | In-app alerts + support tickets |
+| `PaystackModule` | `PaystackController` | `GET /payments/paystack/config`, `POST /payments/paystack/charge`, `GET /payments/paystack/status`, `POST /payments/paystack/callback` (public) | M-Pesa STK push via Paystack |
+| `UploadsModule` | `UploadsController` | `POST /uploads` | File upload to local disk (S3 swap ready) |
 
-#### Admin
+#### Admin (`AdminGuard`)
 
 | Module | Controller | Routes | Description |
 |---|---|---|---|
-| `AdminOrdersModule` | `AdminOrdersController` | `GET/PUT /admin/orders`, `GET /admin/orders/:id` | Order fulfillment dashboard |
+| `AdminOrdersModule` | `AdminOrdersController` | `GET/POST /admin/orders`, `GET/PATCH /admin/orders/:id`, `DELETE /admin/orders` | Order fulfillment dashboard |
 | `AdminPaymentsModule` | `AdminPaymentsController` | `GET /admin/payments` | Transaction ledger view |
-| `AdminCmsModule` | `AdminCmsController` | `GET/PUT /admin/cms/:key` | Generic CMS key-value store backing cmsStore |
-| `CatalogImportModule` | `CatalogImportController` | `POST /admin/catalog/import` | CSV/JSON bulk product ingestion |
-| `WebScraperModule` | `WebScraperController` | `POST /admin/scraper/run` | Automated supplier data gathering |
+| `AdminCmsModule` | `AdminCmsController` | `GET /admin/cms`, `GET/PUT/DELETE /admin/cms/:key` | Generic CMS key-value store backing cmsStore |
+| `CatalogImportModule` | `CatalogImportController` | `POST /admin/catalog/{categories/import, products/import, google-sheet}` | CSV/JSON/Sheet bulk ingestion |
+| `WebScraperModule` | `WebScraperController` | `POST /admin/catalog/scrape-url` | Supplier-page data scraping (SSRF-guarded) |
+| `PatientNotesModule` | `PatientNotesController` | `GET/POST /admin/patients/:patientId/notes`, `PUT/DELETE /admin/patients/:patientId/notes/:noteId` | Clinical sticky notes |
+| `PipelineModule` | 6 controllers | `GET /admin/pipeline/status`, `POST /admin/pipeline/{sourcing/scan, trading/recompute-margins, qa/scan-expiry, logistics/auto-assign, communications/send, communications/preview}` | Operations automation |
 
-#### Infrastructure
+#### Notifications transport & infrastructure
 
-| Module | Controller | Routes | Description |
-|---|---|---|---|
-| `HealthModule` | `HealthController` | `GET /healthz` | Liveness probe |
-| `PrescriptionsModule` | `PrescriptionsController` | `POST /prescriptions`, `GET /prescriptions/:id` | Prescription upload + retrieval |
-| `UploadsModule` | `UploadsController` | `POST /uploads` | Binary file upload to local disk (S3 swap ready) |
-| `ChatModule` | `ChatController` | `GET/POST /chat/rooms`, `GET/POST /chat/rooms/:id/messages` | Doctor-patient and support chat |
-| `MonitoringModule` | `MonitoringController` | `POST /monitoring/events` | Client-side event collection |
-| `EmailModule` | `EmailController` | `POST /email/send` | Transactional email dispatch |
-| `NotificationsModule` | `NotificationsController` | `GET/POST /notifications` | In-app notification queue |
-| `PipelineModule` | `PipelineController` | `GET/POST /pipeline/jobs` | Background task orchestration |
+| Module | Controller | Routes | Guard | Description |
+|---|---|---|---|---|
+| `HealthModule` | `HealthController` | `GET /healthz` | public | Liveness probe |
+| `EmailModule` | `EmailController` | `GET /notifications/email/status`, `POST /notifications/email/send` | none | Transactional email (Resend). Returns `503` when unconfigured (the pipeline path is what falls back to the outbox) |
+| `WhatsAppModule` | `WhatsAppController` | `GET /notifications/whatsapp/status`, `POST /notifications/whatsapp/send` | admin | WhatsApp (Meta primary / Twilio alt), fails soft |
+| `MonitoringModule` | `MonitoringController` | `POST /monitoring/events` (public); `GET/DELETE /monitoring/events`, `GET /monitoring/issues…`, `GET /monitoring/{stats,health,config}`, `PUT /monitoring/config` (admin) | mixed | Telemetry + issue triage |
 
 ---
 
