@@ -65,6 +65,7 @@ import {
 import { AdminLogistics } from "@/components/admin/logistics-ops";
 import { AdminQa } from "@/components/admin/qa-ops";
 import { AdminMessageTemplates } from "@/components/admin/message-templates";
+import { AdminMessageOutbox } from "@/components/admin/message-outbox";
 import {
   AdminCampaignsOverview,
   AdminCampaignsEmail,
@@ -449,6 +450,7 @@ function Router() {
       <Route path="/admin/logistics/lead-time"   component={AdminLogisticsLeadTime} />
       <Route path="/admin/logistics/fallback"    component={AdminLogisticsFallback} />
       <Route path="/admin/integrations/templates" component={AdminMessageTemplates} />
+      <Route path="/admin/integrations/outbox" component={AdminMessageOutbox} />
       <Route path="/admin/campaigns"            component={AdminCampaignsOverview} />
       <Route path="/admin/campaigns/email"      component={AdminCampaignsEmail} />
       <Route path="/admin/campaigns/sms"        component={AdminCampaignsSms} />

@@ -226,6 +226,7 @@ const NAV_GROUPS: NavGroup[] = [
         children: [
           { label: "Channels",          href: "/admin/integrations",              icon: Plug,          perm: "integrations.manage" },
           { label: "Message Templates", href: "/admin/integrations/templates",    icon: Send,          perm: "integrations.manage" },
+          { label: "Message Outbox",    href: "/admin/integrations/outbox",       icon: Inbox,         perm: "integrations.manage" },
           { label: "Email",             href: "/admin/integrations?tab=email",    icon: Mail,          perm: "integrations.manage" },
           { label: "SMS",               href: "/admin/integrations?tab=sms",      icon: MessageSquare, perm: "integrations.manage" },
           { label: "WhatsApp",          href: "/admin/integrations?tab=whatsapp", icon: MessageSquare, perm: "integrations.manage" },

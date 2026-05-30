@@ -24,6 +24,15 @@ async function post<T>(path: string, body?: unknown): Promise<T> {
   return (await res.json()) as T
 }
 
+async function get<T>(path: string): Promise<T> {
+  const res = await fetch(`${BASE}${path}`, { credentials: "include" })
+  if (!res.ok) {
+    const text = await res.text().catch(() => "")
+    throw new Error(`Pipeline ${path} failed: ${res.status} ${text.slice(0, 200)}`)
+  }
+  return (await res.json()) as T
+}
+
 export type SourcingScanResult = {
   rulesEvaluated: number
   requestsCreated: number
@@ -80,6 +89,21 @@ export type CommunicationsSendResult = {
   reason?: string
 }
 
+export type OutboxStatus = "queued" | "sent" | "failed"
+
+export type OutboxRow = {
+  id: string
+  templateId: string
+  channel: "email" | "sms" | "whatsapp"
+  to: string
+  subject: string
+  body: string
+  queuedAt: string
+  status: OutboxStatus
+  lastAttemptAt?: string
+  reason?: string
+}
+
 export const pipelineClient = {
   sourcing: { scan: () => post<SourcingScanResult>("/sourcing/scan") },
   trading: {
@@ -96,6 +120,18 @@ export const pipelineClient = {
         templateId,
         variables,
       }),
+    outbox: {
+      list: () => get<OutboxRow[]>("/communications/outbox"),
+      resend: (id: string) =>
+        post<{ ok: boolean; status: OutboxStatus; reason?: string }>(
+          `/communications/outbox/${encodeURIComponent(id)}/resend`,
+        ),
+      dismiss: (id: string) =>
+        post<{ removed: boolean }>(
+          `/communications/outbox/${encodeURIComponent(id)}/dismiss`,
+        ),
+      clearSent: () => post<{ removed: number }>("/communications/outbox/clear-sent"),
+    },
   },
   status: () =>
     fetch(`${BASE}/status`, { credentials: "include" }).then((r) =>

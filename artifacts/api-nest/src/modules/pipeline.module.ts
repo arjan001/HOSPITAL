@@ -41,6 +41,7 @@ import {
   Inject,
   Injectable,
   Module,
+  Param,
   Post,
   Query,
   UseGuards,
@@ -234,6 +235,26 @@ type MessageTemplate = {
 
 /** Delivery lifecycle for an auto-text, mirrored from Meta status callbacks. */
 type SentLogStatus = "sent" | "delivered" | "read" | "failed" | "queued"
+
+/** Delivery state for a queued/outbox message (admin visibility + retry). */
+type OutboxStatus = "queued" | "sent" | "failed"
+
+/** One row in the `communications.outbox` cmsStore key (admin visibility + retry). */
+type OutboxRow = {
+  id: string
+  templateId: string
+  channel: MessageTemplate["channel"]
+  to: string
+  subject: string
+  body: string
+  queuedAt: string
+  /** queued (never delivered) → sent (delivered on retry) → failed (retry errored). */
+  status: OutboxStatus
+  /** ISO timestamp of the most recent resend attempt, if any. */
+  lastAttemptAt?: string
+  /** Why the last attempt failed / was skipped (provider not configured, etc). */
+  reason?: string
+}
 
 /** One row in the `communications.sent-log` cmsStore key (admin visibility). */
 type SentLogRow = {
@@ -881,19 +902,18 @@ class CommunicationsAutomationService {
     }
 
     // SMS, or WhatsApp with no provider configured — record intent in the outbox.
-    const log = await cmsGet<unknown[]>("communications.outbox", [])
-    await cmsPut("communications.outbox", [
-      {
-        id: newId("msg"),
-        templateId: tpl.id,
-        channel: tpl.channel,
-        to,
-        subject,
-        body,
-        queuedAt: new Date().toISOString(),
-      },
-      ...log,
-    ])
+    const log = await cmsGet<OutboxRow[]>("communications.outbox", [])
+    const row: OutboxRow = {
+      id: newId("msg"),
+      templateId: tpl.id,
+      channel: tpl.channel,
+      to,
+      subject,
+      body,
+      queuedAt: new Date().toISOString(),
+      status: "queued",
+    }
+    await cmsPut("communications.outbox", [row, ...log].slice(0, 500))
     return { ok: true, channel: tpl.channel, preview: subject, skipped: true, reason: `${tpl.channel} transport not yet wired — queued in outbox` }
   }
 
@@ -986,6 +1006,88 @@ class CommunicationsAutomationService {
   async listSentLog(): Promise<SentLogRow[]> {
     return cmsGet<SentLogRow[]>("communications.sent-log", [])
   }
+
+  /* ---------- Outbox (queued patient texts) ---------- */
+
+  async listOutbox(): Promise<OutboxRow[]> {
+    const rows = await cmsGet<OutboxRow[]>("communications.outbox", [])
+    // Back-fill a status for any legacy row written before the field existed.
+    return rows.map((r) => ({ ...r, status: r.status ?? "queued" }))
+  }
+
+  /**
+   * Re-attempt delivery of a single queued message through the live transport.
+   * Used once a provider is switched on. On success the row is marked `sent`;
+   * if the provider is still unconfigured it stays `queued`; a hard delivery
+   * error marks it `failed`. The interpolated body is re-sent verbatim (the
+   * original template variables aren't retained on the outbox row).
+   */
+  async resendOutbox(id: string): Promise<{ ok: boolean; status: OutboxStatus; reason?: string }> {
+    const rows = await this.listOutbox()
+    const idx = rows.findIndex((r) => r.id === id)
+    if (idx === -1) throw new HttpException("Outbox message not found", HttpStatus.NOT_FOUND)
+    const row = rows[idx]
+
+    const result = await this.deliverOutboxRow(row)
+    const status: OutboxStatus = result.ok ? "sent" : result.skipped ? "queued" : "failed"
+    const next = rows.slice()
+    next[idx] = {
+      ...row,
+      status,
+      lastAttemptAt: new Date().toISOString(),
+      reason: result.reason,
+    }
+    await cmsPut("communications.outbox", next)
+    return { ok: result.ok, status, reason: result.reason }
+  }
+
+  /** Remove a single outbox entry (clear / dismiss). */
+  async dismissOutbox(id: string): Promise<{ removed: boolean }> {
+    const rows = await this.listOutbox()
+    const next = rows.filter((r) => r.id !== id)
+    if (next.length === rows.length) return { removed: false }
+    await cmsPut("communications.outbox", next)
+    return { removed: true }
+  }
+
+  /** Drop every already-sent entry, keeping queued/failed ones for action. */
+  async clearSentOutbox(): Promise<{ removed: number }> {
+    const rows = await this.listOutbox()
+    const next = rows.filter((r) => r.status !== "sent")
+    const removed = rows.length - next.length
+    if (removed > 0) await cmsPut("communications.outbox", next)
+    return { removed }
+  }
+
+  /**
+   * Deliver an already-interpolated outbox row on its channel. Mirrors the
+   * transport selection in `dispatch` but works from the stored body (no
+   * template re-resolution). Email + WhatsApp have live transports; SMS is not
+   * wired yet, so it reports `skipped` and the row stays queued.
+   */
+  private async deliverOutboxRow(
+    row: OutboxRow,
+  ): Promise<{ ok: boolean; skipped?: boolean; reason?: string }> {
+    if (row.channel === "email") {
+      const result = await this.email.send({
+        to: row.to,
+        subject: row.subject,
+        html: `<div style="font-family:system-ui,sans-serif;line-height:1.55">${row.body.replace(/\n/g, "<br/>")}</div>`,
+        text: row.body,
+      })
+      return { ok: result.ok, skipped: result.skipped, reason: result.reason }
+    }
+
+    if (row.channel === "whatsapp") {
+      if (!this.whatsapp.isEnabled()) {
+        return { ok: false, skipped: true, reason: "WhatsApp provider not configured" }
+      }
+      const result = await this.whatsapp.send({ to: row.to, body: row.body })
+      return { ok: result.ok, skipped: result.skipped, reason: result.reason }
+    }
+
+    return { ok: false, skipped: true, reason: "SMS transport not yet wired" }
+  }
 }
 
 @UseGuards(AdminGuard)
@@ -1010,6 +1112,28 @@ class CommunicationsPipelineController {
   @Get("sent-log")
   sentLog() {
     return this.svc.listSentLog()
+  }
+
+  @Get("outbox")
+  outbox() {
+    return this.svc.listOutbox()
+  }
+
+  @Post("outbox/:id/resend")
+  resend(@Param("id") id: string) {
+    if (!id) throw new HttpException("id required", HttpStatus.BAD_REQUEST)
+    return this.svc.resendOutbox(id)
+  }
+
+  @Post("outbox/:id/dismiss")
+  dismiss(@Param("id") id: string) {
+    if (!id) throw new HttpException("id required", HttpStatus.BAD_REQUEST)
+    return this.svc.dismissOutbox(id)
+  }
+
+  @Post("outbox/clear-sent")
+  clearSent() {
+    return this.svc.clearSentOutbox()
   }
 }
 
