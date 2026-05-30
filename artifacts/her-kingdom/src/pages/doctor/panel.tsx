@@ -9,9 +9,11 @@ import { Seo } from "@/components/seo"
 import { useEffectivePermissions } from "@/lib/permissions"
 import { useDoctors } from "@/lib/doctors-store"
 import { useAdminNotifications } from "@/lib/notifications-client"
+import { useCmsDoc } from "@/lib/cms-store"
+import type { Consultation } from "@/components/admin/consultations"
 import {
   Stethoscope, ClipboardList, Users, CalendarClock, NotebookPen, ShieldCheck,
-  ArrowRight, Bell,
+  ArrowRight, Bell, Activity, CheckCircle2, Hourglass,
 } from "lucide-react"
 
 const WINE = "#3D0814"
@@ -42,6 +44,18 @@ export default function DoctorPanelPage() {
   )
 
   const { items: notifs, unread, markAllRead } = useAdminNotifications("doctor")
+
+  const [consults] = useCmsDoc<Consultation[]>("consultations", [])
+  const consultStats = useMemo(() => {
+    const startOfDay = new Date(); startOfDay.setHours(0, 0, 0, 0)
+    let queued = 0, live = 0, completedToday = 0
+    for (const c of consults) {
+      if (c.status === "queued") queued++
+      else if (c.status === "live") live++
+      else if (c.status === "completed" && new Date(c.endedAt || c.startedAt) >= startOfDay) completedToday++
+    }
+    return { queued, live, completedToday }
+  }, [consults])
 
   if (!allowed) {
     return (
@@ -94,6 +108,13 @@ export default function DoctorPanelPage() {
             )}
           </div>
 
+          {/* Live stats */}
+          <div className="grid grid-cols-3 gap-3">
+            <StatTile icon={Hourglass} label="In queue" value={consultStats.queued} />
+            <StatTile icon={Activity} label="Live now" value={consultStats.live} live={consultStats.live > 0} />
+            <StatTile icon={CheckCircle2} label="Done today" value={consultStats.completedToday} />
+          </div>
+
           {/* Cards */}
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             <PanelCard icon={ClipboardList} title="Prescriptions inbox" desc="Verify uploaded prescriptions and write dosing notes." href="/admin/prescriptions" />
@@ -131,6 +152,31 @@ export default function DoctorPanelPage() {
       </div>
       <Footer />
     </>
+  )
+}
+
+function StatTile({ icon: Icon, label, value, live }: {
+  icon: typeof Stethoscope; label: string; value: number; live?: boolean
+}) {
+  return (
+    <div className="rounded-xl border border-border bg-white p-4 shadow-sm flex items-center gap-3">
+      <div
+        className="h-10 w-10 rounded-lg flex items-center justify-center text-white flex-shrink-0 relative"
+        style={{ background: live ? `linear-gradient(135deg, ${ACCENT}, ${ACCENT_RED})` : WINE }}
+      >
+        <Icon className="h-5 w-5" />
+        {live && (
+          <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5">
+            <span className="absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75 animate-ping" />
+            <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-red-500" />
+          </span>
+        )}
+      </div>
+      <div className="min-w-0">
+        <p className="text-2xl font-bold leading-none" style={{ color: WINE }}>{value}</p>
+        <p className="text-[11px] text-muted-foreground mt-1">{label}</p>
+      </div>
+    </div>
   )
 }
 

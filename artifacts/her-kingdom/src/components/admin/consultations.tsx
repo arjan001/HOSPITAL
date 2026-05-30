@@ -569,10 +569,15 @@ export function AdminConsultations() {
                       <textarea
                         rows={5}
                         className="cinput"
-                        placeholder="Clinical impression, findings, follow-ups…"
+                        placeholder="Symptoms, clinical impression / diagnosis, recommendation, follow-ups…"
                         value={active.doctorNote}
                         onChange={(e) => update({ doctorNote: e.target.value })}
+                        disabled={!canHandle}
                       />
+                      <p className="text-[10px] text-muted-foreground inline-flex items-center gap-1 mt-1">
+                        <CheckCircle2 className="h-3 w-3 text-emerald-600" />
+                        Saved automatically · visible to the care team
+                      </p>
                     </Field>
                     <div>
                       <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">

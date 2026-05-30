@@ -29,6 +29,14 @@ export function AdminDoctors() {
     )
   }, [items, q])
 
+  const stats = useMemo(() => {
+    const active = items.filter((d) => d.active).length
+    const specialties = new Set(items.map((d) => d.specialization.trim()).filter(Boolean)).size
+    const rates = items.map((d) => d.consultationRateKES).filter((n) => n > 0)
+    const avgRate = rates.length ? Math.round(rates.reduce((a, b) => a + b, 0) / rates.length) : 0
+    return { total: items.length, active, specialties, avgRate }
+  }, [items])
+
   return (
     <AdminShell title="Doctors">
       <div className="flex items-start justify-between mb-6 gap-3 flex-wrap">
@@ -51,6 +59,15 @@ export function AdminDoctors() {
           </button>
         </RequirePerm>
       </div>
+
+      {items.length > 0 && (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
+          <StatCard label="Doctors" value={String(stats.total)} icon={Stethoscope} />
+          <StatCard label="Active" value={String(stats.active)} icon={Check} accent />
+          <StatCard label="Specialties" value={String(stats.specialties)} icon={BadgeCheck} />
+          <StatCard label="Avg rate" value={`KSh ${stats.avgRate.toLocaleString()}`} icon={Clock} />
+        </div>
+      )}
 
       <div className="relative max-w-sm mb-4">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
@@ -292,6 +309,25 @@ function DoctorEditor({ initial, onClose, onSave }: { initial: Doctor; onClose: 
           </button>
         </div>
       </aside>
+    </div>
+  )
+}
+
+function StatCard({ label, value, icon: Icon, accent }: {
+  label: string; value: string; icon: typeof Stethoscope; accent?: boolean
+}) {
+  return (
+    <div className="rounded-xl border border-border bg-white p-4 shadow-sm flex items-center gap-3">
+      <div
+        className="h-9 w-9 rounded-lg flex items-center justify-center text-white flex-shrink-0"
+        style={{ background: accent ? `linear-gradient(135deg, ${ACCENT}, ${ACCENT_RED})` : WINE }}
+      >
+        <Icon className="h-4 w-4" />
+      </div>
+      <div className="min-w-0">
+        <p className="text-lg font-bold leading-tight truncate" style={{ color: WINE }}>{value}</p>
+        <p className="text-[11px] text-muted-foreground">{label}</p>
+      </div>
     </div>
   )
 }
