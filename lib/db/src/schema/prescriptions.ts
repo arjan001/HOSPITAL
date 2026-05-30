@@ -28,6 +28,8 @@ export const prescriptions = pgTable("prescriptions", {
   paidAt: timestamp("paid_at"),
   paidAmount: integer("paid_amount"),
   paymentReference: text("payment_reference"),
+  // M-PESA receipt number returned by Paystack on a confirmed charge.
+  paymentReceipt: text("payment_receipt"),
   submittedAt: timestamp("submitted_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 })

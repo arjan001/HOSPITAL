@@ -19,3 +19,7 @@ Any `/api/v2` endpoint that grants value in exchange for a payment (e.g. prescri
 2. Reserve the reference *synchronously* — `consumedReferences.has()` then `.add()` with **no `await` between them** — to close the concurrent-replay TOCTOU race (Node is single-threaded, so back-to-back sync ops are atomic).
 3. `await verifyPaidReference(reference, expected)` inside a try/catch; on any throw `delete` the reservation so a legitimate retry (was-pending) can succeed. After a successful save, do NOT delete — the reference stays consumed (one charge → one redemption).
 4. Bind the charge to its context, e.g. `verified.orderNumber === \`RX-${rxNumber}\``, so a success reference for one entity can't redeem another. The storefront sets that `orderNumber` when it creates the pending order.
+
+## Related: client-supplied storage keys are untrusted
+
+`UploadsService` mints opaque storage keys and tracks `key→sessionId` ownership (`ownsKey(sid, key)`). Any module that binds a client-supplied file key to a record (e.g. `PrescriptionsService.create()`) MUST drop/reject keys not owned by the current session — otherwise a user can attach someone else's key and read it back through an owner-checked file route (the record-owner check doesn't help because the attacker owns the *record*). Keys being random isn't a defense; gate on ownership. Ownership map is in-memory today; persist it (`key→ownerId` column) alongside the storage-to-Postgres swap.

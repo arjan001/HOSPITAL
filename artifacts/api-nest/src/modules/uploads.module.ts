@@ -88,6 +88,19 @@ function checkRateLimit(sid: string): boolean {
 class UploadsService {
   constructor() {}
 
+  // Records which session minted each storage key, so downstream modules can
+  // confirm a client-supplied key actually belongs to the requesting session
+  // before binding it to a record (e.g. a prescription scan). Without this, a
+  // client could attach another session's key and read it through an
+  // owner-checked file route. Swap to a `key→ownerId` column when storage keys
+  // persist to Postgres.
+  private keyOwners = new Map<string, string>()
+
+  /** True when `key` was uploaded by `sid` in this process. */
+  ownsKey(sid: string, key: string): boolean {
+    return Boolean(sid) && this.keyOwners.get(key) === sid
+  }
+
   async putBase64(sid: string, body: UploadBody): Promise<{ url: string; key: string; size: number }> {
     if (!checkRateLimit(sid)) {
       throw new HttpException("Too many uploads — try again in a minute", HttpStatus.TOO_MANY_REQUESTS)
@@ -114,6 +127,7 @@ class UploadsService {
 
     const storage: Storage = getStorage()
     const { url, key } = await storage.put(namespace, filename, buf, contentType)
+    this.keyOwners.set(key, sid)
     return { url, key, size: buf.byteLength }
   }
 }
@@ -131,5 +145,8 @@ class UploadsController {
 @Module({
   controllers: [UploadsController],
   providers: [UploadsService],
+  exports: [UploadsService],
 })
 export class UploadsModule {}
+
+export { UploadsService }

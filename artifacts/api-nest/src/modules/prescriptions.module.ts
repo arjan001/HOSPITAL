@@ -52,6 +52,7 @@ import { InMemoryRepository, newId } from "../common/repository"
 import { AdminGuard } from "../common/admin-guard"
 import { getStorage } from "../common/storage"
 import { PaystackModule, PaystackService } from "./paystack.module"
+import { UploadsModule, UploadsService } from "./uploads.module"
 
 export type PrescriptionStatus = "pending" | "verified" | "dispensed" | "rejected"
 export type PaymentMethod = "cash" | "insurance" | "unknown"
@@ -149,7 +150,10 @@ function nextRxNumber(): string {
 
 @Injectable()
 class PrescriptionsService {
-  constructor(@Inject(PaystackService) private readonly paystack: PaystackService) {}
+  constructor(
+    @Inject(PaystackService) private readonly paystack: PaystackService,
+    @Inject(UploadsService) private readonly uploads: UploadsService,
+  ) {}
 
   private repo = new InMemoryRepository<Prescription>()
   // Tracks which session owns which prescription id — admin endpoints don't
@@ -207,13 +211,21 @@ class PrescriptionsService {
       dob: data.dob ? String(data.dob) : undefined,
       phone: String(data.phone ?? ""),
       email: String(data.email ?? ""),
-      files: (data.files ?? []).map((f) => ({
-        name: String(f?.name ?? "attachment"),
-        size: typeof f?.size === "number" ? f.size : undefined,
-        type: f?.type ? String(f.type) : undefined,
-        url: f?.url ? String(f.url) : undefined,
-        key: f?.key ? String(f.key) : undefined,
-      })),
+      files: (data.files ?? []).map((f) => {
+        const key = f?.key ? String(f.key) : undefined
+        // Only bind a storage key the *current session* actually uploaded.
+        // Trusting an arbitrary client-supplied key would let one user attach
+        // (and then read, via the owner-checked file route) another user's
+        // scan. A key not owned by this session is dropped to undefined.
+        const ownedKey = key && this.uploads.ownsKey(sid, key) ? key : undefined
+        return {
+          name: String(f?.name ?? "attachment"),
+          size: typeof f?.size === "number" ? f.size : undefined,
+          type: f?.type ? String(f.type) : undefined,
+          url: ownedKey ? String(f?.url ?? "") : undefined,
+          key: ownedKey,
+        }
+      }),
       notes: String(data.notes ?? ""),
       status: "pending",
       paymentMethod: data.paymentMethod === "insurance" ? "insurance" : data.paymentMethod === "cash" ? "cash" : "unknown",
@@ -476,7 +488,7 @@ class AdminPrescriptionsController {
 }
 
 @Module({
-  imports: [PaystackModule],
+  imports: [PaystackModule, UploadsModule],
   controllers: [MyPrescriptionsController, AdminPrescriptionsController],
   providers: [PrescriptionsService],
 })
