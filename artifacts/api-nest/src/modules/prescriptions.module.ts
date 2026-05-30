@@ -150,7 +150,7 @@ function nextRxNumber(): string {
 }
 
 @Injectable()
-class PrescriptionsService {
+export class PrescriptionsService {
   constructor(
     @Inject(PaystackService) private readonly paystack: PaystackService,
     @Inject(UploadsService) private readonly uploads: UploadsService,

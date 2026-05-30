@@ -66,7 +66,7 @@ export type PatientNotificationEvent =
   | "order_cancelled"
   | "payment_received"
 
-const EVENT_TO_TRIGGER: Record<PatientNotificationEvent, string> = {
+export const EVENT_TO_TRIGGER: Record<PatientNotificationEvent, string> = {
   prescription_uploaded: "prescription_received",
   prescription_verified: "prescription_verified",
   // "dispensed / ready" — the closest patient-facing "your prescription is
@@ -87,7 +87,7 @@ const EVENT_TO_TRIGGER: Record<PatientNotificationEvent, string> = {
  * "+254 712…" all resolve to the same WhatsApp-addressable form. Returns "" for
  * an empty/unusable input so the caller can skip silently.
  */
-function normalizeKePhone(raw: string | undefined): string {
+export function normalizeKePhone(raw: string | undefined): string {
   const digits = String(raw ?? "").replace(/[\s\-()+]/g, "")
   if (!digits) return ""
   if (digits.startsWith("254")) return digits
