@@ -68,6 +68,12 @@ function defaultCredsAllowed(): boolean {
 export class AdminAuthService {
   login(email: string, password: string) {
     if (!defaultCredsAllowed()) {
+      // Operator-facing hint (server logs only — never leaked to the client).
+      console.warn(
+        "[admin-auth] Login blocked in production: ADMIN_EMAIL and ADMIN_PASSWORD are not set. " +
+          "The shipped default credentials are disabled in production for security. " +
+          "Set both env vars (and optionally ADMIN_API_TOKEN) on the deployment to enable admin sign-in.",
+      )
       return null
     }
     if (email.trim().toLowerCase() !== adminEmail() || password !== adminPassword()) {
