@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp } from "drizzle-orm/pg-core"
+import { pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core"
 import { createInsertSchema, createSelectSchema } from "drizzle-zod"
 import { z } from "zod/v4"
 
@@ -56,6 +56,47 @@ export const communicationSentLog = pgTable("communication_sent_log", {
   deliveredAt: timestamp("delivered_at"),
   readAt: timestamp("read_at"),
 })
+
+/**
+ * campaign_sends — per-recipient idempotency/lock ledger for bulk campaigns.
+ *
+ * Bulk campaign delivery is driven client-side (the admin campaign queue), so
+ * the same campaign can be re-dispatched across browser tabs, page reloads,
+ * retries, or horizontally-scaled API instances. This table makes each send
+ * exactly-once: the unique index on (campaign_id, channel, recipient) lets the
+ * sender atomically CLAIM a recipient with INSERT … ON CONFLICT DO NOTHING.
+ * Whoever wins the insert owns the send; everyone else sees the conflict and
+ * skips. A `failed` row may be re-claimed for retry; a `sent` row never is.
+ */
+export type CampaignSendStatus = "sending" | "sent" | "failed"
+
+export const campaignSends = pgTable(
+  "campaign_sends",
+  {
+    id: text("id").primaryKey(),
+    campaignId: text("campaign_id").notNull(),
+    channel: text("channel").notNull(),
+    recipient: text("recipient").notNull(),
+    // sending (claimed, in flight) → sent | failed.
+    status: text("status").notNull().default("sending"),
+    messageId: text("message_id"),
+    reason: text("reason"),
+    claimedAt: timestamp("claimed_at").defaultNow().notNull(),
+    sentAt: timestamp("sent_at"),
+  },
+  (t) => ({
+    uniqRecipient: uniqueIndex("campaign_sends_campaign_channel_recipient_uniq").on(
+      t.campaignId,
+      t.channel,
+      t.recipient,
+    ),
+  }),
+)
+
+export const insertCampaignSendSchema = createInsertSchema(campaignSends)
+export const selectCampaignSendSchema = createSelectSchema(campaignSends)
+export type InsertCampaignSend = z.infer<typeof insertCampaignSendSchema>
+export type CampaignSend = typeof campaignSends.$inferSelect
 
 export const insertCommunicationOutboxSchema = createInsertSchema(communicationOutbox)
 export const selectCommunicationOutboxSchema = createSelectSchema(communicationOutbox)

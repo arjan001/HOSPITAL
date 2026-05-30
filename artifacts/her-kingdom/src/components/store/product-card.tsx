@@ -9,6 +9,7 @@ import { formatPrice } from "@/lib/format"
 import { useCart } from "@/lib/cart-context"
 import { useWishlist } from "@/lib/wishlist-context"
 import { isVideoUrl } from "@/lib/media-utils"
+import { TrustSeal } from "@/components/ui/trust-seal"
 
 const ACCENT_ORANGE = "#F97316"
 const ACCENT_RED = "#B91C1C"
@@ -108,6 +109,13 @@ export function ProductCard({ product }: { product: Product }) {
               />
             </button>
           </div>
+
+          {/* Trust Seal — surfaced on in-stock/genuine products. Can later be gated on a real `verified` field. */}
+          {product.inStock !== false && (
+            <div className="absolute bottom-2 left-2 z-10">
+              <TrustSeal size="xs" variant="solid" label="Genuine" />
+            </div>
+          )}
         </div>
       </Link>
 

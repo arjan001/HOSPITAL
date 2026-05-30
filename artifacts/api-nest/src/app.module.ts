@@ -14,7 +14,7 @@
  *
  * Module groups:
  *   Customer-facing  — Profile, Addresses, Wishlist, Orders, Paystack
- *   Admin            — AdminOrders, AdminPayments, AdminCms, CatalogImport, WebScraper
+ *   Admin            — AdminOrders, AdminPayments, AdminCms, CatalogImport
  *   Infrastructure   — Health, Prescriptions, Uploads, Chat, Monitoring,
  *                       Email, Notifications, Pipeline
  */
@@ -38,7 +38,6 @@ import { AdminOrdersModule } from "./modules/admin-orders.module"
 import { AdminPaymentsModule } from "./modules/admin-payments.module"
 import { AdminCmsModule } from "./modules/admin-cms.module"
 import { CatalogImportModule } from "./modules/catalog-import.module"
-import { WebScraperModule } from "./modules/web-scraper.module"
 import { PatientNotesModule } from "./modules/patient-notes.module"
 
 // Infrastructure modules
@@ -70,7 +69,6 @@ import { StorageModule } from "./modules/storage.module"
     AdminPaymentsModule,
     AdminCmsModule,
     CatalogImportModule,
-    WebScraperModule,
     PatientNotesModule,
 
     // Infrastructure

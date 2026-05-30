@@ -145,6 +145,10 @@ export const pipelineClient = {
       subject?: string
       body: string
       recipients: string[]
+      // Passing the campaign id enables server-side exactly-once delivery:
+      // each recipient is claimed in `campaign_sends` so re-dispatch across
+      // tabs / reloads / retries / instances never double-sends.
+      campaignId?: string
     }) => post<CampaignSendResult>("/communications/campaign-send", input),
     outbox: {
       list: () => get<OutboxRow[]>("/communications/outbox"),

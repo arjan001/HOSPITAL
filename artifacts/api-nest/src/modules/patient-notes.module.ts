@@ -29,7 +29,7 @@ import {
   Put,
   UseGuards,
 } from "@nestjs/common"
-import { AdminGuard } from "../common/admin-guard"
+import { AdminGuard, RequirePerm } from "../common/admin-guard"
 import { InMemoryRepository, newId } from "../common/repository"
 
 // ─────────────── Types ───────────────
@@ -119,6 +119,7 @@ class PatientNotesService {
 // ─────────────── Controller ───────────────
 
 @UseGuards(AdminGuard)
+@RequirePerm("rx.view", "consult.handle")
 @Controller("admin/patients/:patientId/notes")
 class PatientNotesController {
   constructor(@Inject(PatientNotesService) private readonly svc: PatientNotesService) {}

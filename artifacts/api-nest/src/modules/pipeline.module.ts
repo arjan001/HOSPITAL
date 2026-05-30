@@ -56,9 +56,10 @@ import {
   normalizeLanguageCode,
 } from "./whatsapp.module"
 import { SmsModule, SmsService } from "./sms.module"
-import { db, communicationOutbox, communicationSentLog } from "@workspace/db"
-import { desc, eq } from "drizzle-orm"
-import { AdminGuard } from "../common/admin-guard"
+import { db, communicationOutbox, communicationSentLog, campaignSends } from "@workspace/db"
+import { and, desc, eq, lt, or } from "drizzle-orm"
+import { randomUUID } from "node:crypto"
+import { AdminGuard, RequirePerm, AnyAdmin } from "../common/admin-guard"
 
 /**
  * Pipeline automation — server-side intelligence layer on top of cmsStore.
@@ -80,6 +81,14 @@ import { AdminGuard } from "../common/admin-guard"
  * Clerk-admin once that lands). Endpoints are idempotent — running an
  * automation twice yields the same result if upstream data didn't change.
  */
+
+/**
+ * How long a campaign-send claim may sit in `sending` before it is considered
+ * stale and eligible for re-claim. A claim only stays in `sending` for the
+ * duration of one provider call, so any row older than this lost its owner to a
+ * crash/restart mid-send and must be retried rather than stranded forever.
+ */
+const CAMPAIGN_CLAIM_STALE_MS = 10 * 60 * 1000
 
 const CMS_BASE = `http://127.0.0.1:${process.env.PORT || 8090}/api/v2/admin/cms`
 const CMS_TIMEOUT_MS = 4_000
@@ -371,6 +380,7 @@ class SourcingAutomationService {
 }
 
 @UseGuards(AdminGuard)
+@RequirePerm("sourcing.view", "sourcing.manage")
 @Controller("admin/pipeline/sourcing")
 class SourcingPipelineController {
   constructor(
@@ -505,6 +515,7 @@ class TradingAutomationService {
 }
 
 @UseGuards(AdminGuard)
+@RequirePerm("sourcing.manage")
 @Controller("admin/pipeline/trading")
 class TradingPipelineController {
   constructor(
@@ -606,6 +617,7 @@ class QaAutomationService {
 }
 
 @UseGuards(AdminGuard)
+@RequirePerm("inventory.view", "inventory.edit")
 @Controller("admin/pipeline/qa")
 class QaPipelineController {
   constructor(
@@ -711,6 +723,7 @@ class LogisticsAutomationService {
 }
 
 @UseGuards(AdminGuard)
+@RequirePerm("delivery.manage")
 @Controller("admin/pipeline/logistics")
 class LogisticsPipelineController {
   constructor(
@@ -1270,19 +1283,28 @@ class CommunicationsAutomationService {
   /**
    * Dispatch a marketing campaign to a recipient list on a single channel.
    *
-   * Stateless by design: it sends to each recipient and returns per-recipient
-   * results WITHOUT writing to the durable outbox / sent-log. Campaigns are bulk
-   * — their progress is tracked client-side in the admin campaign queue, and
-   * recording every recipient here would flood the per-trigger tables (capped at
-   * 500). Recipients are de-duplicated. When the channel's provider is not
-   * configured each recipient comes back `skipped` so the UI can prompt the
-   * admin to switch the provider on rather than silently dropping the send.
+   * Exactly-once by design. Bulk campaign delivery is driven client-side (the
+   * admin campaign queue), so the same campaign can be re-dispatched across
+   * tabs, reloads, retries, or scaled API instances. When a `campaignId` is
+   * supplied each recipient is atomically CLAIMED in `campaign_sends`
+   * (INSERT … ON CONFLICT DO NOTHING on the unique (campaign,channel,recipient)
+   * index) before sending: whoever wins the insert owns the send, everyone else
+   * sees the row already exists and returns it as `skipped` (already sent) — so
+   * re-dispatching never double-sends. A previously `failed` recipient is
+   * re-claimed for retry; a `sent` recipient is never resent. A `failed` send
+   * releases its claim back to `failed` so a later retry can pick it up.
+   *
+   * It does NOT write to the durable outbox / sent-log (those are capped at 500
+   * and would be flooded by bulk sends). Recipients are de-duplicated. When the
+   * channel's provider is not configured each recipient comes back `skipped` so
+   * the UI can prompt the admin to switch the provider on.
    */
   async sendCampaign(input: {
     channel: "email" | "sms" | "whatsapp"
     subject?: string
     body: string
     recipients: string[]
+    campaignId?: string
   }): Promise<{
     total: number
     sent: number
@@ -1293,6 +1315,7 @@ class CommunicationsAutomationService {
     const channel = input.channel
     const subject = input.subject ?? ""
     const body = input.body ?? ""
+    const campaignId = (input.campaignId ?? "").trim() || null
     const recipients = Array.from(
       new Set((input.recipients || []).map((r) => String(r).trim()).filter(Boolean)),
     )
@@ -1306,6 +1329,17 @@ class CommunicationsAutomationService {
     let failed = 0
     let skipped = 0
     for (const to of recipients) {
+      // Idempotency gate: claim this recipient before sending. Skips silently
+      // (already-sent / claimed elsewhere) when we don't win the claim.
+      if (campaignId) {
+        const claim = await this.claimCampaignRecipient(campaignId, channel, to)
+        if (!claim.claimed) {
+          skipped++
+          results.push({ to, ok: false, status: "skipped", reason: claim.reason })
+          continue
+        }
+      }
+
       let res: { ok: boolean; skipped?: boolean; reason?: string }
       if (channel === "email") {
         res = await this.email.send({
@@ -1319,22 +1353,121 @@ class CommunicationsAutomationService {
       } else {
         res = await this.whatsapp.send({ to, body })
       }
+
       if (res.skipped) {
         skipped++
+        // Provider unconfigured: release the claim so a later run (after the
+        // provider is switched on) can retry this recipient.
+        if (campaignId) await this.releaseCampaignClaim(campaignId, channel, to, "skipped", res.reason)
         results.push({ to, ok: false, status: "skipped", reason: res.reason })
       } else if (res.ok) {
         sent++
+        if (campaignId) await this.markCampaignSent(campaignId, channel, to)
         results.push({ to, ok: true, status: "sent" })
       } else {
         failed++
+        if (campaignId) await this.releaseCampaignClaim(campaignId, channel, to, "failed", res.reason)
         results.push({ to, ok: false, status: "failed", reason: res.reason })
       }
     }
     return { total: recipients.length, sent, failed, skipped, results }
   }
+
+  /**
+   * Atomically claim a recipient for a campaign send. Returns `{claimed:true}`
+   * only to the single caller that wins the row. Already-`sent` recipients are
+   * never re-claimed; `failed`/stale rows are re-claimed for retry.
+   */
+  private async claimCampaignRecipient(
+    campaignId: string,
+    channel: string,
+    recipient: string,
+  ): Promise<{ claimed: boolean; reason?: string }> {
+    try {
+      const inserted = await db
+        .insert(campaignSends)
+        .values({ id: randomUUID(), campaignId, channel, recipient, status: "sending" })
+        .onConflictDoNothing({
+          target: [campaignSends.campaignId, campaignSends.channel, campaignSends.recipient],
+        })
+        .returning()
+      if (inserted.length > 0) return { claimed: true }
+
+      // Row already exists. Re-claim if it previously `failed`, or if it is a
+      // *stale* `sending` claim — i.e. a previous run crashed after claiming but
+      // before recording the outcome. Without this, a crash mid-send would strand
+      // the recipient in `sending` forever and silently skip them on every retry.
+      // A `sent` row is always left alone so we never double-send. The stale
+      // window is bounded so a genuinely in-flight concurrent send isn't stolen.
+      const staleBefore = new Date(Date.now() - CAMPAIGN_CLAIM_STALE_MS)
+      const reclaimed = await db
+        .update(campaignSends)
+        .set({ status: "sending", claimedAt: new Date(), reason: null })
+        .where(
+          and(
+            eq(campaignSends.campaignId, campaignId),
+            eq(campaignSends.channel, channel),
+            eq(campaignSends.recipient, recipient),
+            or(
+              eq(campaignSends.status, "failed"),
+              and(eq(campaignSends.status, "sending"), lt(campaignSends.claimedAt, staleBefore)),
+            ),
+          ),
+        )
+        .returning()
+      if (reclaimed.length > 0) return { claimed: true }
+      return { claimed: false, reason: "already sent or in progress" }
+    } catch (err) {
+      // Fail safe: if the ledger is unavailable, do NOT send (avoid the risk of
+      // an un-tracked duplicate blast). Surface as skipped with the reason.
+      console.error("[campaign] claim failed:", err)
+      return { claimed: false, reason: "idempotency ledger unavailable" }
+    }
+  }
+
+  private async markCampaignSent(campaignId: string, channel: string, recipient: string) {
+    try {
+      await db
+        .update(campaignSends)
+        .set({ status: "sent", sentAt: new Date(), reason: null })
+        .where(
+          and(
+            eq(campaignSends.campaignId, campaignId),
+            eq(campaignSends.channel, channel),
+            eq(campaignSends.recipient, recipient),
+          ),
+        )
+    } catch (err) {
+      console.error("[campaign] markSent failed:", err)
+    }
+  }
+
+  private async releaseCampaignClaim(
+    campaignId: string,
+    channel: string,
+    recipient: string,
+    status: "failed" | "skipped",
+    reason?: string,
+  ) {
+    try {
+      await db
+        .update(campaignSends)
+        .set({ status: "failed", reason: reason ?? status })
+        .where(
+          and(
+            eq(campaignSends.campaignId, campaignId),
+            eq(campaignSends.channel, channel),
+            eq(campaignSends.recipient, recipient),
+          ),
+        )
+    } catch (err) {
+      console.error("[campaign] release failed:", err)
+    }
+  }
 }
 
 @UseGuards(AdminGuard)
+@RequirePerm("marketing.broadcast", "whatsapp.send")
 @Controller("admin/pipeline/communications")
 class CommunicationsPipelineController {
   constructor(@Inject(CommunicationsAutomationService) private readonly svc: CommunicationsAutomationService) {}
@@ -1383,7 +1516,13 @@ class CommunicationsPipelineController {
   @Post("campaign-send")
   campaignSend(
     @Body()
-    body: { channel: "email" | "sms" | "whatsapp"; subject?: string; body: string; recipients: string[] },
+    body: {
+      channel: "email" | "sms" | "whatsapp"
+      subject?: string
+      body: string
+      recipients: string[]
+      campaignId?: string
+    },
   ) {
     if (!body?.channel || !["email", "sms", "whatsapp"].includes(body.channel)) {
       throw new HttpException("a valid channel is required", HttpStatus.BAD_REQUEST)
@@ -1478,6 +1617,7 @@ function extractWhatsAppStatuses(
 /* ---------- Pipeline status ---------- */
 
 @UseGuards(AdminGuard)
+@AnyAdmin()
 @Controller("admin/pipeline")
 class PipelineStatusController {
   @Get("status")

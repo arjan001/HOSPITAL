@@ -412,7 +412,7 @@ function startSimulatorTick() {
       for (const it of batch) { it.status = "sending"; changed = true }
       inFlightCampaigns.add(campaignId)
       pipelineClient.communications
-        .campaignSend({ channel, subject, body, recipients })
+        .campaignSend({ channel, subject, body, recipients, campaignId })
         .then((res) => applyDispatchResults(campaignId, dispatchedIds, res.results))
         .catch((err) =>
           applyDispatchResults(

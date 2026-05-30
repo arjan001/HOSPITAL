@@ -47,7 +47,7 @@ import { Observable, Subject, interval, map, merge } from "rxjs"
 import { and, asc, desc, eq, ne, sql } from "drizzle-orm"
 import { db, chatMessages, chatThreads } from "@workspace/db"
 import { newId } from "../common/repository"
-import { AdminGuard } from "../common/admin-guard"
+import { AdminGuard, RequirePerm } from "../common/admin-guard"
 
 export type ChatSender = "patient" | "staff"
 export type ChatStatus = "sent" | "delivered" | "read"
@@ -557,6 +557,7 @@ type TypingBody = { isTyping?: boolean }
 type CloseBody = { consultationId?: string }
 
 @Controller("chat")
+@RequirePerm("chat.respond")
 class ChatController {
   constructor(@Inject(ChatService) private readonly svc: ChatService) {}
 

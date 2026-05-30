@@ -99,6 +99,7 @@ import { AdminPrescriptions } from "@/components/admin/prescriptions";
 import { AdminChat } from "@/components/admin/chat";
 import AccountChatPage from "@/pages/account/chat";
 import { AdminRolesPermissions } from "@/components/admin/roles-permissions";
+import { AdminAccounts } from "@/components/admin/admin-accounts";
 import { AdminConsultations } from "@/components/admin/consultations";
 import { AdminConsultationSettings } from "@/components/admin/consultation-settings-page";
 import { AdminContactInquiries } from "@/components/admin/contact-inquiries";
@@ -461,6 +462,7 @@ function Router() {
       {/* <Route path="/admin/pos" component={AdminPos} /> hidden until client requests POS module */}
       <Route path="/admin/settings" component={AdminSettings} />
       <Route path="/admin/users" component={UsersManagement} />
+      <Route path="/admin/accounts" component={AdminAccounts} />
       <Route path="/admin/customers" component={AdminCustomers} />
       <Route path="/admin/consultation-settings" component={AdminConsultationSettings} />
       <Route path="/admin/announcement" component={AdminAnnouncementBar} />

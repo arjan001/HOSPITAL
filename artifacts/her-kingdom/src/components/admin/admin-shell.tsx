@@ -274,6 +274,7 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { label: "Website Settings",    href: "/admin/website-settings", icon: Settings,    perm: "cms.settings" },
       { label: "Users & Roles",       href: "/admin/users",            icon: Users,       perm: "users.manage" },
+      { label: "Admin Accounts",      href: "/admin/accounts",         icon: ShieldCheck, perm: "users.manage" },
       { label: "Roles & Permissions", href: "/admin/roles",            icon: Shield,      perm: "roles.manage" },
       { label: "Audit Log",           href: "/admin/audit-log",        icon: ScrollText,  perm: "analytics.view" },
       { label: "Documentation",       href: "/admin/docs",             icon: BookOpen },
@@ -753,6 +754,8 @@ export function AdminShell({ children, title }: { children: ReactNode; title: st
     if (typeof window !== "undefined") {
       window.localStorage.removeItem("shaniidrx.admin.token")
       window.localStorage.removeItem("shaniidrx.admin.user")
+      // Refresh the RBAC snapshot so the cleared session takes effect same-tab.
+      window.dispatchEvent(new Event("shaniidrx:admin-session"))
     }
     navigate("/admin/login")
   }

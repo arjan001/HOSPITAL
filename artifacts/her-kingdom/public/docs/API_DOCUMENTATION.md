@@ -116,7 +116,7 @@ Partner business records (the supplier/clinic/logistics objects, including KYC a
 
 - **Rate limiting** — sliding-window in-memory counter on all `/api/v2` traffic. Tunables: `RATE_LIMIT_WINDOW_MS` (default `60000`), `RATE_LIMIT_MAX` (default `600`/window). `x-forwarded-for` is only trusted when `TRUST_PROXY=1` (set in deployment); otherwise the raw socket address + signed sid form the key, so a client cannot forge its way around the limit. Responses carry `X-RateLimit-Limit/Remaining/Reset`; a breach returns `429` + `Retry-After`.
 - **Global error filter** — `AllExceptionsFilter` normalizes everything to `{ statusCode, error, timestamp }` and never leaks internals.
-- **SSRF guard** — outbound fetches (payment callbacks, scraping) validate the target host first.
+- **SSRF guard** — outbound fetches (e.g. payment callbacks) validate the target host first.
 
 ---
 
@@ -282,14 +282,13 @@ Paystack webhook. Verifies `x-paystack-signature` with HMAC-SHA512 using `PAYSTA
 
 > The storefront still persists most admin-managed content through the front-end `cmsStore` seam (browser today, these endpoints later). Wire admin screens to `cmsStore`, not directly to these routes, until the swap is flagged.
 
-### 2.12 Admin — catalog import & web scraper — `/api/v2/admin/catalog`
+### 2.12 Admin — catalog import — `/api/v2/admin/catalog`
 
 | Method | Path | Guard | Description |
 | ------ | ---- | ----- | ----------- |
 | `POST` | `/admin/catalog/categories/import` | admin | Bulk import categories (JSON/CSV). |
 | `POST` | `/admin/catalog/products/import` | admin | Bulk import products (JSON/CSV). |
 | `POST` | `/admin/catalog/google-sheet` | admin | Sync catalog from a Google Sheet. |
-| `POST` | `/admin/catalog/scrape-url` | admin | Scrape an external page for product data (SSRF-guarded). |
 
 ### 2.13 Admin — patient notes — `/api/v2/admin/patients/:patientId/notes`
 
@@ -408,14 +407,13 @@ This section explains how the endpoints above combine into the journeys that act
 4. All `/admin/*` routes (orders, payments, prescriptions, CMS, catalog, monitoring, pipeline, patient notes, chat/support) are now reachable.
 5. In production, an unset `ADMIN_API_TOKEN` makes every admin route return `503` — set the token before going live.
 
-### 3.6 Catalog management (import / scrape)
+### 3.6 Catalog management (import)
 
 **Actor:** merchandiser. **Identity:** admin.
 
 1. Bulk add via file: `POST /api/v2/admin/catalog/products/import` (and `/categories/import`).
 2. Or sync a sheet: `POST /api/v2/admin/catalog/google-sheet`.
-3. Or pull data from a supplier page: `POST /api/v2/admin/catalog/scrape-url` (SSRF-guarded).
-4. Content surfaces through the CMS seam (`/admin/cms/*` / front-end `cmsStore`).
+3. Content surfaces through the CMS seam (`/admin/cms/*` / front-end `cmsStore`).
 
 ### 3.7 Operations pipeline (automation)
 

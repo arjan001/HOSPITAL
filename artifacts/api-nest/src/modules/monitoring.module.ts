@@ -26,7 +26,7 @@ import {
 } from "@nestjs/common"
 import type { Request } from "express"
 import { randomUUID } from "node:crypto"
-import { AdminGuard, Public } from "../common/admin-guard"
+import { AdminGuard, Public, RequirePerm } from "../common/admin-guard"
 import { ErrorReportingService } from "./error-reporting.module"
 
 /* ---------- types ---------- */
@@ -456,6 +456,7 @@ function round2(n: number): number { return Math.round(n * 100) / 100 }
 /* ---------- controller ---------- */
 
 @UseGuards(AdminGuard)
+@RequirePerm("integrations.manage", "analytics.view")
 @Controller("monitoring")
 class MonitoringController {
   constructor(@Inject(MonitoringService) private readonly svc: MonitoringService) {}

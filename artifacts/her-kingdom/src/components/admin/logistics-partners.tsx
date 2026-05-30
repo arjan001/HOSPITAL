@@ -35,6 +35,7 @@ import {
 import {
   Sheet, SheetContent, SheetHeader, SheetTitle,
 } from "@/components/ui/sheet"
+import { TrustSeal } from "@/components/ui/trust-seal"
 
 const WINE = "#3D0814"
 const ORANGE = "#F97316"
@@ -676,7 +677,11 @@ export function AdminLogisticsPartners() {
                           <Truck className="h-4 w-4" style={{ color: PURPLE }} />
                         </div>
                         <div>
-                          <p className="font-semibold text-gray-800">{p.companyName}</p>
+                          <p className="font-semibold text-gray-800 flex items-center gap-1.5">
+                            {p.companyName}
+                            {/* Trust Seal — shown for active (vetted) partners. */}
+                            {p.status === "active" && <TrustSeal size="xs" label="Verified" />}
+                          </p>
                           <p className="text-xs text-gray-400 font-mono">{p.portalCode}</p>
                         </div>
                       </div>

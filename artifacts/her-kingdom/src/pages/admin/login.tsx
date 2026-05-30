@@ -4,8 +4,6 @@ import {
   Eye,
   EyeOff,
   Shield,
-  Lock,
-  Mail,
   ArrowLeft,
   Loader2,
   AlertCircle,
@@ -16,6 +14,18 @@ export const ADMIN_TOKEN_KEY = "shaniidrx.admin.token"
 export const ADMIN_USER_KEY = "shaniidrx.admin.user"
 
 type View = "login" | "forgot" | "forgot-sent"
+
+const WINE          = "#3D0814"
+const WINE_SOFT     = "#6B0F1A"
+const ACCENT_RED    = "#B91C1C"
+
+/* ───────────────────── glassmorphism tokens ───────────────────── */
+const GRADIENT_BG   = "linear-gradient(135deg, #E8A87C 0%, #C44B2B 35%, #8B1A1A 70%, #6B0F1A 100%)"
+const CARD_BG       = "rgba(255, 240, 230, 0.22)"
+const CARD_BORDER   = "rgba(255, 255, 255, 0.35)"
+const INPUT_BG      = "rgba(255, 250, 245, 0.92)"
+const INPUT_BORDER  = "rgba(255, 255, 255, 0.6)"
+const BTN_BG        = WINE
 
 export function AdminLoginPage() {
   const [, navigate] = useLocation()
@@ -58,8 +68,18 @@ export function AdminLoginPage() {
       window.localStorage.setItem(ADMIN_TOKEN_KEY, data.token)
       window.localStorage.setItem(
         ADMIN_USER_KEY,
-        JSON.stringify({ role: data.role, name: data.name, email: data.email }),
+        JSON.stringify({
+          role: data.role,
+          name: data.name,
+          email: data.email,
+          // Carry the account's effective permissions so the client RBAC layer
+          // gates the panel by the real signed-in identity (super_admin → "*").
+          permissions: data.permissions ?? [],
+        }),
       )
+      // Same-tab SPA navigation won't fire the cross-tab `storage` event, so
+      // nudge the permissions layer to re-read the new session immediately.
+      window.dispatchEvent(new Event("shaniidrx:admin-session"))
       navigate("/admin")
     } catch {
       setLoginError("Unable to connect to the server. Please try again.")
@@ -86,255 +106,295 @@ export function AdminLoginPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#3D0814] flex items-center justify-center p-4 relative overflow-hidden">
+    <div
+      className="min-h-screen flex items-center justify-center px-4 py-8 relative overflow-hidden"
+      style={{ background: GRADIENT_BG }}
+    >
       {/* Decorative circles */}
-      <div className="pointer-events-none absolute -top-32 -right-32 h-[420px] w-[420px] rounded-full bg-white/[0.04]" />
-      <div className="pointer-events-none absolute -bottom-24 -left-24 h-[300px] w-[300px] rounded-full bg-white/[0.04]" />
-      <div className="pointer-events-none absolute top-1/2 left-1/4 h-[180px] w-[180px] -translate-y-1/2 rounded-full bg-[#F97316]/[0.06]" />
+      <div className="absolute -top-24 -left-24 w-64 h-64 rounded-full border-2 border-white/20 pointer-events-none" />
+      <div className="absolute top-1/3 -left-12 w-48 h-48 rounded-full border-2 border-white/15 pointer-events-none" />
+      <div className="absolute -bottom-16 -right-16 w-72 h-72 rounded-full border-2 border-white/20 pointer-events-none" />
+      <div className="absolute top-1/4 -right-20 w-56 h-56 rounded-full border-2 border-white/15 pointer-events-none" />
 
-      <div className="relative w-full max-w-[420px]">
-        {/* Card */}
-        <div className="overflow-hidden rounded-2xl bg-white shadow-2xl">
-          {/* Colour bar */}
-          <div className="h-1 bg-gradient-to-r from-[#3D0814] via-[#6B0F1A] to-[#F97316]" />
-
-          <div className="px-8 py-9 md:px-10 md:py-10">
-            {/* Logo + badge */}
-            <div className="mb-8 text-center">
-              <img
-                src="/logo-rx.png"
-                alt="Shaniid RX"
-                className="mx-auto mb-5 h-24 w-auto object-contain"
-                onError={(e) => {
-                  ;(e.target as HTMLImageElement).style.display = "none"
-                }}
-              />
-              <div className="mb-5 inline-flex items-center gap-1.5 rounded-full bg-[#3D0814]/[0.08] px-3 py-1.5 text-[11px] font-semibold uppercase tracking-widest text-[#3D0814]">
-                <Shield size={10} strokeWidth={2.5} />
-                Admin Portal
-              </div>
-
-              {view === "login" && (
-                <>
-                  <h1 className="text-[22px] font-bold leading-tight text-gray-900">
-                    Sign in to Shaniid RX
-                  </h1>
-                  <p className="mt-1.5 text-sm text-gray-400">Authorized personnel only</p>
-                </>
-              )}
-              {view === "forgot" && (
-                <>
-                  <h1 className="text-[22px] font-bold leading-tight text-gray-900">
-                    Forgot your password?
-                  </h1>
-                  <p className="mt-1.5 text-sm text-gray-400">
-                    Enter your admin email to request a reset
-                  </p>
-                </>
-              )}
-              {view === "forgot-sent" && (
-                <>
-                  <h1 className="text-[22px] font-bold leading-tight text-gray-900">
-                    Check your inbox
-                  </h1>
-                  <p className="mt-1.5 text-sm text-gray-400">
-                    Recovery instructions sent if the email is registered
-                  </p>
-                </>
-              )}
-            </div>
-
-            {/* ── Login form ── */}
-            {view === "login" && (
-              <form onSubmit={handleLogin} className="space-y-5">
-                {/* Email */}
-                <div>
-                  <label className="mb-1.5 block text-sm font-medium text-gray-700">
-                    Email address
-                  </label>
-                  <div className="relative">
-                    <Mail
-                      size={15}
-                      className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400"
-                    />
-                    <input
-                      type="email"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      placeholder="admin@shaniidrx.com"
-                      required
-                      autoComplete="username"
-                      className="w-full rounded-lg border border-gray-200 py-2.5 pl-10 pr-4 text-sm transition-colors focus:border-[#3D0814] focus:outline-none focus:ring-2 focus:ring-[#3D0814]/20"
-                    />
-                  </div>
-                </div>
-
-                {/* Password */}
-                <div>
-                  <label className="mb-1.5 block text-sm font-medium text-gray-700">
-                    Password
-                  </label>
-                  <div className="relative">
-                    <Lock
-                      size={15}
-                      className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400"
-                    />
-                    <input
-                      type={showPassword ? "text" : "password"}
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      placeholder="Enter your password"
-                      required
-                      autoComplete="current-password"
-                      className="w-full rounded-lg border border-gray-200 py-2.5 pl-10 pr-11 text-sm transition-colors focus:border-[#3D0814] focus:outline-none focus:ring-2 focus:ring-[#3D0814]/20"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword((v) => !v)}
-                      className="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                      tabIndex={-1}
-                    >
-                      {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
-                    </button>
-                  </div>
-                </div>
-
-                {/* Error */}
-                {loginError && (
-                  <div className="flex items-start gap-2.5 rounded-lg border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-700">
-                    <AlertCircle size={15} className="mt-0.5 shrink-0" />
-                    {loginError}
-                  </div>
-                )}
-
-                {/* Submit */}
-                <button
-                  type="submit"
-                  disabled={loginLoading}
-                  className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#3D0814] py-2.5 font-semibold text-white transition-colors hover:bg-[#6B0F1A] disabled:opacity-60"
-                >
-                  {loginLoading ? (
-                    <>
-                      <Loader2 size={15} className="animate-spin" /> Signing in…
-                    </>
-                  ) : (
-                    "Sign in"
-                  )}
-                </button>
-
-                {/* Forgot password */}
-                <div className="text-center">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setView("forgot")
-                      setLoginError("")
-                    }}
-                    className="text-sm font-medium text-[#F97316] hover:text-[#ea6c09]"
-                  >
-                    Forgot password?
-                  </button>
-                </div>
-
-                {/* Development-only credential hint — never rendered in production builds */}
-                {import.meta.env.DEV && (
-                  <div className="rounded-lg border border-amber-100 bg-amber-50 px-3.5 py-2.5 text-[11px] leading-relaxed text-amber-800">
-                    <span className="font-semibold">Development login:</span> when no{" "}
-                    <code className="font-mono">ADMIN_EMAIL</code>/
-                    <code className="font-mono">ADMIN_PASSWORD</code> is configured, the built-in
-                    test login is <code className="font-mono">admin@shaniidrx.com</code> /{" "}
-                    <code className="font-mono">Admin@2024!</code>.
-                    <br />
-                    In production these defaults are disabled — a configured{" "}
-                    <code className="font-mono">ADMIN_EMAIL</code> and{" "}
-                    <code className="font-mono">ADMIN_PASSWORD</code> are required.
-                  </div>
-                )}
-              </form>
-            )}
-
-            {/* ── Forgot password form ── */}
-            {view === "forgot" && (
-              <form onSubmit={handleForgot} className="space-y-5">
-                <div>
-                  <label className="mb-1.5 block text-sm font-medium text-gray-700">
-                    Admin email address
-                  </label>
-                  <div className="relative">
-                    <Mail
-                      size={15}
-                      className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400"
-                    />
-                    <input
-                      type="email"
-                      value={forgotEmail}
-                      onChange={(e) => setForgotEmail(e.target.value)}
-                      placeholder="admin@shaniidrx.com"
-                      required
-                      autoComplete="username"
-                      className="w-full rounded-lg border border-gray-200 py-2.5 pl-10 pr-4 text-sm transition-colors focus:border-[#3D0814] focus:outline-none focus:ring-2 focus:ring-[#3D0814]/20"
-                    />
-                  </div>
-                </div>
-
-                <button
-                  type="submit"
-                  disabled={forgotLoading}
-                  className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#3D0814] py-2.5 font-semibold text-white transition-colors hover:bg-[#6B0F1A] disabled:opacity-60"
-                >
-                  {forgotLoading ? (
-                    <>
-                      <Loader2 size={15} className="animate-spin" /> Sending…
-                    </>
-                  ) : (
-                    "Send recovery instructions"
-                  )}
-                </button>
-
-                <div className="text-center">
-                  <button
-                    type="button"
-                    onClick={() => setView("login")}
-                    className="mx-auto flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700"
-                  >
-                    <ArrowLeft size={14} /> Back to sign in
-                  </button>
-                </div>
-              </form>
-            )}
-
-            {/* ── Forgot sent ── */}
-            {view === "forgot-sent" && (
-              <div className="space-y-5">
-                <div className="flex items-start gap-3 rounded-lg border border-green-100 bg-green-50 px-4 py-4 text-sm text-green-800">
-                  <CheckCircle2 size={16} className="mt-0.5 shrink-0 text-green-600" />
-                  <span>
-                    If <strong>{forgotEmail}</strong> is registered as an admin account, recovery
-                    instructions have been sent. For urgent access, contact your system
-                    administrator.
-                  </span>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    setView("login")
-                    setForgotEmail("")
-                  }}
-                  className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-gray-200 py-2.5 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50"
-                >
-                  <ArrowLeft size={14} /> Return to sign in
-                </button>
-              </div>
-            )}
+      {/* Glass card */}
+      <div
+        className="relative w-full max-w-md rounded-3xl overflow-hidden z-10"
+        style={{
+          background: CARD_BG,
+          backdropFilter: "blur(24px)",
+          WebkitBackdropFilter: "blur(24px)",
+          border: `1px solid ${CARD_BORDER}`,
+          boxShadow: "0 32px 64px -20px rgba(61,8,20,0.35), inset 0 1px 0 rgba(255,255,255,0.25)",
+        }}
+      >
+        {/* Header */}
+        <div className="px-8 pt-10 pb-6 text-center">
+          <img
+            src="/logo-rx.png"
+            alt="Shaniid RX"
+            className="mx-auto mb-5 h-20 w-auto object-contain"
+            onError={(e) => {
+              ;(e.target as HTMLImageElement).style.display = "none"
+            }}
+          />
+          <div
+            className="mb-5 inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] font-semibold uppercase tracking-widest"
+            style={{
+              background: "rgba(255,255,255,0.35)",
+              border: `1px solid ${INPUT_BORDER}`,
+              color: WINE,
+            }}
+          >
+            <Shield size={11} strokeWidth={2.5} />
+            Admin Portal
           </div>
+
+          <h1
+            className="text-2xl font-bold"
+            style={{ color: WINE, fontFamily: "var(--font-serif, ui-serif, Georgia, serif)" }}
+          >
+            {view === "login" && "Welcome"}
+            {view === "forgot" && "Forgot Password"}
+            {view === "forgot-sent" && "Check Your Inbox"}
+          </h1>
+          {view === "forgot" && (
+            <p className="mt-2 text-sm" style={{ color: WINE_SOFT }}>
+              Enter your admin email to request a reset
+            </p>
+          )}
+          {view === "forgot-sent" && (
+            <p className="mt-2 text-sm" style={{ color: WINE_SOFT }}>
+              Recovery instructions sent if the email is registered
+            </p>
+          )}
         </div>
 
-        {/* Footer note */}
-        <p className="mt-5 text-center text-xs text-white/30">
-          All access is logged and monitored. Unauthorized access is prohibited.
-        </p>
+        {/* ── Login form ── */}
+        {view === "login" && (
+          <form onSubmit={handleLogin} className="px-8 pb-8 space-y-5">
+            {/* Email */}
+            <div>
+              <label
+                className="text-xs font-bold uppercase tracking-wider mb-1.5 block"
+                style={{ color: WINE_SOFT }}
+              >
+                Email address
+              </label>
+              <div
+                className="flex items-center h-12 rounded-full overflow-hidden"
+                style={{ background: INPUT_BG, border: `1.5px solid ${INPUT_BORDER}` }}
+              >
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="admin@shaniidrx.com"
+                  required
+                  autoComplete="username"
+                  className="flex-1 h-full px-5 text-sm bg-transparent outline-none"
+                  style={{ color: WINE }}
+                />
+              </div>
+            </div>
+
+            {/* Password */}
+            <div>
+              <label
+                className="text-xs font-bold uppercase tracking-wider mb-1.5 block"
+                style={{ color: WINE_SOFT }}
+              >
+                Password
+              </label>
+              <div
+                className="flex items-center h-12 rounded-full overflow-hidden"
+                style={{ background: INPUT_BG, border: `1.5px solid ${INPUT_BORDER}` }}
+              >
+                <input
+                  type={showPassword ? "text" : "password"}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="Enter your password"
+                  required
+                  autoComplete="current-password"
+                  className="flex-1 h-full px-5 text-sm bg-transparent outline-none"
+                  style={{ color: WINE }}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((v) => !v)}
+                  className="px-4 text-gray-400 hover:text-gray-600 transition-colors"
+                  aria-label={showPassword ? "Hide password" : "Show password"}
+                  tabIndex={-1}
+                >
+                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
+            </div>
+
+            {/* Forgot password */}
+            <div className="flex items-center justify-end">
+              <button
+                type="button"
+                onClick={() => {
+                  setView("forgot")
+                  setLoginError("")
+                }}
+                className="text-xs font-semibold hover:underline"
+                style={{ color: ACCENT_RED }}
+              >
+                Forgot Password?
+              </button>
+            </div>
+
+            {/* Error */}
+            {loginError && (
+              <div
+                className="rounded-xl px-4 py-3 text-sm flex items-start gap-2"
+                style={{ background: "rgba(254,242,242,0.85)", border: "1px solid #FECACA", color: ACCENT_RED }}
+              >
+                <AlertCircle size={16} className="mt-0.5 shrink-0" />
+                {loginError}
+              </div>
+            )}
+
+            {/* Submit */}
+            <button
+              type="submit"
+              disabled={loginLoading}
+              className="w-full rounded-full font-bold text-base text-white flex items-center justify-center gap-2 transition-all hover:scale-[1.02] active:scale-[0.99] disabled:opacity-70"
+              style={{
+                height: 48,
+                background: BTN_BG,
+                boxShadow: "0 12px 24px -8px rgba(61,8,20,0.45)",
+              }}
+            >
+              {loginLoading ? (
+                <>
+                  <Loader2 size={18} className="animate-spin" /> Signing in…
+                </>
+              ) : (
+                "Login"
+              )}
+            </button>
+
+            {/* Development-only credential hint — never rendered in production builds */}
+            {import.meta.env.DEV && (
+              <div
+                className="rounded-xl px-4 py-3 text-[11px] leading-relaxed"
+                style={{ background: "rgba(255,251,235,0.85)", border: "1px solid #FDE68A", color: "#92400E" }}
+              >
+                <span className="font-semibold">Development login:</span> when no{" "}
+                <code className="font-mono">ADMIN_EMAIL</code>/
+                <code className="font-mono">ADMIN_PASSWORD</code> is configured, the built-in test
+                login is <code className="font-mono">admin@shaniidrx.com</code> /{" "}
+                <code className="font-mono">Admin@2024!</code>.
+                <br />
+                In production these defaults are disabled — a configured{" "}
+                <code className="font-mono">ADMIN_EMAIL</code> and{" "}
+                <code className="font-mono">ADMIN_PASSWORD</code> are required.
+              </div>
+            )}
+          </form>
+        )}
+
+        {/* ── Forgot password form ── */}
+        {view === "forgot" && (
+          <form onSubmit={handleForgot} className="px-8 pb-8 space-y-5">
+            <div>
+              <label
+                className="text-xs font-bold uppercase tracking-wider mb-1.5 block"
+                style={{ color: WINE_SOFT }}
+              >
+                Admin email address
+              </label>
+              <div
+                className="flex items-center h-12 rounded-full overflow-hidden"
+                style={{ background: INPUT_BG, border: `1.5px solid ${INPUT_BORDER}` }}
+              >
+                <input
+                  type="email"
+                  value={forgotEmail}
+                  onChange={(e) => setForgotEmail(e.target.value)}
+                  placeholder="admin@shaniidrx.com"
+                  required
+                  autoComplete="username"
+                  className="flex-1 h-full px-5 text-sm bg-transparent outline-none"
+                  style={{ color: WINE }}
+                />
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              disabled={forgotLoading}
+              className="w-full rounded-full font-bold text-base text-white flex items-center justify-center gap-2 transition-all hover:scale-[1.02] active:scale-[0.99] disabled:opacity-70"
+              style={{
+                height: 48,
+                background: BTN_BG,
+                boxShadow: "0 12px 24px -8px rgba(61,8,20,0.45)",
+              }}
+            >
+              {forgotLoading ? (
+                <>
+                  <Loader2 size={18} className="animate-spin" /> Sending…
+                </>
+              ) : (
+                "Send recovery instructions"
+              )}
+            </button>
+
+            <p className="text-center text-sm" style={{ color: "rgba(255,255,255,0.85)" }}>
+              Remembered it?{" "}
+              <button
+                type="button"
+                onClick={() => setView("login")}
+                className="font-bold hover:underline"
+                style={{ color: "#fff" }}
+              >
+                Back to Sign In
+              </button>
+            </p>
+          </form>
+        )}
+
+        {/* ── Forgot sent ── */}
+        {view === "forgot-sent" && (
+          <div className="px-8 pb-8 space-y-5">
+            <div
+              className="rounded-xl px-4 py-4 text-sm flex items-start gap-3"
+              style={{ background: "rgba(240,253,244,0.85)", border: "1px solid #BBF7D0", color: "#166534" }}
+            >
+              <CheckCircle2 size={18} className="mt-0.5 shrink-0 text-green-600" />
+              <span>
+                If <strong>{forgotEmail}</strong> is registered as an admin account, recovery
+                instructions have been sent. For urgent access, contact your system administrator.
+              </span>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => {
+                setView("login")
+                setForgotEmail("")
+              }}
+              className="w-full rounded-full font-semibold flex items-center justify-center gap-1.5 transition-all hover:scale-[1.02]"
+              style={{
+                height: 48,
+                background: "rgba(255,255,255,0.85)",
+                border: `1px solid ${INPUT_BORDER}`,
+                color: WINE,
+              }}
+            >
+              <ArrowLeft size={16} /> Return to sign in
+            </button>
+          </div>
+        )}
       </div>
+
+      {/* Footer note */}
+      <p className="absolute bottom-5 left-0 right-0 text-center text-xs" style={{ color: "rgba(255,255,255,0.7)" }}>
+        All access is logged and monitored for your security.
+      </p>
     </div>
   )
 }

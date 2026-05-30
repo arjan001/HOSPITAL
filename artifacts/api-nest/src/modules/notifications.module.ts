@@ -44,7 +44,7 @@ import {
 import type { Request } from "express"
 import { newId } from "../common/repository"
 import { EmailModule, EmailService } from "./email.module"
-import { AdminGuard } from "../common/admin-guard"
+import { AdminGuard, RequirePerm, AnyAdmin } from "../common/admin-guard"
 
 /**
  * Two surfaces in one module so they can share storage and the optional
@@ -316,6 +316,7 @@ class MyNotificationsController {
 }
 
 @UseGuards(AdminGuard)
+@AnyAdmin()
 @Controller("admin/notifications")
 class AdminNotificationsController {
   constructor(@Inject(NotificationsService) private readonly svc: NotificationsService) {}
@@ -391,6 +392,7 @@ class MyTicketsController {
 }
 
 @UseGuards(AdminGuard)
+@RequirePerm("chat.respond")
 @Controller("admin/support/tickets")
 class AdminTicketsController {
   constructor(@Inject(NotificationsService) private readonly svc: NotificationsService) {}

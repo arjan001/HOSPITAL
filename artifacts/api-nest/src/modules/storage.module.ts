@@ -24,7 +24,7 @@ import {
   Post,
   UseGuards,
 } from "@nestjs/common"
-import { AdminGuard } from "../common/admin-guard"
+import { AdminGuard, RequirePerm } from "../common/admin-guard"
 import {
   getStorage,
   getStorageStatus,
@@ -85,6 +85,7 @@ export class StorageService implements OnModuleInit {
 }
 
 @UseGuards(AdminGuard)
+@RequirePerm("integrations.manage", "cms.settings")
 @Controller("admin/storage")
 class StorageController {
   constructor(

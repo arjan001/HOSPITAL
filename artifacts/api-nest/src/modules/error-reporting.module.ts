@@ -38,7 +38,7 @@ import {
   UseGuards,
 } from "@nestjs/common"
 import { randomUUID } from "node:crypto"
-import { AdminGuard } from "../common/admin-guard"
+import { AdminGuard, RequirePerm } from "../common/admin-guard"
 import { AdminCmsModule, AdminCmsService } from "./admin-cms.module"
 
 /* ---------- types ---------- */
@@ -409,6 +409,7 @@ export class ErrorReportingService {
 /* ---------- controller ---------- */
 
 @UseGuards(AdminGuard)
+@RequirePerm("integrations.manage", "cms.settings")
 @Controller("admin/error-reporting")
 class ErrorReportingController {
   constructor(

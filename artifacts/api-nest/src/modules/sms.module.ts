@@ -32,7 +32,7 @@ import {
   Post,
   UseGuards,
 } from "@nestjs/common"
-import { AdminGuard } from "../common/admin-guard"
+import { AdminGuard, RequirePerm } from "../common/admin-guard"
 
 export type SmsProvider = "africastalking" | "none"
 
@@ -190,6 +190,7 @@ export class SmsService {
 }
 
 @UseGuards(AdminGuard)
+@RequirePerm("integrations.manage", "marketing.broadcast")
 @Controller("notifications/sms")
 class SmsController {
   constructor(@Inject(SmsService) private readonly sms: SmsService) {}

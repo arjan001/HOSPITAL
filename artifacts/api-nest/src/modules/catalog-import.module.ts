@@ -34,7 +34,7 @@ import {
   Post,
   UseGuards,
 } from "@nestjs/common"
-import { AdminGuard } from "../common/admin-guard"
+import { AdminGuard, RequirePerm } from "../common/admin-guard"
 
 /* ─────────────────────── shared CMS loopback ─────────────────────── */
 
@@ -411,6 +411,7 @@ class CatalogImportService {
 /* ─────────────────────── Controllers ─────────────────────── */
 
 @UseGuards(AdminGuard)
+@RequirePerm("products.edit")
 @Controller("admin/catalog")
 class CatalogImportController {
   constructor(@Inject(CatalogImportService) private readonly svc: CatalogImportService) {}

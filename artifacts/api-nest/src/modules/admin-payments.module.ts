@@ -37,7 +37,7 @@ import {
   AdminOrdersService,
   type AdminOrderRecord,
 } from "./admin-orders.module"
-import { AdminGuard } from "../common/admin-guard"
+import { AdminGuard, RequirePerm } from "../common/admin-guard"
 
 /**
  * Admin Payments view.
@@ -150,6 +150,7 @@ class AdminPaymentsService {
 }
 
 @UseGuards(AdminGuard)
+@RequirePerm("payments.view", "payments.refund")
 @Controller("admin/payments")
 class AdminPaymentsController {
   constructor(

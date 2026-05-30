@@ -15,14 +15,53 @@ import type { Role, StaffUser } from "@/components/admin/roles-permissions"
 
 const VIEW_AS_KEY = "shaniidrx.admin.viewAsRoleId"
 const CURRENT_USER_KEY = "shaniidrx.admin.currentUserId"
+// Identity of the actually signed-in admin account (written by the admin login
+// page). This is the source of truth for RBAC once a real session exists; the
+// cmsStore bootstrap below only applies when no backend session is present.
+const ADMIN_SESSION_KEY = "shaniidrx.admin.user"
+// Same-tab login/logout can't rely on the cross-tab `storage` event, so the
+// login page and logout button dispatch this event to refresh the snapshot.
+export const ADMIN_SESSION_EVENT = "shaniidrx:admin-session"
 
 const listeners = new Set<() => void>()
 function emit() { listeners.forEach((fn) => fn()) }
 
 if (typeof window !== "undefined") {
   window.addEventListener("storage", (e) => {
-    if (e.key === VIEW_AS_KEY || e.key === CURRENT_USER_KEY) emit()
+    if (e.key === VIEW_AS_KEY || e.key === CURRENT_USER_KEY || e.key === ADMIN_SESSION_KEY) emit()
   })
+  window.addEventListener(ADMIN_SESSION_EVENT, () => {
+    cachedSnapshot = snapshot()
+    emit()
+  })
+}
+
+/** Identity persisted by the admin login page after a successful sign-in. */
+type AdminSession = { role: string; name: string; email: string; permissions?: string[] }
+
+function readAdminSession(): AdminSession | null {
+  const raw = readLocal(ADMIN_SESSION_KEY)
+  if (!raw) return null
+  try {
+    const o = JSON.parse(raw) as Partial<AdminSession>
+    if (o && typeof o.role === "string" && typeof o.email === "string") {
+      return { role: o.role, name: o.name ?? o.email, email: o.email, permissions: o.permissions }
+    }
+  } catch {
+    /* ignore malformed session */
+  }
+  return null
+}
+
+const ROLE_LABELS: Record<string, string> = {
+  super_admin: "Super Admin",
+  pharmacist: "Pharmacist",
+  doctor: "Doctor",
+  fulfillment: "Fulfillment",
+  marketing: "Marketing",
+}
+function prettyRole(role: string): string {
+  return ROLE_LABELS[role] || role.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
 }
 
 function readLocal(key: string): string | null {
@@ -65,6 +104,42 @@ const BOOTSTRAP_USER: StaffUser = {
 }
 
 function snapshot(): EffectivePermissions {
+  // 1. Real signed-in admin account takes precedence over the cmsStore catalog.
+  const session = readAdminSession()
+  if (session) {
+    const isSuperAdmin = session.role === "super_admin"
+    const sessionPerms = isSuperAdmin ? ["*"] : session.permissions ?? []
+    const baseRole: Role = {
+      id: `account:${session.role}`,
+      name: prettyRole(session.role),
+      description: "Signed-in admin account",
+      color: "#3D0814",
+      permissions: sessionPerms,
+      builtIn: isSuperAdmin,
+    }
+    const user: StaffUser = {
+      id: `account:${session.email}`,
+      name: session.name,
+      email: session.email,
+      roleId: baseRole.id,
+      active: true,
+    }
+    // Super-admins may still preview the panel as another role (resolved
+    // against the cmsStore role catalog), without losing their real access.
+    const viewAsRoleId = isSuperAdmin ? readLocal(VIEW_AS_KEY) : null
+    let effectiveRole: Role = baseRole
+    let perms = new Set<string>(sessionPerms)
+    if (viewAsRoleId) {
+      const vr = cmsStore.get<Role[]>("roles", []).find((r) => r.id === viewAsRoleId)
+      if (vr) {
+        effectiveRole = vr
+        perms = new Set<string>(vr.permissions)
+      }
+    }
+    return { user, role: effectiveRole, isSuperAdmin, viewAsRoleId, permissions: perms }
+  }
+
+  // 2. No backend session — fall back to the cmsStore bootstrap (dev convenience).
   const persistedRoles = cmsStore.get<Role[]>("roles", [])
   const persistedStaff = cmsStore.get<StaffUser[]>("staff", [])
 

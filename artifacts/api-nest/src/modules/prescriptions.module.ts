@@ -49,7 +49,7 @@ import {
 } from "@nestjs/common"
 import type { Request, Response } from "express"
 import { InMemoryRepository, newId } from "../common/repository"
-import { AdminGuard } from "../common/admin-guard"
+import { AdminGuard, RequirePerm } from "../common/admin-guard"
 import { getStorage } from "../common/storage"
 import { PaystackModule, PaystackService } from "./paystack.module"
 import { UploadsModule, UploadsService } from "./uploads.module"
@@ -501,6 +501,7 @@ class MyPrescriptionsController {
 }
 
 @UseGuards(AdminGuard)
+@RequirePerm("rx.view", "rx.verify")
 @Controller("admin/prescriptions")
 class AdminPrescriptionsController {
   constructor(@Inject(PrescriptionsService) private readonly svc: PrescriptionsService) {}

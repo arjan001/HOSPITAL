@@ -32,6 +32,7 @@ import { useCart } from "@/lib/cart-context"
 import { useWishlist } from "@/lib/wishlist-context"
 import { isVideoUrl } from "@/lib/media-utils"
 import { ProductImage } from "./product-image"
+import { TrustSeal } from "@/components/ui/trust-seal"
 import useSWR from "swr"
 
 import { rememberProduct, useRecentlyViewed } from "@/lib/recently-viewed"
@@ -542,7 +543,7 @@ function ProductDetailPageInner({ slug }: { slug: string }) {
               </div>
 
               {/* Stock — simple text (matches reference) */}
-              <div className="mt-3">
+              <div className="mt-3 flex items-center gap-3">
                 {product.inStock ? (
                   <span className="text-[13px] font-medium" style={{ color: SUCCESS }}>
                     In Stock
@@ -551,6 +552,10 @@ function ProductDetailPageInner({ slug }: { slug: string }) {
                   <span className="text-[13px] font-medium text-red-600">
                     Out of Stock
                   </span>
+                )}
+                {/* Trust Seal — shown for genuine, in-stock items. Can later be gated on a real `verified` field. */}
+                {product.inStock && (
+                  <TrustSeal size="md" variant="soft" label="Verified Genuine" />
                 )}
               </div>
 

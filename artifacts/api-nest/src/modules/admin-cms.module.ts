@@ -42,7 +42,7 @@ import {
   Put,
   UseGuards,
 } from "@nestjs/common"
-import { AdminGuard } from "../common/admin-guard"
+import { AdminGuard, AnyAdmin } from "../common/admin-guard"
 
 /**
  * Generic CMS key/value store backing the storefront's `cmsStore`.
@@ -113,6 +113,7 @@ function assertKey(key: string) {
 }
 
 @UseGuards(AdminGuard)
+@AnyAdmin()
 @Controller("admin/cms")
 class AdminCmsController {
   constructor(@Inject(AdminCmsService) private readonly svc: AdminCmsService) {}

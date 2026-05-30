@@ -322,7 +322,6 @@ Phone must be a valid Safaricom number; normalised to E.164 `254XXXXXXXXX` inter
 | `AdminPaymentsModule` | `/api/v2/admin/payments` | Admin payment records view |
 | `AdminCmsModule` | `/api/v2/admin/cms` | NestJS-backed CMS (future swap from localStorage) |
 | `CatalogImportModule` | `/api/v2/admin/catalog/{categories,products}/import`, `/api/v2/admin/catalog/google-sheet` | Bulk CSV / Google-Sheets import. Both categories AND products persist into cmsStore (`categories` / `products` keys). Token-gated by `AdminGuard`. |
-| `WebScraperModule` | `POST /api/v2/admin/catalog/scrape-url` | Server-side scrape of product listing pages (avoids browser CORS). Token-gated. |
 | `PartnersModule` | `/api/v2/partners/:type/{auth,signout,orders}` | Server-side login + submission endpoints for the supplier / clinic / logistics portals. |
 
 #### Infrastructure Modules

@@ -40,7 +40,7 @@ import {
   Query,
   UseGuards,
 } from "@nestjs/common"
-import { AdminGuard } from "../common/admin-guard"
+import { AdminGuard, RequirePerm } from "../common/admin-guard"
 import {
   PatientNotificationsModule,
   PatientNotificationsService,
@@ -287,6 +287,7 @@ class AdminOrdersService {
 }
 
 @UseGuards(AdminGuard)
+@RequirePerm("orders.view", "orders.update")
 @Controller("admin/orders")
 class AdminOrdersController {
   constructor(

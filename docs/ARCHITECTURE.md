@@ -322,7 +322,6 @@ implementation against the `admin_cms` table. No client changes needed.
 | `AdminPaymentsModule` | `AdminPaymentsController` | `GET /admin/payments` | Transaction ledger view |
 | `AdminCmsModule` | `AdminCmsController` | `GET /admin/cms`, `GET/PUT/DELETE /admin/cms/:key` | Generic CMS key-value store backing cmsStore |
 | `CatalogImportModule` | `CatalogImportController` | `POST /admin/catalog/{categories/import, products/import, google-sheet}` | CSV/JSON/Sheet bulk ingestion |
-| `WebScraperModule` | `WebScraperController` | `POST /admin/catalog/scrape-url` | Supplier-page data scraping (SSRF-guarded) |
 | `PatientNotesModule` | `PatientNotesController` | `GET/POST /admin/patients/:patientId/notes`, `PUT/DELETE /admin/patients/:patientId/notes/:noteId` | Clinical sticky notes |
 | `PipelineModule` | 6 controllers | `GET /admin/pipeline/status`, `POST /admin/pipeline/{sourcing/scan, trading/recompute-margins, qa/scan-expiry, logistics/auto-assign, communications/send, communications/preview}` | Operations automation |
 

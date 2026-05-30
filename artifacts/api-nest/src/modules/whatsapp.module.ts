@@ -44,7 +44,7 @@ import {
   Post,
   UseGuards,
 } from "@nestjs/common"
-import { AdminGuard } from "../common/admin-guard"
+import { AdminGuard, RequirePerm } from "../common/admin-guard"
 
 export type WhatsAppProvider = "meta" | "twilio" | "none"
 
@@ -288,6 +288,7 @@ export class WhatsAppService {
 }
 
 @UseGuards(AdminGuard)
+@RequirePerm("whatsapp.send", "integrations.manage")
 @Controller("notifications/whatsapp")
 class WhatsAppController {
   constructor(@Inject(WhatsAppService) private readonly whatsapp: WhatsAppService) {}
