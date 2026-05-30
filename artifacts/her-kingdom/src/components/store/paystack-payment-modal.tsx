@@ -79,8 +79,17 @@ export function PaystackPaymentModal({
 
   if (!isOpen) return null
 
-  const cleanPhone = phone.replace(/[\s\-()]/g, "")
-  const isPhoneValid = /^(\+?254[17]\d{8}|0[17]\d{8}|011\d{7})$/.test(cleanPhone)
+  // Mirror checkout-page.tsx exactly so the modal never blocks a number the
+  // checkout already accepted. Tolerates spaces/dashes/parens/dots and all
+  // common Kenyan formats: 0113626187, 254113626187, +254113626187, 07/01
+  // prefixes, plus a generic 9–15 digit fallback. The server
+  // (paystack.module.ts) does the authoritative normalize-and-validate before
+  // calling Paystack, so a permissive client gate is safe.
+  const phoneDigits = phone.replace(/\D/g, "")
+  const cleanPhone = (phone.trim().startsWith("+") ? "+" : "") + phoneDigits
+  const isPhoneValid =
+    /^(\+?254[17]\d{8}|0[17]\d{8}|011\d{7})$/.test(cleanPhone) ||
+    (phoneDigits.length >= 9 && phoneDigits.length <= 15)
 
   const stopPolling = () => {
     if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null }
