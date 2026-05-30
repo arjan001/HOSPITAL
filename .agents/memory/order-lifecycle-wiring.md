@@ -1,18 +1,18 @@
 ---
 name: Order lifecycle wiring (Sourcing→Trading→QA→Logistics)
-description: Which pipeline stages are actually wired to live orders vs. standalone, and the api-server restart fragility — learned from a live e2e test.
+description: How fulfillment stages connect to live orders, and why api-server dev runs under tsx watch — durable conventions for this admin.
 ---
 
-# Order lifecycle: what is wired to real orders
+# Fulfillment stages must pull live orders, not stand alone
 
-Order statuses: `pending → confirmed → dispatched → delivered` (+`cancelled`). "confirmed" = payment captured and is the intended trigger for the fulfillment stages. Admin orders are API-backed (api-nest in-memory repo, shared storefront↔admin), so a guest checkout order is visible in `/admin/orders` immediately.
+Order statuses: `pending → confirmed → dispatched → delivered` (+`cancelled`). **"confirmed" = payment captured** and is the trigger that should feed every downstream fulfillment stage. Admin orders are API-backed (shared storefront↔admin), so a guest checkout order is visible in `/admin/orders` immediately.
 
-- **Logistics IS wired to live orders.** `logistics-ops.tsx` Dispatch Queue uses `useAdminOrders()` → filters `status === "confirmed"` and not-yet-batched. Confirmed orders appear automatically; "Run server auto-assign" works end-to-end. Verified: buy→confirm→queue→auto-assign→dispatched→delivered all pass.
-- **QA is NOT wired to live orders.** `qa-ops.tsx` "Dispatch QA" tab renders only manually-created cmsStore `qa.dispatch` checks (the "New QA check" button). Nothing pulls `confirmed` orders into QA, so a paid order never shows up there — it always reads "No QA checks yet" until someone hand-creates a check. This is the one real gap in the lifecycle.
-- **Trading** (`flow-pages.tsx`) is functional (RFQ/bids/negotiation/settlements forms via cmsStore), not a placeholder.
-- **Storage settings** (`/admin/storage`) only persists provider *selection* in cmsStore; secrets stay in env; "Run test upload" round-trips via `/api/v2/admin/storage/test`.
+**Convention:** any stage that gates/handles an order (Logistics dispatch queue, QA dispatch checks) materializes its work from confirmed orders via `useAdminOrders()` filtered to `status === "confirmed"`, rather than relying on hand-created entries. Logistics (`logistics-ops.tsx`) and QA (`qa-ops.tsx` DispatchTab "Awaiting QA" section) both follow this. If you add another fulfillment stage, mirror the same pattern.
 
-**Why it matters:** the figma flow (Sourcing→Trading→QA→Logistics) implies QA gates dispatch, but in code QA is an island. Any "make QA part of the pipeline" work must add a seam that materializes a `DispatchCheck` from each `confirmed` order (mirror the logistics `useAdminOrders` pattern).
+**Why:** QA originally only showed manually-created `qa.dispatch-checks`, so paid orders never appeared and the "trust pipeline" had a silent gap. The fix surfaces confirmed-but-unchecked orders and lets staff open a 7-step `DispatchCheck` prefilled with the order number.
 
-## api-server (legacy /api, port 8080) restart downtime
-The `api-server` workflow runs `build && start` (esbuild ~2.3mb, NO watch). Every restart drops the backend for a few seconds, during which the Vite proxy returns **502** for `/api/*` (e.g. `/shop` → `/api/products`). This looks like a "shop won't load" bug but is transient restart downtime. api-nest uses `tsx watch` (fast reload) and is not affected. Confirm a shop failure isn't just a mid-restart 502 before treating it as a code bug.
+**How to apply:** dedupe "awaiting" lists against BOTH `orderRef` and `batchRef` of existing checks (manual checks may set `batchRef = orderNo` with no `orderRef`), or you'll allow duplicate gates for the same order. Never mutate cmsStore during render/`useMemo` — only in event handlers, to avoid render loops.
+
+# api-server (legacy /api, port 8080) runs `tsx watch` in dev
+Dev script is `NODE_ENV=development tsx watch src/index.ts` (not `build && start`). The old build-then-start did a full ~2.3mb esbuild on every restart, leaving `/api/*` returning 502 for several seconds — which looked like a "shop won't load" bug but was just restart downtime. `tsx watch` boots in ~hundreds of ms.
+**Why:** `pino-pretty` transport is enabled only when `NODE_ENV !== "production"` and runs in a worker thread; it works fine under tsx (plain node_modules). The esbuild bundle (`build.mjs`, with `esbuild-plugin-pino`) is still used for production `build`/`start` — keep both.

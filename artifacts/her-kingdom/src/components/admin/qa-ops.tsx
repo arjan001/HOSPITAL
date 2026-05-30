@@ -20,6 +20,7 @@ import {
   Activity, Settings2, Search,
 } from "lucide-react"
 import { useCmsDoc, newId } from "@/lib/cms-store"
+import { useAdminOrders, type AdminOrderRecord } from "@/lib/orders-store"
 import { AdminShell } from "./admin-shell"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -250,6 +251,7 @@ export function AdminQaOps() {
   const [inventory, setInventory] = useCmsDoc<InventoryItem[]>(KEYS.inventory, DEFAULT_INVENTORY)
   const [checks, setChecks] = useCmsDoc<DispatchCheck[]>(KEYS.dispatch, [])
   const [config, setConfig] = useCmsDoc<QaConfig>(KEYS.config, DEFAULT_CONFIG)
+  const { items: orders } = useAdminOrders()
 
   const kpis = useMemo(() => {
     const lowStock = inventory.filter((i) => i.stock <= i.safetyStock).length
@@ -336,7 +338,7 @@ export function AdminQaOps() {
         {tab === "inventory" && <InventoryTab inventory={inventory} setInventory={setInventory} config={config} />}
         {tab === "stock-alerts" && <StockAlertsTab inventory={inventory} setInventory={setInventory} />}
         {tab === "expiry" && <ExpiryTab inventory={inventory} config={config} />}
-        {tab === "dispatch" && <DispatchTab checks={checks} setChecks={setChecks} inventory={inventory} config={config} />}
+        {tab === "dispatch" && <DispatchTab checks={checks} setChecks={setChecks} inventory={inventory} config={config} orders={orders} />}
         {tab === "settings" && <SettingsTab config={config} setConfig={setConfig} />}
       </div>
     </AdminShell>
@@ -732,16 +734,48 @@ function ExpirySection({ title, items, bucket, emptyText }: { title: string; ite
 // =====================================================================
 
 function DispatchTab({
-  checks, setChecks, inventory, config,
+  checks, setChecks, inventory, config, orders,
 }: {
   checks: DispatchCheck[]
   setChecks: (next: DispatchCheck[] | ((p: DispatchCheck[]) => DispatchCheck[])) => void
   inventory: InventoryItem[]
   config: QaConfig
+  orders: AdminOrderRecord[]
 }) {
   const [editing, setEditing] = useState<DispatchCheck | null>(null)
   const [open, setOpen] = useState(false)
   const [statusFilter, setStatusFilter] = useState<"all" | "pending" | "approved" | "rejected">("all")
+
+  // Confirmed (paid) orders that don't yet have a QA gate opened against them.
+  const awaitingQa = useMemo(() => {
+    // A check references an order via orderRef, or (for manual checks with no
+    // orderRef) via a batchRef that equals the order number — dedupe on both.
+    const referenced = new Set<string>()
+    for (const c of checks) {
+      if (c.orderRef) referenced.add(c.orderRef)
+      if (c.batchRef) referenced.add(c.batchRef)
+    }
+    return orders
+      .filter((o) => o.status === "confirmed" && !referenced.has(o.orderNo))
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+  }, [orders, checks])
+
+  // Open a 7-step QA gate for a specific confirmed order (mirrors the logistics queue pattern).
+  const startForOrder = (order: AdminOrderRecord) => {
+    setChecks((prev) =>
+      prev.some((c) => c.orderRef === order.orderNo)
+        ? prev
+        : [{
+            id: newId("qac"),
+            batchRef: order.orderNo,
+            orderRef: order.orderNo,
+            steps: blankSteps(),
+            notes: "",
+            checkedBy: "",
+            createdAt: new Date().toISOString(),
+          }, ...prev],
+    )
+  }
 
   const list = checks.slice().sort((a, b) => b.createdAt.localeCompare(a.createdAt)).filter((c) => {
     if (statusFilter === "pending") return !c.approvedAt && !c.rejectedAt
@@ -811,8 +845,29 @@ function DispatchTab({
         }
       />
 
+      {awaitingQa.length > 0 && (
+        <div className="border border-amber-200 bg-amber-50/60 rounded-sm">
+          <div className="px-4 py-2.5 border-b border-amber-200 flex items-center gap-2">
+            <AlertTriangle className="h-4 w-4 text-amber-600" />
+            <p className="text-sm font-medium text-amber-900">Paid orders awaiting QA ({awaitingQa.length})</p>
+            <span className="text-[11px] text-amber-700/80">Confirmed orders must clear the 7-step gate before dispatch.</span>
+          </div>
+          <ul className="divide-y divide-amber-100">
+            {awaitingQa.map((o) => (
+              <li key={o.orderNo} className="px-4 py-2.5 flex items-center justify-between gap-3 flex-wrap">
+                <div className="min-w-0">
+                  <p className="font-mono text-sm font-medium">{o.orderNo}</p>
+                  <p className="text-[11px] text-muted-foreground">{o.customer || "—"} · {o.items?.length ?? 0} item(s) · confirmed {new Date(o.createdAt).toLocaleDateString()}</p>
+                </div>
+                <Button size="sm" onClick={() => startForOrder(o)} className="h-8 bg-[#3D0814] hover:bg-[#6B0F1A] text-white gap-1.5"><ClipboardCheck className="h-3.5 w-3.5" /> Start QA</Button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       {list.length === 0 ? (
-        <EmptyState icon={ClipboardCheck} title="No QA checks yet" blurb="Open a check against an outbound batch to start the 7-step sign-off." />
+        <EmptyState icon={ClipboardCheck} title="No QA checks yet" blurb="Open a check against an outbound batch to start the 7-step sign-off, or start one from a paid order above." />
       ) : (
         <ul className="space-y-3">
           {list.map((c) => {

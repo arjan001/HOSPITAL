@@ -154,7 +154,11 @@ function SupplierModal({
     hasInsurance: false, notes: "",
   }
   const [form, setForm] = useState<typeof blank>(existing ? { ...existing } : blank)
-  const set = (k: string, v: unknown) => setForm(f => ({ ...f, [k]: v }))
+  const [errors, setErrors] = useState<{ companyName?: string; email?: string }>({})
+  const set = (k: string, v: unknown) => {
+    setForm(f => ({ ...f, [k]: v }))
+    if (k === "companyName" || k === "email") setErrors(e => ({ ...e, [k]: undefined }))
+  }
 
   const toggleCat = (c: SupplierCategory) => {
     set("categories", form.categories.includes(c)
@@ -163,7 +167,12 @@ function SupplierModal({
   }
 
   const handleSave = () => {
-    if (!form.companyName || !form.email) return
+    const next: { companyName?: string; email?: string } = {}
+    if (!form.companyName.trim()) next.companyName = "Company name is required"
+    if (!form.email.trim()) next.email = "Email is required"
+    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) next.email = "Enter a valid email address"
+    setErrors(next)
+    if (Object.keys(next).length > 0) return
     const now = new Date().toISOString()
     onSave({
       ...form,
@@ -195,7 +204,8 @@ function SupplierModal({
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <Label className="text-xs">Company Name *</Label>
-                <Input value={form.companyName} onChange={e => set("companyName", e.target.value)} placeholder="MediSupply Ltd" />
+                <Input value={form.companyName} onChange={e => set("companyName", e.target.value)} placeholder="MediSupply Ltd" aria-invalid={!!errors.companyName} className={errors.companyName ? "border-red-400 focus-visible:ring-red-400" : ""} />
+                {errors.companyName && <p className="text-[11px] text-red-600 mt-1">{errors.companyName}</p>}
               </div>
               <div>
                 <Label className="text-xs">Trading Name</Label>
@@ -240,7 +250,8 @@ function SupplierModal({
               </div>
               <div>
                 <Label className="text-xs">Email *</Label>
-                <Input type="email" value={form.email} onChange={e => set("email", e.target.value)} placeholder="john@medisupply.co.ke" />
+                <Input type="email" value={form.email} onChange={e => set("email", e.target.value)} placeholder="john@medisupply.co.ke" aria-invalid={!!errors.email} className={errors.email ? "border-red-400 focus-visible:ring-red-400" : ""} />
+                {errors.email && <p className="text-[11px] text-red-600 mt-1">{errors.email}</p>}
               </div>
               <div>
                 <Label className="text-xs">Phone</Label>
@@ -727,6 +738,7 @@ export function AdminSuppliers() {
       </div>
 
       <SupplierModal
+        key={showAdd ? (editing?.id ?? "new") : "closed"}
         open={showAdd}
         onClose={() => { setShowAdd(false); setEditing(null) }}
         existing={editing}
