@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "tsx watch src/main.ts",
-    "build": "tsc -p tsconfig.json",
+    "build": "node build.mjs",
     "start": "node dist/main.js",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
@@ -14,8 +14,10 @@
     "@nestjs/common": "^11.0.0",
     "@nestjs/core": "^11.0.0",
     "@nestjs/platform-express": "^11.0.0",
+    "@workspace/db": "workspace:*",
     "cloudinary": "^2.10.0",
     "cookie-parser": "^1.4.7",
+    "drizzle-orm": "catalog:",
     "express": "^5.2.1",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1"
@@ -24,6 +26,7 @@
     "@types/cookie-parser": "^1.4.10",
     "@types/express": "^5.0.0",
     "@types/node": "catalog:",
+    "esbuild": "^0.27.3",
     "tsx": "catalog:",
     "typescript": "^5.9.0"
   }

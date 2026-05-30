@@ -1,1 +1,3 @@
 - [Order lifecycle wiring](order-lifecycle-wiring.md) — Logistics auto-pulls confirmed orders; QA Dispatch is an island (manual checks only); api-server restart causes transient 502s on /api/*.
+- [api-nest payment trust gate](payment-trust-gate.md) — never grant value on a client-supplied payment reference; verify against Paystack server-side, bind to order, reserve reference atomically.
+- [api-nest build + @workspace/db](api-nest-build-and-db.md) — importing the shared Drizzle db forces esbuild bundling (not tsc) + tsconfig moduleResolution bundler; tsx dev masks it.

@@ -189,12 +189,18 @@ importers:
       '@nestjs/platform-express':
         specifier: ^11.0.0
         version: 11.1.19(@nestjs/common@11.1.19(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.1.19)
+      '@workspace/db':
+        specifier: workspace:*
+        version: link:../../lib/db
       cloudinary:
         specifier: ^2.10.0
         version: 2.10.0
       cookie-parser:
         specifier: ^1.4.7
         version: 1.4.7
+      drizzle-orm:
+        specifier: 'catalog:'
+        version: 0.45.2(@types/pg@8.18.0)(pg@8.20.0)
       express:
         specifier: ^5.2.1
         version: 5.2.1
@@ -214,6 +220,9 @@ importers:
       '@types/node':
         specifier: 'catalog:'
         version: 25.3.5
+      esbuild:
+        specifier: 0.27.3
+        version: 0.27.3
       tsx:
         specifier: 'catalog:'
         version: 4.21.0

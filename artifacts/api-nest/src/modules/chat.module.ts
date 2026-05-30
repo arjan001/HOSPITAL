@@ -17,9 +17,11 @@
  * recipient is connected (or connects), and "read" when the recipient opens the
  * conversation.
  *
- * Persistence: in-memory (survives browser reload; mirrors the Drizzle tables in
- * `lib/db/src/schema/chat.ts`). Postgres swap = replace the Maps with Drizzle —
- * no controller changes. See replit.md "DB-schema discipline".
+ * Persistence: PostgreSQL via Drizzle (`@workspace/db` → `chat_threads` /
+ * `chat_messages`). Threads, messages, attachments, and read/delivery state are
+ * durable across server restarts and deploys. Only the *runtime* transport state
+ * — SSE subjects and online/typing presence — stays in memory, because it
+ * reflects who is connected right now and is meaningless after a restart.
  *
  * Note on @Inject(ChatService): tsx/esbuild does not emit emitDecoratorMetadata,
  * so explicit @Inject(Token) on every controller constructor is required.
@@ -42,6 +44,8 @@ import {
 } from "@nestjs/common"
 import type { Request } from "express"
 import { Observable, Subject, interval, map, merge } from "rxjs"
+import { and, asc, desc, eq, ne, sql } from "drizzle-orm"
+import { db, chatMessages, chatThreads } from "@workspace/db"
 import { newId } from "../common/repository"
 import { AdminGuard } from "../common/admin-guard"
 
@@ -106,6 +110,10 @@ type SendOpts = {
   attachmentType?: AttachmentType
 }
 
+// Row shapes inferred from the Drizzle tables.
+type ThreadRow = typeof chatThreads.$inferSelect
+type MessageRow = typeof chatMessages.$inferSelect
+
 // Only allow attachment URLs that render safely in an <a href>/<img src> sink.
 // Accepts site-relative uploads ("/uploads/...") and http(s); rejects unsafe
 // schemes (javascript:, data:, vbscript:, etc.) to block script-URL injection.
@@ -121,10 +129,47 @@ function isSafeAttachmentUrl(url: string): boolean {
   }
 }
 
+/** Map a persisted thread row to the API/stream shape (ISO-string timestamps). */
+function toApiThread(r: ThreadRow): ChatThread {
+  return {
+    id: r.id,
+    patientName: r.patientName,
+    patientPhone: r.patientPhone,
+    consultationId: r.consultationId ?? null,
+    lastMessage: r.lastMessage ?? "",
+    lastSender: (r.lastSender as ChatSender | null) ?? null,
+    updatedAt: r.updatedAt.toISOString(),
+    createdAt: r.createdAt.toISOString(),
+    unreadByStaff: r.unreadByStaff,
+    unreadByPatient: r.unreadByPatient,
+    status: r.status as ChatThreadStatus,
+    closedAt: r.closedAt ? r.closedAt.toISOString() : null,
+  }
+}
+
+/** Map a persisted message row to the API/stream shape (ISO-string timestamps). */
+function toApiMessage(r: MessageRow): ChatMessage {
+  return {
+    id: r.id,
+    threadId: r.threadId,
+    sender: r.sender as ChatSender,
+    text: r.text,
+    createdAt: r.createdAt.toISOString(),
+    status: r.status as ChatStatus,
+    deliveredAt: r.deliveredAt ? r.deliveredAt.toISOString() : null,
+    readAt: r.readAt ? r.readAt.toISOString() : null,
+    authorName: r.authorName ?? undefined,
+    attachmentUrl: r.attachmentUrl ?? undefined,
+    attachmentName: r.attachmentName ?? undefined,
+    attachmentType: (r.attachmentType as AttachmentType | null) ?? undefined,
+  }
+}
+
 @Injectable()
 class ChatService {
-  private threads = new Map<string, ChatThread>()
-  private messages = new Map<string, ChatMessage[]>()
+  // Persistence is Postgres (Drizzle). The maps below are runtime-only transport
+  // state: SSE subjects + connection/last-seen presence. They reset on restart by
+  // design — the conversation itself lives in the database.
   private threadStreams = new Map<string, Subject<StreamEvent>>()
   private adminStream = new Subject<StreamEvent>()
 
@@ -155,56 +200,90 @@ class ChatService {
     this.adminStream.next(ev)
   }
 
-  ensureThread(sid: string, profile?: { name?: string; phone?: string }): ChatThread {
-    let t = this.threads.get(sid)
-    if (!t) {
-      const now = new Date().toISOString()
-      t = {
-        id: sid,
-        patientName: profile?.name?.trim() || "Guest patient",
-        patientPhone: profile?.phone?.trim() || "",
-        consultationId: null,
-        lastMessage: "",
-        lastSender: null,
-        updatedAt: now,
-        createdAt: now,
-        unreadByStaff: 0,
-        unreadByPatient: 0,
-        status: "active",
-        closedAt: null,
+  private async findThread(id: string): Promise<ThreadRow | null> {
+    const rows = await db
+      .select()
+      .from(chatThreads)
+      .where(eq(chatThreads.id, id))
+      .limit(1)
+    return rows[0] ?? null
+  }
+
+  async ensureThread(
+    sid: string,
+    profile?: { name?: string; phone?: string },
+  ): Promise<ChatThread> {
+    const existing = await this.findThread(sid)
+    if (!existing) {
+      const inserted = await db
+        .insert(chatThreads)
+        .values({
+          id: sid,
+          patientSessionId: sid,
+          patientName: profile?.name?.trim() || "Guest patient",
+          patientPhone: profile?.phone?.trim() || "",
+          consultationId: null,
+          lastMessage: "",
+          lastSender: null,
+          unreadByStaff: 0,
+          unreadByPatient: 0,
+          status: "active",
+          closedAt: null,
+        })
+        // Two concurrent first-requests for the same new session would both
+        // try to insert — the second is a no-op, then we re-read the winner.
+        .onConflictDoNothing()
+        .returning()
+      if (inserted[0]) {
+        const t = toApiThread(inserted[0])
+        this.adminStream.next({ type: "thread", thread: t })
+        return t
       }
-      this.threads.set(sid, t)
-      this.messages.set(sid, [])
-      this.adminStream.next({ type: "thread", thread: t })
-    } else if (profile) {
-      let changed = false
-      if (profile.name && profile.name.trim() && t.patientName !== profile.name.trim()) {
-        t.patientName = profile.name.trim()
-        changed = true
-      }
-      if (profile.phone && profile.phone.trim() && t.patientPhone !== profile.phone.trim()) {
-        t.patientPhone = profile.phone.trim()
-        changed = true
-      }
-      if (changed) this.adminStream.next({ type: "thread", thread: t })
+      const again = await this.findThread(sid)
+      return toApiThread(again!)
     }
-    return t
+
+    if (profile) {
+      const patch: Partial<typeof chatThreads.$inferInsert> = {}
+      const name = profile.name?.trim()
+      const phone = profile.phone?.trim()
+      if (name && existing.patientName !== name) patch.patientName = name
+      if (phone && existing.patientPhone !== phone) patch.patientPhone = phone
+      if (Object.keys(patch).length > 0) {
+        const updated = await db
+          .update(chatThreads)
+          .set(patch)
+          .where(eq(chatThreads.id, sid))
+          .returning()
+        const t = toApiThread(updated[0]!)
+        this.adminStream.next({ type: "thread", thread: t })
+        return t
+      }
+    }
+    return toApiThread(existing)
   }
 
-  listThreads(): ChatThread[] {
-    return [...this.threads.values()].sort((a, b) =>
-      b.updatedAt.localeCompare(a.updatedAt),
-    )
+  async listThreads(): Promise<ChatThread[]> {
+    const rows = await db
+      .select()
+      .from(chatThreads)
+      .orderBy(desc(chatThreads.updatedAt))
+    return rows.map(toApiThread)
   }
 
-  getThread(id: string): ChatThread {
-    const t = this.threads.get(id)
+  async getThread(id: string): Promise<ChatThread> {
+    const t = await this.findThread(id)
     if (!t) throw new HttpException("Thread not found", HttpStatus.NOT_FOUND)
-    return t
+    return toApiThread(t)
   }
 
-  listMessages(threadId: string): ChatMessage[] {
-    return this.messages.get(threadId) ?? []
+  async listMessages(threadId: string): Promise<ChatMessage[]> {
+    const rows = await db
+      .select()
+      .from(chatMessages)
+      .where(eq(chatMessages.threadId, threadId))
+      .orderBy(asc(chatMessages.createdAt))
+    return rows.map(toApiMessage)
   }
 
   /** Is the recipient of a message from `sender` currently connected? */
@@ -213,12 +292,12 @@ class ChatService {
     return (this.patientConns.get(threadId) ?? 0) > 0
   }
 
-  sendMessage(
+  async sendMessage(
     threadId: string,
     sender: ChatSender,
     text: string,
     opts: SendOpts = {},
-  ): ChatMessage {
+  ): Promise<ChatMessage> {
     const trimmed = (text ?? "").toString().trim()
     if (opts.attachmentUrl && !isSafeAttachmentUrl(opts.attachmentUrl)) {
       throw new HttpException("Invalid attachment URL", HttpStatus.BAD_REQUEST)
@@ -230,79 +309,100 @@ class ChatService {
     if (trimmed.length > 4000) {
       throw new HttpException("Message too long", HttpStatus.BAD_REQUEST)
     }
-    const t = this.threads.get(threadId)
+    const t = await this.findThread(threadId)
     if (!t) throw new HttpException("Thread not found", HttpStatus.NOT_FOUND)
 
     // A connected recipient means the message is delivered immediately.
-    const now = new Date().toISOString()
+    const now = new Date()
     const delivered = this.recipientOnline(threadId, sender)
-    const msg: ChatMessage = {
-      id: newId("msg"),
-      threadId,
-      sender,
-      text: trimmed,
-      createdAt: now,
-      status: delivered ? "delivered" : "sent",
-      deliveredAt: delivered ? now : null,
-      readAt: null,
-      authorName: opts.authorName,
-      attachmentUrl: opts.attachmentUrl,
-      attachmentName: opts.attachmentName,
-      attachmentType: opts.attachmentType,
-    }
-    const list = this.messages.get(threadId) ?? []
-    list.push(msg)
-    this.messages.set(threadId, list)
+    const insertedMsg = await db
+      .insert(chatMessages)
+      .values({
+        id: newId("msg"),
+        threadId,
+        sender,
+        authorName: opts.authorName ?? null,
+        text: trimmed,
+        attachmentUrl: opts.attachmentUrl ?? null,
+        attachmentName: opts.attachmentName ?? null,
+        attachmentType: opts.attachmentType ?? null,
+        deliveredAt: delivered ? now : null,
+        readAt: null,
+        status: delivered ? "delivered" : "sent",
+      })
+      .returning()
+    const msg = toApiMessage(insertedMsg[0]!)
 
-    t.lastMessage = trimmed || (opts.attachmentType === "image" ? "Photo" : "Attachment")
-    t.lastSender = sender
-    t.updatedAt = msg.createdAt
     // New activity reopens an archived (ended) consultation thread.
-    if (t.status === "archived") {
-      t.status = "active"
-      t.closedAt = null
-    }
-    if (sender === "patient") t.unreadByStaff++
-    else t.unreadByPatient++
+    const updatedThread = await db
+      .update(chatThreads)
+      .set({
+        lastMessage:
+          trimmed || (opts.attachmentType === "image" ? "Photo" : "Attachment"),
+        lastSender: sender,
+        updatedAt: now,
+        status: "active",
+        closedAt: null,
+        unreadByStaff: t.unreadByStaff + (sender === "patient" ? 1 : 0),
+        unreadByPatient: t.unreadByPatient + (sender === "staff" ? 1 : 0),
+      })
+      .where(eq(chatThreads.id, threadId))
+      .returning()
+    const thread = toApiThread(updatedThread[0]!)
 
     this.emit(threadId, { type: "message", threadId, message: msg })
-    this.emit(threadId, { type: "thread", thread: t })
+    this.emit(threadId, { type: "thread", thread })
     return msg
   }
 
   /** Mark all messages addressed TO `to` that are still "sent" as "delivered". */
-  private markDelivered(threadId: string, to: ChatSender) {
-    const list = this.messages.get(threadId) ?? []
-    let changed = false
-    const now = new Date().toISOString()
-    list.forEach((m) => {
-      if (m.sender !== to && m.status === "sent") {
-        m.status = "delivered"
-        m.deliveredAt = now
-        changed = true
-        this.emit(threadId, { type: "message", threadId, message: m })
-      }
-    })
-    return changed
+  private async markDelivered(threadId: string, to: ChatSender): Promise<void> {
+    const now = new Date()
+    const updated = await db
+      .update(chatMessages)
+      .set({ status: "delivered", deliveredAt: now })
+      .where(
+        and(
+          eq(chatMessages.threadId, threadId),
+          ne(chatMessages.sender, to),
+          eq(chatMessages.status, "sent"),
+        ),
+      )
+      .returning()
+    updated.forEach((r) =>
+      this.emit(threadId, { type: "message", threadId, message: toApiMessage(r) }),
+    )
   }
 
-  markRead(threadId: string, by: ChatSender): ChatThread {
-    const t = this.threads.get(threadId)
+  async markRead(threadId: string, by: ChatSender): Promise<ChatThread> {
+    const t = await this.findThread(threadId)
     if (!t) throw new HttpException("Thread not found", HttpStatus.NOT_FOUND)
-    if (by === "staff") t.unreadByStaff = 0
-    else t.unreadByPatient = 0
-    const list = this.messages.get(threadId) ?? []
-    const now = new Date().toISOString()
-    list.forEach((m) => {
-      if (m.sender !== by && m.status !== "read") {
-        m.status = "read"
-        if (!m.deliveredAt) m.deliveredAt = now
-        m.readAt = now
-      }
-    })
+    const updated = await db
+      .update(chatThreads)
+      .set(by === "staff" ? { unreadByStaff: 0 } : { unreadByPatient: 0 })
+      .where(eq(chatThreads.id, threadId))
+      .returning()
+    const now = new Date()
+    await db
+      .update(chatMessages)
+      .set({
+        status: "read",
+        readAt: now,
+        // A message read before it was ever marked delivered still gets a
+        // delivered timestamp so the sender's ticks remain monotonic.
+        deliveredAt: sql`COALESCE(${chatMessages.deliveredAt}, ${now})`,
+      })
+      .where(
+        and(
+          eq(chatMessages.threadId, threadId),
+          ne(chatMessages.sender, by),
+          ne(chatMessages.status, "read"),
+        ),
+      )
+    const thread = toApiThread(updated[0]!)
     this.emit(threadId, { type: "read", threadId, by })
-    this.emit(threadId, { type: "thread", thread: t })
-    return t
+    this.emit(threadId, { type: "thread", thread })
+    return thread
   }
 
   /**
@@ -310,27 +410,42 @@ class ChatService {
    * "archived" + timestamps `closedAt`. The conversation and all messages
    * are kept (not deleted) so they remain a retrievable saved record.
    */
-  closeThread(threadId: string, consultationId?: string): ChatThread {
-    const t = this.threads.get(threadId)
+  async closeThread(
+    threadId: string,
+    consultationId?: string,
+  ): Promise<ChatThread> {
+    const t = await this.findThread(threadId)
     if (!t) throw new HttpException("Thread not found", HttpStatus.NOT_FOUND)
-    t.status = "archived"
-    t.closedAt = new Date().toISOString()
-    if (consultationId) t.consultationId = consultationId
-    this.emit(threadId, { type: "thread", thread: t })
-    return t
+    const patch: Partial<typeof chatThreads.$inferInsert> = {
+      status: "archived",
+      closedAt: new Date(),
+    }
+    if (consultationId) patch.consultationId = consultationId
+    const updated = await db
+      .update(chatThreads)
+      .set(patch)
+      .where(eq(chatThreads.id, threadId))
+      .returning()
+    const thread = toApiThread(updated[0]!)
+    this.emit(threadId, { type: "thread", thread })
+    return thread
   }
 
   setTyping(threadId: string, who: ChatSender, isTyping: boolean): void {
-    if (!this.threads.has(threadId)) return
+    // Typing is ephemeral and high-frequency (fires on keystrokes), so we emit
+    // without a DB round-trip. A typing event for a missing thread is harmless.
     this.emit(threadId, { type: "typing", threadId, who, isTyping })
   }
 
-  deleteThread(threadId: string): void {
-    if (!this.threads.has(threadId)) {
+  async deleteThread(threadId: string): Promise<void> {
+    // chat_messages cascade-delete via the thread FK.
+    const deleted = await db
+      .delete(chatThreads)
+      .where(eq(chatThreads.id, threadId))
+      .returning()
+    if (deleted.length === 0) {
       throw new HttpException("Thread not found", HttpStatus.NOT_FOUND)
     }
-    this.threads.delete(threadId)
-    this.messages.delete(threadId)
     this.patientConns.delete(threadId)
     this.patientLastSeen.delete(threadId)
     this.emit(threadId, { type: "deleted", threadId })
@@ -338,7 +453,7 @@ class ChatService {
     this.threadStreams.delete(threadId)
   }
 
-  /* ── Presence ────────────────────────────────────────────── */
+  /* ── Presence (runtime-only, in-memory) ──────────────────── */
 
   private staffPresence(threadId: string): PresencePayload {
     return {
@@ -359,11 +474,19 @@ class ChatService {
     }
   }
 
+  /** Thread ids we currently hold any presence info for (online or last-seen). */
+  private presenceThreadIds(): string[] {
+    return [
+      ...new Set([...this.patientConns.keys(), ...this.patientLastSeen.keys()]),
+    ]
+  }
+
   /** A patient SSE connection opened. Returns the initial snapshot to push. */
   patientConnect(threadId: string): StreamEvent[] {
     this.patientConns.set(threadId, (this.patientConns.get(threadId) ?? 0) + 1)
-    // Deliver any pending staff→patient messages.
-    this.markDelivered(threadId, "patient")
+    // Deliver any pending staff→patient messages (fire-and-forget; emits land
+    // on the just-subscribed stream).
+    void this.markDelivered(threadId, "patient").catch(() => {})
     // Tell staff this patient is online.
     this.adminStream.next({ type: "presence", presence: this.patientPresence(threadId) })
     // Snapshot for the patient: is the pharmacy online?
@@ -378,9 +501,13 @@ class ChatService {
     } else {
       this.patientConns.set(threadId, n)
     }
-    if (this.threads.has(threadId)) {
-      this.adminStream.next({ type: "presence", presence: this.patientPresence(threadId) })
-    }
+    this.adminStream.next({ type: "presence", presence: this.patientPresence(threadId) })
+  }
+
+  /** Deliver pending patient→staff messages across every thread. */
+  private async deliverAllToStaff(): Promise<void> {
+    const rows = await db.select({ id: chatThreads.id }).from(chatThreads)
+    for (const r of rows) await this.markDelivered(r.id, "staff")
   }
 
   /** A staff (admin) SSE connection opened. Returns the initial snapshot. */
@@ -389,13 +516,13 @@ class ChatService {
     if (this.staffConns === 1) {
       // First staff online: deliver pending patient→staff messages everywhere
       // and tell every patient the pharmacy is online.
-      this.threads.forEach((t) => this.markDelivered(t.id, "staff"))
+      void this.deliverAllToStaff().catch(() => {})
       this.broadcastAll({ type: "presence", presence: this.staffPresence("") })
     }
-    // Snapshot for this admin: every patient's presence + staff.
-    const snap: StreamEvent[] = [...this.threads.values()].map((t) => ({
+    // Snapshot for this admin: every known patient's presence + staff.
+    const snap: StreamEvent[] = this.presenceThreadIds().map((id) => ({
       type: "presence" as const,
-      presence: this.patientPresence(t.id),
+      presence: this.patientPresence(id),
     }))
     snap.push({ type: "presence", presence: this.staffPresence("") })
     return snap
@@ -440,14 +567,14 @@ class ChatController {
   }
 
   @Get("me/messages")
-  myMessages(@Req() req: Request) {
-    this.svc.ensureThread(req.sessionId)
+  async myMessages(@Req() req: Request) {
+    await this.svc.ensureThread(req.sessionId)
     return this.svc.listMessages(req.sessionId)
   }
 
   @Post("me/messages")
-  sendAsPatient(@Req() req: Request, @Body() body: SendBody) {
-    const t = this.svc.ensureThread(req.sessionId, {
+  async sendAsPatient(@Req() req: Request, @Body() body: SendBody) {
+    const t = await this.svc.ensureThread(req.sessionId, {
       name: body?.name,
       phone: body?.phone,
     })
@@ -460,27 +587,27 @@ class ChatController {
   }
 
   @Post("me/read")
-  markPatientRead(@Req() req: Request) {
-    this.svc.ensureThread(req.sessionId)
+  async markPatientRead(@Req() req: Request) {
+    await this.svc.ensureThread(req.sessionId)
     return this.svc.markRead(req.sessionId, "patient")
   }
 
   @Post("me/typing")
-  patientTyping(@Req() req: Request, @Body() body: TypingBody) {
-    this.svc.ensureThread(req.sessionId)
+  async patientTyping(@Req() req: Request, @Body() body: TypingBody) {
+    await this.svc.ensureThread(req.sessionId)
     this.svc.setTyping(req.sessionId, "patient", !!body?.isTyping)
     return { ok: true }
   }
 
   @Post("me/close")
-  closeMyThread(@Req() req: Request, @Body() body: CloseBody) {
-    this.svc.ensureThread(req.sessionId)
+  async closeMyThread(@Req() req: Request, @Body() body: CloseBody) {
+    await this.svc.ensureThread(req.sessionId)
     return this.svc.closeThread(req.sessionId, body?.consultationId)
   }
 
   @Post("me/test")
-  patientTest(@Req() req: Request, @Body() body: SendBody) {
-    const t = this.svc.ensureThread(req.sessionId, { name: body?.name, phone: body?.phone })
+  async patientTest(@Req() req: Request, @Body() body: SendBody) {
+    const t = await this.svc.ensureThread(req.sessionId, { name: body?.name, phone: body?.phone })
     return this.svc.sendMessage(
       t.id,
       "patient",
@@ -492,7 +619,9 @@ class ChatController {
   @Sse("me/stream")
   myStream(@Req() req: Request): Observable<{ data: StreamEvent | Ping }> {
     const sid = req.sessionId
-    this.svc.ensureThread(sid)
+    // Ensure the thread row exists (fire-and-forget; other endpoints also
+    // ensure it). Presence is in-memory and synchronous below.
+    void this.svc.ensureThread(sid).catch(() => {})
     return new Observable<{ data: StreamEvent | Ping }>((subscriber) => {
       const snapshot = this.svc.patientConnect(sid)
       const sub = merge(
@@ -531,8 +660,8 @@ class ChatController {
 
   @UseGuards(AdminGuard)
   @Post("admin/threads/:id/messages")
-  sendAsStaff(@Param("id") id: string, @Body() body: SendBody) {
-    this.svc.getThread(id)
+  async sendAsStaff(@Param("id") id: string, @Body() body: SendBody) {
+    await this.svc.getThread(id)
     return this.svc.sendMessage(id, "staff", body?.text ?? "", {
       authorName: body?.name || "Pharmacist",
       attachmentUrl: body?.attachmentUrl,
@@ -556,8 +685,8 @@ class ChatController {
 
   @UseGuards(AdminGuard)
   @Post("admin/threads/:id/test")
-  staffTest(@Param("id") id: string, @Body() body: SendBody) {
-    this.svc.getThread(id)
+  async staffTest(@Param("id") id: string, @Body() body: SendBody) {
+    await this.svc.getThread(id)
     return this.svc.sendMessage(
       id,
       "staff",
@@ -574,8 +703,8 @@ class ChatController {
 
   @UseGuards(AdminGuard)
   @Delete("admin/threads/:id")
-  deleteThread(@Param("id") id: string) {
-    this.svc.deleteThread(id)
+  async deleteThread(@Param("id") id: string) {
+    await this.svc.deleteThread(id)
     return { ok: true }
   }
 
