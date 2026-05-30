@@ -381,7 +381,7 @@ After signing in at `/portal/logistics`:
 | Role | Access | Auth method |
 | ---- | ------ | ----------- |
 | Customer | Storefront — browse, buy, manage own orders + prescriptions. | Clerk (email / username / Google) |
-| Local super-admin | Full admin access at `/admin`. | Hardcoded in `admin-shell.tsx` |
+| Admin / operator | Full admin access at `/admin`. | Email + password at `/admin/auth/login` → token sent as `x-admin-token` (validated by `AdminGuard` against `ADMIN_API_TOKEN`). In production an unset token closes every admin route; dev allows a fallback token. Single `super_admin` role today; finer roles next. |
 | Supplier partner | Self-service portal at `/portal/supplier`. | Email + `SUP-XXXX-XXXX` portal code |
 | Clinic partner | Self-service portal at `/portal/clinic`. | Email + `CLN-XXXX-XXXX` portal code |
 | Logistics partner | Self-service portal at `/portal/logistics`. | Email + `LOG-XXXX-XXXX` portal code |
@@ -456,14 +456,21 @@ Admin pages and partner portals are intentionally `noindex`. Page-level override
 
 ---
 
-## 12. Notifications (Phase 3 preview)
+## 12. Notifications, messaging & support (shipped)
 
-Coming in Phase 3:
+The messaging stack is live in api-nest. All transports are **env-gated and fail soft** — if a provider isn't configured, the message is queued to the outbox instead of erroring, so nothing breaks.
 
-- **Email** via Resend — verification, prescription approved, order receipt, consultation confirmed, partner KYC approved.
-- **In-app alerts** — bell-icon dropdown in the admin header surfacing every new order, prescription, support ticket, consultation request, and partner application.
-- **Contact support / ticketing** — public `/contact` form creates a ticket, admin replies inside `/admin/support/tickets`, the customer sees the thread in `/account/support`.
-- **Partner email notifications** — portal code delivery email on onboarding, KYC decision email, PO / delivery assignment email.
+- **In-app alerts** — `/api/v2/me/notifications` for customers and `/api/v2/admin/notifications` for operators. Mark-read endpoints on both sides.
+- **Support tickets** — customers open and reply at `/api/v2/me/support/tickets`; operators triage and close at `/api/v2/admin/support/tickets` (`PATCH …/:id/status`).
+- **Live chat** — customer ↔ pharmacist transcript at `/api/v2/chat/me/messages`; the operator queue is `/api/v2/chat/admin/threads`.
+- **Email** via Resend — `/api/v2/notifications/email/send`. Set `RESEND_API_KEY` + `RESEND_FROM` to switch it on.
+- **WhatsApp** — `/api/v2/notifications/whatsapp/send`. **Meta WhatsApp Cloud API is the primary provider**, with Twilio as a drop-in alternative. Template presets (order confirmation, prescription received/ready, payment received, dispatch/delivery, OTP, …) live in **Marketing → Message Templates**.
+- **Pipeline communications** — `/api/v2/admin/pipeline/communications/{preview,send}` renders a template and dispatches it over email/WhatsApp, falling back to the outbox when a provider is off.
+- **Partner emails** — portal-code delivery on onboarding via `/api/v2/partners/welcome`.
+
+**Still to wire (roadmap):** auto-firing a WhatsApp/email the moment a specific event happens (e.g. prescription uploaded). The transports and templates are ready; it needs customer-phone plumbing + a trigger→template resolver.
+
+See `docs/API_DOCUMENTATION.md` §2.9, §2.15 and the workflows in §3.9 for the full surface.
 
 ---
 
