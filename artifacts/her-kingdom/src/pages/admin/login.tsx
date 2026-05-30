@@ -239,13 +239,15 @@ export function AdminLoginPage() {
                 {/* Development-only credential hint — never rendered in production builds */}
                 {import.meta.env.DEV && (
                   <div className="rounded-lg border border-amber-100 bg-amber-50 px-3.5 py-2.5 text-[11px] leading-relaxed text-amber-800">
-                    <span className="font-semibold">Development login:</span>{" "}
-                    <code className="font-mono">admin@shaniidrx.com</code> /{" "}
-                    <code className="font-mono">Admin@2024!</code>
+                    <span className="font-semibold">Development login:</span> when no{" "}
+                    <code className="font-mono">ADMIN_EMAIL</code>/
+                    <code className="font-mono">ADMIN_PASSWORD</code> is configured, the built-in
+                    test login is <code className="font-mono">admin@shaniidrx.com</code> /{" "}
+                    <code className="font-mono">Admin@2024!</code>.
                     <br />
-                    In production these defaults are disabled — set{" "}
+                    In production these defaults are disabled — a configured{" "}
                     <code className="font-mono">ADMIN_EMAIL</code> and{" "}
-                    <code className="font-mono">ADMIN_PASSWORD</code> on the deployment.
+                    <code className="font-mono">ADMIN_PASSWORD</code> are required.
                   </div>
                 )}
               </form>
