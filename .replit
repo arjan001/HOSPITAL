@@ -55,3 +55,7 @@ externalPort = 80
 
 [userenv.shared]
 PAYSTACK_PUBLIC_KEY = "pk_test_29cf9e81fde7d39d097459c2ebd74af8135d274e"
+
+[userenv.production]
+ADMIN_EMAIL = "admin@shaniidrx.com"
+ADMIN_PASSWORD = "Admin@2024!"
