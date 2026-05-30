@@ -42,12 +42,18 @@ import {
   Injectable,
   Module,
   Post,
+  Query,
   UseGuards,
 } from "@nestjs/common"
 import { AdminCmsModule } from "./admin-cms.module"
 import { EmailModule, EmailService } from "./email.module"
 import { NotificationsModule, NotificationsService } from "./notifications.module"
-import { WhatsAppModule, WhatsAppService } from "./whatsapp.module"
+import {
+  WhatsAppModule,
+  WhatsAppService,
+  orderedTemplateTokens,
+  normalizeLanguageCode,
+} from "./whatsapp.module"
 import { AdminGuard } from "../common/admin-guard"
 
 /**
@@ -224,6 +230,30 @@ type MessageTemplate = {
   enabled: boolean
   /** Meta-approved WhatsApp template name (for channel === "whatsapp"). */
   whatsappTemplateName?: string
+}
+
+/** Delivery lifecycle for an auto-text, mirrored from Meta status callbacks. */
+type SentLogStatus = "sent" | "delivered" | "read" | "failed" | "queued"
+
+/** One row in the `communications.sent-log` cmsStore key (admin visibility). */
+type SentLogRow = {
+  id: string
+  at: string
+  channel: "whatsapp"
+  to: string
+  trigger: string
+  templateId: string
+  /** Meta template name when sent as a template (vs. free-form text). */
+  templateName?: string
+  /** Language code the template was sent in (Meta templates only). */
+  language?: string
+  /** Provider message id — the key the Meta status webhook matches on. */
+  messageId?: string
+  status: SentLogStatus
+  reason?: string
+  preview: string
+  deliveredAt: string | null
+  readAt: string | null
 }
 
 /* ---------- Sourcing ---------- */
@@ -746,6 +776,11 @@ class CommunicationsAutomationService {
     to: string
     channel?: MessageTemplate["channel"]
     variables?: Record<string, string | number>
+    /** Patient language preference — drives the Meta template language code. */
+    language?: string
+    /** When true (proactive auto-texts), prefer a Meta-approved template send
+     *  over free-form text so the message is valid outside the 24h window. */
+    preferTemplate?: boolean
   }): Promise<{ ok: boolean; channel: string; preview: string; skipped?: boolean; reason?: string }> {
     const channel = input.channel ?? "whatsapp"
     const templates = await cmsGet<MessageTemplate[]>("message-templates", [])
@@ -760,7 +795,10 @@ class CommunicationsAutomationService {
         reason: `No ${channel} template configured for trigger "${input.trigger}"`,
       }
     }
-    return this.dispatch(tpl, input.to, input.variables ?? {})
+    return this.dispatch(tpl, input.to, input.variables ?? {}, {
+      language: input.language,
+      preferTemplate: input.preferTemplate,
+    })
   }
 
   /**
@@ -772,6 +810,7 @@ class CommunicationsAutomationService {
     tpl: MessageTemplate,
     to: string,
     vars: Record<string, string | number>,
+    opts?: { language?: string; preferTemplate?: boolean },
   ): Promise<{ ok: boolean; channel: string; preview: string; skipped?: boolean; reason?: string }> {
     if (!tpl.enabled) {
       return { ok: false, channel: tpl.channel, preview: "", skipped: true, reason: "Template disabled" }
@@ -790,20 +829,47 @@ class CommunicationsAutomationService {
     }
 
     if (tpl.channel === "whatsapp" && this.whatsapp.isEnabled()) {
-      // The template body is already fully interpolated here, so we send it as
-      // a WhatsApp *text* message. We deliberately do NOT pass `whatsappTemplateName`:
-      // a Meta template send needs ordered body parameters, and templates don't
-      // carry a reliable {{token}} → positional-param mapping. Text sends are
-      // valid within the 24h customer-service window; for proactively-initiated
-      // Meta template messages, call WhatsAppService.send({ templateName, variables })
-      // directly with an explicit ordered `variables` array.
-      const result = await this.whatsapp.send({
-        to,
-        body,
-      })
+      // Proactive auto-texts (preferTemplate) send a Meta-approved *template* so
+      // the message is valid OUTSIDE the 24h customer-service window. The
+      // {{token}}→positional-param mapping is derived from the template body in
+      // order of first appearance (see orderedTemplateTokens) — the same order
+      // the Meta template must be registered in. Meta templates also carry a
+      // per-patient language code. Template sends require the Meta provider;
+      // anything else (Twilio, no template name, ad-hoc admin sends) falls back
+      // to a free-form text message (valid within the 24h window).
+      const language = normalizeLanguageCode(opts?.language)
+      const useTemplate =
+        !!opts?.preferTemplate &&
+        !!tpl.whatsappTemplateName &&
+        this.whatsapp.provider() === "meta"
+
+      const result = useTemplate
+        ? await this.whatsapp.send({
+            to,
+            templateName: tpl.whatsappTemplateName,
+            variables: orderedTemplateTokens(tpl.body).map((t) =>
+              vars[t] != null ? String(vars[t]) : "",
+            ),
+            languageCode: language,
+          })
+        : await this.whatsapp.send({ to, body })
+
       // Only fall through to the outbox when the provider was unconfigured;
       // a genuine send attempt (success or hard failure) is reported directly.
       if (!result.skipped) {
+        // Record every real send attempt so admins can see what went out and,
+        // via the Meta status webhook, whether it was delivered / read.
+        await this.recordSend({
+          to,
+          trigger: tpl.trigger ?? "",
+          templateId: tpl.id,
+          templateName: useTemplate ? tpl.whatsappTemplateName : undefined,
+          language: useTemplate ? language : undefined,
+          messageId: result.id,
+          status: result.ok ? "sent" : "failed",
+          reason: result.reason,
+          preview: subject || body.slice(0, 80),
+        })
         return {
           ok: result.ok,
           channel: "whatsapp",
@@ -841,6 +907,85 @@ class CommunicationsAutomationService {
       body: interpolate(tpl.body, variables),
     }
   }
+
+  /**
+   * Append a WhatsApp send record to the `communications.sent-log` cmsStore key
+   * so admins can see what auto-texts went out (and, once the Meta status
+   * webhook fires, whether each was delivered / read). Best-effort: a failure
+   * here never breaks the send itself. Capped at the most recent 500 rows.
+   */
+  private async recordSend(entry: {
+    to: string
+    trigger: string
+    templateId: string
+    templateName?: string
+    language?: string
+    messageId?: string
+    status: SentLogStatus
+    reason?: string
+    preview: string
+  }): Promise<void> {
+    try {
+      const log = await cmsGet<SentLogRow[]>("communications.sent-log", [])
+      const row: SentLogRow = {
+        id: newId("send"),
+        at: new Date().toISOString(),
+        channel: "whatsapp",
+        deliveredAt: null,
+        readAt: null,
+        ...entry,
+      }
+      await cmsPut("communications.sent-log", [row, ...log].slice(0, 500))
+    } catch (err) {
+      console.warn(
+        "[communications] sent-log write failed:",
+        err instanceof Error ? err.message : err,
+      )
+    }
+  }
+
+  /**
+   * Fold a Meta delivery-status callback into the sent-log: advance the matching
+   * row (by provider message id) through sent → delivered → read, or mark it
+   * failed. Best-effort and idempotent; unknown message ids are ignored.
+   */
+  async applyStatusUpdate(messageId: string, status: string, atIso: string): Promise<void> {
+    const id = String(messageId || "").trim()
+    if (!id) return
+    const normalized = String(status || "").toLowerCase()
+    try {
+      const log = await cmsGet<SentLogRow[]>("communications.sent-log", [])
+      let changed = false
+      const next = log.map((r) => {
+        if (r.messageId !== id) return r
+        changed = true
+        const patch: SentLogRow = { ...r }
+        if (normalized === "delivered") {
+          patch.status = "delivered"
+          if (!patch.deliveredAt) patch.deliveredAt = atIso
+        } else if (normalized === "read") {
+          patch.status = "read"
+          patch.readAt = atIso
+          if (!patch.deliveredAt) patch.deliveredAt = atIso
+        } else if (normalized === "failed" || normalized === "undelivered") {
+          patch.status = "failed"
+        } else if (normalized === "sent") {
+          if (patch.status !== "delivered" && patch.status !== "read") patch.status = "sent"
+        }
+        return patch
+      })
+      if (changed) await cmsPut("communications.sent-log", next)
+    } catch (err) {
+      console.warn(
+        "[communications] sent-log status update failed:",
+        err instanceof Error ? err.message : err,
+      )
+    }
+  }
+
+  async listSentLog(): Promise<SentLogRow[]> {
+    return cmsGet<SentLogRow[]>("communications.sent-log", [])
+  }
 }
 
 @UseGuards(AdminGuard)
@@ -861,6 +1006,90 @@ class CommunicationsPipelineController {
     if (!body?.templateId) throw new HttpException("templateId required", HttpStatus.BAD_REQUEST)
     return this.svc.render(body.templateId, body.variables ?? {})
   }
+
+  @Get("sent-log")
+  sentLog() {
+    return this.svc.listSentLog()
+  }
+}
+
+/**
+ * Meta WhatsApp delivery-status webhook (public — Meta calls it directly).
+ *
+ *   GET  /api/v2/notifications/whatsapp/webhook  — Meta subscription handshake
+ *   POST /api/v2/notifications/whatsapp/webhook  — status callbacks (sent /
+ *                                                  delivered / read / failed)
+ *
+ * Intentionally unguarded (no AdminGuard) because Meta authenticates via the
+ * `hub.verify_token` handshake, not an admin token. Set
+ * `WHATSAPP_WEBHOOK_VERIFY_TOKEN` and point the Meta app's webhook at this URL.
+ * Status updates are folded into the `communications.sent-log` so the admin
+ * "what went out" view shows delivered / read ticks. Fail-soft: a malformed or
+ * unconfigured callback is acknowledged (200) without throwing.
+ */
+@Controller("notifications/whatsapp")
+class WhatsAppWebhookController {
+  constructor(
+    @Inject(CommunicationsAutomationService)
+    private readonly comms: CommunicationsAutomationService,
+  ) {}
+
+  @Get("webhook")
+  verify(@Query() query: Record<string, string>): string {
+    const expected = (process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN || "").trim()
+    const mode = query["hub.mode"]
+    const token = query["hub.verify_token"]
+    const challenge = query["hub.challenge"] ?? ""
+    if (expected && mode === "subscribe" && token === expected) {
+      return challenge
+    }
+    throw new HttpException("Verification failed", HttpStatus.FORBIDDEN)
+  }
+
+  @Post("webhook")
+  async receive(@Body() body: unknown): Promise<{ ok: boolean }> {
+    try {
+      const statuses = extractWhatsAppStatuses(body)
+      for (const s of statuses) {
+        const atIso = s.timestamp
+          ? new Date(Number(s.timestamp) * 1000).toISOString()
+          : new Date().toISOString()
+        await this.comms.applyStatusUpdate(s.id, s.status, atIso)
+      }
+    } catch (err) {
+      console.warn(
+        "[whatsapp-webhook] failed to process callback:",
+        err instanceof Error ? err.message : err,
+      )
+    }
+    // Always 200 so Meta does not retry/disable the subscription.
+    return { ok: true }
+  }
+}
+
+/** Pull the `{ id, status, timestamp }` rows out of a Meta webhook payload. */
+function extractWhatsAppStatuses(
+  body: unknown,
+): Array<{ id: string; status: string; timestamp?: string }> {
+  const out: Array<{ id: string; status: string; timestamp?: string }> = []
+  const entries = (body as { entry?: unknown[] })?.entry
+  if (!Array.isArray(entries)) return out
+  for (const entry of entries) {
+    const changes = (entry as { changes?: unknown[] })?.changes
+    if (!Array.isArray(changes)) continue
+    for (const change of changes) {
+      const value = (change as { value?: { statuses?: unknown[] } })?.value
+      const statuses = value?.statuses
+      if (!Array.isArray(statuses)) continue
+      for (const st of statuses) {
+        const row = st as { id?: string; status?: string; timestamp?: string }
+        if (row?.id && row?.status) {
+          out.push({ id: row.id, status: row.status, timestamp: row.timestamp })
+        }
+      }
+    }
+  }
+  return out
 }
 
 /* ---------- Pipeline status ---------- */
@@ -910,6 +1139,7 @@ class PipelineStatusController {
     QaPipelineController,
     LogisticsPipelineController,
     CommunicationsPipelineController,
+    WhatsAppWebhookController,
     PipelineStatusController,
   ],
   providers: [

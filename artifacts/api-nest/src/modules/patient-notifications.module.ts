@@ -9,12 +9,25 @@
  * Communications pipeline.
  *
  * How it sends (and falls back):
- *   notify() → CommunicationsAutomationService.sendByTrigger() which resolves
- *   the enabled WhatsApp template for the trigger, interpolates {{tokens}}, and
- *   sends via the configured WhatsApp provider. When no provider is configured
- *   (or no template exists), the pipeline records the message in the
+ *   notify() → CommunicationsAutomationService.sendByTrigger() with
+ *   `preferTemplate: true`. Because these are *proactively initiated* (a status
+ *   change, not a patient reply), they may fall outside Meta's 24h
+ *   customer-service window, so the pipeline sends a Meta-approved *template*
+ *   (with the patient's language) rather than free-form text. If the Meta
+ *   provider / template name isn't available it falls back to a text message,
+ *   and if no provider is configured at all the message is queued in the
  *   `communications.outbox` cmsStore key instead of throwing — so nothing
  *   breaks if WhatsApp is never switched on.
+ *
+ * Language:
+ *   Pass `language` per patient (ISO code or human label). It drives the Meta
+ *   template language code; absent that it falls back to
+ *   `WHATSAPP_DEFAULT_LANGUAGE` then "en".
+ *
+ * Delivery visibility:
+ *   Every real send is recorded in the `communications.sent-log` cmsStore key
+ *   (provider message id + status). Meta delivery/read callbacks land on the
+ *   webhook in pipeline.module and advance each row sent → delivered → read.
  *
  * Fire-and-forget contract:
  *   `notify()` returns void and never throws into the calling domain flow.
@@ -22,8 +35,8 @@
  *   an order must never see it fail because a notification couldn't go out.
  *
  * No new persisted shape:
- *   Auto-sends are external (WhatsApp) or queued in the existing
- *   `communications.outbox` cmsStore key — there is no new entity, so no
+ *   Auto-sends are external (WhatsApp) or logged/queued in the existing
+ *   `communications.*` cmsStore keys — there is no new entity, so no
  *   packages/db schema change is required for this module.
  *
  * Note on @Inject(CommunicationsAutomationService):
@@ -90,6 +103,13 @@ export type NotifyOptions = {
   name?: string
   /** Extra template tokens (e.g. order_id, order_total, rx_id, rx_reason). */
   variables?: Record<string, string | number>
+  /**
+   * Patient's preferred language (ISO code or human label, e.g. "en", "sw",
+   * "Somali"). Drives the Meta template language code where the template is
+   * approved in multiple languages. Falls back to `WHATSAPP_DEFAULT_LANGUAGE`
+   * then "en" when not supplied.
+   */
+  language?: string
 }
 
 @Injectable()
@@ -133,6 +153,12 @@ export class PatientNotificationsService {
       to,
       channel: "whatsapp",
       variables,
+      // Patient notifications are proactively initiated (order/prescription
+      // status changes), so they may land outside Meta's 24h customer-service
+      // window. Prefer a Meta-approved template send (with per-patient language)
+      // — the pipeline falls back to free text when no template/provider exists.
+      preferTemplate: true,
+      language: opts.language ?? process.env.WHATSAPP_DEFAULT_LANGUAGE,
     })
     if (!result.ok && result.skipped) {
       // Not an error — provider/template not wired yet. The pipeline has already

@@ -2,3 +2,4 @@
 - [api-nest payment trust gate](payment-trust-gate.md) — never grant value on a client-supplied payment reference; verify against Paystack server-side, bind to order, reserve reference atomically.
 - [api-nest build + @workspace/db](api-nest-build-and-db.md) — importing the shared Drizzle db forces esbuild bundling (not tsc) + tsconfig moduleResolution bundler; tsx dev masks it.
 - [CMS server-side seeding](cms-server-seeding.md) — cmsStore seeds the in-memory server CMS only via a client read (now also on 404); server resets on restart, so auto-send needs an admin page read first.
+- [WhatsApp Meta template mapping](whatsapp-template-mapping.md) — proactive patient texts send Meta templates; {{token}}→{{1..N}} by first-appearance order; sent-log + status webhook track delivery.

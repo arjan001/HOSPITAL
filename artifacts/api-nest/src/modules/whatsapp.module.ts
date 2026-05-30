@@ -75,6 +75,56 @@ function digits(input: string): string {
   return (input || "").replace(/[^\d]/g, "")
 }
 
+/**
+ * Derive the ordered positional-parameter list for a Meta template body.
+ *
+ * Meta templates use positional placeholders ({{1}}, {{2}}, …). Our admin
+ * message-templates use *named* tokens ({{first_name}}, {{order_id}}, …). The
+ * reliable {{token}}→positional mapping is the **order of first appearance** in
+ * the template body: when a Meta template is registered, its body is the same
+ * copy with each named token replaced by {{1}}, {{2}}, … left-to-right. So
+ * scanning the stored body for tokens in first-appearance order (deduped)
+ * yields exactly the positional order Meta expects.
+ *
+ * Convention (document this when registering Meta templates): the Meta template
+ * body MUST be the admin template body with named tokens swapped for {{1..N}}
+ * in the same left-to-right order.
+ */
+export function orderedTemplateTokens(body: string): string[] {
+  const seen = new Set<string>()
+  const out: string[] = []
+  const re = /\{\{\s*([a-zA-Z0-9_.]+)\s*\}\}/g
+  let m: RegExpExecArray | null
+  while ((m = re.exec(body || ""))) {
+    const key = m[1]
+    if (!seen.has(key)) {
+      seen.add(key)
+      out.push(key)
+    }
+  }
+  return out
+}
+
+/**
+ * Normalise a free-form patient language preference to a Meta template language
+ * code. Accepts ISO codes ("en", "sw") or human labels ("English", "Swahili",
+ * "Somali", "Kiswahili") and falls back to "en". Region-tagged codes ("en_US")
+ * collapse to their base language. Keep the supported set aligned with the
+ * languages your Meta templates are actually approved in.
+ */
+export function normalizeLanguageCode(input?: string): string {
+  const v = String(input ?? "").trim().toLowerCase()
+  if (!v) return "en"
+  const map: Record<string, string> = {
+    en: "en", eng: "en", english: "en",
+    sw: "sw", swa: "sw", swahili: "sw", kiswahili: "sw",
+    so: "so", som: "so", somali: "so",
+    ar: "ar", arabic: "ar",
+  }
+  if (map[v]) return map[v]
+  return v.split(/[-_]/)[0] || "en"
+}
+
 async function fetchWithTimeout(url: string, init: RequestInit, ms: number): Promise<Response> {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), ms)
