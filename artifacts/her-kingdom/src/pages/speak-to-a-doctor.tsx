@@ -219,6 +219,16 @@ export default function SpeakToADoctorPage() {
     }
   }, [screen])
 
+  /* Mark staff messages as read while the patient is viewing chat, so the
+     staff side sees read ticks (parity with /account/chat). */
+  const unreadStaffCount = (chatMessages || []).filter(
+    (m) => m.sender === "staff" && m.status !== "read",
+  ).length
+  useEffect(() => {
+    if (screen !== "chat" || unreadStaffCount === 0) return
+    apiChat.markPatientRead().then(() => refreshChatPatient()).catch(() => {})
+  }, [screen, unreadStaffCount])
+
   const sendMessage = async (text: string) => {
     await apiChat.sendAsPatient(text)
     await refreshChatPatient()
