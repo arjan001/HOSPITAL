@@ -5,7 +5,8 @@ import { Link } from "wouter"
 
 import { useState, useRef, useEffect } from "react"
 import { useLocation } from "wouter"
-import { Search, ShoppingBag, Menu, PhoneCall, User, Package, Camera, Heart, HandHeart, ArrowRight } from "lucide-react"
+import { Search, ShoppingBag, Menu, PhoneCall, User, Package, Camera, Heart, HandHeart, ArrowRight, Bell, ClipboardList, CheckCheck } from "lucide-react"
+import { useMyNotifications } from "@/lib/notifications-client"
 import { useUser, useClerk } from "@clerk/react"
 import { useCart } from "@/lib/cart-context"
 import { useWishlist } from "@/lib/wishlist-context"
@@ -88,6 +89,8 @@ export function Navbar() {
   const [accountOpen, setAccountOpen] = useState(false)
   const [wishlistOpen, setWishlistOpen] = useState(false)
   const [cartOpen, setCartOpen] = useState(false)
+  const [notifOpen, setNotifOpen] = useState(false)
+  const { items: notifs, unread, markAllRead } = useMyNotifications()
   const searchRef = useRef<HTMLDivElement>(null)
   const accountRef = useRef<HTMLDivElement>(null)
 
@@ -369,6 +372,116 @@ export function Navbar() {
                             </Link>
                           </div>
 
+                        </>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Notifications bell */}
+              <div
+                className="hidden md:block relative"
+                onMouseEnter={() => setNotifOpen(true)}
+                onMouseLeave={() => setNotifOpen(false)}
+              >
+                <button
+                  type="button"
+                  onClick={() => { if (unread > 0) void markAllRead() }}
+                  className="inline-flex flex-col items-center justify-center gap-0.5 transition-opacity hover:opacity-80 w-12"
+                  style={{ color: TEXT_WINE }}
+                  aria-label={`Notifications${unread > 0 ? `, ${unread} unread` : ""}`}
+                >
+                  <span className="relative">
+                    <Bell className="h-5 w-5" style={{ color: ACCENT_RED }} />
+                    {unread > 0 && (
+                      <span
+                        className="absolute -top-1.5 -right-1.5 flex items-center justify-center rounded-full text-white text-[10px] font-bold min-w-[18px] h-[18px] px-1"
+                        style={{ background: ACCENT_RED }}
+                      >
+                        {unread > 9 ? "9+" : unread}
+                      </span>
+                    )}
+                  </span>
+                  <span className="text-[11px] font-semibold leading-none">Alerts</span>
+                </button>
+
+                {notifOpen && (
+                  <div className="absolute top-full right-0 pt-3 w-[360px] z-50">
+                    <div
+                      className="rounded-2xl overflow-hidden bg-white"
+                      style={{
+                        border: `1px solid ${PILL_BORDER}`,
+                        boxShadow: "0 20px 60px -12px rgba(61,8,20,0.22), 0 6px 16px -6px rgba(61,8,20,0.10)",
+                      }}
+                    >
+                      <div className="px-6 pt-5 pb-4 border-b flex items-center justify-between" style={{ borderColor: "#F2DCC8" }}>
+                        <p className="font-extrabold text-lg leading-tight" style={{ color: TEXT_WINE }}>Notifications</p>
+                        {unread > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => void markAllRead()}
+                            className="text-xs font-semibold inline-flex items-center gap-1 hover:opacity-80"
+                            style={{ color: ACCENT_RED }}
+                          >
+                            <CheckCheck className="h-3.5 w-3.5" /> Mark all read
+                          </button>
+                        )}
+                      </div>
+                      {notifs.length === 0 ? (
+                        <div className="px-6 py-8 text-center">
+                          <Bell className="h-8 w-8 mx-auto mb-3 opacity-25" style={{ color: ACCENT_RED }} />
+                          <p className="text-sm font-medium" style={{ color: TEXT_WINE_SOFT }}>You're all caught up</p>
+                          <p className="text-xs mt-1" style={{ color: "#888" }}>
+                            Updates on your prescriptions and orders appear here.
+                          </p>
+                        </div>
+                      ) : (
+                        <>
+                          <div className="max-h-[320px] overflow-y-auto divide-y" style={{ borderColor: "#F2DCC8" }}>
+                            {notifs.slice(0, 8).map((n) => {
+                              const body = (
+                                <div className="flex items-start gap-3 px-5 py-3 hover:bg-[#FFF9F5] transition-colors">
+                                  <span
+                                    className="mt-0.5 w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0"
+                                    style={{
+                                      background: n.read ? "#F4F4F5" : "#FFF1E6",
+                                      color: n.level === "alert" ? ACCENT_RED : TEXT_WINE,
+                                    }}
+                                  >
+                                    {n.module === "prescriptions" ? <ClipboardList className="h-4 w-4" /> : n.module === "orders" ? <Package className="h-4 w-4" /> : <Bell className="h-4 w-4" />}
+                                  </span>
+                                  <div className="min-w-0 flex-1">
+                                    <p className="text-sm font-semibold line-clamp-1" style={{ color: TEXT_WINE }}>{n.title}</p>
+                                    {n.body && <p className="text-xs mt-0.5 line-clamp-2" style={{ color: TEXT_WINE_SOFT }}>{n.body}</p>}
+                                    <p className="text-[10px] mt-1" style={{ color: "#999" }}>{new Date(n.createdAt).toLocaleString()}</p>
+                                  </div>
+                                  {!n.read && <span className="mt-1.5 w-2 h-2 rounded-full flex-shrink-0" style={{ background: ACCENT_RED }} />}
+                                </div>
+                              )
+                              return n.href ? (
+                                <Link key={n.id} href={n.href} onClick={() => setNotifOpen(false)}>
+                                  {body}
+                                </Link>
+                              ) : (
+                                <div key={n.id}>{body}</div>
+                              )
+                            })}
+                          </div>
+                          <div className="px-5 pb-5 pt-3">
+                            <Link
+                              href="/user"
+                              onClick={() => setNotifOpen(false)}
+                              className="w-full h-11 rounded-full text-white font-semibold text-sm inline-flex items-center justify-center gap-2 transition-opacity hover:opacity-90"
+                              style={{
+                                background: `linear-gradient(135deg, ${ACCENT_ORANGE} 0%, ${ACCENT_RED} 100%)`,
+                                boxShadow: "0 6px 18px -6px rgba(185,28,28,0.45)",
+                              }}
+                            >
+                              Go to my account
+                              <ArrowRight className="h-4 w-4" />
+                            </Link>
+                          </div>
                         </>
                       )}
                     </div>

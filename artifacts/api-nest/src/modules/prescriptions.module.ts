@@ -54,6 +54,7 @@ import { getStorage } from "../common/storage"
 import { PaystackModule, PaystackService } from "./paystack.module"
 import { UploadsModule, UploadsService } from "./uploads.module"
 import { PatientNotificationsModule, PatientNotificationsService, type PatientNotificationEvent } from "./patient-notifications.module"
+import { NotificationsModule, NotificationsService } from "./notifications.module"
 
 export type PrescriptionStatus = "pending" | "verified" | "dispensed" | "rejected"
 export type PaymentMethod = "cash" | "insurance" | "unknown"
@@ -155,6 +156,10 @@ export class PrescriptionsService {
     @Inject(PaystackService) private readonly paystack: PaystackService,
     @Inject(UploadsService) private readonly uploads: UploadsService,
     @Inject(PatientNotificationsService) private readonly patientNotify: PatientNotificationsService,
+    // In-app notification feed — backs the bell for the patient (customer:<sid>)
+    // and the pharmacy team ("admin" audience). Distinct from patientNotify,
+    // which is the SMS/WhatsApp transport.
+    @Inject(NotificationsService) private readonly inApp: NotificationsService,
   ) {}
 
   private repo = new InMemoryRepository<Prescription>()
@@ -249,6 +254,21 @@ export class PrescriptionsService {
       name: saved.recipient || saved.patientName,
       variables: { rx_id: saved.rxNumber },
     })
+    // In-app: confirm to the patient and alert the pharmacy team to review.
+    this.inApp.push(sid, {
+      module: "prescriptions",
+      level: "success",
+      title: "Prescription received",
+      body: `We've received Rx ${saved.rxNumber} and our pharmacy team will review it shortly.`,
+      href: "/account/prescriptions",
+    })
+    this.inApp.push("admin", {
+      module: "prescriptions",
+      level: "alert",
+      title: "Prescription upload awaiting review",
+      body: `${saved.recipient || saved.patientName} · Rx ${saved.rxNumber}`,
+      href: "/admin/prescriptions",
+    })
     return saved
   }
 
@@ -312,6 +332,37 @@ export class PrescriptionsService {
               ? { rx_reason: saved.rejectedReason ?? "" }
               : {}),
           },
+        })
+      }
+      // In-app feed for the patient bell — fires on every meaningful transition
+      // so the status the pharmacist sets reflects on the patient's panel.
+      const inAppForStatus: Partial<Record<PrescriptionStatus, { level: "success" | "warning"; title: string; body: string }>> = {
+        verified: {
+          level: "success",
+          title: "Prescription verified",
+          body: `Rx ${saved.rxNumber} was approved — review the recommended medication.`,
+        },
+        dispensed: {
+          level: "success",
+          title: "Medication on its way",
+          body: `Rx ${saved.rxNumber} has been dispensed.`,
+        },
+        rejected: {
+          level: "warning",
+          title: "Prescription needs attention",
+          body: saved.rejectedReason
+            ? `Rx ${saved.rxNumber}: ${saved.rejectedReason}`
+            : `Rx ${saved.rxNumber} could not be approved.`,
+        },
+      }
+      const inApp = inAppForStatus[patch.status]
+      if (inApp) {
+        this.inApp.push(sid, {
+          module: "prescriptions",
+          level: inApp.level,
+          title: inApp.title,
+          body: inApp.body,
+          href: "/account/prescriptions",
         })
       }
     }
@@ -410,6 +461,15 @@ export class PrescriptionsService {
           order_id: `RX-${saved.rxNumber}`,
         },
       })
+      // In-app: payment received + dispensed (paying is the primary path to
+      // dispensed, so the patient bell must reflect it).
+      this.inApp.push(sid, {
+        module: "prescriptions",
+        level: "success",
+        title: "Payment received",
+        body: `Rx ${saved.rxNumber} is paid (KSh ${amount.toLocaleString()}) and being dispensed.`,
+        href: "/account/prescriptions",
+      })
       return saved
     } catch (err) {
       this.consumedReferences.delete(reference)
@@ -420,6 +480,20 @@ export class PrescriptionsService {
   /** Resolve the storage key for a prescription file by index, owner-checked. */
   fileKey(sid: string, id: string, index: number): string {
     const rx = this.get(sid, id)
+    const file = rx.files[index]
+    if (!file || !file.key) {
+      throw new HttpException("File not found", HttpStatus.NOT_FOUND)
+    }
+    return file.key
+  }
+
+  /**
+   * Admin variant of {@link fileKey} — resolves the file across any session so
+   * the pharmacy team can view a patient's uploaded scan in the review screen.
+   * Guarded by AdminGuard at the controller, not by session ownership.
+   */
+  adminFileKey(id: string, index: number): string {
+    const { rx } = this.findAnywhere(id)
     const file = rx.files[index]
     if (!file || !file.key) {
       throw new HttpException("File not found", HttpStatus.NOT_FOUND)
@@ -517,6 +591,7 @@ class AdminPrescriptionsController {
   }
 
   @Patch(":id")
+  @RequirePerm("rx.verify")
   patch(@Param("id") id: string, @Body() body: UpdateInput) {
     const { sid } = this.svc.findAnywhere(id)
     const safe: UpdateInput = {}
@@ -529,6 +604,7 @@ class AdminPrescriptionsController {
   }
 
   @Patch(":id/status")
+  @RequirePerm("rx.verify")
   patchStatus(@Param("id") id: string, @Body() body: { status?: PrescriptionStatus; reason?: string }) {
     const { sid } = this.svc.findAnywhere(id)
     if (!body?.status) {
@@ -540,10 +616,32 @@ class AdminPrescriptionsController {
     }
     return this.svc.update(sid, id, patch)
   }
+
+  /** Stream a patient's prescription file to staff (cross-session, admin-only). */
+  @Get(":id/files/:index")
+  async file(
+    @Param("id") id: string,
+    @Param("index") index: string,
+    @Res() res: Response,
+  ) {
+    const i = Number.parseInt(index, 10)
+    if (!Number.isInteger(i) || i < 0) {
+      throw new HttpException("Invalid file index", HttpStatus.BAD_REQUEST)
+    }
+    const key = this.svc.adminFileKey(id, i)
+    const result = await getStorage().read(key)
+    if (!result) {
+      throw new HttpException("File not found", HttpStatus.NOT_FOUND)
+    }
+    res.setHeader("Content-Type", result.contentType)
+    res.setHeader("Content-Disposition", "inline")
+    res.setHeader("Cache-Control", "private, max-age=300")
+    res.send(result.body)
+  }
 }
 
 @Module({
-  imports: [PaystackModule, UploadsModule, PatientNotificationsModule],
+  imports: [PaystackModule, UploadsModule, PatientNotificationsModule, NotificationsModule],
   controllers: [MyPrescriptionsController, AdminPrescriptionsController],
   providers: [PrescriptionsService],
 })

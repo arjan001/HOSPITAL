@@ -1,13 +1,40 @@
 "use client"
 
+/**
+ * AdminPrescriptions — pharmacist review surface, wired to the REAL api-nest
+ * backend (`/api/v2/admin/prescriptions`), NOT a cmsStore mockup.
+ *
+ * This screen and the patient's `/account/prescriptions` page now read and
+ * write the same records, so a status the pharmacist sets here reflects on the
+ * patient's panel (and fires the patient's bell + SMS/WhatsApp).
+ *
+ * Key rules:
+ *  - Patient-owned fields (name, phone, dob, email, the patient note, uploaded
+ *    files) are READ-ONLY here — they come from the patient's upload.
+ *  - Drug price is AUTO-FILLED from the product catalogue when a drug is picked
+ *    and is NOT manually editable; only quantity is editable.
+ *  - Every status action (Approve / Mark dispensed / Reject) persists to the
+ *    backend and CLOSES the modal.
+ *  - There is no "New entry" / "Delete": prescriptions originate from patients
+ *    and are an auditable record — the backend exposes no create/delete.
+ */
+
 import { useMemo, useState } from "react"
-import { Link } from "wouter"
 import { AdminShell } from "./admin-shell"
-import { useCmsDoc, newId, cmsStore } from "@/lib/cms-store"
+import { newId, cmsStore } from "@/lib/cms-store"
 import { usePermission } from "@/lib/permissions"
 import { notify } from "@/lib/notify"
 import type { Consultation } from "./consultations"
 import { DrugPicker, SuggestFromNotesButton } from "./drug-picker"
+import {
+  useAdminPrescriptions,
+  apiAdminPrescriptions,
+  adminRxFileUrl,
+  DEFAULT_DRUG_PRICE,
+  type AccountPrescription,
+  type ApprovedDrug,
+  type RxStatus,
+} from "@/lib/api-nest"
 import {
   ClipboardList,
   Search,
@@ -15,28 +42,48 @@ import {
   XCircle,
   Clock,
   FileText,
-  User,
   Phone,
+  Mail,
   X,
-  Plus,
   Stethoscope,
-  Trash2,
   Eye,
   Maximize2,
   Calendar,
   Pill,
   ShieldCheck,
-  AlertTriangle,
   Send,
   Lock,
   Video,
   Sparkles,
+  RefreshCw,
+  Loader2,
+  ExternalLink,
 } from "lucide-react"
 
 const WINE = "#3D0814"
 const ACCENT = "#F97316"
 
-export type PrescriptionStatus = "pending" | "verified" | "dispensed" | "rejected"
+/**
+ * Legacy cmsStore prescription record shape. The admin panel now reads real
+ * patient uploads from the api-nest backend (`useAdminPrescriptions`), so this
+ * type only exists for the two remaining writers into the `cmsStore`
+ * "prescriptions" key: the storefront upload page and the consultation
+ * "push to pharmacist" action. Those writes are not read back by this panel.
+ */
+export type Prescription = {
+  id: string
+  patientName: string
+  phone: string
+  dob?: string
+  imageUrl: string
+  notes: string
+  status: RxStatus
+  pharmacistNote: string
+  recommendedDrugs: { name: string; dosage: string; instructions: string }[]
+  consultationId?: string
+  createdAt: string
+  updatedAt: string
+}
 
 export type VerificationCheck = {
   imageClear: boolean
@@ -54,22 +101,6 @@ export const EMPTY_VERIFICATION: VerificationCheck = {
   refillStatusChecked: false,
 }
 
-export type Prescription = {
-  id: string
-  patientName: string
-  phone: string
-  dob?: string
-  imageUrl?: string
-  notes: string
-  status: PrescriptionStatus
-  pharmacistNote: string
-  recommendedDrugs: { name: string; dosage: string; instructions: string; price?: number | null; quantity?: number }[]
-  verification?: VerificationCheck
-  consultationId?: string  // backref when this Rx was issued from a consultation
-  createdAt: string
-  updatedAt: string
-}
-
 const VERIFICATION_ITEMS: Array<{ key: keyof VerificationCheck; label: string; help: string }> = [
   { key: "imageClear",          label: "Prescription image is clear and legible",     help: "Reject if blurry or cropped." },
   { key: "signaturePresent",    label: "Prescriber signature / stamp is present",     help: "Required for controlled substances." },
@@ -78,68 +109,47 @@ const VERIFICATION_ITEMS: Array<{ key: keyof VerificationCheck; label: string; h
   { key: "refillStatusChecked", label: "Refill / repeat status checked",              help: "Confirm with prescriber if unclear." },
 ]
 
-const SEED: Prescription[] = [
-  {
-    id: "rx-001",
-    patientName: "Aisha M.",
-    phone: "+254 712 000 111",
-    dob: "1991-04-12",
-    imageUrl: "",
-    notes: "Refill for hypertension medication. Existing patient.",
-    status: "pending",
-    pharmacistNote: "",
-    recommendedDrugs: [],
-    createdAt: new Date(Date.now() - 1000 * 60 * 60 * 4).toISOString(),
-    updatedAt: new Date(Date.now() - 1000 * 60 * 60 * 4).toISOString(),
-  },
-  {
-    id: "rx-002",
-    patientName: "Brian K.",
-    phone: "+254 720 555 234",
-    imageUrl: "",
-    notes: "First-time prescription, antibiotic course for chest infection.",
-    status: "verified",
-    pharmacistNote: "Verified script from Dr. Wanjiku, Aga Khan. OK to dispense.",
-    recommendedDrugs: [
-      { name: "Amoxicillin 500mg", dosage: "1 capsule", instructions: "3x daily for 7 days, after meals" },
-    ],
-    createdAt: new Date(Date.now() - 1000 * 60 * 60 * 26).toISOString(),
-    updatedAt: new Date(Date.now() - 1000 * 60 * 60 * 2).toISOString(),
-  },
-  {
-    id: "rx-003",
-    patientName: "Faith O.",
-    phone: "+254 733 884 901",
-    imageUrl: "",
-    notes: "Image is blurry, asked patient to resubmit clearer copy.",
-    status: "rejected",
-    pharmacistNote: "Image illegible. Requested clearer scan.",
-    recommendedDrugs: [],
-    createdAt: new Date(Date.now() - 1000 * 60 * 60 * 48).toISOString(),
-    updatedAt: new Date(Date.now() - 1000 * 60 * 60 * 47).toISOString(),
-  },
-]
-
-const STATUS_META: Record<PrescriptionStatus, { label: string; color: string; bg: string; icon: typeof Clock }> = {
+const STATUS_META: Record<RxStatus, { label: string; color: string; bg: string; icon: typeof Clock }> = {
   pending:   { label: "Awaiting review",  color: "#92400E", bg: "#FEF3C7", icon: Clock },
   verified:  { label: "Verified",          color: "#166534", bg: "#DCFCE7", icon: ShieldCheck },
   dispensed: { label: "Dispensed",         color: "#1E40AF", bg: "#DBEAFE", icon: CheckCircle2 },
   rejected:  { label: "Rejected",          color: "#991B1B", bg: "#FEE2E2", icon: XCircle },
 }
 
+const isImageFile = (f: AccountPrescription["files"][number]) =>
+  (f.type?.startsWith("image/") ?? false) || /\.(png|jpe?g|webp|gif|bmp|svg)$/i.test(f.name || "")
+const isPdfFile = (f: AccountPrescription["files"][number]) =>
+  f.type === "application/pdf" || /\.pdf$/i.test(f.name || "")
+
+const ksh = (n: number) => `KSh ${Math.round(n).toLocaleString()}`
+const drugQty = (d: ApprovedDrug) => (typeof d.quantity === "number" && d.quantity >= 1 ? d.quantity : 1)
+const drugUnit = (d: ApprovedDrug) => (typeof d.price === "number" && d.price >= 0 ? d.price : DEFAULT_DRUG_PRICE)
+
 export function AdminPrescriptions() {
-  const [items, setItems] = useCmsDoc<Prescription[]>("prescriptions", SEED)
-  const [filter, setFilter] = useState<PrescriptionStatus | "all">("all")
+  const { data, isLoading, mutate } = useAdminPrescriptions()
+  const items = useMemo<AccountPrescription[]>(() => data ?? [], [data])
+
+  const [filter, setFilter] = useState<RxStatus | "all">("all")
   const [search, setSearch] = useState("")
-  const [active, setActive] = useState<Prescription | null>(null)
-  const [zoomImage, setZoomImage] = useState(false)
-  const [confirmDelete, setConfirmDelete] = useState(false)
+  // `active` is an editable working copy of the selected record. Notes + drugs
+  // are edited locally and only persisted on Save or a status action.
+  const [active, setActive] = useState<AccountPrescription | null>(null)
+  const [verification, setVerification] = useState<VerificationCheck>(EMPTY_VERIFICATION)
+  const [zoomUrl, setZoomUrl] = useState<string | null>(null)
   const [imageBroken, setImageBroken] = useState(false)
+  const [saving, setSaving] = useState(false)
+
   const canVerify = usePermission("rx.verify")
   const canConsult = usePermission("consult.handle")
+
+  const openRow = (p: AccountPrescription) => {
+    setActive({ ...p, approvedDrugs: p.approvedDrugs.map((d) => ({ ...d })) })
+    setVerification(EMPTY_VERIFICATION)
+    setImageBroken(false)
+  }
+
   const closeModal = () => {
-    setZoomImage(false)
-    setConfirmDelete(false)
+    setZoomUrl(null)
     setImageBroken(false)
     setActive(null)
   }
@@ -151,8 +161,10 @@ export function AdminPrescriptions() {
         if (!search.trim()) return true
         const s = search.toLowerCase()
         return (
-          p.patientName.toLowerCase().includes(s) ||
-          p.phone.toLowerCase().includes(s) ||
+          (p.recipient || "").toLowerCase().includes(s) ||
+          (p.patientName || "").toLowerCase().includes(s) ||
+          (p.phone || "").toLowerCase().includes(s) ||
+          (p.rxNumber || "").toLowerCase().includes(s) ||
           p.id.toLowerCase().includes(s)
         )
       })
@@ -160,40 +172,92 @@ export function AdminPrescriptions() {
   }, [items, filter, search])
 
   const counts = useMemo(() => {
-    const out: Record<PrescriptionStatus | "all", number> = {
+    const out: Record<RxStatus | "all", number> = {
       all: items.length, pending: 0, verified: 0, dispensed: 0, rejected: 0,
     }
     items.forEach((p) => { out[p.status]++ })
     return out
   }, [items])
 
-  const updateActive = (patch: Partial<Prescription>) => {
-    if (!active) return
-    const updated = { ...active, ...patch, updatedAt: new Date().toISOString() }
-    setActive(updated)
-    setItems((arr) => arr.map((p) => (p.id === updated.id ? updated : p)))
-  }
+  const updateActive = (patch: Partial<AccountPrescription>) =>
+    setActive((a) => (a ? { ...a, ...patch } : a))
 
-  const verification = active?.verification || EMPTY_VERIFICATION
   const verifiedCount = Object.values(verification).filter(Boolean).length
   const fullyChecked = verifiedCount === VERIFICATION_ITEMS.length
   const toggleCheck = (key: keyof VerificationCheck) =>
-    updateActive({ verification: { ...verification, [key]: !verification[key] } })
+    setVerification((v) => ({ ...v, [key]: !v[key] }))
 
-  const setStatus = (status: PrescriptionStatus) => {
-    if (status === "verified" && !fullyChecked) {
-      notify.warning("Complete the verification checklist before approving.")
+  const updateDrug = (idx: number, patch: Partial<ApprovedDrug>) => {
+    if (!active) return
+    const drugs = active.approvedDrugs.map((d, i) => (i === idx ? { ...d, ...patch } : d))
+    updateActive({ approvedDrugs: drugs })
+  }
+  const removeDrug = (idx: number) => {
+    if (!active) return
+    updateActive({ approvedDrugs: active.approvedDrugs.filter((_, i) => i !== idx) })
+  }
+  const addDrug = (row: { name: string; dosage: string; instructions: string }, price: number | null) => {
+    if (!active) return
+    updateActive({
+      approvedDrugs: [
+        ...active.approvedDrugs,
+        { name: row.name, dosage: row.dosage, instructions: row.instructions, price, quantity: 1 },
+      ],
+    })
+  }
+
+  /**
+   * Persist the local edits (notes + approved drugs) plus any status change to
+   * the backend, then revalidate. `close` ends the review (used by every status
+   * action so the modal closes on approve / dispense / reject).
+   */
+  const persist = async (
+    extra: { status?: RxStatus; rejectedReason?: string } = {},
+    opts: { close?: boolean; successMessage?: string } = {},
+  ) => {
+    if (!active || saving) return
+    setSaving(true)
+    try {
+      const updated = await apiAdminPrescriptions.patch(active.id, {
+        pharmacistNote: active.pharmacistNote,
+        doctorNote: active.doctorNote,
+        approvedDrugs: active.approvedDrugs,
+        ...extra,
+      })
+      await mutate()
+      notify.saved(opts.successMessage ?? "Prescription updated")
+      if (opts.close) closeModal()
+      else setActive({ ...updated, approvedDrugs: updated.approvedDrugs.map((d) => ({ ...d })) })
+    } catch (e) {
+      notify.error(e instanceof Error ? e.message : "Could not save — please retry.")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const approve = () => {
+    if (!canVerify) { notify.warning("You don't have permission to approve."); return }
+    if (!fullyChecked) { notify.warning("Complete the verification checklist before approving."); return }
+    if (active && active.approvedDrugs.length === 0) {
+      notify.warning("Add at least one approved drug before verifying.")
       return
     }
-    if ((status === "verified" || status === "dispensed" || status === "rejected") && !canVerify) {
-      notify.warning("You don't have permission to change this status.")
-      return
-    }
-    updateActive({ status })
+    void persist({ status: "verified" }, { close: true, successMessage: "Prescription verified" })
+  }
+  const dispense = () => {
+    if (!canVerify) { notify.warning("You don't have permission to change this status."); return }
+    void persist({ status: "dispensed" }, { close: true, successMessage: "Marked dispensed" })
+  }
+  const reject = () => {
+    if (!canVerify) { notify.warning("You don't have permission to reject."); return }
+    const reason = (active?.rejectedReason || active?.pharmacistNote || "").trim()
+    if (!reason) { notify.warning("Add a reason (pharmacist note or rejection reason) before rejecting."); return }
+    void persist({ status: "rejected", rejectedReason: reason }, { close: true, successMessage: "Prescription rejected" })
   }
 
   // Cross-module: spin up a video consultation pre-filled with this Rx so the
-  // pharmacist can clarify with the patient before dispensing.
+  // pharmacist can clarify with the patient before dispensing. Consultations
+  // still live in cmsStore; the prescription record itself is backend-owned.
   const openConsultation = () => {
     if (!active) return
     const list = cmsStore.get<Consultation[]>("consultations", [])
@@ -205,64 +269,22 @@ export function AdminPrescriptions() {
     }
     const c: Consultation = {
       id: newId("c"),
-      patientName: active.patientName || "Patient",
+      patientName: active.recipient || active.patientName || "Patient",
       phone: active.phone,
       doctorName: "Dr. on call",
       mode: "video",
       status: "queued",
-      topic: `Clarify Rx ${active.id}`,
+      topic: `Clarify Rx-${active.rxNumber}`,
       startedAt: new Date().toISOString(),
       messages: [
-        { id: newId("m"), from: "system", text: `Opened from prescription ${active.id} for clarification.`, at: new Date().toISOString() },
+        { id: newId("m"), from: "system", text: `Opened from prescription Rx-${active.rxNumber} for clarification.`, at: new Date().toISOString() },
       ],
       doctorNote: active.pharmacistNote,
-      recommendedDrugs: active.recommendedDrugs.map((r) => ({ ...r })),
+      recommendedDrugs: active.approvedDrugs.map((r) => ({ ...r })),
     }
     cmsStore.set("consultations", [c, ...list])
-    // Backref so the prescription card can deep-link to the clarifying call.
-    updateActive({ consultationId: c.id })
     notify.saved(`Consultation ${c.id} created — opening`)
     window.location.assign("/admin/consultations")
-  }
-
-  const addRecommendation = () =>
-    updateActive({
-      recommendedDrugs: [...(active?.recommendedDrugs || []), { name: "", dosage: "", instructions: "" }],
-    })
-
-  const updateRec = (idx: number, patch: Partial<Prescription["recommendedDrugs"][number]>) => {
-    if (!active) return
-    const recs = active.recommendedDrugs.map((r, i) => (i === idx ? { ...r, ...patch } : r))
-    updateActive({ recommendedDrugs: recs })
-  }
-
-  const removeRec = (idx: number) => {
-    if (!active) return
-    updateActive({ recommendedDrugs: active.recommendedDrugs.filter((_, i) => i !== idx) })
-  }
-
-  const newDraft = () => {
-    const draft: Prescription = {
-      id: newId("rx"),
-      patientName: "",
-      phone: "",
-      imageUrl: "",
-      notes: "",
-      status: "pending",
-      pharmacistNote: "",
-      recommendedDrugs: [],
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    }
-    setItems((arr) => [draft, ...arr])
-    setActive(draft)
-  }
-
-  const deleteActive = () => {
-    if (!active) return
-    setItems((arr) => arr.filter((p) => p.id !== active.id))
-    setActive(null)
-    setConfirmDelete(false)
   }
 
   const fmtAge = (dob?: string) => {
@@ -272,6 +294,9 @@ export function AdminPrescriptions() {
     const years = Math.floor((Date.now() - d.getTime()) / (365.25 * 86400000))
     return years > 0 ? `${years} yrs` : null
   }
+
+  const primaryImageIndex = active ? active.files.findIndex(isImageFile) : -1
+  const drugsTotal = active ? active.approvedDrugs.reduce((s, d) => s + drugUnit(d) * drugQty(d), 0) : 0
 
   return (
     <AdminShell title="Prescriptions">
@@ -283,15 +308,16 @@ export function AdminPrescriptions() {
               Prescriptions
             </h1>
             <p className="text-sm text-muted-foreground mt-1">
-              Review uploaded prescriptions, verify or reject them, and capture pharmacist notes plus recommended drugs.
+              Review prescriptions patients upload, verify or reject them, and capture pharmacist notes plus
+              approved drugs. Status changes are reflected on the patient's account instantly.
             </p>
           </div>
           <button
-            onClick={newDraft}
-            className="px-4 h-9 rounded-md text-sm font-semibold text-white inline-flex items-center gap-2"
-            style={{ background: WINE }}
+            onClick={() => { void mutate() }}
+            className="px-4 h-9 rounded-md text-sm font-semibold inline-flex items-center gap-2 border hover:bg-secondary"
+            style={{ borderColor: "rgba(0,0,0,0.12)", color: WINE }}
           >
-            <Plus className="h-4 w-4" /> New entry
+            <RefreshCw className="h-4 w-4" /> Refresh
           </button>
         </div>
 
@@ -307,14 +333,15 @@ export function AdminPrescriptions() {
                   isActive ? "bg-foreground text-background border-foreground" : "bg-background hover:bg-secondary border-border"
                 }`}
               >
-                {k.charAt(0).toUpperCase() + k.slice(1)} <span className="opacity-60 ml-1">({counts[k]})</span>
+                {k === "pending" ? "Awaiting" : k.charAt(0).toUpperCase() + k.slice(1)}
+                <span className="opacity-60 ml-1">({counts[k]})</span>
               </button>
             )
           })}
           <div className="relative ml-auto">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
             <input
-              placeholder="Search by name, phone, or ID…"
+              placeholder="Search by name, phone, or Rx…"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="h-8 pl-8 pr-3 rounded-full border border-border bg-background text-xs w-64"
@@ -330,16 +357,23 @@ export function AdminPrescriptions() {
                 <th className="text-left px-4 py-2.5 font-medium">Patient</th>
                 <th className="text-left px-4 py-2.5 font-medium">Phone</th>
                 <th className="text-left px-4 py-2.5 font-medium">Status</th>
-                <th className="text-left px-4 py-2.5 font-medium">Notes</th>
+                <th className="text-left px-4 py-2.5 font-medium">Drugs</th>
                 <th className="text-left px-4 py-2.5 font-medium">Updated</th>
                 <th className="text-right px-4 py-2.5 font-medium">Actions</th>
               </tr>
             </thead>
             <tbody>
-              {filtered.length === 0 && (
+              {isLoading && items.length === 0 && (
                 <tr>
                   <td colSpan={6} className="text-center text-muted-foreground py-12">
-                    No prescriptions match this filter.
+                    <Loader2 className="h-4 w-4 animate-spin inline-block mr-2" /> Loading prescriptions…
+                  </td>
+                </tr>
+              )}
+              {!isLoading && filtered.length === 0 && (
+                <tr>
+                  <td colSpan={6} className="text-center text-muted-foreground py-12">
+                    {items.length === 0 ? "No prescriptions have been uploaded yet." : "No prescriptions match this filter."}
                   </td>
                 </tr>
               )}
@@ -349,10 +383,10 @@ export function AdminPrescriptions() {
                 return (
                   <tr key={p.id} className="border-t border-border hover:bg-muted/20">
                     <td className="px-4 py-2.5">
-                      <p className="font-semibold">{p.patientName || "—"}</p>
-                      <p className="text-xs text-muted-foreground font-mono">{p.id}</p>
+                      <p className="font-semibold">{p.recipient || p.patientName || "—"}</p>
+                      <p className="text-xs text-muted-foreground font-mono">Rx-{p.rxNumber}</p>
                     </td>
-                    <td className="px-4 py-2.5 text-xs">{p.phone}</td>
+                    <td className="px-4 py-2.5 text-xs">{p.phone || "—"}</td>
                     <td className="px-4 py-2.5">
                       <span
                         className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold"
@@ -362,17 +396,21 @@ export function AdminPrescriptions() {
                         {meta.label}
                       </span>
                     </td>
-                    <td className="px-4 py-2.5 text-xs text-muted-foreground max-w-[260px] truncate">{p.notes}</td>
+                    <td className="px-4 py-2.5 text-xs text-muted-foreground">
+                      {p.approvedDrugs.length > 0
+                        ? `${p.approvedDrugs.length} drug${p.approvedDrugs.length === 1 ? "" : "s"}`
+                        : "—"}
+                    </td>
                     <td className="px-4 py-2.5 text-xs text-muted-foreground">
                       {new Date(p.updatedAt).toLocaleString()}
                     </td>
                     <td className="px-4 py-2.5 text-right">
                       <button
-                        onClick={() => setActive(p)}
+                        onClick={() => openRow(p)}
                         className="text-xs font-semibold inline-flex items-center gap-1.5 px-3 h-8 rounded-md text-white hover:opacity-90 transition-opacity"
                         style={{ background: WINE }}
                       >
-                        <Eye className="h-3.5 w-3.5" /> View
+                        <Eye className="h-3.5 w-3.5" /> Review
                       </button>
                     </td>
                   </tr>
@@ -390,25 +428,13 @@ export function AdminPrescriptions() {
             className="w-full max-w-5xl bg-white rounded-2xl shadow-2xl overflow-hidden my-auto flex flex-col max-h-[95vh]"
             onClick={(e) => e.stopPropagation()}
           >
-            {/* Header — brand-aligned: wine gradient, shield watermark,
-                trust ribbon and status pill. */}
+            {/* Header — wine gradient, shield watermark, status pill. */}
             <div
               className="relative px-5 sm:px-6 py-5 text-white overflow-hidden"
-              style={{
-                background: `linear-gradient(135deg, ${WINE} 0%, #6B0F1A 55%, #8A1226 100%)`,
-              }}
+              style={{ background: `linear-gradient(135deg, ${WINE} 0%, #6B0F1A 55%, #8A1226 100%)` }}
             >
-              {/* Decorative shield watermark — "trust layer" brand metaphor. */}
-              <ShieldCheck
-                aria-hidden
-                className="absolute -right-6 -bottom-10 h-44 w-44 text-white/[0.06] pointer-events-none"
-              />
-              {/* Thin orange accent ribbon. */}
-              <div
-                aria-hidden
-                className="absolute left-0 top-0 h-full w-1"
-                style={{ background: ACCENT }}
-              />
+              <ShieldCheck aria-hidden className="absolute -right-6 -bottom-10 h-44 w-44 text-white/[0.06] pointer-events-none" />
+              <div aria-hidden className="absolute left-0 top-0 h-full w-1" style={{ background: ACCENT }} />
               <div className="relative flex items-start justify-between gap-3">
                 <div className="flex items-center gap-3 min-w-0">
                   <div className="w-11 h-11 rounded-xl bg-white/15 backdrop-blur-sm border border-white/20 flex items-center justify-center flex-shrink-0 shadow-sm">
@@ -419,9 +445,11 @@ export function AdminPrescriptions() {
                       <span className="inline-block w-1 h-1 rounded-full bg-white/70" />
                       Trust layer · Prescription review
                     </p>
-                    <h2 className="text-xl font-bold font-mono truncate mt-0.5 leading-tight">{active.id}</h2>
-                    {active.patientName && (
-                      <p className="text-[11px] text-white/75 mt-0.5 truncate">{active.patientName}{active.phone ? ` · ${active.phone}` : ""}</p>
+                    <h2 className="text-xl font-bold font-mono truncate mt-0.5 leading-tight">Rx-{active.rxNumber}</h2>
+                    {(active.recipient || active.patientName) && (
+                      <p className="text-[11px] text-white/75 mt-0.5 truncate">
+                        {active.recipient || active.patientName}{active.phone ? ` · ${active.phone}` : ""}
+                      </p>
                     )}
                   </div>
                 </div>
@@ -442,7 +470,7 @@ export function AdminPrescriptions() {
                   </button>
                 </div>
               </div>
-              {/* Verification progress bar — at-a-glance trust signal. */}
+              {/* Verification progress bar. */}
               <div className="relative mt-3 flex items-center gap-2">
                 <div className="flex-1 h-1.5 rounded-full bg-white/15 overflow-hidden">
                   <div
@@ -461,22 +489,22 @@ export function AdminPrescriptions() {
 
             {/* Body */}
             <div className="grid grid-cols-1 md:grid-cols-[1fr_360px] gap-0 flex-1 overflow-hidden">
-              {/* Left — Image + patient note */}
+              {/* Left — uploaded files + patient note */}
               <div className="bg-gray-50 border-r p-5 overflow-y-auto" style={{ borderColor: "rgba(0,0,0,0.06)" }}>
                 <div className="rounded-xl bg-white border overflow-hidden" style={{ borderColor: "rgba(0,0,0,0.08)" }}>
                   <div className="relative" style={{ minHeight: 280 }}>
-                    {active.imageUrl && !imageBroken ? (
+                    {primaryImageIndex >= 0 && !imageBroken ? (
                       <>
                         <img
-                          key={active.imageUrl}
-                          src={active.imageUrl}
+                          key={active.files[primaryImageIndex].key || primaryImageIndex}
+                          src={adminRxFileUrl(active.id, primaryImageIndex)}
                           alt="Prescription"
                           className="w-full max-h-[420px] object-contain bg-white"
                           onError={() => setImageBroken(true)}
                           onLoad={() => setImageBroken(false)}
                         />
                         <button
-                          onClick={() => setZoomImage(true)}
+                          onClick={() => setZoomUrl(adminRxFileUrl(active.id, primaryImageIndex))}
                           className="absolute top-3 right-3 h-8 px-2.5 rounded-md bg-black/70 text-white text-xs font-semibold inline-flex items-center gap-1.5 hover:bg-black/85"
                         >
                           <Maximize2 className="h-3.5 w-3.5" /> Zoom
@@ -485,103 +513,111 @@ export function AdminPrescriptions() {
                     ) : (
                       <div className="h-[280px] flex flex-col items-center justify-center text-muted-foreground gap-2 px-6 text-center">
                         <FileText className="h-10 w-10 opacity-30" />
-                        <p className="text-sm font-medium">No prescription image uploaded</p>
-                        <p className="text-xs">Paste an image URL below to preview it here.</p>
+                        <p className="text-sm font-medium">
+                          {imageBroken ? "Couldn't load the image" : active.files.length === 0 ? "No files uploaded" : "No image preview"}
+                        </p>
+                        <p className="text-xs">
+                          {active.files.length === 0
+                            ? "The patient didn't attach any files."
+                            : "Open the attached file(s) below."}
+                        </p>
                       </div>
                     )}
                   </div>
-                  <div className="p-3 border-t" style={{ borderColor: "rgba(0,0,0,0.06)" }}>
-                    <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Image URL</label>
-                    <input
-                      className="mt-1 w-full h-9 px-3 rounded-md border bg-white text-xs font-mono"
-                      style={{ borderColor: "rgba(0,0,0,0.1)" }}
-                      placeholder="/uploads/rx-001.jpg"
-                      value={active.imageUrl || ""}
-                      onChange={(e) => updateActive({ imageUrl: e.target.value })}
-                    />
-                  </div>
+
+                  {/* Attached files list */}
+                  {active.files.length > 0 && (
+                    <div className="p-3 border-t space-y-1.5" style={{ borderColor: "rgba(0,0,0,0.06)" }}>
+                      <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                        Attached files ({active.files.length})
+                      </p>
+                      {active.files.map((f, i) => (
+                        <div key={i} className="flex items-center gap-2 rounded-md border px-2.5 py-1.5 text-xs" style={{ borderColor: "rgba(0,0,0,0.08)" }}>
+                          <FileText className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
+                          <span className="truncate" style={{ color: WINE }}>{f.name || `File ${i + 1}`}</span>
+                          {typeof f.size === "number" && (
+                            <span className="ml-auto text-[10px] text-muted-foreground">{Math.round(f.size / 1024)} KB</span>
+                          )}
+                          <a
+                            href={adminRxFileUrl(active.id, i)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className={`inline-flex h-7 items-center gap-1 rounded-md border px-2 text-[11px] font-semibold hover:bg-secondary ${typeof f.size === "number" ? "" : "ml-auto"}`}
+                            style={{ borderColor: "rgba(0,0,0,0.12)", color: WINE }}
+                          >
+                            {isImageFile(f) ? <Eye className="h-3 w-3" /> : isPdfFile(f) ? <ExternalLink className="h-3 w-3" /> : <ExternalLink className="h-3 w-3" />}
+                            {isImageFile(f) ? "View" : "Open"}
+                          </a>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
-                {/* Patient note */}
+                {/* Patient note (read-only — patient-owned) */}
                 <div className="mt-4 rounded-xl bg-white border p-4" style={{ borderColor: "rgba(0,0,0,0.08)" }}>
                   <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-2 flex items-center gap-1.5">
                     <FileText className="h-3.5 w-3.5" /> Patient note
                   </div>
-                  <textarea
-                    rows={3}
-                    className="w-full text-sm rounded-md border px-3 py-2 focus:outline-none focus:ring-2"
-                    style={{ borderColor: "rgba(0,0,0,0.1)" }}
-                    value={active.notes}
-                    placeholder="What did the patient say about this script?"
-                    onChange={(e) => updateActive({ notes: e.target.value })}
-                  />
+                  <p className="text-sm whitespace-pre-wrap text-foreground/90">
+                    {active.notes?.trim() ? active.notes : <span className="text-muted-foreground italic">No note from the patient.</span>}
+                  </p>
                 </div>
+
+                {/* Payment (read-only) */}
+                {active.payment && (
+                  <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-xs text-emerald-900">
+                    <div className="flex items-center justify-between">
+                      <span className="font-semibold uppercase tracking-wider text-[11px]">Payment received</span>
+                      <span className="font-bold">{ksh(active.payment.amount)}</span>
+                    </div>
+                    <div className="mt-1 text-[11px] text-emerald-800">
+                      {active.payment.receipt ? `M-PESA ${active.payment.receipt} · ` : ""}
+                      {new Date(active.payment.at).toLocaleString()}
+                    </div>
+                  </div>
+                )}
               </div>
 
-              {/* Right — Patient + status + recommendations */}
+              {/* Right — patient summary + verification + notes + drugs */}
               <div className="overflow-y-auto p-5 space-y-5">
-                {/* Patient summary card */}
+                {/* Patient summary (read-only) */}
                 <div className="rounded-xl border p-4 space-y-3" style={{ borderColor: "rgba(0,0,0,0.08)" }}>
                   <div className="flex items-center gap-3">
                     <div
                       className="w-11 h-11 rounded-full flex items-center justify-center text-white font-bold text-sm flex-shrink-0"
                       style={{ background: ACCENT }}
                     >
-                      {(active.patientName || "?").split(/\s+/).filter(Boolean).slice(0, 2).map(p => p[0]?.toUpperCase()).join("") || "?"}
+                      {(active.recipient || active.patientName || "?").split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0]?.toUpperCase()).join("") || "?"}
                     </div>
-                    <input
-                      className="flex-1 h-9 px-3 rounded-md border text-sm font-semibold"
-                      style={{ borderColor: "rgba(0,0,0,0.1)" }}
-                      value={active.patientName}
-                      placeholder="Patient name"
-                      onChange={(e) => updateActive({ patientName: e.target.value })}
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold truncate">{active.recipient || active.patientName || "—"}</p>
+                      <p className="text-[11px] text-muted-foreground">Uploaded {new Date(active.createdAt).toLocaleString()}</p>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <ReadField icon={<Phone className="h-3 w-3" />} label="Phone" value={active.phone || "—"} />
+                    <ReadField
+                      icon={<Calendar className="h-3 w-3" />}
+                      label={`Date of birth${fmtAge(active.dob) ? ` · ${fmtAge(active.dob)}` : ""}`}
+                      value={active.dob ? new Date(active.dob).toLocaleDateString() : "—"}
+                    />
+                    <ReadField icon={<Mail className="h-3 w-3" />} label="Email" value={active.email || "—"} />
+                    <ReadField
+                      icon={<FileText className="h-3 w-3" />}
+                      label="Payment method"
+                      value={active.paymentMethod === "insurance" ? "Insurance" : active.paymentMethod === "cash" ? "Cash" : "—"}
                     />
                   </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <Field icon={<Phone className="h-3 w-3" />} label="Phone">
-                      <input className="rxinput" value={active.phone} onChange={(e) => updateActive({ phone: e.target.value })} />
-                    </Field>
-                    <Field icon={<Calendar className="h-3 w-3" />} label={`Date of birth${fmtAge(active.dob) ? ` · ${fmtAge(active.dob)}` : ""}`}>
-                      <input type="date" className="rxinput" value={active.dob || ""} onChange={(e) => updateActive({ dob: e.target.value })} />
-                    </Field>
-                  </div>
                 </div>
 
-                {/* Status pills */}
+                {/* Verification checklist (client-side gate before approval) */}
                 <div>
-                  <h3 className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold mb-2">Status</h3>
-                  <div className="grid grid-cols-2 gap-2">
-                    {(Object.keys(STATUS_META) as PrescriptionStatus[]).map((s) => {
-                      const meta = STATUS_META[s]
-                      const Icon = meta.icon
-                      const isOn = active.status === s
-                      return (
-                        <button
-                          key={s}
-                          onClick={() => setStatus(s)}
-                          className={`h-9 px-3 rounded-md text-xs font-semibold border transition-all flex items-center gap-1.5 ${
-                            isOn ? "shadow-sm scale-[1.02]" : "hover:bg-secondary"
-                          }`}
-                          style={isOn
-                            ? { background: meta.bg, color: meta.color, borderColor: meta.color }
-                            : { borderColor: "rgba(0,0,0,0.1)" }}
-                        >
-                          <Icon className="h-3.5 w-3.5" />{meta.label}
-                        </button>
-                      )
-                    })}
-                  </div>
-                </div>
-
-                {/* Verification checklist */}
-                <div>
-                  <h3 className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold mb-2 inline-flex items-center gap-1.5">
+                  <h3 className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold mb-2 inline-flex items-center gap-1.5 w-full">
                     <ShieldCheck className="h-3.5 w-3.5" /> Verification checklist
                     <span
                       className="ml-auto text-[10px] font-bold px-1.5 py-0.5 rounded-full"
-                      style={fullyChecked
-                        ? { background: "#DCFCE7", color: "#166534" }
-                        : { background: "#FEF3C7", color: "#92400E" }}
+                      style={fullyChecked ? { background: "#DCFCE7", color: "#166534" } : { background: "#FEF3C7", color: "#92400E" }}
                     >
                       {verifiedCount}/{VERIFICATION_ITEMS.length}
                     </span>
@@ -622,14 +658,20 @@ export function AdminPrescriptions() {
                     <Video className="h-3.5 w-3.5" />
                     Clarify with patient (video)
                   </button>
-                  {active.consultationId && (
-                    <Link
-                      href="/admin/consultations"
-                      className="mt-1 block text-[11px] text-center text-muted-foreground hover:text-foreground underline"
-                    >
-                      Open source consultation {active.consultationId} →
-                    </Link>
-                  )}
+                </div>
+
+                {/* Doctor's note */}
+                <div>
+                  <h3 className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold mb-2 inline-flex items-center gap-1.5">
+                    <Stethoscope className="h-3.5 w-3.5" /> Doctor's note
+                  </h3>
+                  <textarea
+                    rows={2}
+                    className="rxinput"
+                    placeholder="Clinical note from the prescriber / doctor (shown to patient)…"
+                    value={active.doctorNote}
+                    onChange={(e) => updateActive({ doctorNote: e.target.value })}
+                  />
                 </div>
 
                 {/* Pharmacist note */}
@@ -646,76 +688,96 @@ export function AdminPrescriptions() {
                   />
                 </div>
 
-                {/* Recommended drugs */}
+                {/* Rejection reason */}
+                <div>
+                  <h3 className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold mb-2 inline-flex items-center gap-1.5">
+                    <XCircle className="h-3.5 w-3.5" /> Reason for rejection
+                  </h3>
+                  <textarea
+                    rows={2}
+                    className="rxinput"
+                    placeholder="Only used when rejecting — shown to the patient (e.g. image blurry, resubmit a clearer scan)."
+                    value={active.rejectedReason || ""}
+                    onChange={(e) => updateActive({ rejectedReason: e.target.value })}
+                  />
+                </div>
+
+                {/* Approved drugs — price auto from catalogue (read-only) */}
                 <div>
                   <div className="flex items-center justify-between mb-2 gap-2">
                     <h3 className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold inline-flex items-center gap-1.5">
-                      <Pill className="h-3.5 w-3.5" /> Recommended drugs
+                      <Pill className="h-3.5 w-3.5" /> Approved drugs
                     </h3>
                     <div className="flex items-center gap-1.5">
                       <SuggestFromNotesButton
-                        clinicalContext={`${active.notes} ${active.pharmacistNote}`}
-                        existingNames={active.recommendedDrugs.map((r) => r.name)}
-                        onAdd={(rows) =>
-                          updateActive({ recommendedDrugs: [...active.recommendedDrugs, ...rows] })
-                        }
+                        clinicalContext={`${active.notes} ${active.pharmacistNote} ${active.doctorNote}`}
+                        existingNames={active.approvedDrugs.map((r) => r.name)}
+                        onAdd={(rows) => rows.forEach((r) => addDrug(r, null))}
                       />
                       <DrugPicker
-                        clinicalContext={`${active.notes} ${active.pharmacistNote}`}
-                        onPick={(row) =>
-                          updateActive({ recommendedDrugs: [...active.recommendedDrugs, row] })
+                        clinicalContext={`${active.notes} ${active.pharmacistNote} ${active.doctorNote}`}
+                        onPick={(row, source) =>
+                          addDrug(row, typeof source?.price === "number" ? source.price : null)
                         }
                       />
                     </div>
                   </div>
-                  {active.recommendedDrugs.length === 0 ? (
+                  {active.approvedDrugs.length === 0 ? (
                     <p className="text-xs text-muted-foreground py-3 text-center border border-dashed rounded-md" style={{ borderColor: "rgba(0,0,0,0.15)" }}>
-                      No drugs recommended yet. <span className="inline-flex items-center gap-1"><Sparkles className="h-3 w-3" /> Use Suggest or Add drug.</span>
+                      No drugs approved yet. <span className="inline-flex items-center gap-1"><Sparkles className="h-3 w-3" /> Use Suggest or Add drug.</span>
                     </p>
                   ) : (
                     <div className="space-y-2">
-                      {active.recommendedDrugs.map((r, i) => (
-                        <div key={i} className="rounded-md border p-2.5 space-y-1.5" style={{ borderColor: "rgba(0,0,0,0.08)" }}>
-                          <div className="flex items-center gap-2">
-                            <input className="rxinput flex-1" placeholder="Drug name" value={r.name} onChange={(e) => updateRec(i, { name: e.target.value })} />
-                            <input className="rxinput w-24" placeholder="Dosage" value={r.dosage} onChange={(e) => updateRec(i, { dosage: e.target.value })} />
-                            <button onClick={() => removeRec(i)} className="w-8 h-8 rounded-md hover:bg-destructive/10 text-destructive flex items-center justify-center flex-shrink-0">
-                              <X className="h-4 w-4" />
-                            </button>
+                      {active.approvedDrugs.map((r, i) => {
+                        const priced = typeof r.price === "number" && r.price >= 0
+                        return (
+                          <div key={i} className="rounded-md border p-2.5 space-y-1.5" style={{ borderColor: "rgba(0,0,0,0.08)" }}>
+                            <div className="flex items-center gap-2">
+                              <input className="rxinput flex-1" placeholder="Drug name" value={r.name} onChange={(e) => updateDrug(i, { name: e.target.value })} />
+                              <input className="rxinput w-24" placeholder="Dosage" value={r.dosage} onChange={(e) => updateDrug(i, { dosage: e.target.value })} />
+                              <button onClick={() => removeDrug(i)} className="w-8 h-8 rounded-md hover:bg-destructive/10 text-destructive flex items-center justify-center flex-shrink-0" title="Remove">
+                                <X className="h-4 w-4" />
+                              </button>
+                            </div>
+                            <input className="rxinput" placeholder="Instructions (e.g. 1 tab, 3x daily after meals)" value={r.instructions} onChange={(e) => updateDrug(i, { instructions: e.target.value })} />
+                            <div className="flex items-center gap-3 flex-wrap">
+                              {/* Price is auto-filled from the product catalogue and NOT editable. */}
+                              <span className="inline-flex items-center gap-1.5 text-[11px]">
+                                <span className="font-semibold text-muted-foreground">Price</span>
+                                {priced ? (
+                                  <span className="font-semibold" style={{ color: WINE }}>{ksh(r.price as number)}</span>
+                                ) : (
+                                  <span className="font-semibold text-amber-600">{ksh(DEFAULT_DRUG_PRICE)} est.</span>
+                                )}
+                                <span className="inline-flex items-center gap-1 text-[10px] text-muted-foreground">
+                                  <Lock className="h-2.5 w-2.5" /> from catalogue
+                                </span>
+                              </span>
+                              <label className="flex items-center gap-1.5 text-[11px] text-muted-foreground ml-auto">
+                                <span className="font-semibold">Qty</span>
+                                <input
+                                  type="number"
+                                  min={1}
+                                  className="rxinput w-20"
+                                  placeholder="1"
+                                  value={typeof r.quantity === "number" ? r.quantity : ""}
+                                  onChange={(e) => {
+                                    const v = e.target.value.trim()
+                                    updateDrug(i, { quantity: v === "" ? 1 : Math.max(1, Math.round(Number(v))) })
+                                  }}
+                                />
+                              </label>
+                              <span className="text-[11px] font-bold" style={{ color: WINE }}>
+                                {ksh(drugUnit(r) * drugQty(r))}
+                              </span>
+                            </div>
                           </div>
-                          <input className="rxinput" placeholder="Instructions (e.g. 1 tab, 3x daily after meals)" value={r.instructions} onChange={(e) => updateRec(i, { instructions: e.target.value })} />
-                          <div className="flex items-center gap-2">
-                            <label className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-                              <span className="font-semibold">Price (KSh)</span>
-                              <input
-                                type="number"
-                                min={0}
-                                className="rxinput w-28"
-                                placeholder="e.g. 750"
-                                value={typeof r.price === "number" ? r.price : ""}
-                                onChange={(e) => {
-                                  const v = e.target.value.trim()
-                                  updateRec(i, { price: v === "" ? null : Math.max(0, Math.round(Number(v))) })
-                                }}
-                              />
-                            </label>
-                            <label className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-                              <span className="font-semibold">Qty</span>
-                              <input
-                                type="number"
-                                min={1}
-                                className="rxinput w-20"
-                                placeholder="1"
-                                value={typeof r.quantity === "number" ? r.quantity : ""}
-                                onChange={(e) => {
-                                  const v = e.target.value.trim()
-                                  updateRec(i, { quantity: v === "" ? 1 : Math.max(1, Math.round(Number(v))) })
-                                }}
-                              />
-                            </label>
-                          </div>
-                        </div>
-                      ))}
+                        )
+                      })}
+                      <div className="flex items-center justify-between rounded-md border px-3 py-2 bg-muted/30" style={{ borderColor: "rgba(0,0,0,0.08)" }}>
+                        <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Total</span>
+                        <span className="text-sm font-bold" style={{ color: WINE }}>{ksh(drugsTotal)}</span>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -725,10 +787,12 @@ export function AdminPrescriptions() {
             {/* Footer action bar */}
             <div className="border-t bg-white px-5 py-3 flex items-center justify-between gap-3" style={{ borderColor: "rgba(0,0,0,0.08)" }}>
               <button
-                onClick={() => setConfirmDelete(true)}
-                className="h-10 px-3.5 rounded-lg text-sm font-semibold inline-flex items-center gap-2 text-destructive hover:bg-destructive/10"
+                onClick={() => void persist({}, { close: false, successMessage: "Changes saved" })}
+                disabled={saving || !canVerify}
+                className="h-10 px-3.5 rounded-lg text-sm font-semibold inline-flex items-center gap-2 border hover:bg-secondary disabled:opacity-40 disabled:cursor-not-allowed"
+                style={{ borderColor: "rgba(0,0,0,0.15)", color: WINE }}
               >
-                <Trash2 className="h-4 w-4" /> Delete
+                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />} Save changes
               </button>
               <div className="flex items-center gap-2 flex-wrap justify-end">
                 {!canVerify && (
@@ -737,29 +801,29 @@ export function AdminPrescriptions() {
                   </span>
                 )}
                 <button
-                  onClick={() => setStatus("rejected")}
-                  disabled={!canVerify}
+                  onClick={reject}
+                  disabled={!canVerify || saving}
                   className="h-10 px-4 rounded-lg text-sm font-semibold border inline-flex items-center gap-1.5 hover:bg-red-50 disabled:opacity-40 disabled:cursor-not-allowed"
                   style={{ borderColor: "#FCA5A5", color: "#991B1B" }}
                 >
                   <XCircle className="h-4 w-4" /> Reject
                 </button>
                 <button
-                  onClick={() => setStatus("dispensed")}
-                  disabled={!canVerify}
+                  onClick={dispense}
+                  disabled={!canVerify || saving}
                   className="h-10 px-4 rounded-lg text-sm font-semibold border inline-flex items-center gap-1.5 hover:bg-blue-50 disabled:opacity-40 disabled:cursor-not-allowed"
                   style={{ borderColor: "#93C5FD", color: "#1E40AF" }}
                 >
                   <Send className="h-4 w-4" /> Mark dispensed
                 </button>
                 <button
-                  onClick={() => setStatus("verified")}
-                  disabled={!canVerify || !fullyChecked}
+                  onClick={approve}
+                  disabled={!canVerify || !fullyChecked || saving}
                   title={!fullyChecked ? "Complete every verification check first" : undefined}
                   className="h-10 px-5 rounded-lg text-sm font-bold text-white inline-flex items-center gap-1.5 shadow-sm hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed"
                   style={{ background: WINE }}
                 >
-                  <ShieldCheck className="h-4 w-4" /> Approve
+                  {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />} Approve
                 </button>
               </div>
             </div>
@@ -768,40 +832,12 @@ export function AdminPrescriptions() {
       )}
 
       {/* Image zoom overlay */}
-      {active && zoomImage && active.imageUrl && (
-        <div className="fixed inset-0 z-[60] bg-black/90 flex items-center justify-center p-4" onClick={() => setZoomImage(false)}>
-          <button onClick={() => setZoomImage(false)} className="absolute top-4 right-4 w-10 h-10 rounded-full bg-white/10 text-white flex items-center justify-center hover:bg-white/20">
+      {zoomUrl && (
+        <div className="fixed inset-0 z-[60] bg-black/90 flex items-center justify-center p-4" onClick={() => setZoomUrl(null)}>
+          <button onClick={() => setZoomUrl(null)} className="absolute top-4 right-4 w-10 h-10 rounded-full bg-white/10 text-white flex items-center justify-center hover:bg-white/20">
             <X className="h-5 w-5" />
           </button>
-          <img src={active.imageUrl} alt="Prescription full" className="max-w-full max-h-full object-contain" />
-        </div>
-      )}
-
-      {/* Delete confirm */}
-      {active && confirmDelete && (
-        <div className="fixed inset-0 z-[60] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setConfirmDelete(false)}>
-          <div className="bg-white rounded-2xl p-6 max-w-sm w-full shadow-2xl space-y-4" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center text-red-700">
-                <AlertTriangle className="h-5 w-5" />
-              </div>
-              <div>
-                <h3 className="font-bold">Delete this prescription?</h3>
-                <p className="text-xs text-muted-foreground">This cannot be undone.</p>
-              </div>
-            </div>
-            <p className="text-sm text-muted-foreground">
-              Patient <strong>{active.patientName || "—"}</strong> · {active.id}
-            </p>
-            <div className="flex justify-end gap-2 pt-2">
-              <button onClick={() => setConfirmDelete(false)} className="h-9 px-4 rounded-md text-sm font-semibold border hover:bg-secondary" style={{ borderColor: "rgba(0,0,0,0.15)" }}>
-                Cancel
-              </button>
-              <button onClick={deleteActive} className="h-9 px-4 rounded-md text-sm font-bold text-white bg-red-600 hover:bg-red-700">
-                Delete
-              </button>
-            </div>
-          </div>
+          <img src={zoomUrl} alt="Prescription full" className="max-w-full max-h-full object-contain" />
         </div>
       )}
 
@@ -812,13 +848,13 @@ export function AdminPrescriptions() {
   )
 }
 
-function Field({ label, icon, children }: { label: string; icon?: React.ReactNode; children: React.ReactNode }) {
+function ReadField({ label, icon, value }: { label: string; icon?: React.ReactNode; value: string }) {
   return (
     <div className="space-y-1">
       <label className="text-[10px] font-medium block uppercase tracking-wider text-muted-foreground inline-flex items-center gap-1">
         {icon}{label}
       </label>
-      {children}
+      <p className="text-sm font-semibold truncate" style={{ color: WINE }}>{value}</p>
     </div>
   )
 }

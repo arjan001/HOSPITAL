@@ -3,4 +3,6 @@
 - [api-nest build + @workspace/db](api-nest-build-and-db.md) — importing the shared Drizzle db forces esbuild bundling (not tsc) + tsconfig moduleResolution bundler; tsx dev masks it.
 - [CMS server-side seeding](cms-server-seeding.md) — cmsStore seeds the in-memory server CMS only via a client read (now also on 404); server resets on restart, so auto-send needs an admin page read first.
 - [WhatsApp Meta template mapping](whatsapp-template-mapping.md) — proactive patient texts send Meta templates; {{token}}→{{1..N}} by first-appearance order; sent-log + status webhook track delivery.
+- [Admin api-nest auth gap](admin-apinest-auth-gap.md) — /api/v2/admin/* works in dev (guard fails open) but not prod; nestFetch sends no admin token; file routes via <img> need signed URLs, not headers.
+- [Prescription data sources](prescription-data-sources.md) — admin panel + patient page read real api-nest; legacy cmsStore keys still feed /user dashboard + consult history; backend-create failure must not show success.
 - [Admin RBAC model](admin-rbac-model.md) — AdminGuard fail-closed (every admin route needs @RequirePerm or @AnyAdmin, else super-only); backend role defaults MUST mirror frontend SEED_ROLES (contract test locks it).

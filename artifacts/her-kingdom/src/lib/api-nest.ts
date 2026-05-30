@@ -235,6 +235,53 @@ export function rxFileUrl(id: string, index: number): string {
 }
 
 /* ────────────────────────────────────────────────────────────
+   Admin prescriptions — pharmacist review surface.
+   Same record shape as the patient view (AccountPrescription),
+   but cross-session: the backend resolves the owning session via
+   its ownerOf map, guarded by AdminGuard (rx.view / rx.verify).
+─────────────────────────────────────────────────────────────*/
+
+/** Fields a pharmacist may edit on a prescription. */
+export type AdminRxPatch = {
+  status?: RxStatus
+  pharmacistNote?: string
+  doctorNote?: string
+  rejectedReason?: string
+  approvedDrugs?: ApprovedDrug[]
+}
+
+export const apiAdminPrescriptions = {
+  list: () => nestFetch<AccountPrescription[]>("/admin/prescriptions"),
+  get: (id: string) => nestFetch<AccountPrescription>(`/admin/prescriptions/${id}`),
+  /** Patch any subset of editable fields (notes / approved drugs / status). */
+  patch: (id: string, patch: AdminRxPatch) =>
+    nestFetch<AccountPrescription>(`/admin/prescriptions/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(patch),
+    }),
+  /** Dedicated status transition (rejection carries an optional reason). */
+  patchStatus: (id: string, status: RxStatus, reason?: string) =>
+    nestFetch<AccountPrescription>(`/admin/prescriptions/${id}/status`, {
+      method: "PATCH",
+      body: JSON.stringify(reason ? { status, reason } : { status }),
+    }),
+}
+
+/** Admin (cross-session) URL for streaming a prescription file. */
+export function adminRxFileUrl(id: string, index: number): string {
+  return `${BASE}/admin/prescriptions/${id}/files/${index}`
+}
+
+export function useAdminPrescriptions() {
+  return useSWR<AccountPrescription[]>("/admin/prescriptions", swrFetcher, {
+    refreshInterval: 20_000, // surface new patient uploads without a manual refresh
+  })
+}
+export function refreshAdminPrescriptions() {
+  return globalMutate("/admin/prescriptions")
+}
+
+/* ────────────────────────────────────────────────────────────
    Uploads — generic binary upload to NestJS Storage backend.
    Today persisted to local disk; swap to S3 by editing
    artifacts/api-nest/src/common/storage.ts only.

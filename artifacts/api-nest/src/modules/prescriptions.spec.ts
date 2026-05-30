@@ -7,6 +7,7 @@ import type {
   PatientNotificationEvent,
   NotifyOptions,
 } from "./patient-notifications.module"
+import type { NotificationsService } from "./notifications.module"
 
 type NotifyCall = { event: PatientNotificationEvent; opts: NotifyOptions }
 
@@ -35,7 +36,10 @@ function makeService() {
   // Treat every client-supplied key as owned so file plumbing isn't under test.
   const uploads = { ownsKey: () => true } as unknown as UploadsService
 
-  const svc = new PrescriptionsService(paystack, uploads, patientNotify)
+  // In-app bell notifications are a side channel; record nothing, just absorb.
+  const inApp = { push: vi.fn() } as unknown as NotificationsService
+
+  const svc = new PrescriptionsService(paystack, uploads, patientNotify, inApp)
   return { svc, notifyCalls, paystack, verifyPaidReference }
 }
 

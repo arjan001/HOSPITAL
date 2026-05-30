@@ -209,6 +209,7 @@ export default function UploadPrescriptionPage() {
     // localStorage above keeps the legacy admin panel (still on cmsStore)
     // working until it ports to NestJS.
     let failedUploads = 0
+    let createFailed = false
     try {
       // Upload the actual bytes via the Storage seam first, then attach
       // the returned { url, key } to each file entry on the prescription.
@@ -238,13 +239,22 @@ export default function UploadPrescriptionPage() {
       })
       void refreshMyPrescriptions()
     } catch {
-      // Backend rejected the create call — local cmsStore copy still saved
-      // above, but warn the patient so they know to follow up.
-      failedUploads = files.length
+      // Backend rejected the create call. The new patient (/account/prescriptions)
+      // and admin surfaces read api-nest, so a failed create means the request
+      // did NOT reach the pharmacy — never show a success reference for it.
+      createFailed = true
     }
+
+    if (createFailed) {
+      window.setTimeout(() => {
+        alert("We couldn't submit your prescription to our pharmacy. Please check your connection and try again — your details have not been lost.")
+      }, 100)
+      return
+    }
+
     if (failedUploads > 0) {
-      // Non-blocking, intentionally outside the success modal so the
-      // patient sees both: their reference number AND the warning.
+      // Create succeeded but some files didn't upload — non-blocking warning
+      // shown alongside the success reference so the patient can re-send.
       window.setTimeout(() => {
         alert(`${failedUploads} of ${files.length} file${files.length === 1 ? "" : "s"} couldn't be uploaded. Please share them with our pharmacist via WhatsApp or try again.`)
       }, 350)

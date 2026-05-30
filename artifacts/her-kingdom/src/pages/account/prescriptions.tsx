@@ -33,7 +33,7 @@ const ACCENT_RED = "#B91C1C"
 const CREAM = "#FFFBF5"
 
 export default function AccountPrescriptionsPage() {
-  const { data, isLoading, mutate } = useMyPrescriptions()
+  const { data, isLoading, error, mutate } = useMyPrescriptions()
   const items = useMemo<AccountPrescription[]>(() => data ?? [], [data])
 
   const [openId, setOpenId] = useState<string | null>(null)
@@ -133,7 +133,30 @@ export default function AccountPrescriptionsPage() {
 
           {/* List */}
           <div className="rounded-2xl border border-border bg-white shadow-sm">
-            {isLoading && items.length === 0 ? (
+            {error && items.length === 0 ? (
+              <div className="space-y-3 px-6 py-14 text-center">
+                <div
+                  className="mx-auto grid h-14 w-14 place-items-center rounded-full"
+                  style={{ background: `${ACCENT_RED}1a`, color: ACCENT_RED }}
+                >
+                  <FileText className="h-6 w-6" />
+                </div>
+                <p className="text-base font-semibold" style={{ color: WINE }}>
+                  We couldn't load your prescriptions
+                </p>
+                <p className="mx-auto max-w-sm text-xs text-muted-foreground">
+                  Something went wrong reaching the pharmacy. Check your connection and try again.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => void mutate()}
+                  className="inline-flex h-10 items-center gap-1.5 rounded-md px-5 text-sm font-semibold text-white"
+                  style={{ background: `linear-gradient(135deg, ${ACCENT} 0%, ${ACCENT_RED} 100%)` }}
+                >
+                  Try again
+                </button>
+              </div>
+            ) : isLoading && items.length === 0 ? (
               <div className="flex items-center justify-center gap-2 py-16 text-sm text-muted-foreground">
                 <Loader2 className="h-4 w-4 animate-spin" /> Loading your prescriptions…
               </div>

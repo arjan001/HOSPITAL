@@ -6,6 +6,7 @@ import { createPortal } from "react-dom"
 import { Link } from "wouter"
 import { useLocation } from "wouter"
 import { useAdminOrders } from "@/lib/orders-store"
+import { useAdminPrescriptions } from "@/lib/api-nest"
 import { NotificationBell } from "@/components/admin/notification-bell"
 import {
   LayoutDashboard,
@@ -124,7 +125,7 @@ const NAV_GROUPS: NavGroup[] = [
   {
     name: "Pharmacy",
     items: [
-      { label: "Prescriptions",         href: "/admin/prescriptions",          icon: ClipboardList, perm: "rx.view" },
+      { label: "Prescriptions",         href: "/admin/prescriptions",          icon: ClipboardList, perm: "rx.view", hasBadge: true },
       { label: "Consultations",         href: "/admin/consultations",          icon: Stethoscope,   perm: "consult.handle" },
       { label: "Clinics & Partners",    href: "/admin/clinics",                icon: Building2,     perm: "users.manage" },
       { label: "Doctors",               href: "/admin/doctors",                icon: Stethoscope,   perm: "consult.handle" },
@@ -689,6 +690,8 @@ export function AdminShell({ children, title }: { children: ReactNode; title: st
   const { items: ordersList } = useAdminOrders()
   const pendingOrders = ordersList.filter((o) => o.status === "pending").length
   const dispatchReady = ordersList.filter((o) => o.status === "confirmed").length
+  const { data: adminRxList } = useAdminPrescriptions()
+  const pendingRx = (adminRxList ?? []).filter((rx) => rx.status === "pending").length
   const [search, setSearch] = useState("")
 
   useEffect(() => {
@@ -875,7 +878,7 @@ export function AdminShell({ children, title }: { children: ReactNode; title: st
               renderGroupedNav(
                 collapsed ? permittedGroups : filteredGroups,
                 pathname,
-                { "/admin/orders": pendingOrders, "/admin/logistics": dispatchReady },
+                { "/admin/orders": pendingOrders, "/admin/logistics": dispatchReady, "/admin/prescriptions": pendingRx },
                 collapsed,
                 searchAwareExpanded,
                 toggleExpanded,
@@ -1032,7 +1035,7 @@ export function AdminShell({ children, title }: { children: ReactNode; title: st
                   renderGroupedNav(
                     filteredGroups,
                     pathname,
-                    { "/admin/orders": pendingOrders, "/admin/logistics": dispatchReady },
+                    { "/admin/orders": pendingOrders, "/admin/logistics": dispatchReady, "/admin/prescriptions": pendingRx },
                     false,
                     searchAwareExpanded,
                     toggleExpanded,
