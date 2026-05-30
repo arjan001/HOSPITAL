@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp } from "drizzle-orm/pg-core"
+import { integer, pgTable, text, timestamp } from "drizzle-orm/pg-core"
 import { createInsertSchema, createSelectSchema } from "drizzle-zod"
 import { z } from "zod/v4"
 import { users } from "./users"
@@ -19,10 +19,35 @@ export const prescriptions = pgTable("prescriptions", {
   notes: text("notes"),
   status: text("status").notNull().default("pending"),
   pharmacistNotes: text("pharmacist_notes"),
+  // Doctor's clinical note — populated when the Rx is linked to a consultation.
+  doctorNotes: text("doctor_notes"),
   reviewedBy: text("reviewed_by"),
   reviewedAt: timestamp("reviewed_at"),
+  // Payment of the itemized approved-drug cart (set when the customer buys).
+  // Amount is whole KSh; reference is the Paystack/M-PESA receipt.
+  paidAt: timestamp("paid_at"),
+  paidAmount: integer("paid_amount"),
+  paymentReference: text("payment_reference"),
   submittedAt: timestamp("submitted_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
+})
+
+// Approved medication line-items for a prescription. Each row is one drug the
+// pharmacist approved, with the price the customer pays. `price` is per-unit in
+// whole KSh and nullable — null means "not yet priced", and the storefront
+// applies a sensible default at buy time.
+export const prescriptionDrugs = pgTable("prescription_drugs", {
+  id: text("id").primaryKey(),
+  prescriptionId: text("prescription_id")
+    .notNull()
+    .references(() => prescriptions.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  dosage: text("dosage"),
+  instructions: text("instructions"),
+  price: integer("price"),
+  quantity: integer("quantity").notNull().default(1),
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
 })
 
 export const prescriptionTimeline = pgTable("prescription_timeline", {
@@ -43,6 +68,11 @@ export const insertPrescriptionSchema = createInsertSchema(prescriptions).omit({
 export const selectPrescriptionSchema = createSelectSchema(prescriptions)
 export type InsertPrescription = z.infer<typeof insertPrescriptionSchema>
 export type Prescription = typeof prescriptions.$inferSelect
+
+export const insertPrescriptionDrugSchema = createInsertSchema(prescriptionDrugs).omit({ createdAt: true })
+export const selectPrescriptionDrugSchema = createSelectSchema(prescriptionDrugs)
+export type InsertPrescriptionDrug = z.infer<typeof insertPrescriptionDrugSchema>
+export type PrescriptionDrug = typeof prescriptionDrugs.$inferSelect
 
 export const insertPrescriptionTimelineSchema = createInsertSchema(prescriptionTimeline).omit({ createdAt: true })
 export type InsertPrescriptionTimeline = z.infer<typeof insertPrescriptionTimelineSchema>

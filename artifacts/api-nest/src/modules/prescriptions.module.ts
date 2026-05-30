@@ -44,11 +44,14 @@ import {
   Patch,
   Post,
   Req,
+  Res,
   UseGuards,
 } from "@nestjs/common"
-import type { Request } from "express"
+import type { Request, Response } from "express"
 import { InMemoryRepository, newId } from "../common/repository"
 import { AdminGuard } from "../common/admin-guard"
+import { getStorage } from "../common/storage"
+import { PaystackModule, PaystackService } from "./paystack.module"
 
 export type PrescriptionStatus = "pending" | "verified" | "dispensed" | "rejected"
 export type PaymentMethod = "cash" | "insurance" | "unknown"
@@ -57,11 +60,22 @@ export type ApprovedDrug = {
   name: string
   dosage: string
   instructions: string
+  /**
+   * Per-unit price in whole KSh the customer pays for this item. `null` means
+   * the pharmacist hasn't priced it yet — the storefront applies a sensible
+   * default at buy time (see DEFAULT_DRUG_PRICE).
+   */
+  price: number | null
+  /** Quantity to dispense; defaults to 1. */
+  quantity: number
 }
+
+/** Fallback per-unit price (KSh) when a drug has no explicit price set. */
+export const DEFAULT_DRUG_PRICE = 750
 
 export type TimelineEvent = {
   at: string
-  kind: "uploaded" | "received" | "in_review" | "verified" | "dispensed" | "rejected" | "note"
+  kind: "uploaded" | "received" | "in_review" | "verified" | "dispensed" | "rejected" | "note" | "payment"
   label: string
   by?: "system" | "pharmacist" | "patient"
 }
@@ -79,8 +93,12 @@ export type Prescription = {
   status: PrescriptionStatus
   paymentMethod: PaymentMethod
   pharmacistNote: string
+  /** Doctor's clinical note — surfaced when the Rx came from a consultation. */
+  doctorNote: string
   approvedDrugs: ApprovedDrug[]
   rejectedReason?: string
+  /** Payment of the itemized approved-drug cart (set when the customer buys). */
+  payment?: { amount: number; reference: string; receipt?: string; at: string }
   timeline: TimelineEvent[]
   createdAt: string
   updatedAt: string
@@ -98,8 +116,31 @@ type CreateInput = {
 }
 
 type UpdateInput = Partial<Pick<Prescription,
-  "status" | "pharmacistNote" | "approvedDrugs" | "rejectedReason"
+  "status" | "pharmacistNote" | "doctorNote" | "approvedDrugs" | "rejectedReason"
 >>
+
+type PayInput = { amount?: number; reference?: string; receipt?: string }
+
+/** Normalize an untrusted approved-drug payload into the stored shape. */
+function normalizeDrug(d: Partial<ApprovedDrug> | undefined): ApprovedDrug {
+  const rawPrice = (d as { price?: unknown })?.price
+  const price =
+    typeof rawPrice === "number" && Number.isFinite(rawPrice) && rawPrice >= 0
+      ? Math.round(rawPrice)
+      : null
+  const rawQty = (d as { quantity?: unknown })?.quantity
+  const quantity =
+    typeof rawQty === "number" && Number.isFinite(rawQty) && rawQty >= 1
+      ? Math.round(rawQty)
+      : 1
+  return {
+    name: String(d?.name ?? ""),
+    dosage: String(d?.dosage ?? ""),
+    instructions: String(d?.instructions ?? ""),
+    price,
+    quantity,
+  }
+}
 
 function nextRxNumber(): string {
   // Short, human-readable; uniqueness comes from `id`.
@@ -108,10 +149,15 @@ function nextRxNumber(): string {
 
 @Injectable()
 class PrescriptionsService {
+  constructor(@Inject(PaystackService) private readonly paystack: PaystackService) {}
+
   private repo = new InMemoryRepository<Prescription>()
   // Tracks which session owns which prescription id — admin endpoints don't
   // know the patient's sessionId but still need to read/update records.
   private ownerOf = new Map<string, string>()
+  // Payment references already consumed by a prescription — prevents replaying
+  // one successful charge across multiple prescriptions.
+  private consumedReferences = new Set<string>()
 
   list(sid: string): Prescription[] {
     return [...this.repo.listFor(sid)].sort((a, b) => b.createdAt.localeCompare(a.createdAt))
@@ -172,6 +218,7 @@ class PrescriptionsService {
       status: "pending",
       paymentMethod: data.paymentMethod === "insurance" ? "insurance" : data.paymentMethod === "cash" ? "cash" : "unknown",
       pharmacistNote: "",
+      doctorNote: "",
       approvedDrugs: [],
       timeline: [
         { at: now, kind: "uploaded", label: "Prescription uploaded by you", by: "patient" },
@@ -190,12 +237,9 @@ class PrescriptionsService {
     const next: Prescription = {
       ...current,
       ...(patch.pharmacistNote !== undefined ? { pharmacistNote: String(patch.pharmacistNote) } : {}),
+      ...(patch.doctorNote !== undefined ? { doctorNote: String(patch.doctorNote) } : {}),
       ...(Array.isArray(patch.approvedDrugs)
-        ? { approvedDrugs: patch.approvedDrugs.map((d) => ({
-            name: String(d?.name ?? ""),
-            dosage: String(d?.dosage ?? ""),
-            instructions: String(d?.instructions ?? ""),
-          })).filter((d) => d.name) }
+        ? { approvedDrugs: patch.approvedDrugs.map(normalizeDrug).filter((d) => d.name) }
         : {}),
       ...(patch.rejectedReason !== undefined ? { rejectedReason: String(patch.rejectedReason) } : {}),
       ...(patch.status ? { status: patch.status } : {}),
@@ -230,6 +274,101 @@ class PrescriptionsService {
     if (!saved) throw new HttpException("Prescription not found", HttpStatus.NOT_FOUND)
     return saved
   }
+
+  /**
+   * Record payment for the itemized approved-drug cart and advance the Rx to
+   * `dispensed`. Only a `verified` prescription with priced drugs can be paid.
+   * The amount is validated server-side against the itemized total so a client
+   * can't underpay.
+   */
+  async pay(sid: string, id: string, input: PayInput): Promise<Prescription> {
+    const current = this.get(sid, id)
+    if (current.status !== "verified") {
+      throw new HttpException(
+        "Only a verified prescription can be paid for.",
+        HttpStatus.CONFLICT,
+      )
+    }
+    if (current.payment) {
+      throw new HttpException("This prescription has already been paid.", HttpStatus.CONFLICT)
+    }
+    const expected = itemizedTotal(current.approvedDrugs)
+    if (expected <= 0) {
+      throw new HttpException("There is nothing to pay for yet.", HttpStatus.BAD_REQUEST)
+    }
+    const reference = String(input?.reference ?? "").trim()
+    if (!reference) {
+      throw new HttpException("A payment reference is required.", HttpStatus.BAD_REQUEST)
+    }
+    // Reserve the reference *synchronously* (no await between the check and the
+    // add) so two concurrent requests can't both pass the guard and redeem one
+    // charge twice. Roll the reservation back on any failure below so a
+    // legitimate retry (e.g. payment was still pending) can succeed later.
+    if (this.consumedReferences.has(reference)) {
+      throw new HttpException(
+        "This payment reference has already been used.",
+        HttpStatus.CONFLICT,
+      )
+    }
+    this.consumedReferences.add(reference)
+    try {
+      // Trust only a Paystack-confirmed charge — never the client's word. This
+      // throws if the reference is forged, unconfirmed, or underpaid.
+      const verified = await this.paystack.verifyPaidReference(reference, expected)
+      // Bind the charge to *this* prescription so a successful reference for one
+      // Rx (or an unrelated order) can't be redeemed against another.
+      if (verified.orderNumber !== `RX-${current.rxNumber}`) {
+        throw new HttpException(
+          "This payment does not match this prescription.",
+          HttpStatus.BAD_REQUEST,
+        )
+      }
+      // Trust the server-computed total over any client-supplied amount.
+      const amount = expected
+      const now = new Date().toISOString()
+      const next: Prescription = {
+        ...current,
+        status: "dispensed",
+        payment: {
+          amount,
+          reference,
+          receipt: verified.mpesaReceipt || (input?.receipt ? String(input.receipt) : undefined),
+          at: now,
+        },
+        timeline: [
+          ...current.timeline,
+          { at: now, kind: "payment", label: `Payment received — KSh ${amount.toLocaleString()}`, by: "patient" },
+          { at: now, kind: "dispensed", label: "Medication dispensed and on its way", by: "pharmacist" },
+        ],
+        updatedAt: now,
+      }
+      const saved = this.repo.update(sid, id, next)
+      if (!saved) throw new HttpException("Prescription not found", HttpStatus.NOT_FOUND)
+      return saved
+    } catch (err) {
+      this.consumedReferences.delete(reference)
+      throw err
+    }
+  }
+
+  /** Resolve the storage key for a prescription file by index, owner-checked. */
+  fileKey(sid: string, id: string, index: number): string {
+    const rx = this.get(sid, id)
+    const file = rx.files[index]
+    if (!file || !file.key) {
+      throw new HttpException("File not found", HttpStatus.NOT_FOUND)
+    }
+    return file.key
+  }
+}
+
+/** Sum the itemized cost (price × qty, defaulting unpriced drugs) in KSh. */
+export function itemizedTotal(drugs: ApprovedDrug[]): number {
+  return drugs.reduce((sum, d) => {
+    const unit = typeof d.price === "number" && d.price >= 0 ? d.price : DEFAULT_DRUG_PRICE
+    const qty = typeof d.quantity === "number" && d.quantity >= 1 ? d.quantity : 1
+    return sum + unit * qty
+  }, 0)
 }
 
 @Controller("me/prescriptions")
@@ -261,6 +400,38 @@ class MyPrescriptionsController {
     if (typeof body?.rejectedReason === "string") safe.rejectedReason = body.rejectedReason
     return this.svc.update(req.sessionId, id, safe)
   }
+
+  /** Pay for the approved drugs and advance the Rx to dispensed. */
+  @Post(":id/pay")
+  pay(@Req() req: Request, @Param("id") id: string, @Body() body: PayInput) {
+    return this.svc.pay(req.sessionId, id, body ?? {})
+  }
+
+  /**
+   * Stream a prescription file (owner-checked) instead of using the cookie-only
+   * static mount, so the scan is only served to the patient who uploaded it.
+   */
+  @Get(":id/files/:index")
+  async file(
+    @Req() req: Request,
+    @Param("id") id: string,
+    @Param("index") index: string,
+    @Res() res: Response,
+  ) {
+    const i = Number.parseInt(index, 10)
+    if (!Number.isInteger(i) || i < 0) {
+      throw new HttpException("Invalid file index", HttpStatus.BAD_REQUEST)
+    }
+    const key = this.svc.fileKey(req.sessionId, id, i)
+    const result = await getStorage().read(key)
+    if (!result) {
+      throw new HttpException("File not found", HttpStatus.NOT_FOUND)
+    }
+    res.setHeader("Content-Type", result.contentType)
+    res.setHeader("Content-Disposition", "inline")
+    res.setHeader("Cache-Control", "private, max-age=300")
+    res.send(result.body)
+  }
 }
 
 @UseGuards(AdminGuard)
@@ -284,6 +455,7 @@ class AdminPrescriptionsController {
     const safe: UpdateInput = {}
     if (body?.status) safe.status = body.status
     if (typeof body?.pharmacistNote === "string") safe.pharmacistNote = body.pharmacistNote
+    if (typeof body?.doctorNote === "string") safe.doctorNote = body.doctorNote
     if (typeof body?.rejectedReason === "string") safe.rejectedReason = body.rejectedReason
     if (Array.isArray(body?.approvedDrugs)) safe.approvedDrugs = body.approvedDrugs
     return this.svc.update(sid, id, safe)
@@ -304,6 +476,7 @@ class AdminPrescriptionsController {
 }
 
 @Module({
+  imports: [PaystackModule],
   controllers: [MyPrescriptionsController, AdminPrescriptionsController],
   providers: [PrescriptionsService],
 })

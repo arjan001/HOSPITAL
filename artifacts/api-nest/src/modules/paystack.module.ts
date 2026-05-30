@@ -316,6 +316,37 @@ class PaystackService {
     }
   }
 
+  /**
+   * Verify that `reference` corresponds to a *successful* Paystack charge of at
+   * least `minAmount` KSh, lazily re-checking with Paystack if still pending.
+   * Throws when the provider is unconfigured, the reference is unknown (forged),
+   * the charge didn't succeed, or it underpaid. Returns the verified record so
+   * callers can capture the M-Pesa receipt. This is the single trust gate other
+   * modules use before granting value for a payment.
+   */
+  async verifyPaidReference(reference: string, minAmount: number): Promise<PaymentRecord> {
+    this.requireConfigured()
+    const ref = String(reference ?? "").trim()
+    if (!ref) {
+      throw new HttpException("A payment reference is required.", HttpStatus.BAD_REQUEST)
+    }
+    // status() throws NOT_FOUND for an unknown reference — blocks forged refs.
+    const record = await this.status({ reference: ref })
+    if (record.status !== "success") {
+      throw new HttpException(
+        "Payment has not been confirmed for this reference.",
+        HttpStatus.PAYMENT_REQUIRED,
+      )
+    }
+    if (record.amount < minAmount) {
+      throw new HttpException(
+        "The confirmed payment is less than the amount due.",
+        HttpStatus.BAD_REQUEST,
+      )
+    }
+    return record
+  }
+
   /** Webhook ingest. Signature is already verified by the controller. */
   applyCallback(event: PaystackCallbackEvent): { ok: true } {
     const data = event?.data
@@ -379,5 +410,8 @@ class PaystackController {
 @Module({
   controllers: [PaystackController],
   providers: [PaystackService],
+  exports: [PaystackService],
 })
 export class PaystackModule {}
+
+export { PaystackService }

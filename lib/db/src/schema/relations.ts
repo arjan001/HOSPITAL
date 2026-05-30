@@ -14,7 +14,7 @@ import { relations } from "drizzle-orm"
 import { users, addresses } from "./users"
 import { categories, products, productImages, productVariations } from "./catalog"
 import { orders, orderItems } from "./orders"
-import { prescriptions, prescriptionTimeline } from "./prescriptions"
+import { prescriptions, prescriptionTimeline, prescriptionDrugs } from "./prescriptions"
 import { doctors, consultations } from "./consultations"
 import { uploads, wishlistItems } from "./uploads"
 import { payments } from "./payments"
@@ -82,11 +82,19 @@ export const prescriptionsRelations = relations(prescriptions, ({ one, many }) =
   user: one(users, { fields: [prescriptions.userId], references: [users.id] }),
   upload: one(uploads, { fields: [prescriptions.uploadId], references: [uploads.id] }),
   timeline: many(prescriptionTimeline),
+  drugs: many(prescriptionDrugs),
 }))
 
 export const prescriptionTimelineRelations = relations(prescriptionTimeline, ({ one }) => ({
   prescription: one(prescriptions, {
     fields: [prescriptionTimeline.prescriptionId],
+    references: [prescriptions.id],
+  }),
+}))
+
+export const prescriptionDrugsRelations = relations(prescriptionDrugs, ({ one }) => ({
+  prescription: one(prescriptions, {
+    fields: [prescriptionDrugs.prescriptionId],
     references: [prescriptions.id],
   }),
 }))

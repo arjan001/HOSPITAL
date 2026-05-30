@@ -155,11 +155,21 @@ export function useOrders() {
    under /admin/prescriptions when admin auth ports to NestJS.
 ─────────────────────────────────────────────────────────────*/
 
-export type ApprovedDrug = { name: string; dosage: string; instructions: string }
+export type ApprovedDrug = {
+  name: string
+  dosage: string
+  instructions: string
+  /** Per-unit price in whole KSh. `null` = not yet priced (storefront defaults). */
+  price: number | null
+  /** Quantity to dispense; defaults to 1. */
+  quantity: number
+}
+/** Fallback per-unit price (KSh) when a drug has no explicit price set. Mirrors api-nest. */
+export const DEFAULT_DRUG_PRICE = 750
 export type RxStatus = "pending" | "verified" | "dispensed" | "rejected"
 export type RxTimelineEvent = {
   at: string
-  kind: "uploaded" | "received" | "in_review" | "verified" | "dispensed" | "rejected" | "note"
+  kind: "uploaded" | "received" | "in_review" | "verified" | "dispensed" | "rejected" | "note" | "payment"
   label: string
   by?: "system" | "pharmacist" | "patient"
 }
@@ -176,8 +186,10 @@ export type AccountPrescription = {
   status: RxStatus
   paymentMethod: "cash" | "insurance" | "unknown"
   pharmacistNote: string
+  doctorNote: string
   approvedDrugs: ApprovedDrug[]
   rejectedReason?: string
+  payment?: { amount: number; reference: string; receipt?: string; at: string }
   timeline: RxTimelineEvent[]
   createdAt: string
   updatedAt: string
@@ -200,6 +212,26 @@ export const apiPrescriptions = {
       method: "POST",
       body: JSON.stringify(input),
     }),
+  /** Pay for the approved drugs; advances the Rx to dispensed. */
+  pay: (id: string, input: { amount?: number; reference: string; receipt?: string }) =>
+    nestFetch<AccountPrescription>(`/me/prescriptions/${id}/pay`, {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+}
+
+/** Itemized total (price × qty, defaulting unpriced drugs) in whole KSh. */
+export function rxItemizedTotal(drugs: ApprovedDrug[]): number {
+  return drugs.reduce((sum, d) => {
+    const unit = typeof d.price === "number" && d.price >= 0 ? d.price : DEFAULT_DRUG_PRICE
+    const qty = typeof d.quantity === "number" && d.quantity >= 1 ? d.quantity : 1
+    return sum + unit * qty
+  }, 0)
+}
+
+/** Owner-checked URL for streaming a prescription file (image inline / PDF). */
+export function rxFileUrl(id: string, index: number): string {
+  return `${BASE}/me/prescriptions/${id}/files/${index}`
 }
 
 /* ────────────────────────────────────────────────────────────

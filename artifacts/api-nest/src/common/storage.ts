@@ -18,11 +18,32 @@ import crypto from "node:crypto"
  */
 
 export type PutResult = { url: string; key: string }
+export type ReadResult = { body: Buffer; contentType: string }
 
 export interface Storage {
   put(namespace: string, originalName: string, body: Buffer, contentType: string): Promise<PutResult>
   delete(key: string): Promise<void>
+  /**
+   * Read a stored object's bytes by key. Returns null when the key does not
+   * resolve to a file. Used by gated, per-owner file routes (e.g. serving a
+   * prescription scan only to the patient who uploaded it) instead of the
+   * cookie-only static mount. The S3 impl can fetch from the bucket here, or
+   * callers can prefer `signedUrl()` to redirect.
+   */
+  read(key: string): Promise<ReadResult | null>
   signedUrl?(key: string, ttlSeconds?: number): Promise<string>
+}
+
+// Reverse of MIME_EXT — infer a content type from the stored key's extension
+// so reads send the right `Content-Type` even though we don't store metadata
+// on disk.
+const EXT_MIME: Record<string, string> = {
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".png": "image/png",
+  ".webp": "image/webp",
+  ".gif": "image/gif",
+  ".pdf": "application/pdf",
 }
 
 export const UPLOAD_DISK_ROOT = path.resolve(process.cwd(), ".uploads")
@@ -67,6 +88,23 @@ class LocalDiskStorage implements Storage {
     const safeKey = key.replace(/^\/+/, "").replace(/\.\./g, "")
     const fullPath = path.join(UPLOAD_DISK_ROOT, safeKey)
     await fs.unlink(fullPath).catch(() => undefined)
+  }
+
+  async read(key: string): Promise<ReadResult | null> {
+    // Normalize away any path-traversal attempt, then confirm the resolved
+    // path is still inside UPLOAD_DISK_ROOT before reading a byte.
+    const safeKey = key.replace(/^\/+/, "").replace(/\.\./g, "")
+    const fullPath = path.resolve(UPLOAD_DISK_ROOT, safeKey)
+    if (fullPath !== UPLOAD_DISK_ROOT && !fullPath.startsWith(UPLOAD_DISK_ROOT + path.sep)) {
+      return null
+    }
+    try {
+      const body = await fs.readFile(fullPath)
+      const ext = path.extname(fullPath).toLowerCase()
+      return { body, contentType: EXT_MIME[ext] ?? "application/octet-stream" }
+    } catch {
+      return null
+    }
   }
 }
 

@@ -63,7 +63,7 @@ export type Prescription = {
   notes: string
   status: PrescriptionStatus
   pharmacistNote: string
-  recommendedDrugs: { name: string; dosage: string; instructions: string }[]
+  recommendedDrugs: { name: string; dosage: string; instructions: string; price?: number | null; quantity?: number }[]
   verification?: VerificationCheck
   consultationId?: string  // backref when this Rx was issued from a consultation
   createdAt: string
@@ -684,6 +684,36 @@ export function AdminPrescriptions() {
                             </button>
                           </div>
                           <input className="rxinput" placeholder="Instructions (e.g. 1 tab, 3x daily after meals)" value={r.instructions} onChange={(e) => updateRec(i, { instructions: e.target.value })} />
+                          <div className="flex items-center gap-2">
+                            <label className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                              <span className="font-semibold">Price (KSh)</span>
+                              <input
+                                type="number"
+                                min={0}
+                                className="rxinput w-28"
+                                placeholder="e.g. 750"
+                                value={typeof r.price === "number" ? r.price : ""}
+                                onChange={(e) => {
+                                  const v = e.target.value.trim()
+                                  updateRec(i, { price: v === "" ? null : Math.max(0, Math.round(Number(v))) })
+                                }}
+                              />
+                            </label>
+                            <label className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                              <span className="font-semibold">Qty</span>
+                              <input
+                                type="number"
+                                min={1}
+                                className="rxinput w-20"
+                                placeholder="1"
+                                value={typeof r.quantity === "number" ? r.quantity : ""}
+                                onChange={(e) => {
+                                  const v = e.target.value.trim()
+                                  updateRec(i, { quantity: v === "" ? 1 : Math.max(1, Math.round(Number(v))) })
+                                }}
+                              />
+                            </label>
+                          </div>
                         </div>
                       ))}
                     </div>

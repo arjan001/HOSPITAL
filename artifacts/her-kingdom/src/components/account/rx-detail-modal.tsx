@@ -13,10 +13,14 @@ import {
   Calendar,
   User as UserIcon,
   CheckCheck,
+  Eye,
+  CreditCard,
   X,
 } from "lucide-react"
 import {
   refreshMyPrescriptions,
+  rxFileUrl,
+  DEFAULT_DRUG_PRICE,
   type AccountPrescription,
   type RxStatus,
 } from "@/lib/api-nest"
@@ -52,6 +56,12 @@ export function StatusPill({ k, size = "sm" }: { k: RxStatus; size?: "sm" | "md"
     </span>
   )
 }
+
+const ksh = (n: number) => `KSh ${Math.round(n).toLocaleString()}`
+type RxDrug = AccountPrescription["approvedDrugs"][number]
+const isPriced = (d: RxDrug) => typeof d.price === "number" && d.price >= 0
+const drugUnitPrice = (d: RxDrug) => (isPriced(d) ? (d.price as number) : DEFAULT_DRUG_PRICE)
+const drugQty = (d: RxDrug) => (typeof d.quantity === "number" && d.quantity >= 1 ? d.quantity : 1)
 
 export function fmtTime(iso: string): string {
   const d = new Date(iso)
@@ -155,6 +165,17 @@ export function RxDetailModal({ rx, onClose }: { rx: AccountPrescription; onClos
                               {d.dosage}
                             </span>
                           )}
+                          <span className="ml-auto text-sm font-bold" style={{ color: WINE }}>
+                            {ksh(drugUnitPrice(d) * drugQty(d))}
+                          </span>
+                        </div>
+                        <div className="mt-0.5 text-[11px] text-muted-foreground">
+                          {ksh(drugUnitPrice(d))} × {drugQty(d)}
+                          {!isPriced(d) && (
+                            <span className="ml-1 rounded bg-amber-100 px-1 py-0.5 text-[9px] font-bold uppercase tracking-wide text-amber-700">
+                              Estimated
+                            </span>
+                          )}
                         </div>
                         {d.instructions && (
                           <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{d.instructions}</p>
@@ -165,7 +186,43 @@ export function RxDetailModal({ rx, onClose }: { rx: AccountPrescription; onClos
                 ))}
               </ul>
             )}
+            {rx.approvedDrugs.length > 0 && (
+              <div className="mt-2 flex items-center justify-between rounded-xl border border-border bg-muted/30 px-3 py-2.5">
+                <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Total</span>
+                <span className="text-sm font-bold" style={{ color: WINE }}>
+                  {ksh(rx.approvedDrugs.reduce((s, d) => s + drugUnitPrice(d) * drugQty(d), 0))}
+                </span>
+              </div>
+            )}
           </section>
+
+          {rx.payment && (
+            <section>
+              <SectionHeading icon={CreditCard} title="Payment" />
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-900">
+                <div className="flex items-center justify-between">
+                  <span className="font-semibold">Paid</span>
+                  <span className="font-bold">{ksh(rx.payment.amount)}</span>
+                </div>
+                <div className="mt-1 text-[11px] text-emerald-800">
+                  {rx.payment.receipt ? `M-PESA ${rx.payment.receipt} · ` : ""}
+                  {new Date(rx.payment.at).toLocaleString()}
+                </div>
+              </div>
+            </section>
+          )}
+
+          {rx.doctorNote && (
+            <section>
+              <SectionHeading icon={Stethoscope} title="Doctor's note" />
+              <div
+                className="rounded-xl border-l-4 bg-sky-50/70 p-3 text-xs text-sky-900"
+                style={{ borderColor: "#0EA5E9" }}
+              >
+                <p className="whitespace-pre-wrap">{rx.doctorNote}</p>
+              </div>
+            </section>
+          )}
 
           {rx.pharmacistNote && (
             <section>
@@ -211,6 +268,15 @@ export function RxDetailModal({ rx, onClose }: { rx: AccountPrescription; onClos
                         {Math.round(f.size / 1024)} KB
                       </span>
                     )}
+                    <a
+                      href={rxFileUrl(rx.id, i)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className={`inline-flex h-7 items-center gap-1 rounded-md border border-border bg-white px-2 text-[11px] font-semibold ${typeof f.size === "number" ? "" : "ml-auto"}`}
+                      style={{ color: WINE }}
+                    >
+                      <Eye className="h-3 w-3" /> View
+                    </a>
                   </li>
                 ))}
               </ul>
@@ -224,7 +290,7 @@ export function RxDetailModal({ rx, onClose }: { rx: AccountPrescription; onClos
                 <li key={i} className="relative">
                   <span
                     className="absolute -left-[21px] top-1 grid h-3 w-3 place-items-center rounded-full"
-                    style={{ background: i === rx.timeline.length - 1 ? ACCENT : "#D1D5DB" }}
+                    style={{ background: ev.kind === "payment" ? "#10B981" : i === rx.timeline.length - 1 ? ACCENT : "#D1D5DB" }}
                   />
                   <p className="text-xs font-medium" style={{ color: WINE }}>{ev.label}</p>
                   <p className="text-[10px] text-muted-foreground">

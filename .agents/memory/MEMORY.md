@@ -1,0 +1,1 @@
+- [api-nest payment trust gate](payment-trust-gate.md) — never grant value on a client-supplied payment reference; verify against Paystack server-side, bind to order, reserve reference atomically.
