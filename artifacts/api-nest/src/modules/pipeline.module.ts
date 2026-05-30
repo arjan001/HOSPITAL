@@ -729,16 +729,59 @@ class CommunicationsAutomationService {
     if (!tpl) {
       throw new HttpException("Template not found", HttpStatus.NOT_FOUND)
     }
+    return this.dispatch(tpl, input.to, input.variables ?? {})
+  }
+
+  /**
+   * Resolve the best template for a *domain trigger* (e.g. "order_dispatched")
+   * and send it — the entry point used by event-driven patient notifications
+   * (auto-send on prescription / order status changes). Prefers an enabled
+   * template on the requested channel; if only a disabled one exists we still
+   * pick it so the caller gets an explicit "disabled" result rather than a
+   * silent no-op. Returns a `skipped` result (never throws) when no matching
+   * template is configured, so callers can stay fire-and-forget.
+   */
+  async sendByTrigger(input: {
+    trigger: string
+    to: string
+    channel?: MessageTemplate["channel"]
+    variables?: Record<string, string | number>
+  }): Promise<{ ok: boolean; channel: string; preview: string; skipped?: boolean; reason?: string }> {
+    const channel = input.channel ?? "whatsapp"
+    const templates = await cmsGet<MessageTemplate[]>("message-templates", [])
+    const matches = templates.filter((t) => t.trigger === input.trigger && t.channel === channel)
+    const tpl = matches.find((t) => t.enabled) ?? matches[0]
+    if (!tpl) {
+      return {
+        ok: false,
+        channel,
+        preview: "",
+        skipped: true,
+        reason: `No ${channel} template configured for trigger "${input.trigger}"`,
+      }
+    }
+    return this.dispatch(tpl, input.to, input.variables ?? {})
+  }
+
+  /**
+   * Interpolate a resolved template and deliver it on its channel, falling back
+   * to the cmsStore outbox when the transport isn't wired (SMS) or the WhatsApp
+   * provider is unconfigured. Shared by both `send` (by id) and `sendByTrigger`.
+   */
+  private async dispatch(
+    tpl: MessageTemplate,
+    to: string,
+    vars: Record<string, string | number>,
+  ): Promise<{ ok: boolean; channel: string; preview: string; skipped?: boolean; reason?: string }> {
     if (!tpl.enabled) {
       return { ok: false, channel: tpl.channel, preview: "", skipped: true, reason: "Template disabled" }
     }
-    const vars = input.variables ?? {}
     const subject = interpolate(tpl.subject, vars)
     const body = interpolate(tpl.body, vars)
 
     if (tpl.channel === "email") {
       const result = await this.email.send({
-        to: input.to,
+        to,
         subject,
         html: `<div style="font-family:system-ui,sans-serif;line-height:1.55">${body.replace(/\n/g, "<br/>")}</div>`,
         text: body,
@@ -755,7 +798,7 @@ class CommunicationsAutomationService {
       // Meta template messages, call WhatsAppService.send({ templateName, variables })
       // directly with an explicit ordered `variables` array.
       const result = await this.whatsapp.send({
-        to: input.to,
+        to,
         body,
       })
       // Only fall through to the outbox when the provider was unconfigured;
@@ -778,7 +821,7 @@ class CommunicationsAutomationService {
         id: newId("msg"),
         templateId: tpl.id,
         channel: tpl.channel,
-        to: input.to,
+        to,
         subject,
         body,
         queuedAt: new Date().toISOString(),
@@ -876,5 +919,8 @@ class PipelineStatusController {
     LogisticsAutomationService,
     CommunicationsAutomationService,
   ],
+  exports: [CommunicationsAutomationService],
 })
 export class PipelineModule {}
+
+export { CommunicationsAutomationService }

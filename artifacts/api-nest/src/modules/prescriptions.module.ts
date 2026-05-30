@@ -53,6 +53,7 @@ import { AdminGuard } from "../common/admin-guard"
 import { getStorage } from "../common/storage"
 import { PaystackModule, PaystackService } from "./paystack.module"
 import { UploadsModule, UploadsService } from "./uploads.module"
+import { PatientNotificationsModule, PatientNotificationsService, type PatientNotificationEvent } from "./patient-notifications.module"
 
 export type PrescriptionStatus = "pending" | "verified" | "dispensed" | "rejected"
 export type PaymentMethod = "cash" | "insurance" | "unknown"
@@ -153,6 +154,7 @@ class PrescriptionsService {
   constructor(
     @Inject(PaystackService) private readonly paystack: PaystackService,
     @Inject(UploadsService) private readonly uploads: UploadsService,
+    @Inject(PatientNotificationsService) private readonly patientNotify: PatientNotificationsService,
   ) {}
 
   private repo = new InMemoryRepository<Prescription>()
@@ -240,7 +242,14 @@ class PrescriptionsService {
       updatedAt: now,
     }
     this.ownerOf.set(rec.id, sid)
-    return this.repo.add(sid, rec)
+    const saved = this.repo.add(sid, rec)
+    // Auto-text the patient: "we've received your prescription".
+    this.patientNotify.notify("prescription_uploaded", {
+      phone: saved.phone,
+      name: saved.recipient || saved.patientName,
+      variables: { rx_id: saved.rxNumber },
+    })
+    return saved
   }
 
   update(sid: string, id: string, patch: UpdateInput): Prescription {
@@ -284,6 +293,28 @@ class PrescriptionsService {
 
     const saved = this.repo.update(sid, id, next)
     if (!saved) throw new HttpException("Prescription not found", HttpStatus.NOT_FOUND)
+
+    // Auto-text the patient on a meaningful status transition.
+    if (patch.status && patch.status !== current.status) {
+      const eventForStatus: Partial<Record<PrescriptionStatus, PatientNotificationEvent>> = {
+        verified: "prescription_verified",
+        dispensed: "prescription_dispensed",
+        rejected: "prescription_rejected",
+      }
+      const event = eventForStatus[patch.status]
+      if (event) {
+        this.patientNotify.notify(event, {
+          phone: saved.phone,
+          name: saved.recipient || saved.patientName,
+          variables: {
+            rx_id: saved.rxNumber,
+            ...(event === "prescription_rejected"
+              ? { rx_reason: saved.rejectedReason ?? "" }
+              : {}),
+          },
+        })
+      }
+    }
     return saved
   }
 
@@ -356,6 +387,29 @@ class PrescriptionsService {
       }
       const saved = this.repo.update(sid, id, next)
       if (!saved) throw new HttpException("Prescription not found", HttpStatus.NOT_FOUND)
+      // Auto-text the patient: "payment received".
+      this.patientNotify.notify("payment_received", {
+        phone: saved.phone,
+        name: saved.recipient || saved.patientName,
+        variables: {
+          order_id: `RX-${saved.rxNumber}`,
+          order_total: `KSh ${amount.toLocaleString()}`,
+          payment_method: "M-Pesa",
+          rx_id: saved.rxNumber,
+        },
+      })
+      // Paying advances the Rx straight to "dispensed", so also fire the
+      // "your prescription is ready / on its way" notification — this is the
+      // primary automatic path to dispensed and must not be skipped. The two
+      // texts are intentionally distinct (payment confirmation vs. fulfilment).
+      this.patientNotify.notify("prescription_dispensed", {
+        phone: saved.phone,
+        name: saved.recipient || saved.patientName,
+        variables: {
+          rx_id: saved.rxNumber,
+          order_id: `RX-${saved.rxNumber}`,
+        },
+      })
       return saved
     } catch (err) {
       this.consumedReferences.delete(reference)
@@ -488,7 +542,7 @@ class AdminPrescriptionsController {
 }
 
 @Module({
-  imports: [PaystackModule, UploadsModule],
+  imports: [PaystackModule, UploadsModule, PatientNotificationsModule],
   controllers: [MyPrescriptionsController, AdminPrescriptionsController],
   providers: [PrescriptionsService],
 })

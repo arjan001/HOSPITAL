@@ -41,6 +41,11 @@ import {
   UseGuards,
 } from "@nestjs/common"
 import { AdminGuard } from "../common/admin-guard"
+import {
+  PatientNotificationsModule,
+  PatientNotificationsService,
+  type PatientNotificationEvent,
+} from "./patient-notifications.module"
 
 /**
  * Admin Sales & Orders backend.
@@ -124,8 +129,40 @@ type UpsertInput = Partial<Omit<AdminOrderRecord, "id" | "createdAt" | "updatedA
 
 @Injectable()
 class AdminOrdersService {
+  constructor(
+    @Inject(PatientNotificationsService)
+    private readonly patientNotify: PatientNotificationsService,
+  ) {}
+
   /** Global store keyed by orderNo (unique). */
   private byOrderNo = new Map<string, AdminOrderRecord>()
+
+  /** Domain status → patient-notification event. Only statuses that should
+   *  text the customer are mapped; `pending` deliberately is not. */
+  private eventForStatus(status: AdminOrderStatus): PatientNotificationEvent | undefined {
+    switch (status) {
+      case "confirmed": return "order_confirmed"
+      case "dispatched": return "order_dispatched"
+      case "delivered": return "order_delivered"
+      case "cancelled": return "order_cancelled"
+      default: return undefined
+    }
+  }
+
+  /** Fire a patient WhatsApp when an order reaches a notifiable status. */
+  private notifyStatusChange(order: AdminOrderRecord, status: AdminOrderStatus): void {
+    const event = this.eventForStatus(status)
+    if (!event) return
+    this.patientNotify.notify(event, {
+      phone: order.mpesaPhone || order.phone,
+      name: order.customer,
+      variables: {
+        order_id: order.orderNo,
+        order_total: `KSh ${order.total.toLocaleString()}`,
+        payment_method: order.paymentMethod,
+      },
+    })
+  }
 
   list(): AdminOrderRecord[] {
     return [...this.byOrderNo.values()].sort((a, b) =>
@@ -217,6 +254,12 @@ class AdminOrdersService {
       updatedAt: now.toISOString(),
     }
     this.byOrderNo.set(next.orderNo, next)
+    // Auto-text the patient when the effective status advances to a new,
+    // notifiable state (treat a brand-new order's baseline as "pending").
+    const prevStatus = existing?.status ?? "pending"
+    if (effectiveStatus !== prevStatus) {
+      this.notifyStatusChange(next, effectiveStatus)
+    }
     return next
   }
 
@@ -224,6 +267,9 @@ class AdminOrdersService {
     const target = this.get(id)
     const next = { ...target, status, updatedAt: new Date().toISOString() }
     this.byOrderNo.set(target.orderNo, next)
+    if (status !== target.status) {
+      this.notifyStatusChange(next, status)
+    }
     return next
   }
 
@@ -289,6 +335,7 @@ class AdminOrdersController {
 }
 
 @Module({
+  imports: [PatientNotificationsModule],
   controllers: [AdminOrdersController],
   providers: [AdminOrdersService],
   exports: [AdminOrdersService],
