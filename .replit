@@ -1,4 +1,4 @@
-modules = ["nodejs-24", "python-3.11"]
+modules = ["nodejs-24", "python-3.11", "postgresql-16"]
 
 [deployment]
 router = "application"
@@ -77,3 +77,6 @@ externalPort = 80
 PAYSTACK_PUBLIC_KEY = "pk_test_29cf9e81fde7d39d097459c2ebd74af8135d274e"
 
 [userenv.production]
+
+[nix]
+channel = "stable-25_05"
