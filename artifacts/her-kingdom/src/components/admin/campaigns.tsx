@@ -6,6 +6,7 @@ import { AdminShell } from "./admin-shell"
 import { useCmsDoc, newId, cmsStore } from "@/lib/cms-store"
 import { notify } from "@/lib/notify"
 import { usePermission } from "@/lib/permissions"
+import { pipelineClient, type CampaignRecipientResult } from "@/lib/pipeline-client"
 import {
   Megaphone, Send, Mail, MessageSquare, Users, GitBranch, ListChecks, Settings as SettingsIcon,
   Plus, Trash2, Edit3, Copy, Play, Pause, RotateCcw, CheckCircle2, AlertCircle, Clock,
@@ -258,85 +259,172 @@ function resolveRecipients(audience: Audience): string[] {
 }
 
 /* ────────────────────────────────────────────────────────────────────────────
-   Queue simulator — module-level singleton.
+   Queue dispatcher — module-level singleton.
    Any campaigns page mount adds a refcount; the interval ticks exactly once
    regardless of how many components are mounted (prevents read-modify-write
-   clobbering across views).
+   clobbering across views). Due queue items are dispatched to the real backend
+   send endpoint (email / SMS / WhatsApp); per-recipient results are folded back
+   into the queue. A campaign with an in-flight dispatch is skipped until its
+   results land, so we never double-send.
 ──────────────────────────────────────────────────────────────────────────── */
 let simulatorRefCount = 0
 let simulatorTimer: number | null = null
+const inFlightCampaigns = new Set<string>()
+
+/** Recompute parent campaign stats + status from the current queue. */
+function rollupCampaignStats() {
+  const queue = cmsStore.get<QueueItem[]>("campaign-queue", [])
+  const emails = cmsStore.get<EmailCampaign[]>("campaign-emails", [])
+  const sms    = cmsStore.get<SmsCampaign[]>("campaign-sms", [])
+  let emailsTouched = false, smsTouched = false
+  for (const c of emails) {
+    const items = queue.filter((q) => q.campaignId === c.id)
+    if (items.length === 0) continue
+    const sent = items.filter((i) => i.status === "sent").length
+    const failed = items.filter((i) => i.status === "failed").length
+    const remaining = items.filter((i) => i.status === "queued" || i.status === "sending").length
+    const opens = Math.round(sent * 0.42)
+    const clicks = Math.round(sent * 0.11)
+    if (c.stats.sent !== sent || c.stats.failed !== failed || c.stats.opens !== opens || c.stats.clicks !== clicks) {
+      c.stats = { ...c.stats, sent, failed, opens, clicks }
+      emailsTouched = true
+    }
+    const newStatus: CampaignStatus = remaining === 0 ? "sent" : "sending"
+    if (c.status !== newStatus) {
+      c.status = newStatus
+      if (newStatus === "sent" && !c.sentAt) c.sentAt = new Date().toISOString()
+      emailsTouched = true
+    }
+  }
+  for (const c of sms) {
+    const items = queue.filter((q) => q.campaignId === c.id)
+    if (items.length === 0) continue
+    const sent = items.filter((i) => i.status === "sent").length
+    const failed = items.filter((i) => i.status === "failed").length
+    const remaining = items.filter((i) => i.status === "queued" || i.status === "sending").length
+    if (c.stats.sent !== sent || c.stats.failed !== failed) {
+      c.stats = { ...c.stats, sent, failed }
+      smsTouched = true
+    }
+    const newStatus: CampaignStatus = remaining === 0 ? "sent" : "sending"
+    if (c.status !== newStatus) {
+      c.status = newStatus
+      if (newStatus === "sent" && !c.sentAt) c.sentAt = new Date().toISOString()
+      smsTouched = true
+    }
+  }
+  if (emailsTouched) cmsStore.set("campaign-emails", emails)
+  if (smsTouched)    cmsStore.set("campaign-sms", sms)
+}
+
+/** Fold a backend dispatch response (or hard error) back into the queue. */
+function applyDispatchResults(
+  campaignId: string,
+  dispatchedIds: Set<string>,
+  results: CampaignRecipientResult[] | null,
+  hardError?: string,
+) {
+  inFlightCampaigns.delete(campaignId)
+  const queue = cmsStore.get<QueueItem[]>("campaign-queue", [])
+  const byRecipient = new Map((results ?? []).map((r) => [r.to, r]))
+  let changed = false
+  for (const q of queue) {
+    if (!dispatchedIds.has(q.id) || q.status !== "sending") continue
+    q.attempts += 1
+    if (hardError) {
+      q.status = "failed"
+      q.error = hardError
+    } else {
+      const r = byRecipient.get(q.recipient)
+      if (!r) {
+        q.status = "failed"
+        q.error = "No result returned"
+      } else if (r.status === "sent") {
+        q.status = "sent"
+        q.sentAt = new Date().toISOString()
+        q.error = null
+      } else if (r.status === "skipped") {
+        q.status = "failed"
+        q.error = r.reason || "Channel provider not configured"
+      } else {
+        q.status = "failed"
+        q.error = r.reason || "Send failed"
+      }
+    }
+    changed = true
+  }
+  if (changed) cmsStore.set("campaign-queue", queue)
+  rollupCampaignStats()
+}
 
 function startSimulatorTick() {
   const tick = () => {
-      const queue = cmsStore.get<QueueItem[]>("campaign-queue", [])
-      if (queue.length === 0) return
-      const now = Date.now()
-      let changed = false
-      // 1. queued -> sending (capped per tick by per-campaign batch)
-      const grouped = new Map<string, QueueItem[]>()
-      for (const q of queue) {
-        if (q.status === "queued" && new Date(q.scheduledAt).getTime() <= now) {
-          if (!grouped.has(q.campaignId)) grouped.set(q.campaignId, [])
-          grouped.get(q.campaignId)!.push(q)
-        }
+    const queue = cmsStore.get<QueueItem[]>("campaign-queue", [])
+    if (queue.length === 0) return
+    const now = Date.now()
+    // Recover orphaned "sending" rows left over from a prior page session: a row
+    // is only legitimately mid-flight while its campaign is in inFlightCampaigns
+    // (an in-memory Set reset on every page load). Any "sending" row without an
+    // in-flight owner was stranded by a reload/crash — return it to "queued" so
+    // this tick re-dispatches it instead of leaving it stuck forever.
+    let recovered = false
+    for (const q of queue) {
+      if (q.status === "sending" && !inFlightCampaigns.has(q.campaignId)) {
+        q.status = "queued"
+        recovered = true
       }
-      for (const [, items] of grouped) {
-        const batch = items.slice(0, 10)
-        for (const it of batch) { it.status = "sending"; changed = true }
+    }
+    if (recovered) cmsStore.set("campaign-queue", queue)
+    // Group due, not-yet-dispatched items by campaign (skip in-flight campaigns).
+    const grouped = new Map<string, QueueItem[]>()
+    for (const q of queue) {
+      if (
+        q.status === "queued" &&
+        new Date(q.scheduledAt).getTime() <= now &&
+        !inFlightCampaigns.has(q.campaignId)
+      ) {
+        if (!grouped.has(q.campaignId)) grouped.set(q.campaignId, [])
+        grouped.get(q.campaignId)!.push(q)
       }
-      // 2. sending -> sent/failed (random per-item completion)
-      for (const q of queue) {
-        if (q.status === "sending" && Math.random() < 0.6) {
-          if (Math.random() < 0.95) { q.status = "sent"; q.sentAt = new Date().toISOString() }
-          else                       { q.status = "failed"; q.error = "Simulated provider error" }
-          q.attempts += 1
-          changed = true
-        }
+    }
+    if (grouped.size === 0) { rollupCampaignStats(); return }
+
+    const emails = cmsStore.get<EmailCampaign[]>("campaign-emails", [])
+    const sms    = cmsStore.get<SmsCampaign[]>("campaign-sms", [])
+    let changed = false
+    for (const [campaignId, items] of grouped) {
+      const batch = items.slice(0, 50) // cap recipients dispatched per tick
+      const channel = batch[0].channel
+      let subject: string | undefined
+      let body: string
+      if (channel === "email") {
+        const c = emails.find((e) => e.id === campaignId)
+        if (!c) continue
+        subject = c.subject
+        body = c.body
+      } else {
+        const c = sms.find((s) => s.id === campaignId)
+        if (!c) continue
+        body = c.message
       }
-      if (!changed) return
-      cmsStore.set("campaign-queue", queue)
-      // 3. update parent campaign stats + status
-      const emails = cmsStore.get<EmailCampaign[]>("campaign-emails", [])
-      const sms    = cmsStore.get<SmsCampaign[]>("campaign-sms", [])
-      let emailsTouched = false, smsTouched = false
-      for (const c of emails) {
-        const items = queue.filter((q) => q.campaignId === c.id)
-        if (items.length === 0) continue
-        const sent = items.filter((i) => i.status === "sent").length
-        const failed = items.filter((i) => i.status === "failed").length
-        const remaining = items.filter((i) => i.status === "queued" || i.status === "sending").length
-        const opens = Math.round(sent * 0.42)
-        const clicks = Math.round(sent * 0.11)
-        if (c.stats.sent !== sent || c.stats.failed !== failed || c.stats.opens !== opens || c.stats.clicks !== clicks) {
-          c.stats = { ...c.stats, sent, failed, opens, clicks }
-          emailsTouched = true
-        }
-        const newStatus: CampaignStatus = remaining === 0 ? "sent" : "sending"
-        if (c.status !== newStatus) {
-          c.status = newStatus
-          if (newStatus === "sent" && !c.sentAt) c.sentAt = new Date().toISOString()
-          emailsTouched = true
-        }
-      }
-      for (const c of sms) {
-        const items = queue.filter((q) => q.campaignId === c.id)
-        if (items.length === 0) continue
-        const sent = items.filter((i) => i.status === "sent").length
-        const failed = items.filter((i) => i.status === "failed").length
-        const remaining = items.filter((i) => i.status === "queued" || i.status === "sending").length
-        if (c.stats.sent !== sent || c.stats.failed !== failed) {
-          c.stats = { ...c.stats, sent, failed }
-          smsTouched = true
-        }
-        const newStatus: CampaignStatus = remaining === 0 ? "sent" : "sending"
-        if (c.status !== newStatus) {
-          c.status = newStatus
-          if (newStatus === "sent" && !c.sentAt) c.sentAt = new Date().toISOString()
-          smsTouched = true
-        }
-      }
-    if (emailsTouched) cmsStore.set("campaign-emails", emails)
-    if (smsTouched)    cmsStore.set("campaign-sms", sms)
+      const dispatchedIds = new Set(batch.map((b) => b.id))
+      const recipients = batch.map((b) => b.recipient)
+      for (const it of batch) { it.status = "sending"; changed = true }
+      inFlightCampaigns.add(campaignId)
+      pipelineClient.communications
+        .campaignSend({ channel, subject, body, recipients })
+        .then((res) => applyDispatchResults(campaignId, dispatchedIds, res.results))
+        .catch((err) =>
+          applyDispatchResults(
+            campaignId,
+            dispatchedIds,
+            null,
+            err instanceof Error ? err.message : "Send failed",
+          ),
+        )
+    }
+    if (changed) cmsStore.set("campaign-queue", queue)
+    rollupCampaignStats()
   }
   simulatorTimer = window.setInterval(tick, 1500) as unknown as number
 }

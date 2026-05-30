@@ -89,6 +89,21 @@ export type CommunicationsSendResult = {
   reason?: string
 }
 
+export type CampaignRecipientResult = {
+  to: string
+  ok: boolean
+  status: "sent" | "failed" | "skipped"
+  reason?: string
+}
+
+export type CampaignSendResult = {
+  total: number
+  sent: number
+  failed: number
+  skipped: number
+  results: CampaignRecipientResult[]
+}
+
 export type OutboxStatus = "queued" | "sent" | "failed"
 
 export type OutboxRow = {
@@ -120,6 +135,17 @@ export const pipelineClient = {
         templateId,
         variables,
       }),
+    /**
+     * Dispatch a marketing campaign to a recipient list on one channel. The
+     * backend sends per recipient and returns per-recipient results; provider
+     * unconfigured comes back as `skipped` (not silently dropped).
+     */
+    campaignSend: (input: {
+      channel: "email" | "sms" | "whatsapp"
+      subject?: string
+      body: string
+      recipients: string[]
+    }) => post<CampaignSendResult>("/communications/campaign-send", input),
     outbox: {
       list: () => get<OutboxRow[]>("/communications/outbox"),
       resend: (id: string) =>

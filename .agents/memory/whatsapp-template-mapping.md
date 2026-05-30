@@ -34,8 +34,11 @@ template name, ad-hoc admin send by id) it falls back to a free-form text messag
 back to `WHATSAPP_DEFAULT_LANGUAGE` then "en".
 
 ## Delivery visibility
-Every real send is appended to the `communications.sent-log` cmsStore key
-(capped 500). The public Meta status webhook
+Every real send is appended to the durable Postgres `communication_sent_log`
+table (Drizzle, `lib/db/src/schema/communications.ts`) via `CommunicationsStore`
+in pipeline.module.ts — NOT cmsStore anymore (the outbox + sent-log were made
+Postgres-durable May 2026 so they survive restarts/deploys; capped 500 reads).
+The public Meta status webhook
 (`GET/POST /api/v2/notifications/whatsapp/webhook`, env
 `WHATSAPP_WEBHOOK_VERIFY_TOKEN`) folds callbacks into that log via
 `applyStatusUpdate`, advancing rows sent→delivered→read/failed by provider

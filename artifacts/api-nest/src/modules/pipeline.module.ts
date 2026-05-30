@@ -55,6 +55,9 @@ import {
   orderedTemplateTokens,
   normalizeLanguageCode,
 } from "./whatsapp.module"
+import { SmsModule, SmsService } from "./sms.module"
+import { db, communicationOutbox, communicationSentLog } from "@workspace/db"
+import { desc, eq } from "drizzle-orm"
 import { AdminGuard } from "../common/admin-guard"
 
 /**
@@ -260,7 +263,7 @@ type OutboxRow = {
 type SentLogRow = {
   id: string
   at: string
-  channel: "whatsapp"
+  channel: "email" | "sms" | "whatsapp"
   to: string
   trigger: string
   templateId: string
@@ -763,11 +766,201 @@ function interpolate(tpl: string, vars: Record<string, string | number>): string
   )
 }
 
+/**
+ * Durable persistence for the communications outbox + sent-log.
+ *
+ * These used to live in the in-memory server CMS (wiped on every restart). They
+ * now persist to Postgres (communication_outbox / communication_sent_log) so
+ * queued messages and the delivery history survive restarts/deploys. The
+ * mapping preserves the existing OutboxRow / SentLogRow API shapes (ISO-string
+ * dates) so the admin UI and pipeline-client are unchanged.
+ */
+@Injectable()
+class CommunicationsStore {
+  private toOutboxRow(r: typeof communicationOutbox.$inferSelect): OutboxRow {
+    return {
+      id: r.id,
+      templateId: r.templateId ?? "",
+      channel: r.channel as OutboxRow["channel"],
+      to: r.to,
+      subject: r.subject,
+      body: r.body,
+      queuedAt: r.queuedAt.toISOString(),
+      status: r.status as OutboxStatus,
+      lastAttemptAt: r.lastAttemptAt ? r.lastAttemptAt.toISOString() : undefined,
+      reason: r.reason ?? undefined,
+    }
+  }
+
+  private toSentLogRow(r: typeof communicationSentLog.$inferSelect): SentLogRow {
+    return {
+      id: r.id,
+      at: r.sentAt.toISOString(),
+      channel: r.channel as SentLogRow["channel"],
+      to: r.to,
+      trigger: r.trigger ?? "",
+      templateId: r.templateId ?? "",
+      templateName: r.templateName ?? undefined,
+      language: r.language ?? undefined,
+      messageId: r.messageId ?? undefined,
+      status: r.status as SentLogStatus,
+      reason: r.reason ?? undefined,
+      preview: r.preview,
+      deliveredAt: r.deliveredAt ? r.deliveredAt.toISOString() : null,
+      readAt: r.readAt ? r.readAt.toISOString() : null,
+    }
+  }
+
+  /* ----- Outbox ----- */
+  async listOutbox(): Promise<OutboxRow[]> {
+    const rows = await db
+      .select()
+      .from(communicationOutbox)
+      .orderBy(desc(communicationOutbox.queuedAt))
+      .limit(500)
+    return rows.map((r) => this.toOutboxRow(r))
+  }
+
+  async getOutbox(id: string): Promise<OutboxRow | null> {
+    const [row] = await db
+      .select()
+      .from(communicationOutbox)
+      .where(eq(communicationOutbox.id, id))
+      .limit(1)
+    return row ? this.toOutboxRow(row) : null
+  }
+
+  async insertOutbox(entry: {
+    templateId?: string
+    channel: OutboxRow["channel"]
+    to: string
+    subject: string
+    body: string
+    status?: OutboxStatus
+    reason?: string
+  }): Promise<void> {
+    await db.insert(communicationOutbox).values({
+      id: newId("msg"),
+      templateId: entry.templateId ?? null,
+      channel: entry.channel,
+      to: entry.to,
+      subject: entry.subject,
+      body: entry.body,
+      status: entry.status ?? "queued",
+      reason: entry.reason ?? null,
+    })
+  }
+
+  async updateOutbox(
+    id: string,
+    patch: { status: OutboxStatus; reason?: string; lastAttemptAt?: Date },
+  ): Promise<void> {
+    await db
+      .update(communicationOutbox)
+      .set({
+        status: patch.status,
+        reason: patch.reason ?? null,
+        lastAttemptAt: patch.lastAttemptAt ?? new Date(),
+      })
+      .where(eq(communicationOutbox.id, id))
+  }
+
+  async removeOutbox(id: string): Promise<boolean> {
+    const res = await db
+      .delete(communicationOutbox)
+      .where(eq(communicationOutbox.id, id))
+      .returning({ id: communicationOutbox.id })
+    return res.length > 0
+  }
+
+  async clearSentOutbox(): Promise<number> {
+    const res = await db
+      .delete(communicationOutbox)
+      .where(eq(communicationOutbox.status, "sent"))
+      .returning({ id: communicationOutbox.id })
+    return res.length
+  }
+
+  /* ----- Sent log ----- */
+  async listSentLog(): Promise<SentLogRow[]> {
+    const rows = await db
+      .select()
+      .from(communicationSentLog)
+      .orderBy(desc(communicationSentLog.sentAt))
+      .limit(500)
+    return rows.map((r) => this.toSentLogRow(r))
+  }
+
+  async insertSentLog(entry: {
+    channel: SentLogRow["channel"]
+    to: string
+    trigger?: string
+    templateId?: string
+    templateName?: string
+    language?: string
+    messageId?: string
+    status: SentLogStatus
+    reason?: string
+    preview: string
+  }): Promise<void> {
+    await db.insert(communicationSentLog).values({
+      id: newId("send"),
+      channel: entry.channel,
+      to: entry.to,
+      trigger: entry.trigger ?? null,
+      templateId: entry.templateId ?? null,
+      templateName: entry.templateName ?? null,
+      language: entry.language ?? null,
+      messageId: entry.messageId ?? null,
+      status: entry.status,
+      reason: entry.reason ?? null,
+      preview: entry.preview,
+    })
+  }
+
+  async applyStatusByMessageId(
+    messageId: string,
+    status: string,
+    atIso: string,
+  ): Promise<void> {
+    const id = String(messageId || "").trim()
+    if (!id) return
+    const normalized = String(status || "").toLowerCase()
+    const [row] = await db
+      .select()
+      .from(communicationSentLog)
+      .where(eq(communicationSentLog.messageId, id))
+      .limit(1)
+    if (!row) return
+    const at = new Date(atIso)
+    const patch: Partial<typeof communicationSentLog.$inferInsert> = {}
+    if (normalized === "delivered") {
+      patch.status = "delivered"
+      if (!row.deliveredAt) patch.deliveredAt = at
+    } else if (normalized === "read") {
+      patch.status = "read"
+      patch.readAt = at
+      if (!row.deliveredAt) patch.deliveredAt = at
+    } else if (normalized === "failed" || normalized === "undelivered") {
+      patch.status = "failed"
+    } else if (normalized === "sent") {
+      if (row.status !== "delivered" && row.status !== "read") patch.status = "sent"
+    }
+    if (Object.keys(patch).length === 0) return
+    await db
+      .update(communicationSentLog)
+      .set(patch)
+      .where(eq(communicationSentLog.id, row.id))
+  }
+}
+
 @Injectable()
 class CommunicationsAutomationService {
   constructor(
     @Inject(EmailService) private readonly email: EmailService,
     @Inject(WhatsAppService) private readonly whatsapp: WhatsAppService,
+    @Inject(SmsService) private readonly sms: SmsService,
+    @Inject(CommunicationsStore) private readonly store: CommunicationsStore,
   ) {}
 
   async send(input: {
@@ -846,7 +1039,20 @@ class CommunicationsAutomationService {
         html: `<div style="font-family:system-ui,sans-serif;line-height:1.55">${body.replace(/\n/g, "<br/>")}</div>`,
         text: body,
       })
-      return { ok: result.ok, channel: "email", preview: subject, skipped: result.skipped, reason: result.reason }
+      if (!result.skipped) {
+        await this.recordSend({
+          channel: "email",
+          to,
+          trigger: tpl.trigger ?? "",
+          templateId: tpl.id,
+          messageId: result.id,
+          status: result.ok ? "sent" : "failed",
+          reason: result.reason,
+          preview: subject || body.slice(0, 80),
+        })
+        return { ok: result.ok, channel: "email", preview: subject, skipped: false, reason: result.reason }
+      }
+      // Email provider unconfigured — fall through to the outbox.
     }
 
     if (tpl.channel === "whatsapp" && this.whatsapp.isEnabled()) {
@@ -881,6 +1087,7 @@ class CommunicationsAutomationService {
         // Record every real send attempt so admins can see what went out and,
         // via the Meta status webhook, whether it was delivered / read.
         await this.recordSend({
+          channel: "whatsapp",
           to,
           trigger: tpl.trigger ?? "",
           templateId: tpl.id,
@@ -901,20 +1108,33 @@ class CommunicationsAutomationService {
       }
     }
 
-    // SMS, or WhatsApp with no provider configured — record intent in the outbox.
-    const log = await cmsGet<OutboxRow[]>("communications.outbox", [])
-    const row: OutboxRow = {
-      id: newId("msg"),
+    if (tpl.channel === "sms" && this.sms.isEnabled()) {
+      const result = await this.sms.send({ to, message: body })
+      if (!result.skipped) {
+        await this.recordSend({
+          channel: "sms",
+          to,
+          trigger: tpl.trigger ?? "",
+          templateId: tpl.id,
+          messageId: result.id,
+          status: result.ok ? "sent" : "failed",
+          reason: result.reason,
+          preview: subject || body.slice(0, 80),
+        })
+        return { ok: result.ok, channel: "sms", preview: subject || body.slice(0, 60), skipped: false, reason: result.reason }
+      }
+    }
+
+    // No live transport for this channel (provider unconfigured) — record intent
+    // in the durable outbox so an admin can switch the provider on and resend.
+    await this.store.insertOutbox({
       templateId: tpl.id,
       channel: tpl.channel,
       to,
       subject,
       body,
-      queuedAt: new Date().toISOString(),
-      status: "queued",
-    }
-    await cmsPut("communications.outbox", [row, ...log].slice(0, 500))
-    return { ok: true, channel: tpl.channel, preview: subject, skipped: true, reason: `${tpl.channel} transport not yet wired — queued in outbox` }
+    })
+    return { ok: true, channel: tpl.channel, preview: subject, skipped: true, reason: `${tpl.channel} provider not configured — queued in outbox` }
   }
 
   async render(templateId: string, variables: Record<string, string | number>) {
@@ -935,6 +1155,7 @@ class CommunicationsAutomationService {
    * here never breaks the send itself. Capped at the most recent 500 rows.
    */
   private async recordSend(entry: {
+    channel: SentLogRow["channel"]
     to: string
     trigger: string
     templateId: string
@@ -946,16 +1167,7 @@ class CommunicationsAutomationService {
     preview: string
   }): Promise<void> {
     try {
-      const log = await cmsGet<SentLogRow[]>("communications.sent-log", [])
-      const row: SentLogRow = {
-        id: newId("send"),
-        at: new Date().toISOString(),
-        channel: "whatsapp",
-        deliveredAt: null,
-        readAt: null,
-        ...entry,
-      }
-      await cmsPut("communications.sent-log", [row, ...log].slice(0, 500))
+      await this.store.insertSentLog(entry)
     } catch (err) {
       console.warn(
         "[communications] sent-log write failed:",
@@ -970,31 +1182,8 @@ class CommunicationsAutomationService {
    * failed. Best-effort and idempotent; unknown message ids are ignored.
    */
   async applyStatusUpdate(messageId: string, status: string, atIso: string): Promise<void> {
-    const id = String(messageId || "").trim()
-    if (!id) return
-    const normalized = String(status || "").toLowerCase()
     try {
-      const log = await cmsGet<SentLogRow[]>("communications.sent-log", [])
-      let changed = false
-      const next = log.map((r) => {
-        if (r.messageId !== id) return r
-        changed = true
-        const patch: SentLogRow = { ...r }
-        if (normalized === "delivered") {
-          patch.status = "delivered"
-          if (!patch.deliveredAt) patch.deliveredAt = atIso
-        } else if (normalized === "read") {
-          patch.status = "read"
-          patch.readAt = atIso
-          if (!patch.deliveredAt) patch.deliveredAt = atIso
-        } else if (normalized === "failed" || normalized === "undelivered") {
-          patch.status = "failed"
-        } else if (normalized === "sent") {
-          if (patch.status !== "delivered" && patch.status !== "read") patch.status = "sent"
-        }
-        return patch
-      })
-      if (changed) await cmsPut("communications.sent-log", next)
+      await this.store.applyStatusByMessageId(messageId, status, atIso)
     } catch (err) {
       console.warn(
         "[communications] sent-log status update failed:",
@@ -1004,15 +1193,13 @@ class CommunicationsAutomationService {
   }
 
   async listSentLog(): Promise<SentLogRow[]> {
-    return cmsGet<SentLogRow[]>("communications.sent-log", [])
+    return this.store.listSentLog()
   }
 
   /* ---------- Outbox (queued patient texts) ---------- */
 
   async listOutbox(): Promise<OutboxRow[]> {
-    const rows = await cmsGet<OutboxRow[]>("communications.outbox", [])
-    // Back-fill a status for any legacy row written before the field existed.
-    return rows.map((r) => ({ ...r, status: r.status ?? "queued" }))
+    return this.store.listOutbox()
   }
 
   /**
@@ -1023,40 +1210,23 @@ class CommunicationsAutomationService {
    * original template variables aren't retained on the outbox row).
    */
   async resendOutbox(id: string): Promise<{ ok: boolean; status: OutboxStatus; reason?: string }> {
-    const rows = await this.listOutbox()
-    const idx = rows.findIndex((r) => r.id === id)
-    if (idx === -1) throw new HttpException("Outbox message not found", HttpStatus.NOT_FOUND)
-    const row = rows[idx]
+    const row = await this.store.getOutbox(id)
+    if (!row) throw new HttpException("Outbox message not found", HttpStatus.NOT_FOUND)
 
     const result = await this.deliverOutboxRow(row)
     const status: OutboxStatus = result.ok ? "sent" : result.skipped ? "queued" : "failed"
-    const next = rows.slice()
-    next[idx] = {
-      ...row,
-      status,
-      lastAttemptAt: new Date().toISOString(),
-      reason: result.reason,
-    }
-    await cmsPut("communications.outbox", next)
+    await this.store.updateOutbox(id, { status, reason: result.reason, lastAttemptAt: new Date() })
     return { ok: result.ok, status, reason: result.reason }
   }
 
   /** Remove a single outbox entry (clear / dismiss). */
   async dismissOutbox(id: string): Promise<{ removed: boolean }> {
-    const rows = await this.listOutbox()
-    const next = rows.filter((r) => r.id !== id)
-    if (next.length === rows.length) return { removed: false }
-    await cmsPut("communications.outbox", next)
-    return { removed: true }
+    return { removed: await this.store.removeOutbox(id) }
   }
 
   /** Drop every already-sent entry, keeping queued/failed ones for action. */
   async clearSentOutbox(): Promise<{ removed: number }> {
-    const rows = await this.listOutbox()
-    const next = rows.filter((r) => r.status !== "sent")
-    const removed = rows.length - next.length
-    if (removed > 0) await cmsPut("communications.outbox", next)
-    return { removed }
+    return { removed: await this.store.clearSentOutbox() }
   }
 
   /**
@@ -1086,7 +1256,81 @@ class CommunicationsAutomationService {
       return { ok: result.ok, skipped: result.skipped, reason: result.reason }
     }
 
-    return { ok: false, skipped: true, reason: "SMS transport not yet wired" }
+    if (row.channel === "sms") {
+      if (!this.sms.isEnabled()) {
+        return { ok: false, skipped: true, reason: "SMS provider not configured" }
+      }
+      const result = await this.sms.send({ to: row.to, message: row.body })
+      return { ok: result.ok, skipped: result.skipped, reason: result.reason }
+    }
+
+    return { ok: false, skipped: true, reason: "Unsupported channel" }
+  }
+
+  /**
+   * Dispatch a marketing campaign to a recipient list on a single channel.
+   *
+   * Stateless by design: it sends to each recipient and returns per-recipient
+   * results WITHOUT writing to the durable outbox / sent-log. Campaigns are bulk
+   * — their progress is tracked client-side in the admin campaign queue, and
+   * recording every recipient here would flood the per-trigger tables (capped at
+   * 500). Recipients are de-duplicated. When the channel's provider is not
+   * configured each recipient comes back `skipped` so the UI can prompt the
+   * admin to switch the provider on rather than silently dropping the send.
+   */
+  async sendCampaign(input: {
+    channel: "email" | "sms" | "whatsapp"
+    subject?: string
+    body: string
+    recipients: string[]
+  }): Promise<{
+    total: number
+    sent: number
+    failed: number
+    skipped: number
+    results: Array<{ to: string; ok: boolean; status: "sent" | "failed" | "skipped"; reason?: string }>
+  }> {
+    const channel = input.channel
+    const subject = input.subject ?? ""
+    const body = input.body ?? ""
+    const recipients = Array.from(
+      new Set((input.recipients || []).map((r) => String(r).trim()).filter(Boolean)),
+    )
+    const results: Array<{
+      to: string
+      ok: boolean
+      status: "sent" | "failed" | "skipped"
+      reason?: string
+    }> = []
+    let sent = 0
+    let failed = 0
+    let skipped = 0
+    for (const to of recipients) {
+      let res: { ok: boolean; skipped?: boolean; reason?: string }
+      if (channel === "email") {
+        res = await this.email.send({
+          to,
+          subject,
+          html: `<div style="font-family:system-ui,sans-serif;line-height:1.55">${body.replace(/\n/g, "<br/>")}</div>`,
+          text: body,
+        })
+      } else if (channel === "sms") {
+        res = await this.sms.send({ to, message: body })
+      } else {
+        res = await this.whatsapp.send({ to, body })
+      }
+      if (res.skipped) {
+        skipped++
+        results.push({ to, ok: false, status: "skipped", reason: res.reason })
+      } else if (res.ok) {
+        sent++
+        results.push({ to, ok: true, status: "sent" })
+      } else {
+        failed++
+        results.push({ to, ok: false, status: "failed", reason: res.reason })
+      }
+    }
+    return { total: recipients.length, sent, failed, skipped, results }
   }
 }
 
@@ -1134,6 +1378,21 @@ class CommunicationsPipelineController {
   @Post("outbox/clear-sent")
   clearSent() {
     return this.svc.clearSentOutbox()
+  }
+
+  @Post("campaign-send")
+  campaignSend(
+    @Body()
+    body: { channel: "email" | "sms" | "whatsapp"; subject?: string; body: string; recipients: string[] },
+  ) {
+    if (!body?.channel || !["email", "sms", "whatsapp"].includes(body.channel)) {
+      throw new HttpException("a valid channel is required", HttpStatus.BAD_REQUEST)
+    }
+    if (!body?.body) throw new HttpException("body is required", HttpStatus.BAD_REQUEST)
+    if (!Array.isArray(body?.recipients) || body.recipients.length === 0) {
+      throw new HttpException("recipients are required", HttpStatus.BAD_REQUEST)
+    }
+    return this.svc.sendCampaign(body)
   }
 }
 
@@ -1256,7 +1515,7 @@ class PipelineStatusController {
 }
 
 @Module({
-  imports: [AdminCmsModule, EmailModule, NotificationsModule, WhatsAppModule],
+  imports: [AdminCmsModule, EmailModule, NotificationsModule, WhatsAppModule, SmsModule],
   controllers: [
     SourcingPipelineController,
     TradingPipelineController,
@@ -1271,6 +1530,7 @@ class PipelineStatusController {
     TradingAutomationService,
     QaAutomationService,
     LogisticsAutomationService,
+    CommunicationsStore,
     CommunicationsAutomationService,
   ],
   exports: [CommunicationsAutomationService],
