@@ -296,6 +296,8 @@ export type ChatMessage = {
   text: string
   createdAt: string
   status: ChatStatus
+  deliveredAt?: string | null
+  readAt?: string | null
   authorName?: string
   attachmentUrl?: string
   attachmentName?: string
@@ -317,16 +319,21 @@ export type ChatAttachmentInput = {
   attachmentType?: ChatAttachmentType
 }
 
+export type ChatThreadStatus = "active" | "archived"
+
 export type ChatThread = {
   id: string
   patientName: string
   patientPhone: string
+  consultationId?: string | null
   lastMessage: string
   lastSender: ChatSender | null
   updatedAt: string
   createdAt: string
   unreadByStaff: number
   unreadByPatient: number
+  status: ChatThreadStatus
+  closedAt?: string | null
 }
 
 export const apiChat = {
@@ -354,6 +361,12 @@ export const apiChat = {
       method: "POST",
       body: JSON.stringify({ ...(profile || {}) }),
     }),
+  /** End the consultation and preserve the transcript as a saved record. */
+  closeMyThread: (consultationId?: string) =>
+    nestFetch<ChatThread>("/chat/me/close", {
+      method: "POST",
+      body: JSON.stringify(consultationId ? { consultationId } : {}),
+    }),
 
   // Admin
   adminThreads: () => nestFetch<ChatThread[]>("/chat/admin/threads"),
@@ -380,6 +393,12 @@ export const apiChat = {
     nestFetch<ChatMessage>(`/chat/admin/threads/${threadId}/test`, {
       method: "POST",
       body: JSON.stringify({ name }),
+    }),
+  /** End a consultation thread (archives + preserves the transcript). */
+  closeThread: (threadId: string, consultationId?: string) =>
+    nestFetch<ChatThread>(`/chat/admin/threads/${threadId}/close`, {
+      method: "POST",
+      body: JSON.stringify(consultationId ? { consultationId } : {}),
     }),
   deleteThread: (threadId: string) =>
     nestFetch<{ ok: boolean }>(`/chat/admin/threads/${threadId}`, { method: "DELETE" }),

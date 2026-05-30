@@ -47,6 +47,7 @@ import { AdminGuard } from "../common/admin-guard"
 
 export type ChatSender = "patient" | "staff"
 export type ChatStatus = "sent" | "delivered" | "read"
+export type ChatThreadStatus = "active" | "archived"
 export type AttachmentType = "image" | "file"
 
 export type ChatMessage = {
@@ -56,6 +57,8 @@ export type ChatMessage = {
   text: string
   createdAt: string
   status: ChatStatus
+  deliveredAt?: string | null
+  readAt?: string | null
   authorName?: string
   attachmentUrl?: string
   attachmentName?: string
@@ -66,12 +69,17 @@ export type ChatThread = {
   id: string
   patientName: string
   patientPhone: string
+  consultationId?: string | null
   lastMessage: string
   lastSender: ChatSender | null
   updatedAt: string
   createdAt: string
   unreadByStaff: number
   unreadByPatient: number
+  // Conversation lifecycle. Archived = the consultation ended and the
+  // transcript is preserved as a saved record.
+  status: ChatThreadStatus
+  closedAt?: string | null
 }
 
 export type PresencePayload = {
@@ -155,12 +163,15 @@ class ChatService {
         id: sid,
         patientName: profile?.name?.trim() || "Guest patient",
         patientPhone: profile?.phone?.trim() || "",
+        consultationId: null,
         lastMessage: "",
         lastSender: null,
         updatedAt: now,
         createdAt: now,
         unreadByStaff: 0,
         unreadByPatient: 0,
+        status: "active",
+        closedAt: null,
       }
       this.threads.set(sid, t)
       this.messages.set(sid, [])
@@ -223,14 +234,17 @@ class ChatService {
     if (!t) throw new HttpException("Thread not found", HttpStatus.NOT_FOUND)
 
     // A connected recipient means the message is delivered immediately.
+    const now = new Date().toISOString()
     const delivered = this.recipientOnline(threadId, sender)
     const msg: ChatMessage = {
       id: newId("msg"),
       threadId,
       sender,
       text: trimmed,
-      createdAt: new Date().toISOString(),
+      createdAt: now,
       status: delivered ? "delivered" : "sent",
+      deliveredAt: delivered ? now : null,
+      readAt: null,
       authorName: opts.authorName,
       attachmentUrl: opts.attachmentUrl,
       attachmentName: opts.attachmentName,
@@ -243,6 +257,11 @@ class ChatService {
     t.lastMessage = trimmed || (opts.attachmentType === "image" ? "Photo" : "Attachment")
     t.lastSender = sender
     t.updatedAt = msg.createdAt
+    // New activity reopens an archived (ended) consultation thread.
+    if (t.status === "archived") {
+      t.status = "active"
+      t.closedAt = null
+    }
     if (sender === "patient") t.unreadByStaff++
     else t.unreadByPatient++
 
@@ -255,9 +274,11 @@ class ChatService {
   private markDelivered(threadId: string, to: ChatSender) {
     const list = this.messages.get(threadId) ?? []
     let changed = false
+    const now = new Date().toISOString()
     list.forEach((m) => {
       if (m.sender !== to && m.status === "sent") {
         m.status = "delivered"
+        m.deliveredAt = now
         changed = true
         this.emit(threadId, { type: "message", threadId, message: m })
       }
@@ -271,10 +292,30 @@ class ChatService {
     if (by === "staff") t.unreadByStaff = 0
     else t.unreadByPatient = 0
     const list = this.messages.get(threadId) ?? []
+    const now = new Date().toISOString()
     list.forEach((m) => {
-      if (m.sender !== by && m.status !== "read") m.status = "read"
+      if (m.sender !== by && m.status !== "read") {
+        m.status = "read"
+        if (!m.deliveredAt) m.deliveredAt = now
+        m.readAt = now
+      }
     })
     this.emit(threadId, { type: "read", threadId, by })
+    this.emit(threadId, { type: "thread", thread: t })
+    return t
+  }
+
+  /**
+   * End a consultation and preserve its transcript. Marks the thread
+   * "archived" + timestamps `closedAt`. The conversation and all messages
+   * are kept (not deleted) so they remain a retrievable saved record.
+   */
+  closeThread(threadId: string, consultationId?: string): ChatThread {
+    const t = this.threads.get(threadId)
+    if (!t) throw new HttpException("Thread not found", HttpStatus.NOT_FOUND)
+    t.status = "archived"
+    t.closedAt = new Date().toISOString()
+    if (consultationId) t.consultationId = consultationId
     this.emit(threadId, { type: "thread", thread: t })
     return t
   }
@@ -386,6 +427,7 @@ type SendBody = {
   attachmentType?: AttachmentType
 }
 type TypingBody = { isTyping?: boolean }
+type CloseBody = { consultationId?: string }
 
 @Controller("chat")
 class ChatController {
@@ -428,6 +470,12 @@ class ChatController {
     this.svc.ensureThread(req.sessionId)
     this.svc.setTyping(req.sessionId, "patient", !!body?.isTyping)
     return { ok: true }
+  }
+
+  @Post("me/close")
+  closeMyThread(@Req() req: Request, @Body() body: CloseBody) {
+    this.svc.ensureThread(req.sessionId)
+    return this.svc.closeThread(req.sessionId, body?.consultationId)
   }
 
   @Post("me/test")
@@ -516,6 +564,12 @@ class ChatController {
       "Connection test — this message confirms the chat is live.",
       { authorName: body?.name || "Pharmacist" },
     )
+  }
+
+  @UseGuards(AdminGuard)
+  @Post("admin/threads/:id/close")
+  closeThread(@Param("id") id: string, @Body() body: CloseBody) {
+    return this.svc.closeThread(id, body?.consultationId)
   }
 
   @UseGuards(AdminGuard)

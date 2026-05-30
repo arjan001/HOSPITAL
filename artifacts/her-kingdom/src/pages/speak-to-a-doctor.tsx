@@ -263,6 +263,12 @@ export default function SpeakToADoctorPage() {
     }
   }
 
+  // End the consultation: archive + preserve the transcript, then show summary.
+  const endConsultation = () => {
+    apiChat.closeMyThread().catch(() => {})
+    setScreen("summary")
+  }
+
   const fee = consType === "chat" ? 1000 : 1500
   const fmtTime = (s: number) => `${Math.floor(s/60)}:${String(s%60).padStart(2,"0")}`
 
@@ -792,7 +798,7 @@ export default function SpeakToADoctorPage() {
       doctorName={doc.name}
       topic={category || doc.specialty}
       onSwitchToChat={() => setScreen("chat")}
-      onLeave={() => setScreen("summary")}
+      onLeave={endConsultation}
     />
   )
 
@@ -817,7 +823,7 @@ export default function SpeakToADoctorPage() {
             </div>
           </div>
           <button
-            onClick={() => setScreen("summary")}
+            onClick={endConsultation}
             className="h-9 px-5 rounded-full font-semibold text-xs transition-opacity hover:opacity-90"
             style={btnPrimary}
           >

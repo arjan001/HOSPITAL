@@ -105,9 +105,10 @@ export const doctorsRelations = relations(doctors, ({ many }) => ({
   consultations: many(consultations),
 }))
 
-export const consultationsRelations = relations(consultations, ({ one }) => ({
+export const consultationsRelations = relations(consultations, ({ one, many }) => ({
   user: one(users, { fields: [consultations.userId], references: [users.id] }),
   doctor: one(doctors, { fields: [consultations.doctorId], references: [doctors.id] }),
+  chatThreads: many(chatThreads),
 }))
 
 /* ─────────────────── uploads & wishlist ─────────────────── */
@@ -128,11 +129,15 @@ export const paymentsRelations = relations(payments, ({ one }) => ({
 
 /* ─────────────────── chat ─────────────────── */
 
-export const chatThreadsRelations = relations(chatThreads, ({ many }) => ({
+export const chatThreadsRelations = relations(chatThreads, ({ one, many }) => ({
   // chat_threads is keyed by `patientSessionId` (a Clerk-independent
   // cookie-scoped id) rather than `userId`, so there is no FK to `users`
   // today. Add one once chat is linked to the authenticated user.
   messages: many(chatMessages),
+  consultation: one(consultations, {
+    fields: [chatThreads.consultationId],
+    references: [consultations.id],
+  }),
 }))
 
 export const chatMessagesRelations = relations(chatMessages, ({ one }) => ({

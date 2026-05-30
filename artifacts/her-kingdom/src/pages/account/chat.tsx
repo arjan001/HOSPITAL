@@ -203,7 +203,11 @@ export default function AccountChatPage() {
                     patient: userName,
                   })
                 }}
-                onEnd={() => setSessionEnded(true)}
+                onEnd={() => {
+                  setSessionEnded(true)
+                  // Preserve the transcript as a saved consultation record.
+                  apiChat.closeMyThread().catch(() => {})
+                }}
                 compact
               />
             ) : null

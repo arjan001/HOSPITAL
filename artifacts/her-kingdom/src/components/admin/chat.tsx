@@ -15,7 +15,7 @@ import {
   type ChatMessage,
   type ChatThread,
 } from "@/lib/api-nest"
-import { MessagesSquare, Search, Trash2, Stethoscope, Phone, Circle, Video, Wifi } from "lucide-react"
+import { MessagesSquare, Search, Trash2, Stethoscope, Phone, Circle, Video, Wifi, CheckCheck } from "lucide-react"
 import { DailyCall } from "@/components/video/daily-call"
 
 type Presence = { online: boolean; lastSeen: string | null }
@@ -201,6 +201,13 @@ export function AdminChat() {
     await refreshChatAdmin()
   }
 
+  // End the consultation and keep the transcript as a saved record (archived).
+  const endAndSave = async () => {
+    if (!activeId) return
+    await apiChat.closeThread(activeId)
+    await refreshChatAdmin(activeId)
+  }
+
   const totalUnread = (threads || []).reduce((s, t) => s + t.unreadByStaff, 0)
 
   return (
@@ -353,6 +360,25 @@ export function AdminChat() {
                   >
                     <Video className="h-3.5 w-3.5" /> Video call
                   </button>
+                  {active.status !== "archived" && (
+                    <button
+                      onClick={endAndSave}
+                      className="text-xs font-semibold inline-flex items-center gap-1.5 px-3 h-8 rounded-md hover:bg-secondary"
+                      style={{ color: "#3D0814" }}
+                      title="End the consultation and save the transcript"
+                    >
+                      <CheckCheck className="h-3.5 w-3.5" /> End &amp; save
+                    </button>
+                  )}
+                  {active.status === "archived" && (
+                    <span
+                      className="text-[11px] font-semibold inline-flex items-center gap-1 px-2.5 h-7 rounded-full"
+                      style={{ background: "#F3E8EB", color: "#6B0F1A" }}
+                      title={active.closedAt ? `Ended ${fmtLastSeen(active.closedAt)}` : "Consultation ended"}
+                    >
+                      Saved
+                    </span>
+                  )}
                   <button
                     onClick={remove}
                     className="text-xs font-semibold text-destructive inline-flex items-center gap-1 px-2 h-8 rounded-md hover:bg-destructive/10"
