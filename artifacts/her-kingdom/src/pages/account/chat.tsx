@@ -7,7 +7,9 @@ import { ChatWindow } from "@/components/chat/chat-window"
 import { Seo } from "@/components/seo"
 import {
   apiChat,
+  apiUploads,
   chatStreamUrl,
+  foldChatMessage,
   refreshChatPatient,
   useMyMessages,
   useMyThread,
@@ -15,7 +17,7 @@ import {
   type ChatThread,
 } from "@/lib/api-nest"
 import { useUser } from "@clerk/react"
-import { ShieldCheck, Stethoscope, MessageCircle } from "lucide-react"
+import { ShieldCheck, Stethoscope, MessageCircle, Wifi } from "lucide-react"
 import { SessionTimer } from "@/components/consultation/session-timer"
 import {
   useConsultationSettings,
@@ -25,10 +27,32 @@ import {
 
 const WINE = "#3D0814"
 
+function fmtLastSeen(iso: string | null): string {
+  if (!iso) return "last seen recently"
+  const d = new Date(iso)
+  const now = new Date()
+  const diffMin = Math.floor((now.getTime() - d.getTime()) / 60000)
+  if (diffMin < 1) return "last seen just now"
+  if (diffMin < 60) return `last seen ${diffMin}m ago`
+  if (d.toDateString() === now.toDateString())
+    return `last seen at ${d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`
+  return `last seen ${d.toLocaleDateString([], { day: "numeric", month: "short" })}`
+}
+
 export default function AccountChatPage() {
   const { user, isSignedIn } = useUser()
   const { data: thread } = useMyThread()
   const { data: messages } = useMyMessages()
+
+  // Presence + typing of the pharmacy team (staff)
+  const [staffOnline, setStaffOnline] = useState(false)
+  const [staffLastSeen, setStaffLastSeen] = useState<string | null>(null)
+  const [staffTyping, setStaffTyping] = useState(false)
+  const typingClearRef = useRef<number | null>(null)
+
+  // Outbound typing throttle
+  const lastTypingSentRef = useRef(0)
+  const typingStopRef = useRef<number | null>(null)
 
   // Consultation timer (chat window). Starts when the patient opens the page;
   // a hard "confirm overage or end" modal fires when it expires.
@@ -56,16 +80,36 @@ export default function AccountChatPage() {
         const payload = JSON.parse(ev.data)
         if (payload.type === "message") {
           globalMutate("/chat/me/messages", (prev: ChatMessage[] | undefined) =>
-            prev ? [...prev.filter(m => m.id !== payload.message.id), payload.message] : [payload.message],
-          { revalidate: false })
+            foldChatMessage(prev, payload.message), { revalidate: false })
         }
         if (payload.type === "thread") {
           globalMutate("/chat/me", payload.thread, { revalidate: false })
         }
+        if (payload.type === "read" && payload.by === "staff") {
+          // Pharmacist read the conversation → advance my ticks to read.
+          globalMutate("/chat/me/messages", (prev: ChatMessage[] | undefined) =>
+            prev ? prev.map(m => m.sender === "patient" ? { ...m, status: "read" as const } : m) : prev,
+          { revalidate: false })
+        }
+        if (payload.type === "typing" && payload.who === "staff") {
+          setStaffTyping(!!payload.isTyping)
+          if (typingClearRef.current) window.clearTimeout(typingClearRef.current)
+          if (payload.isTyping) {
+            typingClearRef.current = window.setTimeout(() => setStaffTyping(false), 5000)
+          }
+        }
+        if (payload.type === "presence" && payload.presence?.who === "staff") {
+          setStaffOnline(!!payload.presence.online)
+          setStaffLastSeen(payload.presence.lastSeen ?? null)
+        }
       } catch { /* ignore ping or parse error */ }
     }
     es.onerror = () => { /* browser will auto-reconnect */ }
-    return () => es.close()
+    return () => {
+      es.close()
+      if (typingClearRef.current) window.clearTimeout(typingClearRef.current)
+      if (typingStopRef.current) window.clearTimeout(typingStopRef.current)
+    }
   }, [])
 
   // Mark as read when patient opens the page
@@ -79,6 +123,45 @@ export default function AccountChatPage() {
 
   const send = async (text: string) => {
     await apiChat.sendAsPatient(text, { name: userName, phone: userPhone })
+    await refreshChatPatient()
+  }
+
+  const sendAttachment = async (file: File) => {
+    const up = await apiUploads.putFile(file, "consultations")
+    await apiChat.sendAsPatient(
+      "",
+      { name: userName, phone: userPhone },
+      {
+        attachmentUrl: up.url,
+        attachmentName: file.name,
+        attachmentType: file.type.startsWith("image/") ? "image" : "file",
+      },
+    )
+    await refreshChatPatient()
+  }
+
+  const handleTyping = (isTyping: boolean) => {
+    if (!isSignedIn || sessionEnded) return
+    if (isTyping) {
+      const now = Date.now()
+      if (now - lastTypingSentRef.current > 1800) {
+        lastTypingSentRef.current = now
+        apiChat.setPatientTyping(true).catch(() => {})
+      }
+      if (typingStopRef.current) window.clearTimeout(typingStopRef.current)
+      typingStopRef.current = window.setTimeout(() => {
+        apiChat.setPatientTyping(false).catch(() => {})
+        lastTypingSentRef.current = 0
+      }, 3000)
+    } else {
+      if (typingStopRef.current) window.clearTimeout(typingStopRef.current)
+      lastTypingSentRef.current = 0
+      apiChat.setPatientTyping(false).catch(() => {})
+    }
+  }
+
+  const sendTest = async () => {
+    await apiChat.testAsPatient({ name: userName, phone: userPhone })
     await refreshChatPatient()
   }
 
@@ -97,39 +180,61 @@ export default function AccountChatPage() {
         noindex
       />
       <div className="rounded-2xl overflow-hidden border bg-white" style={{ borderColor: "#F2DCC8" }}>
-        <ChatHeader thread={thread} timerSlot={
-          isSignedIn && !sessionEnded ? (
-            <SessionTimer
-              maxDurationSec={chatMaxSec}
-              elapsedSec={elapsed}
-              warnAtSecondsLeft={consultSettings.warnSecondsLeft}
-              overageLabel={formatOverageLabel(consultSettings)}
-              overageBlockMin={consultSettings.overageBlockMin}
-              onConfirmOverage={() => {
-                setExtensionsSec((e) => e + consultSettings.overageBlockMin * 60)
-                logOverageCharge({
-                  kind: "chat",
-                  roomOrThread: thread?.id || "patient-chat",
-                  blockMin: consultSettings.overageBlockMin,
-                  amountKes: consultSettings.overageRateKes,
-                  patient: userName,
-                })
-              }}
-              onEnd={() => setSessionEnded(true)}
-              compact
-            />
-          ) : null
-        } />
+        <ChatHeader
+          online={staffOnline}
+          lastSeen={staffLastSeen}
+          typing={staffTyping}
+          thread={thread}
+          timerSlot={
+            isSignedIn && !sessionEnded ? (
+              <SessionTimer
+                maxDurationSec={chatMaxSec}
+                elapsedSec={elapsed}
+                warnAtSecondsLeft={consultSettings.warnSecondsLeft}
+                overageLabel={formatOverageLabel(consultSettings)}
+                overageBlockMin={consultSettings.overageBlockMin}
+                onConfirmOverage={() => {
+                  setExtensionsSec((e) => e + consultSettings.overageBlockMin * 60)
+                  logOverageCharge({
+                    kind: "chat",
+                    roomOrThread: thread?.id || "patient-chat",
+                    blockMin: consultSettings.overageBlockMin,
+                    amountKes: consultSettings.overageRateKes,
+                    patient: userName,
+                  })
+                }}
+                onEnd={() => setSessionEnded(true)}
+                compact
+              />
+            ) : null
+          }
+        />
         <div className="h-[60vh] min-h-[480px]">
           <ChatWindow
             messages={messages || []}
             perspective="patient"
             onSend={send}
+            onSendAttachment={isSignedIn && !sessionEnded ? sendAttachment : undefined}
+            onTyping={handleTyping}
+            typing={staffTyping}
+            typingLabel="Pharmacist is typing"
             composerDisabled={!isSignedIn || sessionEnded}
             composerHint={sessionEnded ? "Consultation ended. Start a new chat to continue." : "Sign in to start chatting"}
             emptyState={<EmptyState />}
           />
         </div>
+        {isSignedIn && !sessionEnded && (
+          <div className="px-4 py-2 border-t bg-white flex items-center justify-end" style={{ borderColor: "#F2DCC8" }}>
+            <button
+              onClick={sendTest}
+              className="text-[11px] font-semibold inline-flex items-center gap-1.5 px-3 h-7 rounded-full transition-colors hover:bg-gray-50"
+              style={{ color: WINE, border: "1px solid rgba(61,8,20,0.15)" }}
+              title="Send a test message to confirm the chat is connected"
+            >
+              <Wifi className="h-3 w-3" /> Send test message
+            </button>
+          </div>
+        )}
       </div>
 
       <div className="mt-4 grid sm:grid-cols-3 gap-3">
@@ -147,7 +252,24 @@ export default function AccountChatPage() {
   )
 }
 
-function ChatHeader({ thread, timerSlot }: { thread: ChatThread | undefined; timerSlot?: React.ReactNode }) {
+function ChatHeader({
+  thread,
+  timerSlot,
+  online,
+  lastSeen,
+  typing,
+}: {
+  thread: ChatThread | undefined
+  timerSlot?: React.ReactNode
+  online: boolean
+  lastSeen: string | null
+  typing: boolean
+}) {
+  const statusText = typing
+    ? "typing…"
+    : online
+      ? "Online · usually replies within minutes"
+      : fmtLastSeen(lastSeen)
   return (
     <div className="px-4 sm:px-5 py-3 flex items-center gap-3 border-b" style={{ background: WINE, color: "white", borderColor: "rgba(0,0,0,0.06)" }}>
       <div className="w-10 h-10 rounded-full bg-white/15 flex items-center justify-center">
@@ -156,8 +278,11 @@ function ChatHeader({ thread, timerSlot }: { thread: ChatThread | undefined; tim
       <div className="flex-1 min-w-0">
         <p className="font-semibold leading-tight">Shaniid RX Pharmacy</p>
         <p className="text-[11px] opacity-80 flex items-center gap-1.5">
-          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block" />
-          Online · usually replies within minutes
+          <span
+            className="w-1.5 h-1.5 rounded-full inline-block"
+            style={{ background: online ? "#34d399" : "rgba(255,255,255,0.4)" }}
+          />
+          {statusText}
         </p>
       </div>
       {timerSlot}

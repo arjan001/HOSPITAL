@@ -12,6 +12,17 @@ import { DailyCall } from "@/components/video/daily-call"
 import { useConsultationSettings, standbyDoctorOf } from "@/lib/consultation-settings"
 import { PaystackPaymentModal } from "@/components/store/paystack-payment-modal"
 import { pushAdminNotification } from "@/lib/notifications-client"
+import { ChatWindow } from "@/components/chat/chat-window"
+import { mutate as globalMutate } from "swr"
+import {
+  apiChat,
+  apiUploads,
+  chatStreamUrl,
+  foldChatMessage,
+  refreshChatPatient,
+  useMyMessages,
+  type ChatMessage,
+} from "@/lib/api-nest"
 
 const CARD_PAYMENTS_ENABLED = import.meta.env.VITE_ENABLE_CARD_PAYMENTS === "true"
 
@@ -121,10 +132,16 @@ export default function SpeakToADoctorPage() {
   const [paystackOpen, setPaystackOpen] = useState(false)
   const [connectPct, setConnectPct] = useState(0)
   const [callTimer,  setCallTimer]  = useState(480)
-  const [messages,   setMessages]   = useState<{ from: "doctor"|"user"; text: string; time: string }[]>([])
-  const [input,      setInput]      = useState("")
-  const [typing,     setTyping]     = useState(false)
-  const chatEndRef = useRef<HTMLDivElement>(null)
+
+  /* Real chat pipeline (shared with /account/chat + admin). Only active on the
+     chat screen so merely browsing the funnel doesn't create live threads. */
+  const { data: chatMessages } = useMyMessages(screen === "chat")
+  const [staffOnline, setStaffOnline] = useState(false)
+  const [staffTyping, setStaffTyping] = useState(false)
+  const typingClearRef = useRef<number | null>(null)
+  const lastTypingSentRef = useRef(0)
+  const typingStopRef = useRef<number | null>(null)
+  const seededRef = useRef(false)
 
   /* connecting progress */
   useEffect(() => {
@@ -138,11 +155,17 @@ export default function SpeakToADoctorPage() {
     if (connectPct < 100) return
     const timer = setTimeout(() => {
       if (consType === "chat") {
-        setMessages([{
-          from: "doctor",
-          text: `Hello! I'm ${doc.name}. I understand you're experiencing: "${category || "General concern"}". I'm here to help. Can you tell me more about when these symptoms started?`,
-          time: "Just now",
-        }])
+        // Seed the patient's concern as the first real message so the pharmacy
+        // team sees it in the live admin chat.
+        if (!seededRef.current) {
+          seededRef.current = true
+          const concern = [category && `Concern: ${category}`, symptoms?.trim()]
+            .filter(Boolean)
+            .join("\n")
+          if (concern) {
+            apiChat.sendAsPatient(concern).then(() => refreshChatPatient()).catch(() => {})
+          }
+        }
         setScreen("chat")
       } else {
         setScreen("videocall")
@@ -158,25 +181,76 @@ export default function SpeakToADoctorPage() {
     return () => clearInterval(t)
   }, [screen])
 
+  /* Realtime SSE — staff typing/presence/read (patient perspective). Only opens
+     once the patient reaches the chat screen, so the funnel doesn't create a
+     live thread / presence before a consultation actually starts. */
   useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: "smooth" })
-  }, [messages, typing])
+    if (typeof window === "undefined" || screen !== "chat") return
+    const es = new EventSource(chatStreamUrl("me"), { withCredentials: true })
+    es.onmessage = (ev) => {
+      try {
+        const payload = JSON.parse(ev.data)
+        if (payload.type === "message") {
+          globalMutate("/chat/me/messages", (prev: ChatMessage[] | undefined) =>
+            foldChatMessage(prev, payload.message), { revalidate: false })
+        }
+        if (payload.type === "read" && payload.by === "staff") {
+          globalMutate("/chat/me/messages", (prev: ChatMessage[] | undefined) =>
+            prev ? prev.map(m => m.sender === "patient" ? { ...m, status: "read" as const } : m) : prev,
+          { revalidate: false })
+        }
+        if (payload.type === "typing" && payload.who === "staff") {
+          setStaffTyping(!!payload.isTyping)
+          if (typingClearRef.current) window.clearTimeout(typingClearRef.current)
+          if (payload.isTyping) {
+            typingClearRef.current = window.setTimeout(() => setStaffTyping(false), 5000)
+          }
+        }
+        if (payload.type === "presence" && payload.presence?.who === "staff") {
+          setStaffOnline(!!payload.presence.online)
+        }
+      } catch { /* ping */ }
+    }
+    es.onerror = () => { /* auto-reconnect */ }
+    return () => {
+      es.close()
+      if (typingClearRef.current) window.clearTimeout(typingClearRef.current)
+      if (typingStopRef.current) window.clearTimeout(typingStopRef.current)
+    }
+  }, [])
 
-  const sendMessage = () => {
-    const text = input.trim()
-    if (!text) return
-    const now = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-    setMessages(m => [...m, { from: "user", text, time: now }])
-    setInput("")
-    setTyping(true)
-    setTimeout(() => {
-      setTyping(false)
-      setMessages(m => [...m, {
-        from: "doctor",
-        text: "Thank you for sharing. Based on what you've described, I'd recommend we look at a few treatment options. I'll prepare a detailed assessment for you shortly.",
-        time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-      }])
-    }, 2200)
+  const sendMessage = async (text: string) => {
+    await apiChat.sendAsPatient(text)
+    await refreshChatPatient()
+  }
+
+  const sendAttachment = async (file: File) => {
+    const up = await apiUploads.putFile(file, "consultations")
+    await apiChat.sendAsPatient("", undefined, {
+      attachmentUrl: up.url,
+      attachmentName: file.name,
+      attachmentType: file.type.startsWith("image/") ? "image" : "file",
+    })
+    await refreshChatPatient()
+  }
+
+  const handleTyping = (isTyping: boolean) => {
+    if (isTyping) {
+      const now = Date.now()
+      if (now - lastTypingSentRef.current > 1800) {
+        lastTypingSentRef.current = now
+        apiChat.setPatientTyping(true).catch(() => {})
+      }
+      if (typingStopRef.current) window.clearTimeout(typingStopRef.current)
+      typingStopRef.current = window.setTimeout(() => {
+        apiChat.setPatientTyping(false).catch(() => {})
+        lastTypingSentRef.current = 0
+      }, 3000)
+    } else {
+      if (typingStopRef.current) window.clearTimeout(typingStopRef.current)
+      lastTypingSentRef.current = 0
+      apiChat.setPatientTyping(false).catch(() => {})
+    }
   }
 
   const fee = consType === "chat" ? 1000 : 1500
@@ -724,7 +798,11 @@ export default function SpeakToADoctorPage() {
             <div>
               <p className="font-bold text-sm" style={{ color: WINE }}>{doc.name}</p>
               <p className="text-xs flex items-center gap-1.5" style={{ color: "#6b7280" }}>
-                <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block" /> {doc.specialty} · Online
+                <span
+                  className="w-1.5 h-1.5 rounded-full inline-block"
+                  style={{ background: staffOnline ? "#22c55e" : "#cbd5e1" }}
+                />
+                {staffTyping ? "typing…" : staffOnline ? `${doc.specialty} · Online` : `${doc.specialty} · Away`}
               </p>
             </div>
           </div>
@@ -737,54 +815,17 @@ export default function SpeakToADoctorPage() {
           </button>
         </div>
 
-        {/* Messages */}
-        <div className="flex-1 overflow-y-auto px-6 py-6 space-y-3" style={{ background: SOFT_BG }}>
-          {messages.map((m, i) => (
-            <div key={i} className={`flex ${m.from === "user" ? "justify-end" : "justify-start"}`}>
-              <div className="max-w-[70%] rounded-2xl px-4 py-2.5 shadow-sm"
-                style={{
-                  background: m.from === "doctor" ? "#fff" : ACCENT_RED,
-                  color: m.from === "doctor" ? WINE : "#fff",
-                  border: m.from === "doctor" ? `1px solid ${BORDER}` : "none",
-                }}>
-                <p className="text-sm leading-relaxed">{m.text}</p>
-                <p className="text-[10px] mt-1 opacity-60">{m.time}</p>
-              </div>
-            </div>
-          ))}
-          {typing && (
-            <div className="flex justify-start">
-              <div className="rounded-2xl px-4 py-2.5 bg-white shadow-sm" style={{ border: `1px solid ${BORDER}` }}>
-                <p className="text-xs italic" style={{ color: "#6b7280" }}>Doctor is typing…</p>
-              </div>
-            </div>
-          )}
-          <div ref={chatEndRef} />
-        </div>
-
-        {/* Input */}
-        <div className="px-6 py-4 bg-white" style={{ borderTop: `1px solid ${BORDER}` }}>
-          <div className="flex items-center gap-3 rounded-full px-4 py-2"
-            style={{ border: `1px solid ${BORDER}` }}>
-            <button type="button" className="text-gray-400 hover:text-gray-600 transition-colors">
-              <Plus className="h-5 w-5" />
-            </button>
-            <input
-              value={input}
-              onChange={e => setInput(e.target.value)}
-              onKeyDown={e => e.key === "Enter" && sendMessage()}
-              placeholder="Type your message…"
-              className="flex-1 text-sm outline-none bg-transparent"
-              style={{ color: WINE }}
-            />
-            <button
-              onClick={sendMessage}
-              className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 transition-opacity hover:opacity-90"
-              style={btnPrimary}
-            >
-              <Send className="h-4 w-4 text-white" />
-            </button>
-          </div>
+        {/* Messages — shared realtime ChatWindow */}
+        <div className="flex-1 min-h-0">
+          <ChatWindow
+            messages={chatMessages || []}
+            perspective="patient"
+            onSend={sendMessage}
+            onSendAttachment={sendAttachment}
+            onTyping={handleTyping}
+            typing={staffTyping}
+            typingLabel="Doctor is typing"
+          />
         </div>
       </main>
     </div>

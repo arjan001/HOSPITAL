@@ -27,6 +27,10 @@ export const chatMessages = pgTable("chat_messages", {
   authorName: text("author_name"),
   text: text("text").notNull(),
   attachmentUrl: text("attachment_url"),
+  attachmentName: text("attachment_name"),
+  attachmentType: text("attachment_type"),
+  deliveredAt: timestamp("delivered_at"),
+  readAt: timestamp("read_at"),
   status: text("status").notNull().default("sent"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 })

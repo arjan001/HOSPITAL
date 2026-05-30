@@ -1,8 +1,8 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
-import { Send, Check, CheckCheck, Stethoscope, User as UserIcon } from "lucide-react"
-import type { ChatMessage, ChatSender } from "@/lib/api-nest"
+import { Send, Check, CheckCheck, Stethoscope, User as UserIcon, Paperclip, FileText, Loader2 } from "lucide-react"
+import { isSafeAttachmentUrl, type ChatMessage, type ChatSender } from "@/lib/api-nest"
 
 const WINE = "#3D0814"
 const ACCENT = "#F97316"
@@ -11,6 +11,8 @@ const PATIENT_BUBBLE = "#FAE0BE"   // peach
 const STAFF_BUBBLE = "#FFFFFF"     // white card
 const CHAT_BG = "#FFFBF5"          // cream
 const TIME_COLOR = "rgba(0,0,0,0.45)"
+
+const MAX_ATTACHMENT_BYTES = 8 * 1024 * 1024 // 8MB
 
 function fmtTime(iso: string) {
   const d = new Date(iso)
@@ -30,6 +32,10 @@ export function ChatWindow({
   messages,
   perspective,
   onSend,
+  onSendAttachment,
+  onTyping,
+  typing = false,
+  typingLabel,
   composerDisabled,
   composerHint,
   emptyState,
@@ -38,6 +44,10 @@ export function ChatWindow({
   messages: ChatMessage[]
   perspective: ChatSender                       // who is "me" in this view
   onSend: (text: string) => Promise<void> | void
+  onSendAttachment?: (file: File) => Promise<void> | void
+  onTyping?: (isTyping: boolean) => void
+  typing?: boolean                              // is the OTHER party typing?
+  typingLabel?: string
   composerDisabled?: boolean
   composerHint?: string
   emptyState?: React.ReactNode
@@ -45,13 +55,16 @@ export function ChatWindow({
 }) {
   const [text, setText] = useState("")
   const [sending, setSending] = useState(false)
+  const [uploading, setUploading] = useState(false)
+  const [attachError, setAttachError] = useState<string | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
+  const fileRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     const el = scrollRef.current
     if (!el) return
     el.scrollTop = el.scrollHeight
-  }, [messages.length])
+  }, [messages.length, typing])
 
   const submit = async (e?: React.FormEvent) => {
     e?.preventDefault()
@@ -61,8 +74,33 @@ export function ChatWindow({
     try {
       await onSend(t)
       setText("")
+      onTyping?.(false)
     } finally {
       setSending(false)
+    }
+  }
+
+  const pickFile = () => {
+    if (composerDisabled || uploading) return
+    fileRef.current?.click()
+  }
+
+  const onFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    e.target.value = "" // allow re-selecting the same file
+    if (!file || !onSendAttachment) return
+    setAttachError(null)
+    if (file.size > MAX_ATTACHMENT_BYTES) {
+      setAttachError("File is too large (max 8MB).")
+      return
+    }
+    setUploading(true)
+    try {
+      await onSendAttachment(file)
+    } catch {
+      setAttachError("Upload failed. Please try again.")
+    } finally {
+      setUploading(false)
     }
   }
 
@@ -87,7 +125,7 @@ export function ChatWindow({
           backgroundSize: "20px 20px",
         }}
       >
-        {messages.length === 0 ? (
+        {messages.length === 0 && !typing ? (
           <div className="h-full flex items-center justify-center">
             {emptyState || (
               <div className="text-center text-sm text-muted-foreground max-w-xs">
@@ -112,6 +150,9 @@ export function ChatWindow({
                   const bubbleBg = mine ? PATIENT_BUBBLE : STAFF_BUBBLE
                   // For staff perspective: their own bubble = wine accent
                   const myStaff = mine && perspective === "staff"
+                  const safeUrl = isSafeAttachmentUrl(m.attachmentUrl) ? m.attachmentUrl : undefined
+                  const hasImage = !!safeUrl && m.attachmentType === "image"
+                  const hasFile = !!safeUrl && m.attachmentType !== "image"
                   return (
                     <div
                       key={m.id}
@@ -141,9 +182,36 @@ export function ChatWindow({
                             {m.authorName}
                           </div>
                         )}
-                        <p className="text-sm leading-snug whitespace-pre-wrap break-words">
-                          {m.text}
-                        </p>
+                        {hasImage && (
+                          <a href={safeUrl} target="_blank" rel="noreferrer" className="block mb-1">
+                            <img
+                              src={safeUrl}
+                              alt={m.attachmentName || "Image attachment"}
+                              className="rounded-lg max-h-64 w-auto object-cover"
+                              style={{ maxWidth: "100%" }}
+                            />
+                          </a>
+                        )}
+                        {hasFile && (
+                          <a
+                            href={safeUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="flex items-center gap-2 mb-1 px-2 py-1.5 rounded-lg"
+                            style={{
+                              background: myStaff ? "rgba(255,255,255,0.12)" : "rgba(61,8,20,0.06)",
+                              color: myStaff ? "#fff" : WINE,
+                            }}
+                          >
+                            <FileText className="h-4 w-4 flex-shrink-0" />
+                            <span className="text-xs font-medium truncate">{m.attachmentName || "Attachment"}</span>
+                          </a>
+                        )}
+                        {m.text && (
+                          <p className="text-sm leading-snug whitespace-pre-wrap break-words">
+                            {m.text}
+                          </p>
+                        )}
                         <div
                           className="flex items-center justify-end gap-1 mt-1 text-[10px]"
                           style={{ color: myStaff ? "rgba(255,255,255,0.7)" : TIME_COLOR }}
@@ -163,9 +231,36 @@ export function ChatWindow({
                 })}
               </div>
             ))}
+
+            {/* Typing indicator (other party) */}
+            {typing && (
+              <div className="flex justify-start items-end gap-2">
+                <div
+                  className="w-7 h-7 rounded-full flex items-center justify-center text-white flex-shrink-0"
+                  style={{ background: perspective === "patient" ? WINE : ACCENT }}
+                >
+                  {perspective === "patient" ? <Stethoscope className="h-3.5 w-3.5" /> : <UserIcon className="h-3.5 w-3.5" />}
+                </div>
+                <div
+                  className="rounded-2xl px-3.5 py-2.5 shadow-sm flex items-center gap-1"
+                  style={{ background: STAFF_BUBBLE, borderTopLeftRadius: 4, border: "1px solid rgba(0,0,0,0.04)" }}
+                  aria-label={typingLabel || "Typing"}
+                >
+                  <span className="typing-dot" />
+                  <span className="typing-dot" style={{ animationDelay: "0.15s" }} />
+                  <span className="typing-dot" style={{ animationDelay: "0.3s" }} />
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>
+
+      {attachError && (
+        <div className="px-4 py-1.5 text-[11px] text-center" style={{ color: "#B91C1C", background: "#FEF2F2" }}>
+          {attachError}
+        </div>
+      )}
 
       {/* Composer */}
       <form
@@ -173,10 +268,36 @@ export function ChatWindow({
         className="border-t bg-white px-3 sm:px-4 py-2.5 flex items-center gap-2"
         style={{ borderColor: "rgba(61,8,20,0.1)" }}
       >
+        {onSendAttachment && (
+          <>
+            <input
+              ref={fileRef}
+              type="file"
+              accept="image/*,application/pdf"
+              className="hidden"
+              onChange={onFileChange}
+            />
+            <button
+              type="button"
+              onClick={pickFile}
+              disabled={composerDisabled || uploading}
+              className="h-10 w-10 rounded-full flex items-center justify-center flex-shrink-0 disabled:opacity-40 hover:bg-gray-100 transition-colors"
+              style={{ color: WINE }}
+              aria-label="Attach a file"
+              title="Attach an image or PDF"
+            >
+              {uploading ? <Loader2 className="h-4.5 w-4.5 animate-spin" /> : <Paperclip className="h-4.5 w-4.5" />}
+            </button>
+          </>
+        )}
         <textarea
           rows={1}
           value={text}
-          onChange={(e) => setText(e.target.value)}
+          onChange={(e) => {
+            setText(e.target.value)
+            onTyping?.(e.target.value.trim().length > 0)
+          }}
+          onBlur={() => onTyping?.(false)}
           onKeyDown={(e) => {
             if (e.key === "Enter" && !e.shiftKey) {
               e.preventDefault()

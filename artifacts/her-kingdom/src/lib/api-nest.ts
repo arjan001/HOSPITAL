@@ -287,6 +287,7 @@ export function refreshMyPrescriptions() {
 
 export type ChatSender = "patient" | "staff"
 export type ChatStatus = "sent" | "delivered" | "read"
+export type ChatAttachmentType = "image" | "file"
 
 export type ChatMessage = {
   id: string
@@ -296,6 +297,24 @@ export type ChatMessage = {
   createdAt: string
   status: ChatStatus
   authorName?: string
+  attachmentUrl?: string
+  attachmentName?: string
+  attachmentType?: ChatAttachmentType
+}
+
+/** Presence payload pushed over SSE for patient/staff online + last-seen. */
+export type ChatPresence = {
+  who: ChatSender
+  threadId: string
+  online: boolean
+  lastSeen: string | null
+}
+
+/** Optional attachment when sending a chat message. */
+export type ChatAttachmentInput = {
+  attachmentUrl: string
+  attachmentName?: string
+  attachmentType?: ChatAttachmentType
 }
 
 export type ChatThread = {
@@ -314,25 +333,54 @@ export const apiChat = {
   // Patient
   myThread: () => nestFetch<ChatThread>("/chat/me"),
   myMessages: () => nestFetch<ChatMessage[]>("/chat/me/messages"),
-  sendAsPatient: (text: string, profile?: { name?: string; phone?: string }) =>
+  sendAsPatient: (
+    text: string,
+    profile?: { name?: string; phone?: string },
+    attachment?: ChatAttachmentInput,
+  ) =>
     nestFetch<ChatMessage>("/chat/me/messages", {
       method: "POST",
-      body: JSON.stringify({ text, ...(profile || {}) }),
+      body: JSON.stringify({ text, ...(profile || {}), ...(attachment || {}) }),
     }),
   markPatientRead: () =>
     nestFetch<ChatThread>("/chat/me/read", { method: "POST" }),
+  setPatientTyping: (isTyping: boolean) =>
+    nestFetch<{ ok: boolean }>("/chat/me/typing", {
+      method: "POST",
+      body: JSON.stringify({ isTyping }),
+    }),
+  testAsPatient: (profile?: { name?: string; phone?: string }) =>
+    nestFetch<ChatMessage>("/chat/me/test", {
+      method: "POST",
+      body: JSON.stringify({ ...(profile || {}) }),
+    }),
 
   // Admin
   adminThreads: () => nestFetch<ChatThread[]>("/chat/admin/threads"),
   adminMessages: (threadId: string) =>
     nestFetch<ChatMessage[]>(`/chat/admin/threads/${threadId}/messages`),
-  sendAsStaff: (threadId: string, text: string, name = "Pharmacist") =>
+  sendAsStaff: (
+    threadId: string,
+    text: string,
+    name = "Pharmacist",
+    attachment?: ChatAttachmentInput,
+  ) =>
     nestFetch<ChatMessage>(`/chat/admin/threads/${threadId}/messages`, {
       method: "POST",
-      body: JSON.stringify({ text, name }),
+      body: JSON.stringify({ text, name, ...(attachment || {}) }),
     }),
   markStaffRead: (threadId: string) =>
     nestFetch<ChatThread>(`/chat/admin/threads/${threadId}/read`, { method: "POST" }),
+  setStaffTyping: (threadId: string, isTyping: boolean) =>
+    nestFetch<{ ok: boolean }>(`/chat/admin/threads/${threadId}/typing`, {
+      method: "POST",
+      body: JSON.stringify({ isTyping }),
+    }),
+  testAsStaff: (threadId: string, name = "Pharmacist") =>
+    nestFetch<ChatMessage>(`/chat/admin/threads/${threadId}/test`, {
+      method: "POST",
+      body: JSON.stringify({ name }),
+    }),
   deleteThread: (threadId: string) =>
     nestFetch<{ ok: boolean }>(`/chat/admin/threads/${threadId}`, { method: "DELETE" }),
 }
@@ -341,11 +389,40 @@ export function chatStreamUrl(scope: "me" | "admin"): string {
   return `${BASE}/chat/${scope}/stream`
 }
 
+// Only render attachment URLs that are safe in <a href>/<img src> sinks:
+// site-relative ("/uploads/...") or http(s). Blocks javascript:/data:/etc.
+export function isSafeAttachmentUrl(url: string | undefined | null): boolean {
+  if (!url) return false
+  const u = url.trim()
+  if (!u) return false
+  if (u.startsWith("/") && !u.startsWith("//")) return true
+  try {
+    const proto = new URL(u).protocol.toLowerCase()
+    return proto === "http:" || proto === "https:"
+  } catch {
+    return false
+  }
+}
+
+// Fold an SSE message into a cached list WITHOUT reordering: replace in place
+// by id (status transitions re-emit the same message), append only if new.
+export function foldChatMessage(
+  prev: ChatMessage[] | undefined,
+  msg: ChatMessage,
+): ChatMessage[] {
+  if (!prev) return [msg]
+  const idx = prev.findIndex((m) => m.id === msg.id)
+  if (idx === -1) return [...prev, msg]
+  const next = prev.slice()
+  next[idx] = msg
+  return next
+}
+
 export function useMyThread() {
   return useSWR<ChatThread>("/chat/me", swrFetcher)
 }
-export function useMyMessages() {
-  return useSWR<ChatMessage[]>("/chat/me/messages", swrFetcher, {
+export function useMyMessages(enabled = true) {
+  return useSWR<ChatMessage[]>(enabled ? "/chat/me/messages" : null, swrFetcher, {
     refreshInterval: 30_000, // SSE handles realtime; this is a safety net
   })
 }
