@@ -217,7 +217,7 @@ export default function SpeakToADoctorPage() {
       if (typingClearRef.current) window.clearTimeout(typingClearRef.current)
       if (typingStopRef.current) window.clearTimeout(typingStopRef.current)
     }
-  }, [])
+  }, [screen])
 
   const sendMessage = async (text: string) => {
     await apiChat.sendAsPatient(text)
