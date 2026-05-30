@@ -11,6 +11,19 @@ export async function apiFetch(input: string, init: RequestInit = {}): Promise<R
   return fetch(input, init)
 }
 
+/**
+ * Headers for calling token-gated `/api/v2/admin/*` endpoints. Forwards the
+ * admin token issued at login (stored under `shaniidrx.admin.token`) as
+ * `x-admin-token`, which `AdminGuard` checks when `ADMIN_API_TOKEN` is set in
+ * production. In dev (no token configured) the guard is permissive, so an empty
+ * object is fine.
+ */
+export function adminAuthHeaders(): Record<string, string> {
+  if (typeof window === "undefined") return {}
+  const token = window.localStorage.getItem("shaniidrx.admin.token")
+  return token ? { "x-admin-token": token } : {}
+}
+
 export const authedFetcher = async (url: string) => {
   const res = await apiFetch(url)
   if (!res.ok) {

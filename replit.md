@@ -96,7 +96,7 @@ Admin: dashboard with KPIs/sparklines/low-stock alerts, products (with CSV impor
 - **Session model.** `SessionMiddleware` issues a `shaniidrx_sid` cookie per browser and writes `req.sessionId`. All services read from `req.sessionId`. When Clerk lands, replace the middleware body with a JWT verifier that sets `req.sessionId = clerkUserId` — services don't change.
 - **Database swap.** Each service uses either `Map<sid, T[]>` directly (profile) or the generic `InMemoryRepository<T>` in `src/common/repository.ts`. Postgres swap = implement the same surface against Drizzle (`packages/db`) and swap the import in each module. No controller changes.
 - **Don't add `ValidationPipe`** unless you also install `class-validator` + `class-transformer`. Today each controller validates inputs manually; future Zod DTOs go through `nestjs-zod`.
-- **Modules shipped:** `health`, `profile` (`/me`), `addresses` (`/me/addresses`), `wishlist` (`/me/wishlist`), `orders` (`/me/orders`), `paystack` (`/payments/paystack/{charge,status,callback}`), `whatsapp` (`/notifications/whatsapp/{status,send}`). Cart, prescriptions, consultations, and admin modules are pending.
+- **Modules shipped:** `health`, `profile` (`/me`), `addresses` (`/me/addresses`), `wishlist` (`/me/wishlist`), `orders` (`/me/orders`), `paystack` (`/payments/paystack/{charge,status,callback}`), `whatsapp` (`/notifications/whatsapp/{status,send}`), `error-reporting` (`/admin/error-reporting/{status,test}`, `@Global`), `storage` (`/admin/storage/{status,test}`). Cart, prescriptions, consultations, and admin modules are pending.
 
 ### WhatsApp integration (`/api/v2/notifications/whatsapp`)
 
@@ -122,6 +122,18 @@ This is the documented "settings"/hardening layer that protects every `/api/v2` 
 - **Session secret fails closed.** `SESSION_SECRET` is required to sign the sid cookie; the app refuses to start with an unsigned/insecure session rather than silently degrading.
 - **SSRF guard.** Outbound fetches (e.g. payment callbacks) validate the target host before calling.
 - **Front-end safety net.** Storefront wraps routes in an `ErrorBoundary`; data hooks surface non-silent errors (e.g. wishlist, shop product list) with explicit loading/error/empty UI instead of blank or misleading states.
+
+### Error reporting & storage providers (api-nest, May 2026)
+
+The in-app monitoring **viewer** was removed (the `monitoring.tsx` admin panel + its Settings tab). The monitoring *backend* stays: `lib/monitoring.ts` SDK + the `/api/v2/monitoring/events` ingest endpoint still capture browser + server errors (used by `main.tsx`, the error boundary, etc.). Two admin Settings tabs replace the viewer — **Error Reporting** and **Storage** — both at `components/admin/{error-reporting,storage}-settings.tsx`.
+
+- **Error reporting forwarder** — `artifacts/api-nest/src/modules/error-reporting.module.ts` (`@Global`). `ErrorReportingService.forward(event)` is called by `MonitoringService` (both `recordServerError` and browser `ingest`) for `error`/`fatal` events and forwards to Sentry and/or Slack. Fire-and-forget, fail-soft, per-fingerprint 60s dedup. Sentry uses a **hand-rolled store endpoint** (no SDK): DSN is parsed via `URL` (publicKey = username, projectId = last path segment) → `{proto}//{host}/{prefix}api/{projectId}/store/` with an `X-Sentry-Auth` header. Slack uses an incoming-webhook POST. Routes (AdminGuard): `GET/POST /api/v2/admin/error-reporting/{status,test}`.
+  - **Secrets (env only):** `SENTRY_DSN`, `SENTRY_ENVIRONMENT` (optional, default `NODE_ENV`), `SENTRY_RELEASE` (optional, default `GIT_SHA` or `dev`), `SLACK_WEBHOOK_URL`.
+  - **Non-secret toggles (cmsStore `error-reporting`):** `{ sentryEnabled, slackEnabled }` — default on when the provider is configured.
+- **Pluggable storage** — `artifacts/api-nest/src/common/storage.ts` now ships three backends behind the existing `Storage` interface: `LocalDiskStorage` (default), `S3Storage` (any S3-compatible API — AWS/R2/Spaces/MinIO), `CloudinaryStorage`. `getStorage()` resolves the active provider **live** via `registerStorageProviderResolver(fn)` (registered by `storage.module.ts`, reads cms `storage`.provider) → `STORAGE_PROVIDER` env → `local`; it **falls back to local** when the selected provider's creds are missing (`getStorageStatus().fellBack`). Existing upload call-sites (prescriptions/uploads/notifications + the static mount in `main.ts`) are unchanged. Routes (AdminGuard): `GET /api/v2/admin/storage/status`, `POST /api/v2/admin/storage/test` (round-trips a 1×1 PNG).
+  - **Secrets (env only):** `S3_BUCKET`, `S3_REGION` (default `us-east-1`), `S3_ENDPOINT` (optional, for R2/Spaces/MinIO), `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `S3_PUBLIC_BASE_URL` (optional CDN/public base; otherwise a 7-day signed URL is returned), `S3_FORCE_PATH_STYLE` (`1`/`true`; implied when `S3_ENDPOINT` is set); `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET`. Provider default override: `STORAGE_PROVIDER` = `local` | `s3` | `cloudinary`.
+  - **Non-secret selection (cmsStore `storage`):** `{ provider }`.
+- **Rule:** secrets for both features stay in env (never cmsStore). New deps in api-nest: `@aws-sdk/client-s3`, `@aws-sdk/s3-request-presigner`, `cloudinary`.
 
 ### DB-schema discipline (REQUIRED for any follow-up change)
 

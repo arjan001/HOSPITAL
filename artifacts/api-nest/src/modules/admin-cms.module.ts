@@ -75,7 +75,7 @@ export type CmsEntry = {
 }
 
 @Injectable()
-class AdminCmsService {
+export class AdminCmsService {
   private store = new Map<string, CmsEntry>()
 
   list(): string[] {
@@ -148,5 +148,6 @@ class AdminCmsController {
 @Module({
   controllers: [AdminCmsController],
   providers: [AdminCmsService],
+  exports: [AdminCmsService],
 })
 export class AdminCmsModule {}

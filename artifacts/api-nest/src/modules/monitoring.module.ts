@@ -27,6 +27,7 @@ import {
 import type { Request } from "express"
 import { randomUUID } from "node:crypto"
 import { AdminGuard, Public } from "../common/admin-guard"
+import { ErrorReportingService } from "./error-reporting.module"
 
 /* ---------- types ---------- */
 
@@ -179,7 +180,11 @@ class MonitoringStore {
 
 @Injectable()
 class MonitoringService {
-  constructor(@Inject(MonitoringStore) private readonly store: MonitoringStore) {}
+  constructor(
+    @Inject(MonitoringStore) private readonly store: MonitoringStore,
+    @Inject(ErrorReportingService)
+    private readonly forwarder: ErrorReportingService,
+  ) {}
 
   clearAll(): void {
     this.store.clear()
@@ -222,6 +227,18 @@ class MonitoringService {
         receivedAt: new Date().toISOString(),
       }
       this.store.push(e)
+      // Forward to external destinations (Sentry/Slack) when configured.
+      this.forwarder.forward({
+        message: e.message,
+        errorType: e.errorType,
+        stack: e.stack,
+        url: e.url,
+        level: e.level,
+        fingerprint: e.fingerprint,
+        environment: e.environment,
+        release: e.release,
+        context: e.context,
+      })
     } catch {
       /* never throw from telemetry */
     }
@@ -266,6 +283,20 @@ class MonitoringService {
       }
       this.store.push(e)
       accepted++
+      // Forward browser-reported runtime errors to external destinations.
+      if (e.kind === "error" && (e.level === "error" || e.level === "fatal")) {
+        this.forwarder.forward({
+          message: e.message,
+          errorType: e.errorType,
+          stack: e.stack,
+          url: e.url,
+          level: e.level,
+          fingerprint: e.fingerprint,
+          environment: e.environment,
+          release: e.release,
+          context: e.context,
+        })
+      }
     }
     return { accepted, dropped }
   }

@@ -11,7 +11,8 @@ import { Textarea } from "@/components/ui/textarea"
 import { Switch } from "@/components/ui/switch"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 // import { PosSettingsPanel } from "./pos-settings" // hidden until client requests POS module
-import { MonitoringPanel } from "./monitoring"
+import { ErrorReportingSettings } from "./error-reporting-settings"
+import { StorageSettings } from "./storage-settings"
 
 import useSWR from "swr"
 
@@ -116,7 +117,8 @@ export function AdminSettings() {
             <TabsTrigger value="seo">SEO</TabsTrigger>
             <TabsTrigger value="footer">Footer & Social</TabsTrigger>
             {/* <TabsTrigger value="pos">POS & Receipt</TabsTrigger> hidden until client requests POS module */}
-            <TabsTrigger value="monitoring">Monitoring</TabsTrigger>
+            <TabsTrigger value="error-reporting">Error Reporting</TabsTrigger>
+            <TabsTrigger value="storage">Storage</TabsTrigger>
           </TabsList>
 
           <TabsContent value="general" className="mt-6">
@@ -178,8 +180,12 @@ export function AdminSettings() {
             <PosSettingsPanel />
           </TabsContent> hidden until client requests POS module */}
 
-          <TabsContent value="monitoring" className="mt-6">
-            <MonitoringPanel />
+          <TabsContent value="error-reporting" className="mt-6">
+            <ErrorReportingSettings />
+          </TabsContent>
+
+          <TabsContent value="storage" className="mt-6">
+            <StorageSettings />
           </TabsContent>
         </Tabs>
       </div>
