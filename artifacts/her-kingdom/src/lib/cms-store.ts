@@ -85,6 +85,20 @@ const snapshotCache = new Map<string, { raw: string | null; value: unknown }>()
 const hydrated = new Set<string>()
 const inflight = new Map<string, Promise<void>>()
 
+/**
+ * Whether a value is worth seeding to the server. Empty arrays / objects /
+ * strings (and nullish) are skipped so we never create spurious server records
+ * for keys whose default is "nothing yet" — we only seed keys that carry real
+ * default content (e.g. the message-templates seed).
+ */
+function isSeedable(value: unknown): boolean {
+  if (value == null) return false
+  if (Array.isArray(value)) return value.length > 0
+  if (typeof value === "object") return Object.keys(value as object).length > 0
+  if (typeof value === "string") return value.length > 0
+  return true
+}
+
 function fireChange(key: string) {
   if (typeof window === "undefined") return
   window.dispatchEvent(new CustomEvent(CHANGE_EVENT, { detail: { key } }))
@@ -101,7 +115,7 @@ function writeLocal<T>(key: string, value: T): string | null {
   }
 }
 
-async function hydrateFromServer(key: string): Promise<void> {
+async function hydrateFromServer(key: string, getSeed?: () => unknown): Promise<void> {
   if (isLocalOnly(key)) return
   if (hydrated.has(key)) return
   const existing = inflight.get(key)
@@ -112,7 +126,24 @@ async function hydrateFromServer(key: string): Promise<void> {
         credentials: "include",
       })
       if (res.status === 404) {
-        // Server has no record — mark hydrated so we don't re-fetch every read.
+        // Server has never heard of this key. If we have meaningful local /
+        // default content (e.g. the message-templates seed), push it up so
+        // server-side consumers — like the auto-send Communications pipeline,
+        // which resolves templates by trigger — can actually read it. Without
+        // this, default seeds only ever lived in the browser and the backend
+        // silently skipped every send.
+        const seed = getSeed?.()
+        if (isSeedable(seed)) {
+          void fetch(`${API_BASE}/${encodeURIComponent(key)}`, {
+            method: "PUT",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(seed),
+          }).catch(() => {
+            /* best-effort seed — UI already has the value */
+          })
+        }
+        // Mark hydrated so we don't re-fetch every read.
         hydrated.add(key)
         return
       }
@@ -145,8 +176,14 @@ async function hydrateFromServer(key: string): Promise<void> {
 
 function readSnapshot<T>(key: string, fallback: T): T {
   if (typeof window === "undefined") return fallback
-  // Kick off background hydration the first time we touch this key.
-  if (!hydrated.has(key) && !isLocalOnly(key)) void hydrateFromServer(key)
+  // Kick off background hydration the first time we touch this key. Pass a
+  // lazy seed getter (current local value, else the caller's default) so that
+  // if the server has no record yet, the default content is pushed up — this
+  // is what makes admin-managed seeds (e.g. message-templates) readable by
+  // server-side consumers, not just the browser.
+  if (!hydrated.has(key) && !isLocalOnly(key)) {
+    void hydrateFromServer(key, () => readRaw(key, fallback))
+  }
   const fk = fullKey(key)
   let raw: string | null = null
   try {
