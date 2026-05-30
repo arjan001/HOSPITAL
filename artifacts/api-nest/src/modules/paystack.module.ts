@@ -168,20 +168,41 @@ class PaystackService {
   }
 
   private async paystackFetch<T>(path: string, init?: RequestInit): Promise<T> {
-    const res = await fetch(`${this.base}${path}`, {
-      ...(init ?? {}),
-      headers: {
-        Authorization: `Bearer ${this.secret}`,
-        "Content-Type": "application/json",
-        ...(init?.headers ?? {}),
-      },
-    })
+    let res: Awaited<ReturnType<typeof fetch>>
+    try {
+      res = await fetch(`${this.base}${path}`, {
+        ...(init ?? {}),
+        headers: {
+          Authorization: `Bearer ${this.secret}`,
+          "Content-Type": "application/json",
+          ...(init?.headers ?? {}),
+        },
+      })
+    } catch (err) {
+      // Transport-level failure (DNS, timeout, connection reset) — Paystack is
+      // unreachable, not a caller error. Surface as 502 so it's handled like an
+      // upstream outage rather than bubbling up as a generic 500.
+      throw new HttpException(
+        `Could not reach Paystack (${(err as Error)?.message || "network error"}). Please try again.`,
+        HttpStatus.BAD_GATEWAY,
+      )
+    }
     const text = await res.text()
     let json: unknown
     try { json = text ? JSON.parse(text) : {} } catch { json = { raw: text } }
     if (!res.ok) {
       const msg = (json as { message?: string })?.message || `Paystack ${res.status}`
-      throw new HttpException({ error: msg, status: res.status, raw: json }, HttpStatus.BAD_GATEWAY)
+      // Paystack 4xx = caller-actionable validation rejection (e.g. "Invalid
+      // phone number format", "Declined…"). Surface it as a 4xx so
+      // AllExceptionsFilter passes the REAL reason through to the storefront
+      // instead of masking every Paystack problem as a generic 5xx "Internal
+      // server error". Upstream 5xx / network issues stay a 502 (Paystack is
+      // down — not the caller's fault).
+      const clientStatus =
+        res.status >= 400 && res.status < 500
+          ? HttpStatus.BAD_REQUEST
+          : HttpStatus.BAD_GATEWAY
+      throw new HttpException(msg, clientStatus)
     }
     return json as T
   }
@@ -229,7 +250,11 @@ class PaystackService {
       email,
       amount: amount * 100, // Paystack expects the smallest currency unit
       currency: "KES",
-      mobile_money: { phone, provider: "mpesa" },
+      // Paystack mobile-money REQUIRES E.164 with a leading "+". A bare
+      // "254XXXXXXXXX" is rejected with "Invalid phone number format"; only
+      // "+254XXXXXXXXX" is accepted. We store the bare 254 form internally and
+      // only add the "+" on the wire to Paystack.
+      mobile_money: { phone: `+${phone}`, provider: "mpesa" },
       metadata: {
         order_number: orderNumber,
         customer_name: input.customerName || "",

@@ -1,7 +1,8 @@
 - [Order lifecycle wiring](order-lifecycle-wiring.md) — Logistics auto-pulls confirmed orders; QA Dispatch is an island (manual checks only); api-server restart causes transient 502s on /api/*.
 - [api-nest payment trust gate](payment-trust-gate.md) — never grant value on a client-supplied payment reference; verify against Paystack server-side, bind to order, reserve reference atomically.
 - [api-nest build + @workspace/db](api-nest-build-and-db.md) — importing the shared Drizzle db forces esbuild bundling (not tsc) + tsconfig moduleResolution bundler; tsx dev masks it.
-- [CMS server-side seeding](cms-server-seeding.md) — cmsStore seeds the in-memory server CMS only via a client read (now also on 404); server resets on restart, so auto-send needs an admin page read first.
+- [CMS server-side seeding](cms-server-seeding.md) — cms_docs is Postgres-durable now; default seeds still reach the server only via a client read (incl. 404-seed); never-edited keys are the only "missing" case.
+- [Paystack mobile-money quirks](paystack-mobile-money.md) — KES mobile_money.phone MUST be E.164 with leading "+"; surface Paystack 4xx as 400 or the filter masks it as "Internal server error".
 - [WhatsApp Meta template mapping](whatsapp-template-mapping.md) — proactive patient texts send Meta templates; {{token}}→{{1..N}} by first-appearance order; sent-log + status webhook track delivery.
 - [Admin api-nest auth gap](admin-apinest-auth-gap.md) — /api/v2/admin/* works in dev (guard fails open) but not prod; nestFetch sends no admin token; file routes via <img> need signed URLs, not headers.
 - [Prescription data sources](prescription-data-sources.md) — admin panel + patient page read real api-nest; legacy cmsStore keys still feed /user dashboard + consult history; backend-create failure must not show success.

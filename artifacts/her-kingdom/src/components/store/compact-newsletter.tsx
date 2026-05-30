@@ -11,18 +11,26 @@ const ACCENT_ORANGE = "#F97316"
 export function CompactNewsletter() {
   const [email, setEmail] = useState("")
   const [submitted, setSubmitted] = useState(false)
+  const [error, setError] = useState("")
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!email) return
+    setError("")
     try {
-      await fetch("/api/newsletter", {
+      const res = await fetch("/api/v2/newsletter", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email }),
+        body: JSON.stringify({ email, source: "compact-bar" }),
       })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        setError(data?.error || "Something went wrong. Please try again.")
+        return
+      }
     } catch {
-      /* ignore */
+      setError("Network error. Please check your connection and try again.")
+      return
     }
     setSubmitted(true)
     setEmail("")
@@ -109,6 +117,11 @@ export function CompactNewsletter() {
                   <Send className="h-4 w-4" style={{ color: ACCENT_ORANGE }} />
                 </button>
               </form>
+            )}
+            {error && !submitted && (
+              <p className="text-sm font-medium whitespace-nowrap" style={{ color: ACCENT_PEACH }}>
+                {error}
+              </p>
             )}
           </div>
         </div>

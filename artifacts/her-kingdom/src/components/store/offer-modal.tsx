@@ -14,6 +14,7 @@ export function OfferModal() {
   const [email, setEmail] = useState("")
   const [dontShow, setDontShow] = useState(false)
   const [submitted, setSubmitted] = useState(false)
+  const [error, setError] = useState("")
 
   useEffect(() => {
     if (!offer) return
@@ -36,14 +37,21 @@ export function OfferModal() {
   const handleSubscribe = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!email) return
+    setError("")
     try {
-      await fetch("/api/newsletter", {
+      const res = await fetch("/api/v2/newsletter", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email }),
+        body: JSON.stringify({ email, source: "offer-modal" }),
       })
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}))
+        setError(d?.error || "Something went wrong. Please try again.")
+        return
+      }
     } catch {
-      // Continue even if API fails
+      setError("Network error. Please check your connection and try again.")
+      return
     }
     setSubmitted(true)
     setTimeout(() => handleClose(), 2500)
@@ -136,6 +144,9 @@ export function OfferModal() {
                 >
                   Subscribe
                 </button>
+                {error && (
+                  <p className="mt-3 text-sm font-medium text-[#e63946]">{error}</p>
+                )}
               </form>
 
               {/* Don't show again */}

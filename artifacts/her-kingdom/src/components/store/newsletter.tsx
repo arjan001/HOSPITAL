@@ -10,18 +10,26 @@ const ACCENT_ORANGE = "#F97316"
 export function Newsletter() {
   const [email, setEmail] = useState("")
   const [submitted, setSubmitted] = useState(false)
+  const [error, setError] = useState("")
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!email) return
+    setError("")
     try {
-      await fetch("/api/newsletter", {
+      const res = await fetch("/api/v2/newsletter", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email }),
+        body: JSON.stringify({ email, source: "footer" }),
       })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        setError(data?.error || "Something went wrong. Please try again.")
+        return
+      }
     } catch {
-      // Continue even if fails
+      setError("Network error. Please check your connection and try again.")
+      return
     }
     setSubmitted(true)
     setEmail("")
@@ -61,6 +69,9 @@ export function Newsletter() {
                   <Send className="h-5 w-5" style={{ color: ACCENT_ORANGE }} />
                 </button>
               </form>
+            )}
+            {error && !submitted && (
+              <p className="mt-3 text-sm font-medium text-white/90">{error}</p>
             )}
           </div>
 
