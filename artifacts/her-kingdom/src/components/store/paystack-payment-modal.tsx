@@ -160,7 +160,7 @@ export function PaystackPaymentModal({
 
   const handlePay = async () => {
     if (!isPhoneValid) {
-      setError("Enter a valid Safaricom number (e.g. 0712345678)")
+      setError("Please enter a valid Kenyan mobile number (e.g. 0712345678 or 0110123456)")
       return
     }
     setError("")
@@ -248,13 +248,13 @@ export function PaystackPaymentModal({
           {step === "prompt" && (
             <div className="mt-5 space-y-4">
               <div>
-                <Label className="text-sm font-medium mb-1.5 block">Safaricom Phone Number *</Label>
+                <Label className="text-sm font-medium mb-1.5 block">M-PESA Phone Number *</Label>
                 <div className="relative">
                   <Smartphone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <Input
                     value={phone}
                     onChange={(e) => { setPhone(e.target.value); setError("") }}
-                    placeholder="e.g. 0712 345 678"
+                    placeholder="e.g. 0712 345 678 or 0110 123 456"
                     className="h-11 pl-10"
                     type="tel"
                     inputMode="tel"

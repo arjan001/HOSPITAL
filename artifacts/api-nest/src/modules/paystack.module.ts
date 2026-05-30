@@ -188,7 +188,10 @@ class PaystackService {
       ? input.email.trim()
       : `${phone || "guest"}@shaniidrx.local`
     if (!/^254[17]\d{8}$/.test(phone)) {
-      throw new HttpException("Enter a valid Safaricom number (e.g. 0712345678)", HttpStatus.BAD_REQUEST)
+      throw new HttpException(
+        "Please enter a valid phone number (e.g. 0712345678, +254712345678, or 0110123456)",
+        HttpStatus.BAD_REQUEST,
+      )
     }
     if (amount < 1) {
       throw new HttpException("Amount must be at least KES 1", HttpStatus.BAD_REQUEST)
