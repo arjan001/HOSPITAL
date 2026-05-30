@@ -1,32 +1,25 @@
 /**
- * AdminCms module — generic key-value CMS store.
+ * AdminCms module — generic key-value CMS store (Postgres-backed).
  *
  * Routes:
+ *   GET    /api/v2/admin/cms        — list known keys
  *   GET    /api/v2/admin/cms/:key   — retrieve a CMS document by key
- *   PUT    /api/v2/admin/cms/:key   — upsert a CMS document
+ *   PUT    /api/v2/admin/cms/:key   — upsert a CMS document (raw body IS the value)
  *   DELETE /api/v2/admin/cms/:key   — remove a CMS document
  *
- * This module is the server-side counterpart to `her-kingdom/src/lib/cms-store.ts`.
- * The storefront's cmsStore:
- *   1. Returns localStorage snapshot immediately (zero-latency UI).
- *   2. GET /api/v2/admin/cms/:key in the background to hydrate from the server.
- *   3. PUT /api/v2/admin/cms/:key after every admin write (best-effort).
+ * This is the server-side counterpart to `her-kingdom/src/lib/cms-store.ts`.
+ * Every admin module whose data is a plain JSON document or list (banners,
+ * announcement bar, popup offer, newsletter, custom pages, footer, blogs,
+ * policies, website settings, message templates, sourcing/qa/logistics state,
+ * etc.) round-trips through this single module — so a single durable table makes
+ * ALL of that content survive restarts and deploys.
  *
- * Keys that power admin modules (non-exhaustive):
- *   banners, hero-banners, categories, popup-offer, website-settings,
- *   footer, custom-pages, message-templates, delivery-locations, …
+ * Persistence: PostgreSQL via Drizzle (`@workspace/db` → `cms_docs`).
+ *   cms_docs(key TEXT PK, value JSONB, version INT, updated_at TIMESTAMPTZ)
  *
- * Local-only keys (never hit this endpoint — see cms-store.ts):
- *   audit-log, user-*, customer-*
- *
- * Postgres swap:
- *   Replace the in-memory `Map<key, unknown>` in CmsService with a
- *   Drizzle `upsert` against an `admin_cms (key TEXT PRIMARY KEY, value JSONB)`
- *   table. No client changes needed — the storefront's fetch URLs are identical.
- *
- * Note on @Inject(CmsService):
- *   tsx/esbuild does not emit emitDecoratorMetadata. Explicit @Inject(Token)
- *   is required on every controller constructor — project-wide rule.
+ * Note on @Inject(AdminCmsService):
+ *   tsx/esbuild does not emit emitDecoratorMetadata. Explicit @Inject(Token) on
+ *   every controller constructor is required — project-wide rule.
  */
 import {
   Body,
@@ -42,30 +35,9 @@ import {
   Put,
   UseGuards,
 } from "@nestjs/common"
+import { asc, eq, sql } from "drizzle-orm"
+import { db, cmsDocs } from "@workspace/db"
 import { AdminGuard, AnyAdmin } from "../common/admin-guard"
-
-/**
- * Generic CMS key/value store backing the storefront's `cmsStore`.
- *
- * Every admin module whose data is a plain JSON document or list (banners,
- * announcement bar, popup offer, newsletter, custom pages, footer, blogs,
- * policies, website settings, audit log, message templates, etc.) goes
- * through this single module instead of getting its own NestJS module.
- *
- * Transactional modules with real domain logic (orders, payments, customers,
- * products, categories, prescriptions, consultations, …) ship their own
- * typed module — this is the catch-all for everything else.
- *
- * Wire format:
- *   GET    /api/v2/admin/cms          → string[] of known keys
- *   GET    /api/v2/admin/cms/:key     → { key, value, version, updatedAt } | 404
- *   PUT    /api/v2/admin/cms/:key     → body is raw JSON for `value`
- *   DELETE /api/v2/admin/cms/:key     → { ok: true }
- *
- * Persistence is in-process today; the Postgres swap is one file
- * (`sql/00_admin_cms.sql` — a single `admin_cms (key TEXT PRIMARY KEY, value
- * JSONB, version INT, updated_at TIMESTAMPTZ)` table).
- */
 
 export type CmsEntry = {
   key: string
@@ -74,32 +46,65 @@ export type CmsEntry = {
   updatedAt: string
 }
 
+function toEntry(row: typeof cmsDocs.$inferSelect): CmsEntry {
+  return {
+    key: row.key,
+    value: row.value,
+    version: row.version,
+    updatedAt: row.updatedAt.toISOString(),
+  }
+}
+
 @Injectable()
 export class AdminCmsService {
-  private store = new Map<string, CmsEntry>()
+  /**
+   * Best-effort snapshot for SYNCHRONOUS callers (storage provider resolver,
+   * error-reporting toggles). Postgres remains the source of truth — this only
+   * serves callers that cannot await, and is refreshed from the DB on access.
+   */
+  private cache = new Map<string, unknown>()
 
-  list(): string[] {
-    return [...this.store.keys()].sort()
+  async list(): Promise<string[]> {
+    const rows = await db.select({ key: cmsDocs.key }).from(cmsDocs).orderBy(asc(cmsDocs.key))
+    return rows.map((r) => r.key)
   }
 
-  get(key: string): CmsEntry | null {
-    return this.store.get(key) ?? null
+  async get(key: string): Promise<CmsEntry | null> {
+    const rows = await db.select().from(cmsDocs).where(eq(cmsDocs.key, key)).limit(1)
+    const entry = rows[0] ? toEntry(rows[0]) : null
+    if (entry) this.cache.set(key, entry.value)
+    return entry
   }
 
-  put(key: string, value: unknown): CmsEntry {
-    const existing = this.store.get(key)
-    const next: CmsEntry = {
-      key,
-      value,
-      version: (existing?.version ?? 0) + 1,
-      updatedAt: new Date().toISOString(),
-    }
-    this.store.set(key, next)
-    return next
+  /**
+   * Synchronous read for non-awaitable contexts. Returns the last-known value
+   * immediately and kicks off a background refresh from Postgres.
+   */
+  getCachedValue(key: string): unknown {
+    void this.get(key).catch(() => undefined)
+    return this.cache.get(key)
   }
 
-  remove(key: string): boolean {
-    return this.store.delete(key)
+  async put(key: string, value: unknown): Promise<CmsEntry> {
+    // jsonb is NOT NULL; an empty PUT body coerces to JSON null which the column
+    // rejects, so normalise undefined → null and store JSON null explicitly.
+    const v = value === undefined ? null : value
+    const rows = await db
+      .insert(cmsDocs)
+      .values({ key, value: v, version: 1 })
+      .onConflictDoUpdate({
+        target: cmsDocs.key,
+        set: { value: v, version: sql`${cmsDocs.version} + 1`, updatedAt: new Date() },
+      })
+      .returning()
+    this.cache.set(key, v)
+    return toEntry(rows[0])
+  }
+
+  async remove(key: string): Promise<boolean> {
+    const rows = await db.delete(cmsDocs).where(eq(cmsDocs.key, key)).returning({ key: cmsDocs.key })
+    this.cache.delete(key)
+    return rows.length > 0
   }
 }
 
@@ -119,20 +124,20 @@ class AdminCmsController {
   constructor(@Inject(AdminCmsService) private readonly svc: AdminCmsService) {}
 
   @Get()
-  list(): { keys: string[] } {
-    return { keys: this.svc.list() }
+  async list(): Promise<{ keys: string[] }> {
+    return { keys: await this.svc.list() }
   }
 
   @Get(":key")
-  get(@Param("key") key: string) {
+  async get(@Param("key") key: string) {
     assertKey(key)
-    const entry = this.svc.get(key)
+    const entry = await this.svc.get(key)
     if (!entry) throw new HttpException("Not found", HttpStatus.NOT_FOUND)
     return entry
   }
 
   @Put(":key")
-  put(@Param("key") key: string, @Body() body: unknown) {
+  async put(@Param("key") key: string, @Body() body: unknown) {
     assertKey(key)
     // The raw request body IS the value — no envelope. This lets the client
     // PUT `JSON.stringify(value)` directly without wrapping in `{ value: … }`.
@@ -140,9 +145,9 @@ class AdminCmsController {
   }
 
   @Delete(":key")
-  remove(@Param("key") key: string) {
+  async remove(@Param("key") key: string) {
     assertKey(key)
-    return { ok: this.svc.remove(key) }
+    return { ok: await this.svc.remove(key) }
   }
 }
 

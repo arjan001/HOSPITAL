@@ -143,7 +143,7 @@ export class ErrorReportingService {
 
   /** Read the admin enable toggles from the cms `error-reporting` doc. */
   private toggles(): { sentryEnabled: boolean; slackEnabled: boolean } {
-    const raw = this.cms.get("error-reporting")?.value as
+    const raw = this.cms.getCachedValue("error-reporting") as
       | { sentryEnabled?: unknown; slackEnabled?: unknown }
       | undefined
     // Default to enabled when a provider is configured but no toggle exists yet.

@@ -65,11 +65,34 @@ async function cmsGet<T>(key: string, fallback: T): Promise<T> {
 }
 
 async function cmsPut<T>(key: string, value: T): Promise<void> {
-  await fetch(`${CMS_BASE}/${encodeURIComponent(key)}`, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json", ...INTERNAL_HEADERS },
-    body: JSON.stringify(value),
-  }).catch(() => undefined)
+  // Fail-closed: the cmsStore mirror is now the ONLY durable home for partner
+  // submissions (the in-memory array is gone), so a dropped write would lose the
+  // submission permanently. Surface any network error / non-2xx to the caller so
+  // `submit()` returns a real failure instead of a false success.
+  const ctrl = new AbortController()
+  const timer = setTimeout(() => ctrl.abort(), CMS_TIMEOUT_MS)
+  let res: Awaited<ReturnType<typeof fetch>>
+  try {
+    res = await fetch(`${CMS_BASE}/${encodeURIComponent(key)}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", ...INTERNAL_HEADERS },
+      body: JSON.stringify(value),
+      signal: ctrl.signal,
+    })
+  } catch (err) {
+    throw new HttpException(
+      `Could not save submission (${(err as Error)?.message || "network error"}). Please try again.`,
+      HttpStatus.BAD_GATEWAY,
+    )
+  } finally {
+    clearTimeout(timer)
+  }
+  if (!res.ok) {
+    throw new HttpException(
+      `Could not save submission (status ${res.status}). Please try again.`,
+      HttpStatus.BAD_GATEWAY,
+    )
+  }
 }
 
 export type PartnerType = "supplier" | "clinic" | "logistics"
@@ -122,8 +145,6 @@ class PartnersService {
    * NestJS in-memory pattern).
    */
   private sessions = new Map<string, PartnerStamp>()
-  /** All partner submissions, newest-first. */
-  private submissions: PartnerSubmission[] = []
 
   async sendWelcome(input: {
     type: string
@@ -223,11 +244,10 @@ class PartnersService {
       status: "submitted",
       createdAt: new Date().toISOString(),
     }
-    this.submissions.unshift(rec)
-
-    // Best-effort: also persist into cmsStore so AdminClinics/AdminSuppliers
-    // can see partner-originated submissions across restarts.
-    void this.mirrorToCms(rec).catch(() => undefined)
+    // Persist into the durable cmsStore mirror (Postgres-backed cms_docs) so
+    // submissions survive restarts and AdminClinics/AdminSuppliers — and the
+    // partner's own `GET /orders` — read a single durable source of truth.
+    await this.mirrorToCms(rec)
 
     // Send confirmation emails after order/quote submissions
     void this.sendSubmissionEmail(rec, stamp, body?.payload).catch(() => undefined)
@@ -291,10 +311,12 @@ class PartnersService {
     await cmsPut(key, [rec, ...existing].slice(0, 500))
   }
 
-  listForSession(sessionId: string, type: string): PartnerSubmission[] {
+  async listForSession(sessionId: string, type: string): Promise<PartnerSubmission[]> {
     const partnerType = this.assertType(type)
     const stamp = this.getStamp(sessionId, partnerType)
-    return this.submissions.filter(
+    const key = `${CMS_KEY_FOR[partnerType]}-submissions`
+    const all = await cmsGet<PartnerSubmission[]>(key, [])
+    return all.filter(
       (s) => s.partnerType === partnerType && s.partnerId === stamp.partnerId,
     )
   }

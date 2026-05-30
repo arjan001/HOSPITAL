@@ -6,7 +6,7 @@ export const users = pgTable("users", {
   id: text("id").primaryKey(),
   clerkId: text("clerk_id").unique().notNull(),
   fullName: text("full_name").notNull(),
-  email: text("email").unique(),
+  email: text("email"),
   phone: text("phone"),
   photoUrl: text("photo_url"),
   preferences: jsonb("preferences").$type<{

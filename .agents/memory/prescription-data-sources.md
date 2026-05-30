@@ -23,6 +23,13 @@ A backend-create failure must NOT show a success reference — the new
 patient/admin surfaces read api-nest, so a failed create means the request never
 reached the pharmacy (the cmsStore copy only shows in the legacy `/user` view).
 
-**Durability:** prescriptions are still in-memory in api-nest (reset on
-restart). Postgres migration is deferred — the existing `lib/db` schema is
-unused/drifted and would need a redesign for multi-file uploads.
+**Durability:** prescriptions are now **Postgres-durable** in api-nest
+(`prescriptions` + `prescription_drugs` + `prescription_timeline` in
+`@workspace/db`), keyed to a `users` row via `users.clerkId = req.sessionId`
+(the `session-user.ts` bridge). They survive restarts/deploys. Owner scoping is
+enforced through `ensureUserId`; admin cross-session reads resolve the owner via
+`users.clerkId`. Payment redemption is idempotent at the row level: `pay()` does
+an atomic guarded transition (`WHERE id=? AND status='verified' AND paid_at IS
+NULL ... RETURNING`) so a replay/concurrent call updates zero rows and the
+timeline + notification side effects fire exactly once; `payment_reference` also
+has a unique index as the hard cross-row backstop.

@@ -632,18 +632,28 @@ export function CheckoutPage() {
   const freeProgress     = Math.min(100, Math.round((totalPrice / freeShippingThreshold) * 100))
 
   /* ── Phone validation ──
-     Use the resolved phone (formData → savedAddress → mpesaPhone) so the
-     check matches exactly what buildOrderPayload sends. Mirror of server-side
-     isValidPhone in api-server/src/lib/security.ts. */
-  const digitsOnly  = (formData.phone || savedAddress?.phone || mpesaPhone || "").replace(/\D/g, "")
-  const hasLeading  = (formData.phone || savedAddress?.phone || mpesaPhone || "").trim().startsWith("+")
+     The phone we validate depends on the payment method. For M-PESA the number
+     is entered FRESH at checkout (the payment prompt must hit the number the
+     customer is paying from — it is deliberately NOT prefilled or locked from
+     the saved delivery address). For COD we fall back to the contact phone on
+     the saved address / form. Mirror of server-side isValidPhone in
+     api-server/src/lib/security.ts. */
+  const paymentPhone = paymentMethod === "mpesa"
+    ? mpesaPhone
+    : (formData.phone || savedAddress?.phone || "")
+  const digitsOnly  = paymentPhone.replace(/\D/g, "")
+  const hasLeading  = paymentPhone.trim().startsWith("+")
   const cleanPhone  = (hasLeading ? "+" : "") + digitsOnly
   const isPhoneValid =
     /^(\+?254[17]\d{8}|0[17]\d{8}|011\d{7})$/.test(cleanPhone) ||
     (digitsOnly.length >= 9 && digitsOnly.length <= 15)
 
-  /* ── Build payload ── */
-  const resolvedPhone = formData.phone || savedAddress?.phone || mpesaPhone || ""
+  /* ── Build payload ──
+     For an M-PESA order the customer phone IS the freshly-entered payment
+     number; for COD it's the contact phone on file. */
+  const resolvedPhone = paymentMethod === "mpesa"
+    ? (mpesaPhone || formData.phone || savedAddress?.phone || "")
+    : (formData.phone || savedAddress?.phone || "")
   const buildOrderPayload = (via: string) => ({
     customerName:     formData.name || savedAddress?.name || "",
     customerEmail:    formData.email || undefined,
@@ -1614,7 +1624,7 @@ export function CheckoutPage() {
                         <Smartphone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
                         <input
                           type="tel"
-                          value={mpesaPhone || formData.phone || savedAddress?.phone || ""}
+                          value={mpesaPhone}
                           onChange={e => setMpesaPhone(e.target.value)}
                           placeholder="07XX XXX XXX"
                           className="w-full h-11 pl-10 pr-3 rounded-lg border border-gray-200 text-sm outline-none focus:border-gray-400 text-gray-900"
@@ -1738,7 +1748,7 @@ export function CheckoutPage() {
         isOpen={showPaystack}
         onClose={() => setShowPaystack(false)}
         total={grandTotal}
-        defaultPhone={formData.phone || savedAddress?.phone || ""}
+        defaultPhone={mpesaPhone}
         defaultEmail={formData.email || ""}
         customerName={formData.name  || savedAddress?.name  || ""}
         createPendingOrder={createMpesaPendingOrder}

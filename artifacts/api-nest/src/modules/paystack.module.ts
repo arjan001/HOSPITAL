@@ -1,24 +1,24 @@
 /**
- * Paystack payments module.
+ * Paystack payments module (Postgres-backed).
  *
  * Mounted at `/api/v2/payments/paystack` and exposes:
+ *   GET    /config             – public config (configured flag + public key)
  *   POST   /charge              – initiate an M-Pesa STK push (KES mobile money)
  *   GET    /status?reference=…  – poll the latest status for a reference
  *   POST   /callback            – Paystack webhook (charge.success / charge.failed)
  *
  * Env contract:
  *   PAYSTACK_SECRET_KEY      – required to talk to Paystack. If missing every
- *                              endpoint returns HTTP 503 with a friendly hint
- *                              (the rest of the app keeps running).
- *   PAYSTACK_PUBLIC_KEY      – optional, surfaced on /charge response so the
- *                              storefront can render Paystack-branded UI.
- *   PAYSTACK_CALLBACK_URL    – optional, sent on each charge so Paystack pings
- *                              us on settlement. Falls back to "{host}/api/v2/payments/paystack/callback".
+ *                              endpoint returns HTTP 503 with a friendly hint.
+ *   PAYSTACK_PUBLIC_KEY      – optional, surfaced on /charge so the storefront
+ *                              can render Paystack-branded UI.
+ *   PAYSTACK_CALLBACK_URL    – optional; falls back to "{host}/api/v2/payments/paystack/callback".
  *
- * Storage is an in-memory `Map<reference, PaymentRecord>` keyed by Paystack
- * reference. Mirrors the legacy PayHero shape so the storefront can swap the
- * fetch URLs without touching its UI state machine. Swap to Drizzle by
- * replacing the `Map` with a `paystack_payments` table — no controller changes.
+ * Persistence:
+ *   Charges are rows in the `payments` table (provider="paystack"), keyed by the
+ *   unique Paystack `reference`. The order number, display message, and Paystack
+ *   id ride in the `provider_response` jsonb column (there are no dedicated
+ *   columns for them). Lookups by order number query that jsonb field.
  */
 import {
   Body,
@@ -37,6 +37,9 @@ import {
 } from "@nestjs/common"
 import type { Request } from "express"
 import { createHmac, timingSafeEqual } from "node:crypto"
+import { desc, eq, sql } from "drizzle-orm"
+import { db, payments } from "@workspace/db"
+import { newId } from "../common/repository"
 
 type PaystackStatus = "pending" | "success" | "failed" | "cancelled"
 
@@ -65,12 +68,7 @@ interface ChargeInput {
 interface PaystackChargeApiResponse {
   status?: boolean
   message?: string
-  data?: {
-    reference?: string
-    status?: string
-    display_text?: string
-    id?: number | string
-  }
+  data?: { reference?: string; status?: string; display_text?: string; id?: number | string }
 }
 
 interface PaystackVerifyApiResponse {
@@ -99,6 +97,8 @@ interface PaystackCallbackEvent {
   }
 }
 
+type ProviderMeta = { orderNumber?: string; message?: string; paystackId?: string | number }
+
 function normalizeKePhone(raw: string): string {
   const digits = String(raw || "").replace(/[\s\-()+]/g, "")
   if (digits.startsWith("254")) return digits
@@ -115,14 +115,29 @@ function paystackStatusToOurs(s?: string): PaystackStatus {
   return "pending"
 }
 
+function toRecord(r: typeof payments.$inferSelect): PaymentRecord {
+  const meta = (r.providerResponse ?? {}) as ProviderMeta
+  return {
+    reference: r.reference,
+    orderNumber: meta.orderNumber ?? "",
+    phone: r.phone ?? "",
+    amount: r.amount,
+    currency: "KES",
+    status: r.status as PaystackStatus,
+    mpesaReceipt: r.mpesaReceipt ?? undefined,
+    message: meta.message ?? undefined,
+    createdAt: r.createdAt.toISOString(),
+    updatedAt: r.updatedAt.toISOString(),
+    paystackId: meta.paystackId,
+  }
+}
+
 @Injectable()
 class PaystackService {
   private readonly secret = process.env["PAYSTACK_SECRET_KEY"] ?? ""
   private readonly publicKey = process.env["PAYSTACK_PUBLIC_KEY"] ?? ""
   private readonly defaultCallback = process.env["PAYSTACK_CALLBACK_URL"] ?? ""
   private readonly base = "https://api.paystack.co"
-  private readonly records = new Map<string, PaymentRecord>()
-  private readonly byOrder = new Map<string, string>() // orderNumber -> reference
 
   isConfigured(): boolean {
     return Boolean(this.secret)
@@ -142,10 +157,7 @@ class PaystackService {
   }
 
   getPublicConfig() {
-    return {
-      configured: this.isConfigured(),
-      publicKey: this.publicKey || null,
-    }
+    return { configured: this.isConfigured(), publicKey: this.publicKey || null }
   }
 
   private buildCallbackUrl(req: Request): string {
@@ -172,6 +184,21 @@ class PaystackService {
       throw new HttpException({ error: msg, status: res.status, raw: json }, HttpStatus.BAD_GATEWAY)
     }
     return json as T
+  }
+
+  private async findReferenceByOrder(orderNumber: string): Promise<string | undefined> {
+    const rows = await db
+      .select({ reference: payments.reference })
+      .from(payments)
+      .where(sql`${payments.providerResponse} ->> 'orderNumber' = ${orderNumber}`)
+      .orderBy(desc(payments.createdAt))
+      .limit(1)
+    return rows[0]?.reference
+  }
+
+  private async readByReference(reference: string): Promise<PaymentRecord | null> {
+    const rows = await db.select().from(payments).where(eq(payments.reference, reference)).limit(1)
+    return rows[0] ? toRecord(rows[0]) : null
   }
 
   async charge(req: Request, input: ChargeInput): Promise<{
@@ -218,45 +245,47 @@ class PaystackService {
 
     const reference = res.data?.reference || `psk_${Date.now().toString(36)}`
     const status = paystackStatusToOurs(res.data?.status)
+    const message = res.data?.display_text || res.message || "STK push sent to your phone"
+    const meta: ProviderMeta = { orderNumber, message, paystackId: res.data?.id }
 
-    const now = new Date().toISOString()
-    const record: PaymentRecord = {
-      reference,
-      orderNumber,
-      phone,
-      amount,
-      currency: "KES",
-      status,
-      message: res.data?.display_text || res.message || "STK push sent to your phone",
-      paystackId: res.data?.id,
-      createdAt: now,
-      updatedAt: now,
-    }
-    this.records.set(reference, record)
-    this.byOrder.set(orderNumber, reference)
+    await db
+      .insert(payments)
+      .values({
+        id: newId("pay"),
+        reference,
+        provider: "paystack",
+        method: "mpesa",
+        phone,
+        amount,
+        currency: "KES",
+        status,
+        providerResponse: meta,
+      })
+      .onConflictDoUpdate({
+        target: payments.reference,
+        set: { status, phone, amount, providerResponse: meta, updatedAt: new Date() },
+      })
 
     return {
       success: true,
       status,
       reference,
       publicKey: this.publicKey || null,
-      message: record.message ?? "",
+      message,
     }
   }
 
   /**
-   * Returns the cached record and, while still pending, lazily verifies with
+   * Returns the stored record and, while still pending, lazily verifies with
    * Paystack so the storefront poll loop is the only thing that needs to fire.
    */
   async status(args: { reference?: string; orderNumber?: string }): Promise<PaymentRecord> {
     this.requireConfigured()
-    const reference =
-      args.reference ||
-      (args.orderNumber ? this.byOrder.get(args.orderNumber) : undefined)
+    const reference = args.reference || (args.orderNumber ? await this.findReferenceByOrder(args.orderNumber) : undefined)
     if (!reference) {
       throw new HttpException("Unknown payment reference", HttpStatus.NOT_FOUND)
     }
-    const cached = this.records.get(reference)
+    const cached = await this.readByReference(reference)
     if (!cached) {
       throw new HttpException("Unknown payment reference", HttpStatus.NOT_FOUND)
     }
@@ -267,27 +296,25 @@ class PaystackService {
         `/transaction/verify/${encodeURIComponent(reference)}`,
       )
       const status = paystackStatusToOurs(verify.data?.status)
-      const updated: PaymentRecord = {
-        ...cached,
-        status,
-        mpesaReceipt: verify.data?.metadata?.receipt_number || cached.mpesaReceipt,
-        message: verify.data?.gateway_response || cached.message,
-        updatedAt: new Date().toISOString(),
-      }
-      this.records.set(reference, updated)
-      return updated
+      const mpesaReceipt = verify.data?.metadata?.receipt_number || cached.mpesaReceipt
+      const message = verify.data?.gateway_response || cached.message
+      const meta: ProviderMeta = { orderNumber: cached.orderNumber, message, paystackId: cached.paystackId }
+      await db
+        .update(payments)
+        .set({ status, mpesaReceipt: mpesaReceipt ?? null, providerResponse: meta, updatedAt: new Date() })
+        .where(eq(payments.reference, reference))
+      return { ...cached, status, mpesaReceipt, message, updatedAt: new Date().toISOString() }
     } catch {
-      // Stay "pending" if Paystack is briefly unreachable — the storefront
-      // keeps polling, the webhook will catch us up.
+      // Stay "pending" if Paystack is briefly unreachable — the storefront keeps
+      // polling, the webhook will catch us up.
       return cached
     }
   }
 
   /**
-   * Verifies a Paystack webhook by computing HMAC-SHA512 of the raw request
-   * body using `PAYSTACK_SECRET_KEY` and comparing in constant time to the
-   * `x-paystack-signature` header. Throws HttpException on any mismatch so
-   * the controller returns 401/403 and never mutates state on forged calls.
+   * Verifies a Paystack webhook by computing HMAC-SHA512 of the raw request body
+   * using `PAYSTACK_SECRET_KEY` and comparing in constant time to the
+   * `x-paystack-signature` header. Throws on any mismatch.
    */
   verifySignature(rawBody: Buffer | undefined, signatureHeader: string | undefined) {
     if (!this.secret) {
@@ -319,10 +346,7 @@ class PaystackService {
   /**
    * Verify that `reference` corresponds to a *successful* Paystack charge of at
    * least `minAmount` KSh, lazily re-checking with Paystack if still pending.
-   * Throws when the provider is unconfigured, the reference is unknown (forged),
-   * the charge didn't succeed, or it underpaid. Returns the verified record so
-   * callers can capture the M-Pesa receipt. This is the single trust gate other
-   * modules use before granting value for a payment.
+   * The single trust gate other modules use before granting value for a payment.
    */
   async verifyPaidReference(reference: string, minAmount: number): Promise<PaymentRecord> {
     this.requireConfigured()
@@ -348,26 +372,24 @@ class PaystackService {
   }
 
   /** Webhook ingest. Signature is already verified by the controller. */
-  applyCallback(event: PaystackCallbackEvent): { ok: true } {
+  async applyCallback(event: PaystackCallbackEvent): Promise<{ ok: true }> {
     const data = event?.data
     if (!data?.reference) return { ok: true }
     // Only act on events we recognize — avoid future event types silently
     // flipping payment state in unintended ways.
     const ev = (event?.event || "").toLowerCase()
     if (ev && ev !== "charge.success" && ev !== "charge.failed") return { ok: true }
-    const cached = this.records.get(data.reference)
+    const cached = await this.readByReference(data.reference)
     if (!cached) return { ok: true }
     const status = paystackStatusToOurs(data.status)
-    const updated: PaymentRecord = {
-      ...cached,
-      status,
-      mpesaReceipt:
-        (data.metadata as { receipt_number?: string } | undefined)?.receipt_number ||
-        cached.mpesaReceipt,
-      message: data.gateway_response || cached.message,
-      updatedAt: new Date().toISOString(),
-    }
-    this.records.set(data.reference, updated)
+    const mpesaReceipt =
+      (data.metadata as { receipt_number?: string } | undefined)?.receipt_number || cached.mpesaReceipt
+    const message = data.gateway_response || cached.message
+    const meta: ProviderMeta = { orderNumber: cached.orderNumber, message, paystackId: cached.paystackId }
+    await db
+      .update(payments)
+      .set({ status, mpesaReceipt: mpesaReceipt ?? null, providerResponse: meta, updatedAt: new Date() })
+      .where(eq(payments.reference, data.reference))
     return { ok: true }
   }
 }

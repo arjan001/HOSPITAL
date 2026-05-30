@@ -2,23 +2,21 @@
  * AdminOrders module — order fulfillment and management for pharmacy staff.
  *
  * Routes:
- *   GET    /api/v2/admin/orders              — list all orders (paginated, filterable)
- *   GET    /api/v2/admin/orders/:id          — fetch a single order + line items
- *   PUT    /api/v2/admin/orders/:id          — update order status / assign courier
- *   DELETE /api/v2/admin/orders/:id          — cancel and remove an order
- *   GET    /api/v2/admin/orders/stats        — KPI counts by status
- *   POST   /api/v2/admin/orders/:id/notes    — add a fulfillment note
+ *   GET    /api/v2/admin/orders              — list all orders (filterable by status)
+ *   GET    /api/v2/admin/orders/:id          — fetch a single order
+ *   POST   /api/v2/admin/orders              — upsert an order by orderNo
+ *   PATCH  /api/v2/admin/orders/:id          — update order status
+ *   DELETE /api/v2/admin/orders?ids=a,b      — bulk-remove orders
  *
- * Filter params (GET /admin/orders):
- *   status, paymentMethod, from, to, search (customer name / order number)
+ * Status lifecycle (admin vocabulary — distinct from customer /me/orders):
+ *   pending → confirmed → dispatched → delivered | cancelled
  *
- * Status lifecycle:
- *   pending → paid → processing → dispatched → delivered | cancelled | refunded
- *
- * Relationship with customer OrdersModule:
- *   Both modules share the same in-memory store (via AdminOrdersService
- *   reading from OrdersService's repository). When Postgres lands, both
- *   point to the same `orders` table — only the filter/pagination differs.
+ * Persistence:
+ *   Postgres-backed via Drizzle (`@workspace/db` → `admin_orders`), keyed by the
+ *   unique `orderNo`. This is the global pharmacy view of every order placed on
+ *   the storefront; line items are an embedded jsonb snapshot. Kept deliberately
+ *   separate from the customer `orders` table because it carries a richer
+ *   admin-facing shape and its own status vocabulary.
  *
  * Note on @Inject(AdminOrdersService):
  *   tsx/esbuild does not emit emitDecoratorMetadata. Explicit @Inject(Token)
@@ -40,30 +38,14 @@ import {
   Query,
   UseGuards,
 } from "@nestjs/common"
+import { desc, eq, inArray } from "drizzle-orm"
+import { db, adminOrders as adminOrdersTable } from "@workspace/db"
 import { AdminGuard, RequirePerm } from "../common/admin-guard"
 import {
   PatientNotificationsModule,
   PatientNotificationsService,
   type PatientNotificationEvent,
 } from "./patient-notifications.module"
-
-/**
- * Admin Sales & Orders backend.
- *
- * Unlike the customer-facing `/me/orders` (which is session-scoped to a single
- * cookie), this is a **global** store: admins see every order placed across
- * the whole storefront. Today it's an in-process Map keyed by orderNo; the
- * Postgres swap is a one-file change against `sql/01_sales_orders.sql`.
- *
- * Status semantics — single source of truth:
- *   pending     → placed but payment NOT confirmed (COD, M-Pesa awaiting receipt)
- *   confirmed   → payment captured / cash received → counts as a SALE
- *   dispatched  → fulfilment in motion (also a SALE)
- *   delivered   → completed (also a SALE)
- *   cancelled   → failed / declined / abandoned
- *
- * A "Sale" is any order in confirmed | dispatched | delivered.
- */
 
 export type AdminOrderStatus =
   | "pending"
@@ -122,6 +104,35 @@ function todayLabel(d = new Date()): string {
   })
 }
 
+type AdminOrderRow = typeof adminOrdersTable.$inferSelect
+
+function toRecord(row: AdminOrderRow): AdminOrderRecord {
+  return {
+    id: row.id,
+    orderNo: row.orderNo,
+    customer: row.customer,
+    phone: row.phone,
+    email: row.email,
+    items: (row.items ?? []) as AdminOrderItem[],
+    subtotal: row.subtotal,
+    delivery: row.delivery,
+    total: row.total,
+    location: row.location,
+    address: row.address,
+    notes: row.notes,
+    specialInstructions: row.specialInstructions,
+    status: row.status as AdminOrderStatus,
+    orderedVia: row.orderedVia,
+    paymentMethod: row.paymentMethod,
+    mpesaCode: row.mpesaCode,
+    mpesaPhone: row.mpesaPhone,
+    mpesaMessage: row.mpesaMessage,
+    date: todayLabel(row.createdAt),
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+  }
+}
+
 type UpsertInput = Partial<Omit<AdminOrderRecord, "id" | "createdAt" | "updatedAt" | "date">> & {
   orderNo: string
   status: AdminOrderStatus
@@ -133,9 +144,6 @@ class AdminOrdersService {
     @Inject(PatientNotificationsService)
     private readonly patientNotify: PatientNotificationsService,
   ) {}
-
-  /** Global store keyed by orderNo (unique). */
-  private byOrderNo = new Map<string, AdminOrderRecord>()
 
   /** Domain status → patient-notification event. Only statuses that should
    *  text the customer are mapped; `pending` deliberately is not. */
@@ -164,22 +172,30 @@ class AdminOrdersService {
     })
   }
 
-  list(): AdminOrderRecord[] {
-    return [...this.byOrderNo.values()].sort((a, b) =>
-      b.createdAt.localeCompare(a.createdAt),
-    )
+  async list(): Promise<AdminOrderRecord[]> {
+    const rows = await db
+      .select()
+      .from(adminOrdersTable)
+      .orderBy(desc(adminOrdersTable.createdAt))
+    return rows.map(toRecord)
   }
 
-  get(id: string): AdminOrderRecord {
-    const found = [...this.byOrderNo.values()].find((o) => o.id === id)
-    if (!found) throw new HttpException("Order not found", HttpStatus.NOT_FOUND)
-    return found
+  async get(id: string): Promise<AdminOrderRecord> {
+    const rows = await db
+      .select()
+      .from(adminOrdersTable)
+      .where(eq(adminOrdersTable.id, id))
+      .limit(1)
+    if (!rows[0]) throw new HttpException("Order not found", HttpStatus.NOT_FOUND)
+    return toRecord(rows[0])
   }
 
-  countPending(): number {
-    let n = 0
-    for (const o of this.byOrderNo.values()) if (o.status === "pending") n++
-    return n
+  async countPending(): Promise<number> {
+    const rows = await db
+      .select({ id: adminOrdersTable.id })
+      .from(adminOrdersTable)
+      .where(eq(adminOrdersTable.status, "pending"))
+    return rows.length
   }
 
   /** Status lifecycle rank — higher means further along. Prevents an
@@ -195,12 +211,18 @@ class AdminOrdersService {
     }
   }
 
-  upsert(input: UpsertInput): AdminOrderRecord {
+  async upsert(input: UpsertInput): Promise<AdminOrderRecord> {
     if (!input.orderNo) {
       throw new HttpException("orderNo is required", HttpStatus.BAD_REQUEST)
     }
     const now = new Date()
-    const existing = this.byOrderNo.get(input.orderNo)
+    const existingRows = await db
+      .select()
+      .from(adminOrdersTable)
+      .where(eq(adminOrdersTable.orderNo, input.orderNo))
+      .limit(1)
+    const existing = existingRows[0] ? toRecord(existingRows[0]) : undefined
+
     const base: AdminOrderRecord =
       existing ?? {
         id: newOrderId(),
@@ -226,12 +248,14 @@ class AdminOrdersService {
         createdAt: now.toISOString(),
         updatedAt: now.toISOString(),
       }
+
     // Never demote an order that has already advanced past the incoming status
     // (e.g. a late "pending" arriving after "confirmed" is ignored on status).
     const incomingRank = this.statusRank(input.status)
     const baseRank = this.statusRank(base.status)
     const effectiveStatus: AdminOrderStatus =
       existing && incomingRank < baseRank ? base.status : input.status
+
     const next: AdminOrderRecord = {
       ...base,
       customer: input.customer ?? base.customer,
@@ -253,36 +277,77 @@ class AdminOrdersService {
       mpesaMessage: input.mpesaMessage ?? base.mpesaMessage,
       updatedAt: now.toISOString(),
     }
-    this.byOrderNo.set(next.orderNo, next)
+
+    const values = {
+      id: next.id,
+      orderNo: next.orderNo,
+      customer: next.customer,
+      phone: next.phone,
+      email: next.email,
+      items: next.items,
+      subtotal: next.subtotal,
+      delivery: next.delivery,
+      total: next.total,
+      location: next.location,
+      address: next.address,
+      notes: next.notes,
+      specialInstructions: next.specialInstructions,
+      status: next.status,
+      orderedVia: next.orderedVia,
+      paymentMethod: next.paymentMethod,
+      mpesaCode: next.mpesaCode,
+      mpesaPhone: next.mpesaPhone,
+      mpesaMessage: next.mpesaMessage,
+      updatedAt: now,
+    }
+
+    let savedRow: AdminOrderRow
+    if (existing) {
+      const [row] = await db
+        .update(adminOrdersTable)
+        .set(values)
+        .where(eq(adminOrdersTable.orderNo, next.orderNo))
+        .returning()
+      savedRow = row
+    } else {
+      const [row] = await db
+        .insert(adminOrdersTable)
+        .values({ ...values, createdAt: now })
+        .returning()
+      savedRow = row
+    }
+    const saved = toRecord(savedRow)
+
     // Auto-text the patient when the effective status advances to a new,
     // notifiable state (treat a brand-new order's baseline as "pending").
     const prevStatus = existing?.status ?? "pending"
     if (effectiveStatus !== prevStatus) {
-      this.notifyStatusChange(next, effectiveStatus)
+      this.notifyStatusChange(saved, effectiveStatus)
     }
-    return next
+    return saved
   }
 
-  patchStatus(id: string, status: AdminOrderStatus): AdminOrderRecord {
-    const target = this.get(id)
-    const next = { ...target, status, updatedAt: new Date().toISOString() }
-    this.byOrderNo.set(target.orderNo, next)
+  async patchStatus(id: string, status: AdminOrderStatus): Promise<AdminOrderRecord> {
+    const target = await this.get(id)
+    const [row] = await db
+      .update(adminOrdersTable)
+      .set({ status, updatedAt: new Date() })
+      .where(eq(adminOrdersTable.id, id))
+      .returning()
+    const saved = toRecord(row)
     if (status !== target.status) {
-      this.notifyStatusChange(next, status)
+      this.notifyStatusChange(saved, status)
     }
-    return next
+    return saved
   }
 
-  remove(ids: string[]): { deleted: number } {
-    let deleted = 0
-    const set = new Set(ids)
-    for (const [key, order] of this.byOrderNo) {
-      if (set.has(order.id)) {
-        this.byOrderNo.delete(key)
-        deleted++
-      }
-    }
-    return { deleted }
+  async remove(ids: string[]): Promise<{ deleted: number }> {
+    if (ids.length === 0) return { deleted: 0 }
+    const removed = await db
+      .delete(adminOrdersTable)
+      .where(inArray(adminOrdersTable.id, ids))
+      .returning({ id: adminOrdersTable.id })
+    return { deleted: removed.length }
   }
 }
 
@@ -295,11 +360,11 @@ class AdminOrdersController {
   ) {}
 
   @Get()
-  list(@Query("count") count?: string, @Query("status") status?: string) {
+  async list(@Query("count") count?: string, @Query("status") status?: string) {
     if (count === "true" && status === "pending") {
-      return { count: this.svc.countPending() }
+      return { count: await this.svc.countPending() }
     }
-    const all = this.svc.list()
+    const all = await this.svc.list()
     if (status) return all.filter((o) => o.status === status)
     return all
   }

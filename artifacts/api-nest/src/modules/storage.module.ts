@@ -47,7 +47,7 @@ export class StorageService implements OnModuleInit {
 
   onModuleInit(): void {
     registerStorageProviderResolver(() => {
-      const v = this.cms.get("storage")?.value as { provider?: unknown } | undefined
+      const v = this.cms.getCachedValue("storage") as { provider?: unknown } | undefined
       const p = v?.provider
       return p === "s3" || p === "cloudinary" || p === "local"
         ? (p as StorageProvider)

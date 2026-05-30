@@ -7,9 +7,10 @@
  *   PUT    /:noteId         — update note text, color, or pinned state
  *   DELETE /:noteId         — delete a note
  *
- * patientId may be either a Clerk userId or a prescription sessionId.
- * Data is in-memory today; swap InMemoryRepository for a Drizzle-backed
- * implementation against the patient_notes table when DATABASE_URL lands.
+ * patientId may be either a Clerk userId or a prescription sessionId. It is
+ * stored opaquely in the `patient_id` column.
+ *
+ * Persistence: Postgres-backed via Drizzle (`@workspace/db` → `patient_notes`).
  *
  * NestJS rule: explicit @Inject() on every constructor (tsx / esbuild does
  * NOT emit emitDecoratorMetadata).
@@ -29,8 +30,10 @@ import {
   Put,
   UseGuards,
 } from "@nestjs/common"
+import { and, desc, eq } from "drizzle-orm"
+import { db, patientNotes as patientNotesTable } from "@workspace/db"
 import { AdminGuard, RequirePerm } from "../common/admin-guard"
-import { InMemoryRepository, newId } from "../common/repository"
+import { newId } from "../common/repository"
 
 // ─────────────── Types ───────────────
 
@@ -60,59 +63,93 @@ type CreateNoteDto = {
   consultationId?: string
 }
 
+type PatientNoteRow = typeof patientNotesTable.$inferSelect
+
+function toNote(row: PatientNoteRow): PatientNote {
+  return {
+    id: row.id,
+    patientId: row.patientId ?? "",
+    prescriptionId: row.prescriptionId ?? undefined,
+    consultationId: row.consultationId ?? undefined,
+    note: row.note,
+    color: row.color as NoteColor,
+    pinned: row.pinned,
+    createdBy: row.createdBy,
+    createdByName: row.createdByName ?? undefined,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+  }
+}
+
 // ─────────────── Service ───────────────
 
 @Injectable()
 class PatientNotesService {
-  private repo = new InMemoryRepository<PatientNote>()
-
-  list(patientId: string): PatientNote[] {
-    return this.repo.listFor(patientId).sort(
-      (a, b) =>
-        (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0) ||
-        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-    )
+  async list(patientId: string): Promise<PatientNote[]> {
+    const rows = await db
+      .select()
+      .from(patientNotesTable)
+      .where(eq(patientNotesTable.patientId, patientId))
+      .orderBy(desc(patientNotesTable.pinned), desc(patientNotesTable.createdAt))
+    return rows.map(toNote)
   }
 
-  create(patientId: string, dto: CreateNoteDto): PatientNote {
+  async create(patientId: string, dto: CreateNoteDto): Promise<PatientNote> {
     if (!dto.note?.trim()) {
       throw new HttpException("Note text is required", HttpStatus.BAD_REQUEST)
     }
-    const now = new Date().toISOString()
-    const note: PatientNote = {
-      id: newId("note"),
-      patientId,
-      note: dto.note.trim(),
-      color: dto.color || "yellow",
-      pinned: dto.pinned ?? false,
-      createdBy: dto.createdBy || "admin",
-      createdByName: dto.createdByName,
-      prescriptionId: dto.prescriptionId,
-      consultationId: dto.consultationId,
-      createdAt: now,
-      updatedAt: now,
-    }
-    this.repo.add(patientId, note)
-    return note
+    const now = new Date()
+    const [row] = await db
+      .insert(patientNotesTable)
+      .values({
+        id: newId("note"),
+        patientId,
+        prescriptionId: dto.prescriptionId ?? null,
+        consultationId: dto.consultationId ?? null,
+        note: dto.note.trim(),
+        color: dto.color || "yellow",
+        pinned: dto.pinned ?? false,
+        createdBy: dto.createdBy || "admin",
+        createdByName: dto.createdByName ?? null,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .returning()
+    return toNote(row)
   }
 
-  update(patientId: string, noteId: string, patch: Partial<CreateNoteDto>): PatientNote {
-    const existing = this.repo.findById(patientId, noteId)
-    if (!existing) throw new HttpException("Note not found", HttpStatus.NOT_FOUND)
-    const updated: PatientNote = {
-      ...existing,
-      ...(typeof patch.note === "string" ? { note: patch.note.trim() } : {}),
-      ...(patch.color !== undefined ? { color: patch.color } : {}),
-      ...(patch.pinned !== undefined ? { pinned: patch.pinned } : {}),
-      updatedAt: new Date().toISOString(),
-    }
-    return this.repo.update(patientId, noteId, updated) ?? updated
+  async update(
+    patientId: string,
+    noteId: string,
+    patch: Partial<CreateNoteDto>,
+  ): Promise<PatientNote> {
+    const existing = await db
+      .select()
+      .from(patientNotesTable)
+      .where(and(eq(patientNotesTable.patientId, patientId), eq(patientNotesTable.id, noteId)))
+      .limit(1)
+    if (!existing[0]) throw new HttpException("Note not found", HttpStatus.NOT_FOUND)
+    const [row] = await db
+      .update(patientNotesTable)
+      .set({
+        ...(typeof patch.note === "string" ? { note: patch.note.trim() } : {}),
+        ...(patch.color !== undefined ? { color: patch.color } : {}),
+        ...(patch.pinned !== undefined ? { pinned: patch.pinned } : {}),
+        updatedAt: new Date(),
+      })
+      .where(and(eq(patientNotesTable.patientId, patientId), eq(patientNotesTable.id, noteId)))
+      .returning()
+    return toNote(row)
   }
 
-  remove(patientId: string, noteId: string): void {
-    const existing = this.repo.findById(patientId, noteId)
-    if (!existing) throw new HttpException("Note not found", HttpStatus.NOT_FOUND)
-    this.repo.remove(patientId, noteId)
+  async remove(patientId: string, noteId: string): Promise<void> {
+    const removed = await db
+      .delete(patientNotesTable)
+      .where(and(eq(patientNotesTable.patientId, patientId), eq(patientNotesTable.id, noteId)))
+      .returning({ id: patientNotesTable.id })
+    if (removed.length === 0) {
+      throw new HttpException("Note not found", HttpStatus.NOT_FOUND)
+    }
   }
 }
 
@@ -144,8 +181,8 @@ class PatientNotesController {
   }
 
   @Delete(":noteId")
-  remove(@Param("patientId") patientId: string, @Param("noteId") noteId: string) {
-    this.svc.remove(patientId, noteId)
+  async remove(@Param("patientId") patientId: string, @Param("noteId") noteId: string) {
+    await this.svc.remove(patientId, noteId)
     return { ok: true }
   }
 }

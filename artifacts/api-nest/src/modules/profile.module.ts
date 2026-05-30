@@ -1,30 +1,28 @@
 /**
- * Profile module — customer / guest profile management.
+ * Profile module — customer / guest profile management (Postgres-backed).
  *
  * Routes (all scoped to the session cookie):
  *   GET  /api/v2/me      — return the profile for the current session.
- *                          Creates a blank profile on first access.
+ *                          Creates a blank profile (users row) on first access.
  *   PUT  /api/v2/me      — patch name, email, phone, or notification prefs.
  *
  * Data model:
- *   One Profile per sessionId. Stored in InMemoryRepository<Profile>.
- *   Postgres swap: replace `new InMemoryRepository<Profile>()` in
- *   ProfileService with a Drizzle-backed implementation — controller unchanged.
+ *   One `users` row per session (clerkId = req.sessionId — see common/session-user.ts).
+ *   Persistence is Drizzle/Postgres (`@workspace/db` → `users`).
  *
  * Clerk migration:
- *   When Clerk JWT lands, SessionMiddleware sets req.sessionId = clerkUserId.
- *   The profile lookup then naturally scopes to the authenticated user with
- *   zero code changes in this file.
+ *   When Clerk JWT lands, SessionMiddleware sets req.sessionId = clerkUserId, so
+ *   the profile naturally scopes to the authenticated user with no code change.
  *
  * Why explicit @Inject(ProfileService):
- *   tsx / esbuild does NOT emit emitDecoratorMetadata, so Nest cannot infer
- *   constructor parameter types. Every controller and service that receives
- *   injected dependencies must use explicit @Inject(Token). This is a
- *   project-wide rule — do not remove these decorators.
+ *   tsx/esbuild does NOT emit emitDecoratorMetadata — explicit @Inject(Token) on
+ *   every controller constructor is a project-wide rule.
  */
 import { Body, Controller, Get, Inject, Injectable, Module, Put, Req } from "@nestjs/common"
 import type { Request } from "express"
-import { InMemoryRepository, newId } from "../common/repository"
+import { eq } from "drizzle-orm"
+import { db, users, type User } from "@workspace/db"
+import { ensureUser } from "../common/session-user"
 
 export type Profile = {
   id: string
@@ -39,40 +37,44 @@ export type Profile = {
 
 type ProfilePatch = Partial<Pick<Profile, "fullName" | "email" | "phone" | "preferences">>
 
+function toProfile(sessionId: string, u: User): Profile {
+  return {
+    id: u.id,
+    sessionId,
+    fullName: u.fullName ?? "",
+    email: u.email ?? "",
+    phone: u.phone ?? "",
+    preferences: {
+      marketingEmails: u.preferences?.newsletter ?? true,
+      smsAlerts: u.preferences?.smsAlerts ?? true,
+    },
+    createdAt: u.createdAt.toISOString(),
+    updatedAt: u.updatedAt.toISOString(),
+  }
+}
+
 @Injectable()
 class ProfileService {
-  // One profile per session, stored via the same InMemoryRepository surface
-  // as the other modules. Postgres swap = swap this one repo implementation.
-  private repo = new InMemoryRepository<Profile>()
-
-  getOrCreate(sessionId: string): Profile {
-    const existing = this.repo.listFor(sessionId)[0]
-    if (existing) return existing
-    const now = new Date().toISOString()
-    const fresh: Profile = {
-      id: newId("usr"),
-      sessionId,
-      fullName: "",
-      email: "",
-      phone: "",
-      preferences: { marketingEmails: true, smsAlerts: true },
-      createdAt: now,
-      updatedAt: now,
-    }
-    this.repo.add(sessionId, fresh)
-    return fresh
+  async getOrCreate(sessionId: string): Promise<Profile> {
+    const user = await ensureUser(sessionId)
+    return toProfile(sessionId, user)
   }
 
-  update(sessionId: string, patch: ProfilePatch): Profile {
-    const current = this.getOrCreate(sessionId)
-    const next: Profile = {
-      ...current,
-      ...patch,
-      preferences: { ...current.preferences, ...(patch.preferences ?? {}) },
-      updatedAt: new Date().toISOString(),
+  async update(sessionId: string, patch: ProfilePatch): Promise<Profile> {
+    const user = await ensureUser(sessionId)
+    const set: Partial<typeof users.$inferInsert> = { updatedAt: new Date() }
+    if (patch.fullName !== undefined) set.fullName = patch.fullName
+    if (patch.email !== undefined) set.email = patch.email
+    if (patch.phone !== undefined) set.phone = patch.phone
+    if (patch.preferences !== undefined) {
+      set.preferences = {
+        ...(user.preferences ?? {}),
+        newsletter: patch.preferences.marketingEmails,
+        smsAlerts: patch.preferences.smsAlerts,
+      }
     }
-    const updated = this.repo.update(sessionId, current.id, next)
-    return updated ?? next
+    const rows = await db.update(users).set(set).where(eq(users.id, user.id)).returning()
+    return toProfile(sessionId, rows[0] ?? user)
   }
 }
 

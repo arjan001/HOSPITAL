@@ -2,30 +2,21 @@
  * Prescriptions module — prescription upload, storage, and admin review.
  *
  * Routes:
- *   POST  /api/v2/prescriptions              — upload a new prescription (base64 image/PDF)
- *   GET   /api/v2/prescriptions              — list all prescriptions for the session
- *   GET   /api/v2/prescriptions/:id          — fetch a single prescription
- *   PATCH /api/v2/prescriptions/:id/status   — admin: update review status
- *                                              (pending → reviewing → approved | rejected)
- *   GET   /api/v2/prescriptions/admin/all    — admin: list all prescriptions across sessions
+ *   POST  /api/v2/me/prescriptions             — upload a new prescription
+ *   GET   /api/v2/me/prescriptions             — list the session's prescriptions
+ *   GET   /api/v2/me/prescriptions/:id         — fetch a single prescription
+ *   POST  /api/v2/me/prescriptions/:id/pay     — pay for approved drugs → dispensed
+ *   GET   /api/v2/admin/prescriptions          — admin: list all prescriptions
+ *   PATCH /api/v2/admin/prescriptions/:id      — admin: update review fields
+ *   PATCH /api/v2/admin/prescriptions/:id/status — admin: update review status
  *
- * Data model:
- *   Prescription {
- *     id, sessionId, patientName, patientPhone, notes,
- *     fileUrl,       — served from /api/v2/uploads/* (gated by session cookie)
- *     fileName, fileType, fileSize,
- *     status: "pending" | "reviewing" | "approved" | "rejected",
- *     adminNotes, reviewedAt, createdAt, updatedAt
- *   }
- *
- * File handling:
- *   Accepts base64-encoded file content in the POST body.
- *   Decodes and saves via Storage.put() → local disk today, S3 later.
- *   Max body size is 8 MB (set in main.ts to accommodate prescription scans).
- *
- * Postgres swap:
- *   Replace `new InMemoryRepository<Prescription>()` in PrescriptionsService
- *   with a Drizzle-backed implementation. No controller changes.
+ * Persistence:
+ *   Postgres-backed via Drizzle (`@workspace/db` → `prescriptions` +
+ *   `prescription_drugs` + `prescription_timeline`). Each prescription resolves
+ *   a `userId` from the session via the session→user bridge (clerkId = sid), so
+ *   records survive restarts and migrate cleanly to a production Postgres.
+ *   Approved drugs and the status timeline are first-class child tables;
+ *   payment idempotency is enforced by the `payment_reference` unique index.
  *
  * Note on @Inject(PrescriptionsService):
  *   tsx/esbuild does not emit emitDecoratorMetadata. Explicit @Inject(Token)
@@ -48,7 +39,16 @@ import {
   UseGuards,
 } from "@nestjs/common"
 import type { Request, Response } from "express"
-import { InMemoryRepository, newId } from "../common/repository"
+import { and, desc, eq, inArray, isNull } from "drizzle-orm"
+import {
+  db,
+  prescriptions as rxTable,
+  prescriptionDrugs as drugTable,
+  prescriptionTimeline as tlTable,
+  users as usersTable,
+} from "@workspace/db"
+import { newId } from "../common/repository"
+import { ensureUserId } from "../common/session-user"
 import { AdminGuard, RequirePerm } from "../common/admin-guard"
 import { getStorage } from "../common/storage"
 import { PaystackModule, PaystackService } from "./paystack.module"
@@ -124,6 +124,10 @@ type UpdateInput = Partial<Pick<Prescription,
 
 type PayInput = { amount?: number; reference?: string; receipt?: string }
 
+type RxRow = typeof rxTable.$inferSelect
+type DrugRow = typeof drugTable.$inferSelect
+type TlRow = typeof tlTable.$inferSelect
+
 /** Normalize an untrusted approved-drug payload into the stored shape. */
 function normalizeDrug(d: Partial<ApprovedDrug> | undefined): ApprovedDrug {
   const rawPrice = (d as { price?: unknown })?.price
@@ -150,6 +154,52 @@ function nextRxNumber(): string {
   return `${Date.now().toString(36).toUpperCase().slice(-6)}-${Math.floor(Math.random() * 900 + 100)}`
 }
 
+function buildPrescription(row: RxRow, drugs: DrugRow[], timeline: TlRow[]): Prescription {
+  return {
+    id: row.id,
+    rxNumber: row.rxNumber,
+    patientName: row.patientName,
+    recipient: row.recipient ?? row.patientName,
+    dob: row.dob ?? undefined,
+    phone: row.patientPhone ?? "",
+    email: row.email ?? "",
+    files: (row.files ?? []) as Prescription["files"],
+    notes: row.notes ?? "",
+    status: row.status as PrescriptionStatus,
+    paymentMethod: row.paymentMethod as PaymentMethod,
+    pharmacistNote: row.pharmacistNotes ?? "",
+    doctorNote: row.doctorNotes ?? "",
+    approvedDrugs: [...drugs]
+      .sort((a, b) => a.sortOrder - b.sortOrder)
+      .map((d) => ({
+        name: d.name,
+        dosage: d.dosage ?? "",
+        instructions: d.instructions ?? "",
+        price: d.price ?? null,
+        quantity: d.quantity,
+      })),
+    rejectedReason: row.rejectedReason ?? undefined,
+    payment: row.paidAt
+      ? {
+          amount: row.paidAmount ?? 0,
+          reference: row.paymentReference ?? "",
+          receipt: row.paymentReceipt ?? undefined,
+          at: row.paidAt.toISOString(),
+        }
+      : undefined,
+    timeline: [...timeline]
+      .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
+      .map((t) => ({
+        at: t.createdAt.toISOString(),
+        kind: t.event as TimelineEvent["kind"],
+        label: t.note ?? "",
+        by: (t.actor as TimelineEvent["by"]) ?? undefined,
+      })),
+    createdAt: row.submittedAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+  }
+}
+
 @Injectable()
 export class PrescriptionsService {
   constructor(
@@ -162,69 +212,108 @@ export class PrescriptionsService {
     @Inject(NotificationsService) private readonly inApp: NotificationsService,
   ) {}
 
-  private repo = new InMemoryRepository<Prescription>()
-  // Tracks which session owns which prescription id — admin endpoints don't
-  // know the patient's sessionId but still need to read/update records.
-  private ownerOf = new Map<string, string>()
-  // Payment references already consumed by a prescription — prevents replaying
-  // one successful charge across multiple prescriptions.
-  private consumedReferences = new Set<string>()
-
-  list(sid: string): Prescription[] {
-    return [...this.repo.listFor(sid)].sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+  private async rowById(id: string): Promise<RxRow | undefined> {
+    const rows = await db.select().from(rxTable).where(eq(rxTable.id, id)).limit(1)
+    return rows[0]
   }
 
-  get(sid: string, id: string): Prescription {
-    const r = this.repo.findById(sid, id)
-    if (!r) throw new HttpException("Prescription not found", HttpStatus.NOT_FOUND)
-    return r
+  /** Batch-load drug + timeline child rows for a set of prescriptions. */
+  private async childMaps(pids: string[]): Promise<{
+    drugs: Map<string, DrugRow[]>
+    timeline: Map<string, TlRow[]>
+  }> {
+    if (pids.length === 0) return { drugs: new Map(), timeline: new Map() }
+    const [drugs, tl] = await Promise.all([
+      db.select().from(drugTable).where(inArray(drugTable.prescriptionId, pids)),
+      db.select().from(tlTable).where(inArray(tlTable.prescriptionId, pids)),
+    ])
+    const dMap = new Map<string, DrugRow[]>()
+    for (const d of drugs) {
+      const a = dMap.get(d.prescriptionId) ?? []
+      a.push(d)
+      dMap.set(d.prescriptionId, a)
+    }
+    const tMap = new Map<string, TlRow[]>()
+    for (const t of tl) {
+      const a = tMap.get(t.prescriptionId) ?? []
+      a.push(t)
+      tMap.set(t.prescriptionId, a)
+    }
+    return { drugs: dMap, timeline: tMap }
+  }
+
+  /** Load + build a single prescription by id (no owner check — internal). */
+  private async loadById(id: string): Promise<Prescription> {
+    const row = await this.rowById(id)
+    if (!row) throw new HttpException("Prescription not found", HttpStatus.NOT_FOUND)
+    const { drugs, timeline } = await this.childMaps([id])
+    return buildPrescription(row, drugs.get(id) ?? [], timeline.get(id) ?? [])
+  }
+
+  private buildMany(rows: RxRow[], drugs: Map<string, DrugRow[]>, timeline: Map<string, TlRow[]>): Prescription[] {
+    return rows.map((r) => buildPrescription(r, drugs.get(r.id) ?? [], timeline.get(r.id) ?? []))
+  }
+
+  async list(sid: string): Promise<Prescription[]> {
+    const uid = await ensureUserId(sid)
+    const rows = await db
+      .select()
+      .from(rxTable)
+      .where(eq(rxTable.userId, uid))
+      .orderBy(desc(rxTable.submittedAt))
+    const { drugs, timeline } = await this.childMaps(rows.map((r) => r.id))
+    return this.buildMany(rows, drugs, timeline)
+  }
+
+  async get(sid: string, id: string): Promise<Prescription> {
+    const uid = await ensureUserId(sid)
+    const row = await this.rowById(id)
+    if (!row || row.userId !== uid) {
+      throw new HttpException("Prescription not found", HttpStatus.NOT_FOUND)
+    }
+    const { drugs, timeline } = await this.childMaps([id])
+    return buildPrescription(row, drugs.get(id) ?? [], timeline.get(id) ?? [])
   }
 
   /** Admin-only: list every prescription across all sessions, newest first. */
-  listAll(): Prescription[] {
-    const all: Prescription[] = []
-    for (const sid of this.ownerOf.values()) {
-      // ownerOf may contain duplicates per prescription, dedupe by `id`.
-    }
-    // Walk distinct sessions via Set so we don't process duplicates.
-    const sessions = new Set(this.ownerOf.values())
-    for (const sid of sessions) {
-      for (const rx of this.repo.listFor(sid)) all.push(rx)
-    }
-    return all.sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+  async listAll(): Promise<Prescription[]> {
+    const rows = await db.select().from(rxTable).orderBy(desc(rxTable.submittedAt))
+    const { drugs, timeline } = await this.childMaps(rows.map((r) => r.id))
+    return this.buildMany(rows, drugs, timeline)
   }
 
-  /** Admin-only: find a prescription by id without knowing the session. */
-  findAnywhere(id: string): { sid: string; rx: Prescription } {
-    const sid = this.ownerOf.get(id)
-    if (sid) {
-      const rx = this.repo.findById(sid, id)
-      if (rx) return { sid, rx }
+  /** Admin-only: find a prescription by id, resolving its owner session. */
+  async findAnywhere(id: string): Promise<{ sid: string; rx: Prescription }> {
+    const row = await this.rowById(id)
+    if (!row || !row.userId) {
+      throw new HttpException("Prescription not found", HttpStatus.NOT_FOUND)
     }
-    throw new HttpException("Prescription not found", HttpStatus.NOT_FOUND)
+    const owner = await db
+      .select({ clerkId: usersTable.clerkId })
+      .from(usersTable)
+      .where(eq(usersTable.id, row.userId))
+      .limit(1)
+    const sid = owner[0]?.clerkId
+    if (!sid) throw new HttpException("Prescription not found", HttpStatus.NOT_FOUND)
+    const { drugs, timeline } = await this.childMaps([id])
+    return { sid, rx: buildPrescription(row, drugs.get(id) ?? [], timeline.get(id) ?? []) }
   }
 
-  create(sid: string, data: CreateInput): Prescription {
-    const now = new Date().toISOString()
+  async create(sid: string, data: CreateInput): Promise<Prescription> {
+    const uid = await ensureUserId(sid)
+    const now = new Date()
     const recipient = String(data.recipient ?? data.patientName ?? "").trim()
     if (!recipient) {
       throw new HttpException("Recipient name is required", HttpStatus.BAD_REQUEST)
     }
-    const rec: Prescription = {
-      id: newId("rx"),
-      rxNumber: nextRxNumber(),
-      patientName: String(data.patientName ?? recipient),
-      recipient,
-      dob: data.dob ? String(data.dob) : undefined,
-      phone: String(data.phone ?? ""),
-      email: String(data.email ?? ""),
-      files: (data.files ?? []).map((f) => {
+    const files = await Promise.all(
+      (data.files ?? []).map(async (f) => {
         const key = f?.key ? String(f.key) : undefined
         // Only bind a storage key the *current session* actually uploaded.
         // Trusting an arbitrary client-supplied key would let one user attach
         // (and then read, via the owner-checked file route) another user's
         // scan. A key not owned by this session is dropped to undefined.
-        const ownedKey = key && this.uploads.ownsKey(sid, key) ? key : undefined
+        const ownedKey = key && (await this.uploads.ownsKey(sid, key)) ? key : undefined
         return {
           name: String(f?.name ?? "attachment"),
           size: typeof f?.size === "number" ? f.size : undefined,
@@ -233,21 +322,51 @@ export class PrescriptionsService {
           key: ownedKey,
         }
       }),
+    )
+    const id = newId("rx")
+    const rxNumber = nextRxNumber()
+    const paymentMethod: PaymentMethod =
+      data.paymentMethod === "insurance" ? "insurance" : data.paymentMethod === "cash" ? "cash" : "unknown"
+
+    await db.insert(rxTable).values({
+      id,
+      rxNumber,
+      userId: uid,
+      uploadId: null,
+      patientName: String(data.patientName ?? recipient),
+      recipient,
+      dob: data.dob ? String(data.dob) : null,
+      patientPhone: String(data.phone ?? ""),
+      email: String(data.email ?? ""),
       notes: String(data.notes ?? ""),
       status: "pending",
-      paymentMethod: data.paymentMethod === "insurance" ? "insurance" : data.paymentMethod === "cash" ? "cash" : "unknown",
-      pharmacistNote: "",
-      doctorNote: "",
-      approvedDrugs: [],
-      timeline: [
-        { at: now, kind: "uploaded", label: "Prescription uploaded by you", by: "patient" },
-        { at: now, kind: "received", label: "Received by the Shaniid RX pharmacy team", by: "system" },
-      ],
-      createdAt: now,
+      paymentMethod,
+      pharmacistNotes: "",
+      doctorNotes: "",
+      files,
+      submittedAt: now,
       updatedAt: now,
-    }
-    this.ownerOf.set(rec.id, sid)
-    const saved = this.repo.add(sid, rec)
+    })
+    await db.insert(tlTable).values([
+      {
+        id: newId("tl"),
+        prescriptionId: id,
+        event: "uploaded",
+        note: "Prescription uploaded by you",
+        actor: "patient",
+        createdAt: now,
+      },
+      {
+        id: newId("tl"),
+        prescriptionId: id,
+        event: "received",
+        note: "Received by the Shaniid RX pharmacy team",
+        actor: "system",
+        createdAt: new Date(now.getTime() + 1),
+      },
+    ])
+
+    const saved = await this.loadById(id)
     // Auto-text the patient: "we've received your prescription".
     this.patientNotify.notify("prescription_uploaded", {
       phone: saved.phone,
@@ -272,19 +391,35 @@ export class PrescriptionsService {
     return saved
   }
 
-  update(sid: string, id: string, patch: UpdateInput): Prescription {
-    const current = this.get(sid, id)
-    const now = new Date().toISOString()
-    const next: Prescription = {
-      ...current,
-      ...(patch.pharmacistNote !== undefined ? { pharmacistNote: String(patch.pharmacistNote) } : {}),
-      ...(patch.doctorNote !== undefined ? { doctorNote: String(patch.doctorNote) } : {}),
-      ...(Array.isArray(patch.approvedDrugs)
-        ? { approvedDrugs: patch.approvedDrugs.map(normalizeDrug).filter((d) => d.name) }
-        : {}),
-      ...(patch.rejectedReason !== undefined ? { rejectedReason: String(patch.rejectedReason) } : {}),
-      ...(patch.status ? { status: patch.status } : {}),
-      updatedAt: now,
+  async update(sid: string, id: string, patch: UpdateInput): Promise<Prescription> {
+    const current = await this.get(sid, id)
+    const now = new Date()
+
+    const set: Partial<typeof rxTable.$inferInsert> = { updatedAt: now }
+    if (patch.pharmacistNote !== undefined) set.pharmacistNotes = String(patch.pharmacistNote)
+    if (patch.doctorNote !== undefined) set.doctorNotes = String(patch.doctorNote)
+    if (patch.rejectedReason !== undefined) set.rejectedReason = String(patch.rejectedReason)
+    if (patch.status) set.status = patch.status
+    await db.update(rxTable).set(set).where(eq(rxTable.id, id))
+
+    // Approved drugs are a full replace (mirrors the previous in-memory shape).
+    if (Array.isArray(patch.approvedDrugs)) {
+      const drugs = patch.approvedDrugs.map(normalizeDrug).filter((d) => d.name)
+      await db.delete(drugTable).where(eq(drugTable.prescriptionId, id))
+      if (drugs.length > 0) {
+        await db.insert(drugTable).values(
+          drugs.map((d, i) => ({
+            id: newId("drug"),
+            prescriptionId: id,
+            name: d.name,
+            dosage: d.dosage,
+            instructions: d.instructions,
+            price: d.price,
+            quantity: d.quantity,
+            sortOrder: i,
+          })),
+        )
+      }
     }
 
     if (patch.status && patch.status !== current.status) {
@@ -300,19 +435,26 @@ export class PrescriptionsService {
         dispensed: "dispensed",
         rejected:  "rejected",
       }
-      next.timeline = [
-        ...current.timeline,
-        { at: now, kind: kindMap[patch.status], label: labelMap[patch.status], by: "pharmacist" },
-      ]
+      await db.insert(tlTable).values({
+        id: newId("tl"),
+        prescriptionId: id,
+        event: kindMap[patch.status],
+        note: labelMap[patch.status],
+        actor: "pharmacist",
+        createdAt: now,
+      })
     } else if (patch.pharmacistNote && patch.pharmacistNote !== current.pharmacistNote) {
-      next.timeline = [
-        ...current.timeline,
-        { at: now, kind: "note", label: "Pharmacist added a note", by: "pharmacist" },
-      ]
+      await db.insert(tlTable).values({
+        id: newId("tl"),
+        prescriptionId: id,
+        event: "note",
+        note: "Pharmacist added a note",
+        actor: "pharmacist",
+        createdAt: now,
+      })
     }
 
-    const saved = this.repo.update(sid, id, next)
-    if (!saved) throw new HttpException("Prescription not found", HttpStatus.NOT_FOUND)
+    const saved = await this.loadById(id)
 
     // Auto-text the patient on a meaningful status transition.
     if (patch.status && patch.status !== current.status) {
@@ -376,7 +518,7 @@ export class PrescriptionsService {
    * can't underpay.
    */
   async pay(sid: string, id: string, input: PayInput): Promise<Prescription> {
-    const current = this.get(sid, id)
+    const current = await this.get(sid, id)
     if (current.status !== "verified") {
       throw new HttpException(
         "Only a verified prescription can be paid for.",
@@ -394,92 +536,134 @@ export class PrescriptionsService {
     if (!reference) {
       throw new HttpException("A payment reference is required.", HttpStatus.BAD_REQUEST)
     }
-    // Reserve the reference *synchronously* (no await between the check and the
-    // add) so two concurrent requests can't both pass the guard and redeem one
-    // charge twice. Roll the reservation back on any failure below so a
-    // legitimate retry (e.g. payment was still pending) can succeed later.
-    if (this.consumedReferences.has(reference)) {
+    // Idempotency: a payment reference can be redeemed exactly once. The unique
+    // index on `payment_reference` is the hard backstop; this pre-check turns a
+    // replay into a friendly 409 instead of a DB error.
+    const dup = await db
+      .select({ id: rxTable.id })
+      .from(rxTable)
+      .where(eq(rxTable.paymentReference, reference))
+      .limit(1)
+    if (dup[0]) {
       throw new HttpException(
         "This payment reference has already been used.",
         HttpStatus.CONFLICT,
       )
     }
-    this.consumedReferences.add(reference)
+    // Trust only a Paystack-confirmed charge — never the client's word. This
+    // throws if the reference is forged, unconfirmed, or underpaid.
+    const verified = await this.paystack.verifyPaidReference(reference, expected)
+    // Bind the charge to *this* prescription so a successful reference for one
+    // Rx (or an unrelated order) can't be redeemed against another.
+    if (verified.orderNumber !== `RX-${current.rxNumber}`) {
+      throw new HttpException(
+        "This payment does not match this prescription.",
+        HttpStatus.BAD_REQUEST,
+      )
+    }
+    // Trust the server-computed total over any client-supplied amount.
+    const amount = expected
+    const now = new Date()
+    // Atomic state transition: only the first concurrent caller whose row is
+    // still `verified` and unpaid wins. Guarding on `status`/`paidAt` in the
+    // WHERE clause makes the redeem idempotent at the row level — a replay or a
+    // second concurrent `pay()` updates zero rows and is rejected below, so the
+    // timeline/notification side effects below run exactly once.
+    let updated: { id: string }[]
     try {
-      // Trust only a Paystack-confirmed charge — never the client's word. This
-      // throws if the reference is forged, unconfirmed, or underpaid.
-      const verified = await this.paystack.verifyPaidReference(reference, expected)
-      // Bind the charge to *this* prescription so a successful reference for one
-      // Rx (or an unrelated order) can't be redeemed against another.
-      if (verified.orderNumber !== `RX-${current.rxNumber}`) {
+      updated = await db
+        .update(rxTable)
+        .set({
+          status: "dispensed",
+          paidAt: now,
+          paidAmount: amount,
+          paymentReference: reference,
+          paymentReceipt: verified.mpesaReceipt || (input?.receipt ? String(input.receipt) : null),
+          updatedAt: now,
+        })
+        .where(
+          and(
+            eq(rxTable.id, id),
+            eq(rxTable.status, "verified"),
+            isNull(rxTable.paidAt),
+          ),
+        )
+        .returning({ id: rxTable.id })
+    } catch (err) {
+      // Unique-violation race (two concurrent redemptions of the same ref).
+      if ((err as { code?: string }).code === "23505") {
         throw new HttpException(
-          "This payment does not match this prescription.",
-          HttpStatus.BAD_REQUEST,
+          "This payment reference has already been used.",
+          HttpStatus.CONFLICT,
         )
       }
-      // Trust the server-computed total over any client-supplied amount.
-      const amount = expected
-      const now = new Date().toISOString()
-      const next: Prescription = {
-        ...current,
-        status: "dispensed",
-        payment: {
-          amount,
-          reference,
-          receipt: verified.mpesaReceipt || (input?.receipt ? String(input.receipt) : undefined),
-          at: now,
-        },
-        timeline: [
-          ...current.timeline,
-          { at: now, kind: "payment", label: `Payment received — KSh ${amount.toLocaleString()}`, by: "patient" },
-          { at: now, kind: "dispensed", label: "Medication dispensed and on its way", by: "pharmacist" },
-        ],
-        updatedAt: now,
-      }
-      const saved = this.repo.update(sid, id, next)
-      if (!saved) throw new HttpException("Prescription not found", HttpStatus.NOT_FOUND)
-      // Auto-text the patient: "payment received".
-      this.patientNotify.notify("payment_received", {
-        phone: saved.phone,
-        name: saved.recipient || saved.patientName,
-        variables: {
-          order_id: `RX-${saved.rxNumber}`,
-          order_total: `KSh ${amount.toLocaleString()}`,
-          payment_method: "M-Pesa",
-          rx_id: saved.rxNumber,
-        },
-      })
-      // Paying advances the Rx straight to "dispensed", so also fire the
-      // "your prescription is ready / on its way" notification — this is the
-      // primary automatic path to dispensed and must not be skipped. The two
-      // texts are intentionally distinct (payment confirmation vs. fulfilment).
-      this.patientNotify.notify("prescription_dispensed", {
-        phone: saved.phone,
-        name: saved.recipient || saved.patientName,
-        variables: {
-          rx_id: saved.rxNumber,
-          order_id: `RX-${saved.rxNumber}`,
-        },
-      })
-      // In-app: payment received + dispensed (paying is the primary path to
-      // dispensed, so the patient bell must reflect it).
-      this.inApp.push(sid, {
-        module: "prescriptions",
-        level: "success",
-        title: "Payment received",
-        body: `Rx ${saved.rxNumber} is paid (KSh ${amount.toLocaleString()}) and being dispensed.`,
-        href: "/account/prescriptions",
-      })
-      return saved
-    } catch (err) {
-      this.consumedReferences.delete(reference)
       throw err
     }
+    if (updated.length === 0) {
+      // Lost the race — another concurrent pay() already transitioned this Rx.
+      throw new HttpException(
+        "This prescription has already been paid.",
+        HttpStatus.CONFLICT,
+      )
+    }
+    await db.insert(tlTable).values([
+      {
+        id: newId("tl"),
+        prescriptionId: id,
+        event: "payment",
+        note: `Payment received — KSh ${amount.toLocaleString()}`,
+        actor: "patient",
+        createdAt: now,
+      },
+      {
+        id: newId("tl"),
+        prescriptionId: id,
+        event: "dispensed",
+        note: "Medication dispensed and on its way",
+        actor: "pharmacist",
+        createdAt: new Date(now.getTime() + 1),
+      },
+    ])
+
+    const saved = await this.loadById(id)
+    // Auto-text the patient: "payment received".
+    this.patientNotify.notify("payment_received", {
+      phone: saved.phone,
+      name: saved.recipient || saved.patientName,
+      variables: {
+        order_id: `RX-${saved.rxNumber}`,
+        order_total: `KSh ${amount.toLocaleString()}`,
+        payment_method: "M-Pesa",
+        rx_id: saved.rxNumber,
+      },
+    })
+    // Paying advances the Rx straight to "dispensed", so also fire the
+    // "your prescription is ready / on its way" notification — this is the
+    // primary automatic path to dispensed and must not be skipped. The two
+    // texts are intentionally distinct (payment confirmation vs. fulfilment).
+    this.patientNotify.notify("prescription_dispensed", {
+      phone: saved.phone,
+      name: saved.recipient || saved.patientName,
+      variables: {
+        rx_id: saved.rxNumber,
+        order_id: `RX-${saved.rxNumber}`,
+      },
+    })
+    // In-app: payment received + dispensed (paying is the primary path to
+    // dispensed, so the patient bell must reflect it).
+    this.inApp.push(sid, {
+      module: "prescriptions",
+      level: "success",
+      title: "Payment received",
+      body: `Rx ${saved.rxNumber} is paid (KSh ${amount.toLocaleString()}) and being dispensed.`,
+      href: "/account/prescriptions",
+    })
+    return saved
   }
 
   /** Resolve the storage key for a prescription file by index, owner-checked. */
-  fileKey(sid: string, id: string, index: number): string {
-    const rx = this.get(sid, id)
+  async fileKey(sid: string, id: string, index: number): Promise<string> {
+    const rx = await this.get(sid, id)
     const file = rx.files[index]
     if (!file || !file.key) {
       throw new HttpException("File not found", HttpStatus.NOT_FOUND)
@@ -492,8 +676,8 @@ export class PrescriptionsService {
    * the pharmacy team can view a patient's uploaded scan in the review screen.
    * Guarded by AdminGuard at the controller, not by session ownership.
    */
-  adminFileKey(id: string, index: number): string {
-    const { rx } = this.findAnywhere(id)
+  async adminFileKey(id: string, index: number): Promise<string> {
+    const { rx } = await this.findAnywhere(id)
     const file = rx.files[index]
     if (!file || !file.key) {
       throw new HttpException("File not found", HttpStatus.NOT_FOUND)
@@ -562,7 +746,7 @@ class MyPrescriptionsController {
     if (!Number.isInteger(i) || i < 0) {
       throw new HttpException("Invalid file index", HttpStatus.BAD_REQUEST)
     }
-    const key = this.svc.fileKey(req.sessionId, id, i)
+    const key = await this.svc.fileKey(req.sessionId, id, i)
     const result = await getStorage().read(key)
     if (!result) {
       throw new HttpException("File not found", HttpStatus.NOT_FOUND)
@@ -586,14 +770,14 @@ class AdminPrescriptionsController {
   }
 
   @Get(":id")
-  get(@Param("id") id: string) {
-    return this.svc.findAnywhere(id).rx
+  async get(@Param("id") id: string) {
+    return (await this.svc.findAnywhere(id)).rx
   }
 
   @Patch(":id")
   @RequirePerm("rx.verify")
-  patch(@Param("id") id: string, @Body() body: UpdateInput) {
-    const { sid } = this.svc.findAnywhere(id)
+  async patch(@Param("id") id: string, @Body() body: UpdateInput) {
+    const { sid } = await this.svc.findAnywhere(id)
     const safe: UpdateInput = {}
     if (body?.status) safe.status = body.status
     if (typeof body?.pharmacistNote === "string") safe.pharmacistNote = body.pharmacistNote
@@ -605,8 +789,8 @@ class AdminPrescriptionsController {
 
   @Patch(":id/status")
   @RequirePerm("rx.verify")
-  patchStatus(@Param("id") id: string, @Body() body: { status?: PrescriptionStatus; reason?: string }) {
-    const { sid } = this.svc.findAnywhere(id)
+  async patchStatus(@Param("id") id: string, @Body() body: { status?: PrescriptionStatus; reason?: string }) {
+    const { sid } = await this.svc.findAnywhere(id)
     if (!body?.status) {
       throw new HttpException("status is required", HttpStatus.BAD_REQUEST)
     }
@@ -628,7 +812,7 @@ class AdminPrescriptionsController {
     if (!Number.isInteger(i) || i < 0) {
       throw new HttpException("Invalid file index", HttpStatus.BAD_REQUEST)
     }
-    const key = this.svc.adminFileKey(id, i)
+    const key = await this.svc.adminFileKey(id, i)
     const result = await getStorage().read(key)
     if (!result) {
       throw new HttpException("File not found", HttpStatus.NOT_FOUND)

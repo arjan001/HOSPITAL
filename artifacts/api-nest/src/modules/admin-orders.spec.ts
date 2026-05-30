@@ -1,4 +1,6 @@
-import { beforeEach, describe, expect, it, vi } from "vitest"
+import { afterAll, beforeEach, describe, expect, it, vi } from "vitest"
+import { inArray } from "drizzle-orm"
+import { db, adminOrders } from "@workspace/db"
 import { AdminOrdersService, type AdminOrderStatus } from "./admin-orders.module"
 import type {
   PatientNotificationsService,
@@ -7,6 +9,15 @@ import type {
 } from "./patient-notifications.module"
 
 type NotifyCall = { event: PatientNotificationEvent; opts: NotifyOptions }
+
+// All order numbers this suite touches — wiped before each test (and after the
+// suite) so the Postgres-backed service starts from a clean slate and the
+// notify-once-per-status assertions hold on repeated runs.
+const ORDER_NOS = Array.from({ length: 9 }, (_, i) => `ORD-${i + 1}`)
+
+async function cleanup() {
+  await db.delete(adminOrders).where(inArray(adminOrders.orderNo, ORDER_NOS))
+}
 
 function makeService() {
   const notifyCalls: NotifyCall[] = []
@@ -21,12 +32,16 @@ function makeService() {
 
 describe("AdminOrdersService notifications", () => {
   let ctx: ReturnType<typeof makeService>
-  beforeEach(() => {
+  beforeEach(async () => {
+    await cleanup()
     ctx = makeService()
   })
+  afterAll(async () => {
+    await cleanup()
+  })
 
-  it("notifies order_confirmed when a new order is upserted as confirmed", () => {
-    ctx.svc.upsert({
+  it("notifies order_confirmed when a new order is upserted as confirmed", async () => {
+    await ctx.svc.upsert({
       orderNo: "ORD-1",
       status: "confirmed",
       customer: "Amina Yusuf",
@@ -41,8 +56,8 @@ describe("AdminOrdersService notifications", () => {
     expect(ctx.notifyCalls[0].opts.variables).toMatchObject({ order_id: "ORD-1" })
   })
 
-  it("prefers mpesaPhone over phone when resolving the recipient", () => {
-    ctx.svc.upsert({
+  it("prefers mpesaPhone over phone when resolving the recipient", async () => {
+    await ctx.svc.upsert({
       orderNo: "ORD-2",
       status: "confirmed",
       phone: "0700000000",
@@ -52,8 +67,8 @@ describe("AdminOrdersService notifications", () => {
     expect(ctx.notifyCalls[0].opts.phone).toBe("0712345678")
   })
 
-  it("falls back to phone when mpesaPhone is empty", () => {
-    ctx.svc.upsert({
+  it("falls back to phone when mpesaPhone is empty", async () => {
+    await ctx.svc.upsert({
       orderNo: "ORD-3",
       status: "confirmed",
       phone: "0700000000",
@@ -63,34 +78,34 @@ describe("AdminOrdersService notifications", () => {
     expect(ctx.notifyCalls[0].opts.phone).toBe("0700000000")
   })
 
-  it("does NOT notify for a pending order", () => {
-    ctx.svc.upsert({ orderNo: "ORD-4", status: "pending", phone: "0712345678" })
+  it("does NOT notify for a pending order", async () => {
+    await ctx.svc.upsert({ orderNo: "ORD-4", status: "pending", phone: "0712345678" })
     expect(ctx.notifyCalls).toHaveLength(0)
   })
 
-  it("notifies once per advancing status, not on a no-op re-upsert", () => {
-    ctx.svc.upsert({ orderNo: "ORD-5", status: "confirmed", phone: "0712345678" })
+  it("notifies once per advancing status, not on a no-op re-upsert", async () => {
+    await ctx.svc.upsert({ orderNo: "ORD-5", status: "confirmed", phone: "0712345678" })
     // Same status again — must not re-notify.
-    ctx.svc.upsert({ orderNo: "ORD-5", status: "confirmed", phone: "0712345678" })
+    await ctx.svc.upsert({ orderNo: "ORD-5", status: "confirmed", phone: "0712345678" })
     expect(ctx.notifyCalls).toHaveLength(1)
 
     // Advancing to dispatched fires a fresh notification.
-    ctx.svc.upsert({ orderNo: "ORD-5", status: "dispatched", phone: "0712345678" })
+    await ctx.svc.upsert({ orderNo: "ORD-5", status: "dispatched", phone: "0712345678" })
     expect(ctx.notifyCalls).toHaveLength(2)
     expect(ctx.notifyCalls[1].event).toBe("order_dispatched")
   })
 
-  it("does not notify when an out-of-order upsert would demote the status", () => {
-    ctx.svc.upsert({ orderNo: "ORD-6", status: "confirmed", phone: "0712345678" })
+  it("does not notify when an out-of-order upsert would demote the status", async () => {
+    await ctx.svc.upsert({ orderNo: "ORD-6", status: "confirmed", phone: "0712345678" })
     ctx.notifyCalls.length = 0
 
     // A late "pending" must be ignored (no demotion, no notification).
-    ctx.svc.upsert({ orderNo: "ORD-6", status: "pending", phone: "0712345678" })
+    await ctx.svc.upsert({ orderNo: "ORD-6", status: "pending", phone: "0712345678" })
     expect(ctx.notifyCalls).toHaveLength(0)
   })
 
-  it("patchStatus notifies the mapped event with the resolved phone", () => {
-    const order = ctx.svc.upsert({
+  it("patchStatus notifies the mapped event with the resolved phone", async () => {
+    const order = await ctx.svc.upsert({
       orderNo: "ORD-7",
       status: "confirmed",
       phone: "0700000000",
@@ -98,26 +113,26 @@ describe("AdminOrdersService notifications", () => {
     })
     ctx.notifyCalls.length = 0
 
-    ctx.svc.patchStatus(order.id, "delivered")
+    await ctx.svc.patchStatus(order.id, "delivered")
 
     expect(ctx.notifyCalls).toHaveLength(1)
     expect(ctx.notifyCalls[0].event).toBe<PatientNotificationEvent>("order_delivered")
     expect(ctx.notifyCalls[0].opts.phone).toBe("0712345678")
   })
 
-  it("patchStatus does not notify when the status is unchanged", () => {
-    const order = ctx.svc.upsert({ orderNo: "ORD-8", status: "confirmed", phone: "0712345678" })
+  it("patchStatus does not notify when the status is unchanged", async () => {
+    const order = await ctx.svc.upsert({ orderNo: "ORD-8", status: "confirmed", phone: "0712345678" })
     ctx.notifyCalls.length = 0
 
-    ctx.svc.patchStatus(order.id, "confirmed")
+    await ctx.svc.patchStatus(order.id, "confirmed")
     expect(ctx.notifyCalls).toHaveLength(0)
   })
 
-  it("maps cancelled to order_cancelled", () => {
-    const order = ctx.svc.upsert({ orderNo: "ORD-9", status: "confirmed", phone: "0712345678" })
+  it("maps cancelled to order_cancelled", async () => {
+    const order = await ctx.svc.upsert({ orderNo: "ORD-9", status: "confirmed", phone: "0712345678" })
     ctx.notifyCalls.length = 0
 
-    ctx.svc.patchStatus(order.id, "cancelled" as AdminOrderStatus)
+    await ctx.svc.patchStatus(order.id, "cancelled" as AdminOrderStatus)
     expect(ctx.notifyCalls[0].event).toBe("order_cancelled")
   })
 })

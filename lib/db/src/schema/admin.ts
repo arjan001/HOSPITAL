@@ -59,6 +59,42 @@ export const patientNotes = pgTable("patient_notes", {
 })
 
 /**
+ * admin_orders — the pharmacy team's global view of every order placed on the
+ * storefront. Kept distinct from the customer `orders` table on purpose: it
+ * carries a richer, admin-facing shape (M-Pesa receipt/phone/message, ordered
+ * via, special instructions) and its own status vocabulary
+ * (pending | confirmed | dispatched | delivered | cancelled). Line items are
+ * embedded as jsonb because they are display-only snapshots, not catalog FKs.
+ */
+export const adminOrders = pgTable("admin_orders", {
+  id: text("id").primaryKey(),
+  orderNo: text("order_no").unique().notNull(),
+  customer: text("customer").notNull().default(""),
+  phone: text("phone").notNull().default(""),
+  email: text("email").notNull().default(""),
+  items: jsonb("items")
+    .$type<{ name: string; qty: number; price: number; variation?: string }[]>()
+    .notNull()
+    .default([]),
+  subtotal: integer("subtotal").notNull().default(0),
+  delivery: integer("delivery").notNull().default(0),
+  total: integer("total").notNull().default(0),
+  location: text("location").notNull().default(""),
+  address: text("address").notNull().default(""),
+  notes: text("notes").notNull().default(""),
+  specialInstructions: text("special_instructions").notNull().default(""),
+  status: text("status").notNull().default("pending"),
+  // status values: pending | confirmed | dispatched | delivered | cancelled
+  orderedVia: text("ordered_via").notNull().default("website"),
+  paymentMethod: text("payment_method").notNull().default("cod"),
+  mpesaCode: text("mpesa_code").notNull().default(""),
+  mpesaPhone: text("mpesa_phone").notNull().default(""),
+  mpesaMessage: text("mpesa_message").notNull().default(""),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+})
+
+/**
  * sourcing_requests — replenishment requests created by automation or manually.
  * Auto-created by the low-stock scan in PipelineModule.
  */
@@ -195,6 +231,14 @@ export const insertPatientNoteSchema = createInsertSchema(patientNotes).omit({
 export const selectPatientNoteSchema = createSelectSchema(patientNotes)
 export type InsertPatientNote = z.infer<typeof insertPatientNoteSchema>
 export type PatientNote = typeof patientNotes.$inferSelect
+
+export const insertAdminOrderSchema = createInsertSchema(adminOrders).omit({
+  createdAt: true,
+  updatedAt: true,
+})
+export const selectAdminOrderSchema = createSelectSchema(adminOrders)
+export type InsertAdminOrder = z.infer<typeof insertAdminOrderSchema>
+export type AdminOrderRow = typeof adminOrders.$inferSelect
 
 export const insertSourcingRequestSchema = createInsertSchema(sourcingRequests).omit({
   createdAt: true,

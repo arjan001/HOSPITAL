@@ -1,5 +1,5 @@
 /**
- * Orders module — customer order management.
+ * Orders module — customer order management (Postgres-backed).
  *
  * Routes (all scoped to the session cookie / req.sessionId):
  *   GET  /api/v2/me/orders          — list all orders for the session
@@ -7,21 +7,13 @@
  *   POST /api/v2/me/orders          — place a new order
  *
  * Data model:
- *   AccountOrder[] per sessionId in InMemoryRepository<AccountOrder>.
- *   Each order captures: line items, subtotal, deliveryFee, total, currency (KSH),
- *   status, paymentMethod, customer info, and shippingAddress.
+ *   One row in `orders` per order (keyed by `userId`, resolved from the session
+ *   via common/session-user.ts) plus one row per line item in `order_items`.
+ *   Money is stored as whole-KSh integers.
  *
  * Order lifecycle:
  *   pending → paid (after Paystack callback) → fulfilled (after dispatch) | cancelled
- *
- * Paystack integration:
- *   After a successful POST /api/v2/payments/paystack/charge, the storefront
- *   polls /status until "success", then creates the order here with status="paid".
- *
- * Postgres swap:
- *   Replace `new InMemoryRepository<AccountOrder>()` in OrdersService with
- *   a Drizzle-backed implementation against the `orders` + `order_lines` tables.
- *   No controller changes.
+ *   The lifecycle status string is stored verbatim in `orders.status`.
  *
  * Note on @Inject(OrdersService):
  *   tsx/esbuild does not emit emitDecoratorMetadata. Explicit @Inject(Token)
@@ -41,7 +33,10 @@ import {
   Req,
 } from "@nestjs/common"
 import type { Request } from "express"
-import { InMemoryRepository, newId } from "../common/repository"
+import { and, desc, eq, inArray } from "drizzle-orm"
+import { db, orders as ordersTable, orderItems as orderItemsTable } from "@workspace/db"
+import { ensureUserId } from "../common/session-user"
+import { newId } from "../common/repository"
 
 export type OrderLine = {
   productSlug: string
@@ -85,123 +80,124 @@ function toLine(raw: Partial<OrderLine>): OrderLine {
   }
 }
 
-/**
- * Optional demo seed for local development. Disabled by default; opt in by
- * setting `SEED_DEMO_ORDERS=1` in the environment. Used to be auto-applied
- * on every new session, which surprised QA and production-like testing —
- * that auto-injection has been removed.
- */
-function seedOrdersFor(): Order[] {
-  const now = Date.now()
-  const day = 24 * 60 * 60 * 1000
-  const mk = (
-    offsetDays: number,
-    status: OrderStatus,
-    paymentMethod: PaymentMethod,
-    items: OrderLine[],
-    deliveryFee: number,
-    address: Order["shippingAddress"],
-  ): Order => {
-    const subtotal = items.reduce((s, i) => s + i.unitPrice * i.quantity, 0)
-    return {
-      id: newId("ord"),
-      number: `SHX-${(100000 + Math.floor(Math.random() * 899999)).toString()}`,
-      items,
-      subtotal,
-      deliveryFee,
-      total: subtotal + deliveryFee,
-      currency: "KSH",
-      status,
-      paymentMethod,
-      customer: {
-        fullName: "Demo Customer",
-        phone: "+254 712 345 678",
-        email: "demo@example.com",
-      },
-      shippingAddress: address,
-      createdAt: new Date(now - offsetDays * day).toISOString(),
-    }
+function toOrder(row: typeof ordersTable.$inferSelect, items: (typeof orderItemsTable.$inferSelect)[]): Order {
+  return {
+    id: row.id,
+    number: row.orderNumber,
+    items: items.map((i) => ({
+      productSlug: i.productSlug,
+      name: i.productName,
+      unitPrice: i.unitPrice,
+      quantity: i.qty,
+    })),
+    subtotal: row.subtotal,
+    deliveryFee: row.deliveryFee,
+    total: row.total,
+    currency: "KSH",
+    status: (row.status as OrderStatus) ?? "pending",
+    paymentMethod: (row.paymentMethod as PaymentMethod) ?? "unknown",
+    customer: {
+      fullName: row.customerName,
+      phone: row.customerPhone,
+      email: row.customerEmail ?? "",
+    },
+    shippingAddress: {
+      line1: row.shippingLine1,
+      line2: row.shippingLine2 ?? undefined,
+      city: row.shippingCity,
+      region: row.shippingRegion,
+    },
+    createdAt: row.placedAt.toISOString(),
   }
-  return [
-    mk(1, "fulfilled", "mpesa",
-      [
-        { productSlug: "panadol-extra-24s", name: "Panadol Extra 24 tabs", unitPrice: 250, quantity: 2 },
-      ],
-      200,
-      { line1: "Apt 4B, Riverside Lane", city: "Nairobi", region: "Westlands" },
-    ),
-    mk(0, "pending", "mpesa",
-      [
-        { productSlug: "paracetamol-500mg-100s", name: "Paracetamol 500mg (100 tabs)", unitPrice: 320, quantity: 1 },
-      ],
-      150,
-      { line1: "Apt 4B, Riverside Lane", city: "Nairobi", region: "Westlands" },
-    ),
-  ]
 }
-
-const SHOULD_SEED =
-  process.env.SEED_DEMO_ORDERS === "1" || process.env.SEED_DEMO_ORDERS === "true"
 
 @Injectable()
 class OrdersService {
-  private repo = new InMemoryRepository<Order>()
-  private seeded = new Set<string>()
-
-  private ensureSeeded(sid: string) {
-    if (!SHOULD_SEED) return
-    if (this.seeded.has(sid)) return
-    this.seeded.add(sid)
-    if (this.repo.listFor(sid).length === 0) {
-      for (const o of seedOrdersFor()) this.repo.add(sid, o)
+  private async itemsFor(orderIds: string[]): Promise<Map<string, (typeof orderItemsTable.$inferSelect)[]>> {
+    const map = new Map<string, (typeof orderItemsTable.$inferSelect)[]>()
+    if (orderIds.length === 0) return map
+    const rows = await db.select().from(orderItemsTable).where(inArray(orderItemsTable.orderId, orderIds))
+    for (const r of rows) {
+      const list = map.get(r.orderId) ?? []
+      list.push(r)
+      map.set(r.orderId, list)
     }
+    return map
   }
 
-  list(sid: string): Order[] {
-    this.ensureSeeded(sid)
-    return [...this.repo.listFor(sid)].sort((a, b) =>
-      b.createdAt.localeCompare(a.createdAt),
-    )
+  async list(sid: string): Promise<Order[]> {
+    const uid = await ensureUserId(sid)
+    const rows = await db
+      .select()
+      .from(ordersTable)
+      .where(eq(ordersTable.userId, uid))
+      .orderBy(desc(ordersTable.placedAt))
+    const items = await this.itemsFor(rows.map((r) => r.id))
+    return rows.map((r) => toOrder(r, items.get(r.id) ?? []))
   }
 
-  get(sid: string, id: string): Order {
-    this.ensureSeeded(sid)
-    const o = this.repo.findById(sid, id)
-    if (!o) throw new HttpException("Order not found", HttpStatus.NOT_FOUND)
-    return o
+  async get(sid: string, id: string): Promise<Order> {
+    const uid = await ensureUserId(sid)
+    const rows = await db
+      .select()
+      .from(ordersTable)
+      .where(and(eq(ordersTable.id, id), eq(ordersTable.userId, uid)))
+      .limit(1)
+    if (!rows[0]) throw new HttpException("Order not found", HttpStatus.NOT_FOUND)
+    const items = await db.select().from(orderItemsTable).where(eq(orderItemsTable.orderId, id))
+    return toOrder(rows[0], items)
   }
 
-  create(sid: string, data: OrderInput): Order {
+  async create(sid: string, data: OrderInput): Promise<Order> {
+    const uid = await ensureUserId(sid)
     const items = (data.items ?? []).map(toLine).filter((i) => i.productSlug && i.unitPrice > 0)
     if (items.length === 0) {
       throw new HttpException("Order must have at least one item", HttpStatus.BAD_REQUEST)
     }
     const subtotal = items.reduce((s, i) => s + i.unitPrice * i.quantity, 0)
     const deliveryFee = Math.max(0, Number(data.deliveryFee ?? 0))
-    const order: Order = {
-      id: newId("ord"),
-      number: `SHX-${Date.now().toString(36).toUpperCase()}`,
-      items,
-      subtotal,
-      deliveryFee,
-      total: subtotal + deliveryFee,
-      currency: "KSH",
-      status: "pending",
-      paymentMethod: data.paymentMethod ?? "unknown",
-      customer: {
-        fullName: String(data.customer?.fullName ?? ""),
-        phone: String(data.customer?.phone ?? ""),
-        email: String(data.customer?.email ?? ""),
-      },
-      shippingAddress: {
-        line1: String(data.shippingAddress?.line1 ?? ""),
-        line2: data.shippingAddress?.line2 ? String(data.shippingAddress.line2) : undefined,
-        city: String(data.shippingAddress?.city ?? ""),
-        region: String(data.shippingAddress?.region ?? ""),
-      },
-      createdAt: new Date().toISOString(),
-    }
-    return this.repo.add(sid, order)
+    const total = subtotal + deliveryFee
+    const id = newId("ord")
+    const orderNumber = `SHX-${Date.now().toString(36).toUpperCase()}`
+    const method = data.paymentMethod ?? "unknown"
+    // orders.paymentMethod is NOT NULL and our schema's PaymentMethod union does
+    // not include "unknown"; store the literal so the API round-trips, defaulting
+    // a missing method to "cod" so the column constraint is always satisfied.
+    const storedMethod = method === "unknown" ? "cod" : method
+    const [row] = await db
+      .insert(ordersTable)
+      .values({
+        id,
+        orderNumber,
+        userId: uid,
+        status: "pending",
+        paymentMethod: storedMethod,
+        paymentStatus: "pending",
+        customerName: String(data.customer?.fullName ?? ""),
+        customerPhone: String(data.customer?.phone ?? ""),
+        customerEmail: String(data.customer?.email ?? "") || null,
+        shippingLine1: String(data.shippingAddress?.line1 ?? ""),
+        shippingLine2: data.shippingAddress?.line2 ? String(data.shippingAddress.line2) : null,
+        shippingCity: String(data.shippingAddress?.city ?? ""),
+        shippingRegion: String(data.shippingAddress?.region ?? ""),
+        subtotal,
+        deliveryFee,
+        total,
+      })
+      .returning()
+    await db.insert(orderItemsTable).values(
+      items.map((i) => ({
+        id: newId("oitem"),
+        orderId: id,
+        productSlug: i.productSlug,
+        productName: i.name,
+        qty: i.quantity,
+        unitPrice: i.unitPrice,
+        total: i.unitPrice * i.quantity,
+      })),
+    )
+    // Return the API's original shape (method echoes the request, incl. "unknown").
+    return { ...toOrder(row, []), items, paymentMethod: method }
   }
 }
 

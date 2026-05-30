@@ -26,6 +26,16 @@ export const supportTickets = pgTable("support_tickets", {
   // Nullable because contact-form tickets can be filed by guests via the
   // public storefront. On user deletion the ticket survives but is detached.
   userId: text("user_id").references(() => users.id, { onDelete: "set null" }),
+  // Short human-readable reference (e.g. SR-ABC123) surfaced to the customer.
+  shortId: text("short_id"),
+  // The signed session cookie that owns the ticket — used for the per-session
+  // ownership check on the customer-facing routes (mirrors the old in-memory
+  // customer.sessionId). Distinct from userId, which is the durable FK.
+  sessionId: text("session_id"),
+  customerName: text("customer_name"),
+  customerEmail: text("customer_email"),
+  customerPhone: text("customer_phone"),
+  assignedTo: text("assigned_to"),
   subject: text("subject").notNull(),
   category: text("category"),
   status: text("status").notNull().default("open"),

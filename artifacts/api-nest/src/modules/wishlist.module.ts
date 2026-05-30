@@ -1,22 +1,21 @@
 /**
- * Wishlist module — customer saved-products list.
+ * Wishlist module — customer saved-products list (Postgres-backed).
  *
  * Routes (all scoped to the session cookie / req.sessionId):
- *   GET    /api/v2/me/wishlist          — list wishlist items for the session
- *   POST   /api/v2/me/wishlist          — add a product slug to the wishlist
- *   DELETE /api/v2/me/wishlist/:id      — remove an item by its wishlist record ID
+ *   GET    /api/v2/me/wishlist               — list wishlist items for the session
+ *   POST   /api/v2/me/wishlist               — add a product slug to the wishlist
+ *   DELETE /api/v2/me/wishlist/:productSlug  — remove an item by product slug
  *
  * Data model:
- *   WishlistItem[] per sessionId stored in InMemoryRepository<WishlistItem>.
- *   Duplicate slugs are rejected (409 Conflict) — one entry per product per session.
- *
- * Postgres swap:
- *   Replace `new InMemoryRepository<WishlistItem>()` in WishlistService with
- *   a Drizzle-backed implementation. No controller changes.
+ *   Rows in `wishlist_items` keyed by `userId` (resolved from the session via
+ *   common/session-user.ts). One entry per (userId, productSlug) — duplicate
+ *   adds are no-ops. Product name / price are resolved from the catalog by the
+ *   storefront, so they are stored empty here and the API response keeps the
+ *   original `{ id: productSlug, productSlug, addedAt }` shape (id == slug).
  *
  * Note on @Inject(WishlistService):
- *   tsx/esbuild does not emit emitDecoratorMetadata. Explicit @Inject(Token)
- *   is required on every controller constructor — project-wide rule.
+ *   tsx/esbuild does not emit emitDecoratorMetadata — explicit @Inject(Token) on
+ *   every controller constructor is a project-wide rule.
  */
 import {
   Body,
@@ -33,37 +32,56 @@ import {
   Req,
 } from "@nestjs/common"
 import type { Request } from "express"
-import { InMemoryRepository } from "../common/repository"
+import { and, asc, eq } from "drizzle-orm"
+import { db, wishlistItems } from "@workspace/db"
+import { ensureUserId } from "../common/session-user"
+import { newId } from "../common/repository"
 
 export type WishlistItem = {
-  id: string // == productSlug for natural dedupe
+  id: string // == productSlug for natural dedupe (preserves the legacy API)
   productSlug: string
   addedAt: string
 }
 
 @Injectable()
 class WishlistService {
-  private repo = new InMemoryRepository<WishlistItem>()
-
-  list(sid: string): WishlistItem[] {
-    return this.repo.listFor(sid)
+  async list(sid: string): Promise<WishlistItem[]> {
+    const uid = await ensureUserId(sid)
+    const rows = await db
+      .select()
+      .from(wishlistItems)
+      .where(eq(wishlistItems.userId, uid))
+      .orderBy(asc(wishlistItems.addedAt))
+    return rows.map((r) => ({ id: r.productSlug, productSlug: r.productSlug, addedAt: r.addedAt.toISOString() }))
   }
 
-  add(sid: string, productSlug: string): WishlistItem {
+  async add(sid: string, productSlug: string): Promise<WishlistItem> {
     if (!productSlug || typeof productSlug !== "string") {
       throw new HttpException("productSlug is required", HttpStatus.BAD_REQUEST)
     }
-    const existing = this.repo.findById(sid, productSlug)
-    if (existing) return existing
-    return this.repo.add(sid, {
-      id: productSlug,
-      productSlug,
-      addedAt: new Date().toISOString(),
-    })
+    const uid = await ensureUserId(sid)
+    const existing = await db
+      .select()
+      .from(wishlistItems)
+      .where(and(eq(wishlistItems.userId, uid), eq(wishlistItems.productSlug, productSlug)))
+      .limit(1)
+    if (existing[0]) {
+      return { id: productSlug, productSlug, addedAt: existing[0].addedAt.toISOString() }
+    }
+    const rows = await db
+      .insert(wishlistItems)
+      .values({ id: newId("wl"), userId: uid, productSlug, productName: "", unitPrice: 0 })
+      .returning()
+    return { id: productSlug, productSlug, addedAt: rows[0].addedAt.toISOString() }
   }
 
-  remove(sid: string, productSlug: string): { ok: boolean } {
-    return { ok: this.repo.remove(sid, productSlug) }
+  async remove(sid: string, productSlug: string): Promise<{ ok: boolean }> {
+    const uid = await ensureUserId(sid)
+    const rows = await db
+      .delete(wishlistItems)
+      .where(and(eq(wishlistItems.userId, uid), eq(wishlistItems.productSlug, productSlug)))
+      .returning({ id: wishlistItems.id })
+    return { ok: rows.length > 0 }
   }
 }
 

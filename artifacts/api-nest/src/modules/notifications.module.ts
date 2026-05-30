@@ -1,25 +1,17 @@
 /**
- * Notifications module — in-app notification queue.
+ * Notifications module — in-app notification feed + support tickets (Postgres-backed).
  *
- * Routes:
- *   GET    /api/v2/notifications               — list unread notifications for the session
- *   POST   /api/v2/notifications               — create a notification (internal use)
- *   PATCH  /api/v2/notifications/:id/read      — mark a single notification as read
- *   POST   /api/v2/notifications/mark-all-read — mark all as read for the session
- *   DELETE /api/v2/notifications/:id           — dismiss a notification
- *   GET    /api/v2/notifications/admin/all     — admin: list all notifications cross-session
- *   POST   /api/v2/notifications/admin/broadcast — admin: push to all sessions
+ * Two surfaces in one module so they can share the optional Resend email hook:
+ *   1. In-app notifications  ──  per-audience event feed (admin / doctor /
+ *      pharmacist / customer:<sessionId>). Backs the bell icon in every shell.
+ *      Persisted in `notifications`, keyed by the free-text `audience` string.
+ *   2. Support tickets       ──  customer-initiated thread that a staff reply
+ *      turns into a back-and-forth. Persisted in `support_tickets` +
+ *      `support_messages`.
  *
- * Notification types (non-exhaustive):
- *   order_update, prescription_ready, prescription_rejected,
- *   consultation_reminder, support_reply, promo_alert
- *
- * Storage:
- *   InMemoryRepository<Notification> per sessionId.
- *   Postgres swap: replace repo with Drizzle-backed implementation — no controller changes.
- *
- * Future: wire SSE (Server-Sent Events) or WebSocket push instead of
- * client polling. The NestJS @Sse decorator in chat.module.ts shows the pattern.
+ * All service methods are async (DB-backed). Controllers and the storefront are
+ * unchanged — fire-and-forget callers (e.g. prescriptions) simply ignore the
+ * returned promise as before.
  *
  * Note on @Inject(NotificationsService):
  *   tsx/esbuild does not emit emitDecoratorMetadata. Explicit @Inject(Token)
@@ -42,22 +34,16 @@ import {
   Req,
 } from "@nestjs/common"
 import type { Request } from "express"
+import { and, asc, desc, eq, inArray, sql } from "drizzle-orm"
+import {
+  db,
+  notifications as notificationsTable,
+  supportTickets as ticketsTable,
+  supportMessages as messagesTable,
+} from "@workspace/db"
 import { newId } from "../common/repository"
 import { EmailModule, EmailService } from "./email.module"
 import { AdminGuard, RequirePerm, AnyAdmin } from "../common/admin-guard"
-
-/**
- * Two surfaces in one module so they can share storage and the optional
- * Resend hook:
- *   1. In-app notifications  ──  per-audience event feed (admin / doctor /
- *      pharmacist / customer:<sid>). Backs the bell icon in every shell.
- *   2. Support tickets       ──  customer-initiated thread that a staff
- *      reply turns into a back-and-forth. Replaces the one-shot
- *      "contact inquiries" workflow.
- *
- * Storage is process-memory today; the surface is intentionally narrow so
- * the swap to Drizzle is just a class implementing the same methods.
- */
 
 type Audience = "admin" | "doctor" | "pharmacist" | string
 
@@ -105,180 +91,247 @@ export type SupportTicket = {
   assignedTo?: string
 }
 
+function toNotification(r: typeof notificationsTable.$inferSelect): Notification {
+  return {
+    id: r.id,
+    audience: r.audience,
+    module: r.module as NotificationModule,
+    level: r.level as NotificationLevel,
+    title: r.title,
+    body: r.body ?? undefined,
+    href: r.href ?? undefined,
+    createdAt: r.createdAt.toISOString(),
+    read: r.read,
+  }
+}
+
+function toMessage(r: typeof messagesTable.$inferSelect): TicketMessage {
+  return {
+    id: r.id,
+    author: r.author === "staff" ? "staff" : "customer",
+    authorName: r.authorName,
+    body: r.body,
+    createdAt: r.createdAt.toISOString(),
+  }
+}
+
+function toTicket(t: typeof ticketsTable.$inferSelect, messages: (typeof messagesTable.$inferSelect)[]): SupportTicket {
+  return {
+    id: t.id,
+    shortId: t.shortId ?? t.id,
+    subject: t.subject,
+    category: t.category ?? "general",
+    status: (t.status as TicketStatus) ?? "open",
+    customer: {
+      sessionId: t.sessionId ?? "",
+      name: t.customerName ?? "",
+      email: t.customerEmail ?? "",
+      phone: t.customerPhone ?? undefined,
+    },
+    messages: messages.map(toMessage),
+    createdAt: t.createdAt.toISOString(),
+    updatedAt: t.updatedAt.toISOString(),
+    assignedTo: t.assignedTo ?? undefined,
+  }
+}
+
 @Injectable()
 export class NotificationsService {
-  private notifications = new Map<Audience, Notification[]>()
-  private tickets: SupportTicket[] = []
-
   constructor(@Inject(EmailService) private readonly email: EmailService) {}
 
   /* ---- Notifications ---- */
 
-  list(audience: Audience, opts: { limit?: number; unreadOnly?: boolean } = {}): Notification[] {
-    const all = this.notifications.get(audience) ?? []
-    let out = all.slice().sort((a, b) => b.createdAt.localeCompare(a.createdAt))
-    if (opts.unreadOnly) out = out.filter((n) => !n.read)
-    if (opts.limit) out = out.slice(0, opts.limit)
-    return out
+  async list(audience: Audience, opts: { limit?: number; unreadOnly?: boolean } = {}): Promise<Notification[]> {
+    const where = opts.unreadOnly
+      ? and(eq(notificationsTable.audience, audience), eq(notificationsTable.read, false))
+      : eq(notificationsTable.audience, audience)
+    let q = db.select().from(notificationsTable).where(where).orderBy(desc(notificationsTable.createdAt)).$dynamic()
+    if (opts.limit) q = q.limit(opts.limit)
+    const rows = await q
+    return rows.map(toNotification)
   }
 
-  unreadCount(audience: Audience): number {
-    return (this.notifications.get(audience) ?? []).filter((n) => !n.read).length
+  async unreadCount(audience: Audience): Promise<number> {
+    const rows = await db
+      .select({ n: sql<number>`count(*)::int` })
+      .from(notificationsTable)
+      .where(and(eq(notificationsTable.audience, audience), eq(notificationsTable.read, false)))
+    return rows[0]?.n ?? 0
   }
 
-  push(audience: Audience, n: Omit<Notification, "id" | "createdAt" | "read" | "audience">): Notification {
-    const rec: Notification = {
-      id: newId("ntf"),
-      audience,
-      createdAt: new Date().toISOString(),
-      read: false,
-      ...n,
-    }
-    const list = this.notifications.get(audience) ?? []
-    list.push(rec)
-    // Cap memory growth.
-    if (list.length > 500) list.splice(0, list.length - 500)
-    this.notifications.set(audience, list)
-    return rec
+  async push(audience: Audience, n: Omit<Notification, "id" | "createdAt" | "read" | "audience">): Promise<Notification> {
+    const [row] = await db
+      .insert(notificationsTable)
+      .values({
+        id: newId("ntf"),
+        audience,
+        module: n.module,
+        level: n.level,
+        title: n.title,
+        body: n.body ?? null,
+        href: n.href ?? null,
+        read: false,
+      })
+      .returning()
+    return toNotification(row)
   }
 
-  markRead(audience: Audience, ids: string[]): number {
-    const list = this.notifications.get(audience) ?? []
-    let n = 0
-    for (const row of list) {
-      if (ids.includes(row.id) && !row.read) { row.read = true; n++ }
-    }
-    return n
+  async markRead(audience: Audience, ids: string[]): Promise<number> {
+    if (ids.length === 0) return 0
+    const rows = await db
+      .update(notificationsTable)
+      .set({ read: true })
+      .where(
+        and(
+          eq(notificationsTable.audience, audience),
+          eq(notificationsTable.read, false),
+          inArray(notificationsTable.id, ids),
+        ),
+      )
+      .returning({ id: notificationsTable.id })
+    return rows.length
   }
 
-  markAllRead(audience: Audience): number {
-    const list = this.notifications.get(audience) ?? []
-    let n = 0
-    for (const row of list) { if (!row.read) { row.read = true; n++ } }
-    return n
+  async markAllRead(audience: Audience): Promise<number> {
+    const rows = await db
+      .update(notificationsTable)
+      .set({ read: true })
+      .where(and(eq(notificationsTable.audience, audience), eq(notificationsTable.read, false)))
+      .returning({ id: notificationsTable.id })
+    return rows.length
   }
 
   /* ---- Support tickets ---- */
 
-  listTicketsForCustomer(sessionId: string): SupportTicket[] {
-    return this.tickets.filter((t) => t.customer.sessionId === sessionId)
-      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+  private async messagesFor(ticketId: string): Promise<(typeof messagesTable.$inferSelect)[]> {
+    return db.select().from(messagesTable).where(eq(messagesTable.ticketId, ticketId)).orderBy(asc(messagesTable.createdAt))
   }
 
-  listAllTickets(): SupportTicket[] {
-    return this.tickets.slice().sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+  async listTicketsForCustomer(sessionId: string): Promise<SupportTicket[]> {
+    const tickets = await db
+      .select()
+      .from(ticketsTable)
+      .where(eq(ticketsTable.sessionId, sessionId))
+      .orderBy(desc(ticketsTable.updatedAt))
+    return Promise.all(tickets.map(async (t) => toTicket(t, await this.messagesFor(t.id))))
   }
 
-  getTicket(id: string): SupportTicket {
-    const t = this.tickets.find((x) => x.id === id || x.shortId === id)
-    if (!t) throw new HttpException("Ticket not found", HttpStatus.NOT_FOUND)
-    return t
+  async listAllTickets(): Promise<SupportTicket[]> {
+    const tickets = await db.select().from(ticketsTable).orderBy(desc(ticketsTable.updatedAt))
+    return Promise.all(tickets.map(async (t) => toTicket(t, await this.messagesFor(t.id))))
   }
 
-  createTicket(sessionId: string, input: {
+  async getTicket(id: string): Promise<SupportTicket> {
+    const rows = await db
+      .select()
+      .from(ticketsTable)
+      .where(sql`${ticketsTable.id} = ${id} OR ${ticketsTable.shortId} = ${id}`)
+      .limit(1)
+    if (!rows[0]) throw new HttpException("Ticket not found", HttpStatus.NOT_FOUND)
+    return toTicket(rows[0], await this.messagesFor(rows[0].id))
+  }
+
+  async createTicket(sessionId: string, input: {
     subject: string
     category?: string
     name: string
     email: string
     phone?: string
     message: string
-  }): SupportTicket {
+  }): Promise<SupportTicket> {
     if (!input?.subject?.trim()) throw new HttpException("Subject is required", HttpStatus.BAD_REQUEST)
     if (!input?.message?.trim()) throw new HttpException("Message is required", HttpStatus.BAD_REQUEST)
     if (!input?.email?.trim()) throw new HttpException("Email is required", HttpStatus.BAD_REQUEST)
-    const now = new Date().toISOString()
-    const t: SupportTicket = {
-      id: newId("tkt"),
-      shortId: `SR-${Date.now().toString(36).toUpperCase().slice(-6)}`,
-      subject: input.subject.trim(),
-      category: input.category?.trim() || "general",
-      status: "open",
-      customer: {
+    const id = newId("tkt")
+    const shortId = `SR-${Date.now().toString(36).toUpperCase().slice(-6)}`
+    const [t] = await db
+      .insert(ticketsTable)
+      .values({
+        id,
+        shortId,
         sessionId,
-        name: input.name.trim(),
-        email: input.email.trim(),
-        phone: input.phone?.trim(),
-      },
-      messages: [
-        {
-          id: newId("msg"),
-          author: "customer",
-          authorName: input.name.trim() || "Customer",
-          body: input.message.trim(),
-          createdAt: now,
-        },
-      ],
-      createdAt: now,
-      updatedAt: now,
-    }
-    this.tickets.unshift(t)
+        customerName: input.name.trim(),
+        customerEmail: input.email.trim(),
+        customerPhone: input.phone?.trim() || null,
+        subject: input.subject.trim(),
+        category: input.category?.trim() || "general",
+        status: "open",
+      })
+      .returning()
+    await db.insert(messagesTable).values({
+      id: newId("msg"),
+      ticketId: id,
+      author: "customer",
+      authorName: input.name.trim() || "Customer",
+      body: input.message.trim(),
+    })
     // Fan-out: alert admin shell, optionally email the customer ack.
-    this.push("admin", {
+    await this.push("admin", {
       module: "support",
       level: "info",
       title: `New support ticket — ${t.subject}`,
-      body: `${t.customer.name} · ${t.category}`,
+      body: `${input.name.trim()} · ${t.category ?? "general"}`,
       href: `/admin/support/${t.id}`,
     })
     void this.email.send({
       to: input.email.trim(),
       template: "support.ticket.reply",
-      subject: `We received your ticket ${t.shortId}`,
+      subject: `We received your ticket ${shortId}`,
       data: {
         name: input.name,
-        ticketId: t.shortId,
+        ticketId: shortId,
         message: "Thank you for contacting Shaniid RX. We've received your message and will reply shortly.",
         url: "/account/support",
       },
     })
-    return t
+    return this.getTicket(id)
   }
 
-  appendMessage(id: string, msg: { author: "customer" | "staff"; authorName: string; body: string }): SupportTicket {
-    const t = this.getTicket(id)
+  async appendMessage(id: string, msg: { author: "customer" | "staff"; authorName: string; body: string }): Promise<SupportTicket> {
+    const ticket = await this.getTicket(id)
     if (!msg?.body?.trim()) throw new HttpException("Reply body is required", HttpStatus.BAD_REQUEST)
-    const now = new Date().toISOString()
-    t.messages.push({
+    await db.insert(messagesTable).values({
       id: newId("msg"),
+      ticketId: ticket.id,
       author: msg.author,
       authorName: msg.authorName || (msg.author === "staff" ? "Shaniid RX team" : "Customer"),
       body: msg.body.trim(),
-      createdAt: now,
     })
-    t.updatedAt = now
+    const nextStatus: TicketStatus = msg.author === "staff" ? "pending" : "open"
+    await db
+      .update(ticketsTable)
+      .set({ status: nextStatus, updatedAt: new Date() })
+      .where(eq(ticketsTable.id, ticket.id))
     if (msg.author === "staff") {
-      t.status = t.status === "closed" ? "pending" : "pending"
-      this.push(t.customer.sessionId, {
+      await this.push(ticket.customer.sessionId, {
         module: "support",
         level: "info",
-        title: `Reply on ticket ${t.shortId}`,
+        title: `Reply on ticket ${ticket.shortId}`,
         body: msg.body.slice(0, 140),
         href: "/account/support",
       })
       void this.email.send({
-        to: t.customer.email,
-        subject: `Reply on your Shaniid RX ticket ${t.shortId}`,
+        to: ticket.customer.email,
+        subject: `Reply on your Shaniid RX ticket ${ticket.shortId}`,
         template: "support.ticket.reply",
-        data: { name: t.customer.name, ticketId: t.shortId, message: msg.body, url: "/account/support" },
+        data: { name: ticket.customer.name, ticketId: ticket.shortId, message: msg.body, url: "/account/support" },
       })
     } else {
-      t.status = "open"
-      this.push("admin", {
+      await this.push("admin", {
         module: "support",
         level: "info",
-        title: `Customer replied — ${t.shortId}`,
+        title: `Customer replied — ${ticket.shortId}`,
         body: msg.body.slice(0, 140),
-        href: `/admin/support/${t.id}`,
+        href: `/admin/support/${ticket.id}`,
       })
     }
-    return t
+    return this.getTicket(ticket.id)
   }
 
-  setStatus(id: string, status: TicketStatus): SupportTicket {
-    const t = this.getTicket(id)
-    t.status = status
-    t.updatedAt = new Date().toISOString()
-    return t
+  async setStatus(id: string, status: TicketStatus): Promise<SupportTicket> {
+    const ticket = await this.getTicket(id)
+    await db.update(ticketsTable).set({ status, updatedAt: new Date() }).where(eq(ticketsTable.id, ticket.id))
+    return this.getTicket(ticket.id)
   }
 }
 
@@ -286,31 +339,26 @@ export class NotificationsService {
 /* Controllers                                                                */
 /* -------------------------------------------------------------------------- */
 
-function audienceForRequest(req: Request, override?: string): Audience {
-  if (override === "admin" || override === "doctor" || override === "pharmacist") return override
-  return req.sessionId
-}
-
 @Controller("me/notifications")
 class MyNotificationsController {
   constructor(@Inject(NotificationsService) private readonly svc: NotificationsService) {}
 
   @Get()
-  list(@Req() req: Request, @Query("unreadOnly") unreadOnly?: string, @Query("limit") limit?: string) {
+  async list(@Req() req: Request, @Query("unreadOnly") unreadOnly?: string, @Query("limit") limit?: string) {
     return {
-      items: this.svc.list(req.sessionId, {
+      items: await this.svc.list(req.sessionId, {
         unreadOnly: unreadOnly === "1" || unreadOnly === "true",
         limit: limit ? Math.max(1, Math.min(200, Number(limit))) : 50,
       }),
-      unread: this.svc.unreadCount(req.sessionId),
+      unread: await this.svc.unreadCount(req.sessionId),
     }
   }
 
   @Post("read")
-  read(@Req() req: Request, @Body() body: { ids?: string[]; all?: boolean }) {
+  async read(@Req() req: Request, @Body() body: { ids?: string[]; all?: boolean }) {
     const updated = body?.all
-      ? this.svc.markAllRead(req.sessionId)
-      : this.svc.markRead(req.sessionId, Array.isArray(body?.ids) ? body!.ids : [])
+      ? await this.svc.markAllRead(req.sessionId)
+      : await this.svc.markRead(req.sessionId, Array.isArray(body?.ids) ? body!.ids : [])
     return { ok: true, updated }
   }
 }
@@ -322,11 +370,11 @@ class AdminNotificationsController {
   constructor(@Inject(NotificationsService) private readonly svc: NotificationsService) {}
 
   @Get()
-  list(@Query("audience") audience?: string, @Query("unreadOnly") unreadOnly?: string) {
+  async list(@Query("audience") audience?: string, @Query("unreadOnly") unreadOnly?: string) {
     const a = (audience === "doctor" || audience === "pharmacist") ? audience : "admin"
     return {
-      items: this.svc.list(a, { unreadOnly: unreadOnly === "1" || unreadOnly === "true", limit: 100 }),
-      unread: this.svc.unreadCount(a),
+      items: await this.svc.list(a, { unreadOnly: unreadOnly === "1" || unreadOnly === "true", limit: 100 }),
+      unread: await this.svc.unreadCount(a),
     }
   }
 
@@ -347,9 +395,9 @@ class AdminNotificationsController {
   }
 
   @Post("read")
-  read(@Body() body: { audience?: string; ids?: string[]; all?: boolean }) {
+  async read(@Body() body: { audience?: string; ids?: string[]; all?: boolean }) {
     const a = (body?.audience === "doctor" || body?.audience === "pharmacist") ? body.audience : "admin"
-    const updated = body?.all ? this.svc.markAllRead(a) : this.svc.markRead(a, Array.isArray(body?.ids) ? body!.ids : [])
+    const updated = body?.all ? await this.svc.markAllRead(a) : await this.svc.markRead(a, Array.isArray(body?.ids) ? body!.ids : [])
     return { ok: true, updated }
   }
 }
@@ -364,8 +412,8 @@ class MyTicketsController {
   }
 
   @Get(":id")
-  get(@Req() req: Request, @Param("id") id: string) {
-    const t = this.svc.getTicket(id)
+  async get(@Req() req: Request, @Param("id") id: string) {
+    const t = await this.svc.getTicket(id)
     if (t.customer.sessionId !== req.sessionId) {
       throw new HttpException("Not found", HttpStatus.NOT_FOUND)
     }
@@ -378,8 +426,8 @@ class MyTicketsController {
   }
 
   @Post(":id/messages")
-  reply(@Req() req: Request, @Param("id") id: string, @Body() body: { body: string; authorName?: string }) {
-    const t = this.svc.getTicket(id)
+  async reply(@Req() req: Request, @Param("id") id: string, @Body() body: { body: string; authorName?: string }) {
+    const t = await this.svc.getTicket(id)
     if (t.customer.sessionId !== req.sessionId) {
       throw new HttpException("Not found", HttpStatus.NOT_FOUND)
     }

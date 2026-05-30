@@ -1,24 +1,21 @@
 /**
- * Uploads module — binary file storage for the NestJS backend.
+ * Uploads module — binary file storage for the NestJS backend (Postgres-tracked).
  *
  * Routes:
- *   POST /api/v2/uploads   — accept a base64-encoded file and persist it
- *                            via the Storage seam. Returns { url, key }.
+ *   POST /api/v2/uploads   — accept a base64-encoded file and persist it via the
+ *                            Storage seam. Returns { url, key }.
  *
  * Storage:
- *   Uses `common/storage.ts` (local disk today, S3 later).
- *   Uploaded files are served back from UPLOAD_URL_PREFIX (/api/v2/uploads/*)
- *   via express.static in main.ts, gated by the shaniidrx_sid session cookie.
+ *   The bytes go through `common/storage.ts` (local disk today, S3/Cloudinary
+ *   when configured). Each upload is also recorded as a row in the `uploads`
+ *   table (key → owning userId), so downstream modules can confirm a
+ *   client-supplied storage key actually belongs to the requesting session
+ *   before binding it to a record (e.g. a prescription scan). This ownership
+ *   record is now durable across restarts.
  *
  * Body limit:
- *   main.ts raises express.json({ limit: "8mb" }) so base64-encoded
- *   prescription scans (~5 MB raw → ~6.7 MB encoded) fit without truncation.
- *
- * S3 swap path:
- *   1. Implement S3Storage in common/storage.ts.
- *   2. Return it from getStorage() when AWS_S3_BUCKET is set.
- *   3. Remove the express.static mount in main.ts.
- *   4. No changes to this controller needed.
+ *   main.ts raises express.json({ limit: "8mb" }) so base64-encoded prescription
+ *   scans fit without truncation.
  *
  * Note on @Inject(UploadsService):
  *   tsx/esbuild does not emit emitDecoratorMetadata. Explicit @Inject(Token)
@@ -36,20 +33,11 @@ import {
   Req,
 } from "@nestjs/common"
 import type { Request } from "express"
+import { eq } from "drizzle-orm"
+import { db, uploads } from "@workspace/db"
 import { getStorage, type Storage } from "../common/storage"
-
-/**
- * Generic upload endpoint for the NestJS backend.
- *
- * Why JSON+base64 instead of multipart/form-data? It keeps api-nest free of
- * multer / @nestjs/platform-express's file-interceptor wiring. The seam
- * around `getStorage()` is the part that matters — swapping to direct
- * browser → S3 presigned-PUT uploads later (which is what you want for
- * large files anyway) only changes the *transport*, not the persistence.
- *
- * Today this is wired into the prescription upload flow on the storefront.
- * Per-session auth runs ahead of this in the global `SessionMiddleware`.
- */
+import { ensureUserId } from "../common/session-user"
+import { newId } from "../common/repository"
 
 type UploadBody = {
   namespace?: string
@@ -69,9 +57,9 @@ const ALLOWED_TYPES = new Set([
   "application/pdf",
 ])
 
-// Simple in-memory sliding-window rate limit keyed by sessionId. Swap to
-// Redis/Postgres-backed counter when the strangler migration of the legacy
-// rate limiter lands.
+// Simple in-memory sliding-window rate limit keyed by sessionId. The global
+// rate-limit middleware also guards this route; this is a tighter per-session
+// upload cap and is intentionally process-local (transient, not business data).
 const RL_WINDOW_MS = 60_000
 const RL_MAX = 20
 const rlHits = new Map<string, number[]>()
@@ -86,19 +74,12 @@ function checkRateLimit(sid: string): boolean {
 
 @Injectable()
 class UploadsService {
-  constructor() {}
-
-  // Records which session minted each storage key, so downstream modules can
-  // confirm a client-supplied key actually belongs to the requesting session
-  // before binding it to a record (e.g. a prescription scan). Without this, a
-  // client could attach another session's key and read it through an
-  // owner-checked file route. Swap to a `key→ownerId` column when storage keys
-  // persist to Postgres.
-  private keyOwners = new Map<string, string>()
-
-  /** True when `key` was uploaded by `sid` in this process. */
-  ownsKey(sid: string, key: string): boolean {
-    return Boolean(sid) && this.keyOwners.get(key) === sid
+  /** True when `key` was uploaded by `sid` (resolved to its durable userId). */
+  async ownsKey(sid: string, key: string): Promise<boolean> {
+    if (!sid || !key) return false
+    const uid = await ensureUserId(sid)
+    const rows = await db.select({ userId: uploads.userId }).from(uploads).where(eq(uploads.key, key)).limit(1)
+    return !!rows[0] && rows[0].userId === uid
   }
 
   async putBase64(sid: string, body: UploadBody): Promise<{ url: string; key: string; size: number }> {
@@ -127,7 +108,17 @@ class UploadsService {
 
     const storage: Storage = getStorage()
     const { url, key } = await storage.put(namespace, filename, buf, contentType)
-    this.keyOwners.set(key, sid)
+    const uid = await ensureUserId(sid)
+    await db.insert(uploads).values({
+      id: newId("upl"),
+      userId: uid,
+      namespace,
+      filename,
+      contentType,
+      sizeBytes: buf.byteLength,
+      url,
+      key,
+    })
     return { url, key, size: buf.byteLength }
   }
 }
