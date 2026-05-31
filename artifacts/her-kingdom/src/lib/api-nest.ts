@@ -23,6 +23,7 @@
  */
 
 import useSWR, { mutate as globalMutate } from "swr"
+import { adminAuthHeaders } from "./api-client"
 
 const BASE = "/api/v2"
 
@@ -31,6 +32,10 @@ async function nestFetch<T>(path: string, init?: RequestInit): Promise<T> {
     credentials: "include",
     headers: {
       "Content-Type": "application/json",
+      // Forward the signed admin token on /admin/* calls; harmless on customer
+      // routes (AdminGuard only checks it on admin endpoints). Without it the
+      // admin panel 503s in production (guard fails closed).
+      ...adminAuthHeaders(),
       ...(init?.headers ?? {}),
     },
     ...init,

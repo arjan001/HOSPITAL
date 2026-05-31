@@ -2,6 +2,7 @@
 
 import { useState } from "react"
 import { AdminShell } from "./admin-shell"
+import { adminAuthHeaders } from "@/lib/api-client"
 import useSWR, { mutate } from "swr"
 import { toast } from "sonner"
 import {
@@ -63,7 +64,7 @@ export function AdminPayments() {
   const { data: transactions, isLoading: txLoading } = useSWR<Transaction[]>(
     "/admin/payments?action=transactions&method=mpesa",
     async (path) => {
-      const res = await fetch(`/api/v2${path}`, { credentials: "include" })
+      const res = await fetch(`/api/v2${path}`, { credentials: "include", headers: { ...adminAuthHeaders() } })
       if (!res.ok) throw new Error(`payments ${res.status}`)
       return res.json()
     },

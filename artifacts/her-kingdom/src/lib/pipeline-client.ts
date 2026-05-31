@@ -8,13 +8,15 @@
  * while a call is in flight and toast the result.
  */
 
+import { adminAuthHeaders } from "./api-client"
+
 const BASE = "/api/v2/admin/pipeline"
 
 async function post<T>(path: string, body?: unknown): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     method: "POST",
     credentials: "include",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...adminAuthHeaders() },
     body: body ? JSON.stringify(body) : undefined,
   })
   if (!res.ok) {
@@ -25,7 +27,7 @@ async function post<T>(path: string, body?: unknown): Promise<T> {
 }
 
 async function get<T>(path: string): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, { credentials: "include" })
+  const res = await fetch(`${BASE}${path}`, { credentials: "include", headers: { ...adminAuthHeaders() } })
   if (!res.ok) {
     const text = await res.text().catch(() => "")
     throw new Error(`Pipeline ${path} failed: ${res.status} ${text.slice(0, 200)}`)
@@ -164,7 +166,7 @@ export const pipelineClient = {
     },
   },
   status: () =>
-    fetch(`${BASE}/status`, { credentials: "include" }).then((r) =>
+    fetch(`${BASE}/status`, { credentials: "include", headers: { ...adminAuthHeaders() } }).then((r) =>
       r.ok ? (r.json() as Promise<unknown>) : null,
     ),
 }

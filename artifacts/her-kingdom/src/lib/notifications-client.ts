@@ -6,6 +6,7 @@
  * unreachable — the bell should never break the page that hosts it.
  */
 import { useEffect, useState, useCallback } from "react"
+import { adminAuthHeaders } from "./api-client"
 
 export type ClientNotification = {
   id: string
@@ -85,7 +86,7 @@ export function useAdminNotifications(audience: "admin" | "doctor" | "pharmacist
   const [data, setData] = useState<{ items: ClientNotification[]; unread: number }>({ items: [], unread: 0 })
   const refresh = useCallback(async () => {
     const r = await safeJson<{ items: ClientNotification[]; unread: number }>(
-      fetch(`${BASE}/admin/notifications?audience=${audience}`, { credentials: "include" }),
+      fetch(`${BASE}/admin/notifications?audience=${audience}`, { credentials: "include", headers: { ...adminAuthHeaders() } }),
       { items: [], unread: 0 },
     )
     setData(r)
@@ -98,7 +99,7 @@ export function useAdminNotifications(audience: "admin" | "doctor" | "pharmacist
   const markAllRead = useCallback(async () => {
     await fetch(`${BASE}/admin/notifications/read`, {
       method: "POST", credentials: "include",
-      headers: { "Content-Type": "application/json" }, body: JSON.stringify({ audience, all: true }),
+      headers: { "Content-Type": "application/json", ...adminAuthHeaders() }, body: JSON.stringify({ audience, all: true }),
     }).catch(() => {})
     void refresh()
   }, [audience, refresh])
@@ -115,7 +116,7 @@ export async function pushAdminNotification(input: {
 }) {
   await fetch(`${BASE}/admin/notifications`, {
     method: "POST", credentials: "include",
-    headers: { "Content-Type": "application/json" }, body: JSON.stringify(input),
+    headers: { "Content-Type": "application/json", ...adminAuthHeaders() }, body: JSON.stringify(input),
   }).catch(() => {})
 }
 
@@ -165,7 +166,7 @@ export function useAdminTickets() {
   const [loading, setLoading] = useState(true)
   const refresh = useCallback(async () => {
     const r = await safeJson<ClientTicket[]>(
-      fetch(`${BASE}/admin/support/tickets`, { credentials: "include" }), [],
+      fetch(`${BASE}/admin/support/tickets`, { credentials: "include", headers: { ...adminAuthHeaders() } }), [],
     )
     setItems(r); setLoading(false)
   }, [])
@@ -181,7 +182,7 @@ export async function adminReplyTicket(ticketId: string, body: string, authorNam
   try {
     const r = await fetch(`${BASE}/admin/support/tickets/${ticketId}/messages`, {
       method: "POST", credentials: "include",
-      headers: { "Content-Type": "application/json" }, body: JSON.stringify({ body, authorName }),
+      headers: { "Content-Type": "application/json", ...adminAuthHeaders() }, body: JSON.stringify({ body, authorName }),
     })
     if (!r.ok) return null
     return (await r.json()) as ClientTicket
@@ -192,7 +193,7 @@ export async function adminSetTicketStatus(ticketId: string, status: ClientTicke
   try {
     const r = await fetch(`${BASE}/admin/support/tickets/${ticketId}/status`, {
       method: "PATCH", credentials: "include",
-      headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status }),
+      headers: { "Content-Type": "application/json", ...adminAuthHeaders() }, body: JSON.stringify({ status }),
     })
     if (!r.ok) return null
     return (await r.json()) as ClientTicket

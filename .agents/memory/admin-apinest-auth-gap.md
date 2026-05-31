@@ -47,10 +47,19 @@ else pending). admin_orders is a SEPARATE table from customer `orders`, so no
 collision. Same shape as the loopback→direct-injection rule above: server→server
 goes through service injection, not an HTTP call to a guarded route.
 
-**Read side, per-store opt-in:** admin *list/mutate* fetchers (e.g.
-`orders-store.ts nestFetch`) must spread `adminAuthHeaders()` (from
-`lib/api-client.ts`, reads localStorage `shaniidrx.admin.token`) so the signed
-per-user admin token rides along — the guard's path-2 verifies it WITHOUT
-`ADMIN_API_TOKEN` env. This was fixed for orders only; **cms-store,
-notifications/pipeline-client, prescriptions, etc. still omit it and 503 in prod**
-— the systemic admin-panel read gap remains for those surfaces.
+**Read side, header-capable surface now closed:** every admin *list/mutate*
+fetcher must spread `adminAuthHeaders()` (from `lib/api-client.ts`, reads
+localStorage `shaniidrx.admin.token`) so the signed per-user admin token rides
+along — the guard's path-2 verifies it WITHOUT `ADMIN_API_TOKEN` env. The fix is
+now central: `nestFetch` (api-nest.ts) always spreads the header (harmless on
+`/me/*` — guard only checks it on `/admin/*`), and `cms-store`,
+`pipeline-client`, `notifications-client`, `bulk-import`, `payments`,
+`admin-accounts`, `orders-store` all attach it. Note **two distinct token keys**:
+api-nest uses `shaniidrx.admin.token` (DOT, via `adminAuthHeaders`); legacy
+Express `lib/api.ts` uses `shaniidrx.admin-token` (HYPHEN) — don't cross them.
+
+**Still-open (cannot carry headers):** admin chat SSE (`chatStreamUrl("admin")`
+→ `EventSource`) and admin prescription file reads (`adminRxFileUrl` via
+`<img>/<a>`). These need a guard-accepted cookie/session or short-lived signed
+URLs — a header on the fetch wrapper does nothing for them. Separate from the
+orders-visibility fix.

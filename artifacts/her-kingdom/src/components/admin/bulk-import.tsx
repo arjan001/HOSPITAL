@@ -13,6 +13,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
 import { cmsStore } from "@/lib/cms-store"
+import { adminAuthHeaders } from "@/lib/api-client"
 
 const NEST_BASE = "/api/v2/admin/catalog"
 
@@ -162,7 +163,7 @@ function CategoriesPanel() {
     try {
       const res = await fetch(`${NEST_BASE}/categories/import`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...adminAuthHeaders() },
         body: JSON.stringify({ rows, mode }),
       })
       const json = (await res.json().catch(() => ({}))) as ImportSummary
@@ -265,7 +266,7 @@ function ProductsPanel() {
     try {
       const res = await fetch(`${NEST_BASE}/products/import`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...adminAuthHeaders() },
         body: JSON.stringify({ rows }),
       })
       const json = (await res.json().catch(() => ({}))) as ImportSummary
@@ -347,7 +348,7 @@ function GoogleSheetPanel() {
     try {
       const res = await fetch(`${NEST_BASE}/google-sheet`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...adminAuthHeaders() },
         body: JSON.stringify({ url }),
       })
       const json = await res.json()
@@ -366,7 +367,7 @@ function GoogleSheetPanel() {
       const endpoint = target === "categories" ? "categories/import" : "products/import"
       const res = await fetch(`${NEST_BASE}/${endpoint}`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...adminAuthHeaders() },
         body: JSON.stringify({ rows }),
       })
       const json = (await res.json().catch(() => ({}))) as ImportSummary

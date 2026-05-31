@@ -31,6 +31,7 @@
  */
 
 import { useCallback, useSyncExternalStore } from "react"
+import { adminAuthHeaders } from "./api-client"
 
 const NAMESPACE = "shaniidrx.cms"
 const CHANGE_EVENT = "cms-store:change"
@@ -124,6 +125,7 @@ async function hydrateFromServer(key: string, getSeed?: () => unknown): Promise<
     try {
       const res = await fetch(`${API_BASE}/${encodeURIComponent(key)}`, {
         credentials: "include",
+        headers: { ...adminAuthHeaders() },
       })
       if (res.status === 404) {
         // Server has never heard of this key. If we have meaningful local /
@@ -137,7 +139,7 @@ async function hydrateFromServer(key: string, getSeed?: () => unknown): Promise<
           void fetch(`${API_BASE}/${encodeURIComponent(key)}`, {
             method: "PUT",
             credentials: "include",
-            headers: { "Content-Type": "application/json" },
+            headers: { "Content-Type": "application/json", ...adminAuthHeaders() },
             body: JSON.stringify(seed),
           }).catch(() => {
             /* best-effort seed — UI already has the value */
@@ -230,7 +232,7 @@ function writeRaw<T>(key: string, value: T) {
       void fetch(`${API_BASE}/${encodeURIComponent(key)}`, {
         method: "PUT",
         credentials: "include",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...adminAuthHeaders() },
         body: json,
       })
         .then((res) => {
