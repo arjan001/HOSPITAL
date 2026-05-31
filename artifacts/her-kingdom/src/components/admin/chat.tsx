@@ -75,7 +75,9 @@ export function AdminChat() {
   // SSE: live updates for the whole admin
   useEffect(() => {
     if (typeof window === "undefined") return
-    const es = new EventSource(chatStreamUrl("admin"))
+    // withCredentials so the HttpOnly admin-token cookie rides along — the SSE
+    // stream is AdminGuard-protected and EventSource cannot set custom headers.
+    const es = new EventSource(chatStreamUrl("admin"), { withCredentials: true })
     es.onmessage = (ev) => {
       try {
         const p = JSON.parse(ev.data)

@@ -87,9 +87,21 @@ export class AdminGuard implements CanActivate {
 
     const req = ctx.switchToHttp().getRequest<Request>()
     const expected = process.env.ADMIN_API_TOKEN?.trim()
+    // Header is the primary path; the HttpOnly `shaniidrx_admin_token` cookie is
+    // the fallback ONLY for browser requests that cannot set custom headers —
+    // admin SSE streams (EventSource) and admin file reads (<img>/<a>), which are
+    // GET/HEAD. Mutating admin APIs (POST/PUT/PATCH/DELETE) still REQUIRE the
+    // header token, so the cookie never widens the attack surface for state
+    // changes (defence-in-depth on top of SameSite=lax). The cookie is populated
+    // at login and cleared at logout.
+    const method = (req.method || "").toUpperCase()
+    const cookieAllowed = method === "GET" || method === "HEAD"
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const cookieToken = cookieAllowed ? (req as any).cookies?.["shaniidrx_admin_token"] : undefined
     const provided =
       (req.header("x-admin-token") || "").trim() ||
-      (req.header("authorization") || "").replace(/^Bearer\s+/i, "").trim()
+      (req.header("authorization") || "").replace(/^Bearer\s+/i, "").trim() ||
+      (typeof cookieToken === "string" ? cookieToken.trim() : "")
 
     // 1. Ops master key (ADMIN_API_TOKEN) — full super-admin.
     if (expected && provided && provided === expected) {

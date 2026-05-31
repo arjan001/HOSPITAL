@@ -787,6 +787,17 @@ export function AdminShell({ children, title }: { children: ReactNode; title: st
         severity: "warning",
       })
     } catch { /* ignore */ }
+    // Clear the server-side HttpOnly auth cookie so a signed-out browser can no
+    // longer reach header-less admin channels (SSE / file reads). Best-effort —
+    // localStorage is still cleared below even if this network call fails.
+    try {
+      const { adminAuthHeaders } = await import("@/lib/api-client")
+      await fetch("/api/v2/admin/auth/logout", {
+        method: "POST",
+        credentials: "include",
+        headers: adminAuthHeaders(),
+      })
+    } catch { /* ignore network errors during logout */ }
     if (typeof window !== "undefined") {
       window.localStorage.removeItem("shaniidrx.admin.token")
       window.localStorage.removeItem("shaniidrx.admin.user")

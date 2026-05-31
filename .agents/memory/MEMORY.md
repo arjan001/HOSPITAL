@@ -4,7 +4,7 @@
 - [CMS server-side seeding](cms-server-seeding.md) — cms_docs is Postgres-durable now; default seeds still reach the server only via a client read (incl. 404-seed); never-edited keys are the only "missing" case.
 - [Paystack mobile-money quirks](paystack-mobile-money.md) — KES mobile_money.phone MUST be E.164 with leading "+"; surface Paystack 4xx as 400 or the filter masks it as "Internal server error".
 - [WhatsApp Meta template mapping](whatsapp-template-mapping.md) — proactive patient texts send Meta templates; {{token}}→{{1..N}} by first-appearance order; sent-log + status webhook track delivery.
-- [Admin api-nest auth gap](admin-apinest-auth-gap.md) — /api/v2/admin/* works in dev (guard fails open) but not prod; nestFetch sends no admin token; file routes via <img> need signed URLs, not headers.
+- [Admin api-nest auth gap](admin-apinest-auth-gap.md) — admin guard fails closed in prod; all fetchers must send the signed token; header-less channels (SSE/`<img>`) auth via an HttpOnly cookie accepted GET/HEAD-only, cleared on logout.
 - [Prescription data sources](prescription-data-sources.md) — admin panel + patient page read real api-nest; legacy cmsStore keys still feed /user dashboard + consult history; backend-create failure must not show success.
 - [Admin RBAC model](admin-rbac-model.md) — AdminGuard fail-closed (every admin route needs @RequirePerm or @AnyAdmin, else super-only); backend role defaults MUST mirror frontend SEED_ROLES (contract test locks it).
 - [cms_docs JSON-array concurrency](cms-docs-concurrency.md) — public/high-concurrency appends to a cms_docs array must use createIfAbsent/putIfVersion CAS + retry, not read-modify-write, or sign-ups are lost.

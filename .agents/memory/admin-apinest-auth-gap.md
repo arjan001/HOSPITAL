@@ -58,8 +58,14 @@ now central: `nestFetch` (api-nest.ts) always spreads the header (harmless on
 api-nest uses `shaniidrx.admin.token` (DOT, via `adminAuthHeaders`); legacy
 Express `lib/api.ts` uses `shaniidrx.admin-token` (HYPHEN) — don't cross them.
 
-**Still-open (cannot carry headers):** admin chat SSE (`chatStreamUrl("admin")`
-→ `EventSource`) and admin prescription file reads (`adminRxFileUrl` via
-`<img>/<a>`). These need a guard-accepted cookie/session or short-lived signed
-URLs — a header on the fetch wrapper does nothing for them. Separate from the
-orders-visibility fix.
+**Header-less channels solved via HttpOnly cookie:** admin chat SSE
+(`chatStreamUrl("admin")` → `EventSource`) and admin file reads (`adminRxFileUrl`
+via `<img>/<a>`) cannot set custom headers. Admin login now also sets an HttpOnly
+`shaniidrx_admin_token` cookie (same signed token as localStorage), and AdminGuard
+accepts it as a fallback after the header check. Same-origin browser requests send
+it automatically (EventSource needs `{ withCredentials: true }`); SameSite=lax
+keeps it off cross-site mutations so it's not a CSRF vector for non-GET admin
+routes. **Why a cookie, not a query-param token:** query tokens leak into access
+logs/referrers; the HttpOnly cookie does not, and it covers both SSE and `<img>`
+in one mechanism. Proven prod-like (ADMIN_REQUIRE_TOKEN=1): cookie→200,
+no-cookie→503 on both `/chat/admin/stream` and `/admin/orders`.

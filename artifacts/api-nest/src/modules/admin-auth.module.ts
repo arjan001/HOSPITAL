@@ -43,9 +43,10 @@ import {
   Patch,
   Post,
   Req,
+  Res,
   UseGuards,
 } from "@nestjs/common"
-import type { Request } from "express"
+import type { Request, Response } from "express"
 import { randomBytes, randomUUID, scryptSync, timingSafeEqual } from "node:crypto"
 import { and, eq } from "drizzle-orm"
 import { db, adminUsers, type AdminUser } from "@workspace/db"
@@ -53,6 +54,17 @@ import { AdminGuard, Public, RequirePerm } from "../common/admin-guard"
 import { signAdminToken, verifyAdminToken } from "../common/admin-token"
 
 const DEV_TOKEN = "shaniidrx-admin-dev-token"
+
+/**
+ * HttpOnly cookie carrying the signed admin token. Mirrors the localStorage
+ * token the client stores after login, but lets browser-driven requests that
+ * CANNOT set custom headers still authenticate — admin SSE streams
+ * (`EventSource`) and admin file reads (`<img src>` / `<a href>`). AdminGuard
+ * accepts it as a fallback. SameSite=lax keeps cross-site state-changing
+ * (non-GET) requests from carrying it, so it isn't a CSRF vector for mutations.
+ */
+export const ADMIN_TOKEN_COOKIE = "shaniidrx_admin_token"
+const ADMIN_COOKIE_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 7
 
 // Role + permission resolution lives in one shared module so the auth service
 // and the AdminGuard never drift on what a role is allowed to do.
@@ -387,7 +399,10 @@ class AdminAuthController {
 
   @Public()
   @Post("login")
-  async login(@Body() body: { email?: string; password?: string }) {
+  async login(
+    @Body() body: { email?: string; password?: string },
+    @Res({ passthrough: true }) res: Response,
+  ) {
     if (!body?.email || !body?.password) {
       throw new HttpException("Email and password are required", HttpStatus.BAD_REQUEST)
     }
@@ -395,7 +410,33 @@ class AdminAuthController {
     if (!result) {
       throw new HttpException("Invalid email or password", HttpStatus.UNAUTHORIZED)
     }
+    // Mirror the signed token into an HttpOnly cookie so header-less browser
+    // requests (admin SSE EventSource, <img>/<a> file reads) can authenticate.
+    if (result.token) {
+      res.cookie(ADMIN_TOKEN_COOKIE, result.token, {
+        httpOnly: true,
+        sameSite: "lax",
+        secure: process.env.NODE_ENV === "production",
+        path: "/",
+        maxAge: ADMIN_COOKIE_MAX_AGE_MS,
+      })
+    }
     return result
+  }
+
+  @Public()
+  @Post("logout")
+  logout(@Res({ passthrough: true }) res: Response) {
+    // Invalidate the browser auth cookie so a signed-out session can no longer
+    // hit header-less admin channels (SSE / file reads). The clear options must
+    // match the attributes the cookie was set with or the browser keeps it.
+    res.clearCookie(ADMIN_TOKEN_COOKIE, {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+      path: "/",
+    })
+    return { ok: true }
   }
 
   @Public()
