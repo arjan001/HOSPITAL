@@ -101,12 +101,28 @@ export class AllExceptionsFilter implements ExceptionFilter {
     // Guard against double-send if headers already went out.
     if (res.headersSent) return
 
+    // In development ONLY, surface the real error detail (message + stack) so
+    // failures are debuggable instead of being masked as "Internal server
+    // error". Production stays locked down — no internals ever leak there.
+    const isDev = process.env.NODE_ENV !== "production"
+    const devDetail =
+      isDev && status >= 500
+        ? (() => {
+            const err =
+              exception instanceof Error
+                ? exception
+                : new Error(String(exception))
+            return { detail: err.message, stack: err.stack?.split("\n") }
+          })()
+        : undefined
+
     res.status(status).json({
       statusCode: status,
       error: message,
       errorId,
       path: req.originalUrl ?? req.url,
       timestamp: new Date().toISOString(),
+      ...(devDetail ?? {}),
     })
   }
 }
