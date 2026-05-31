@@ -535,7 +535,7 @@ export function CheckoutPage() {
   /* ── Payment / order ── */
   type OrderSuccess = {
     orderNumber: string
-    paymentMethod: "mpesa" | "cod" | "whatsapp"
+    paymentMethod: "mpesa" | "card" | "cod" | "whatsapp"
     customerName: string
     customerPhone: string
     customerEmail?: string
@@ -727,7 +727,7 @@ export function CheckoutPage() {
   const persistOrderToAccount = async (snap: OrderSuccess): Promise<void> => {
     try {
       const method: AccountOrder["paymentMethod"] =
-        snap.paymentMethod === "mpesa" || snap.paymentMethod === "cod"
+        snap.paymentMethod === "mpesa" || snap.paymentMethod === "card" || snap.paymentMethod === "cod"
           ? snap.paymentMethod
           : "unknown"
       const addrParts = (snap.deliveryAddress || "").split(",").map(s => s.trim()).filter(Boolean)
@@ -804,34 +804,37 @@ export function CheckoutPage() {
     })
   }
 
-  /* ── MPesa ── */
-  const createMpesaPendingOrder = async (): Promise<{ orderNumber: string } | { error: string; hint?: string } | null> => {
+  /* ── Paystack (M-Pesa STK + Card) ── */
+  const createPaystackPendingOrder = async (
+    method: "mpesa" | "card",
+  ): Promise<{ orderNumber: string } | { error: string; hint?: string } | null> => {
     try {
-      const res  = await fetch("/api/orders", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...buildOrderPayload("mpesa"), paymentMethod: "mpesa", status: "pending" }) })
+      const res  = await fetch("/api/orders", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...buildOrderPayload(method), paymentMethod: method, status: "pending" }) })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) return { error: data?.error || `Server error (${res.status})`, hint: data?.hint }
       if (!data?.orderNumber) return { error: "Server did not return an order number" }
-      // Record the pending Order immediately so admin sees it even if M-Pesa never confirms.
+      // Record the pending Order immediately so admin sees it even if payment never confirms.
       try {
-        const pendingSnap = buildOrderSnapshot({ orderNumber: data.orderNumber, paymentMethod: "mpesa" })
+        const pendingSnap = buildOrderSnapshot({ orderNumber: data.orderNumber, paymentMethod: method })
         persistAdminOrder(pendingSnap, "pending")
       } catch { /* localStorage best-effort */ }
       return { orderNumber: data.orderNumber }
     } catch (err) { return { error: err instanceof Error ? err.message : "Network error" } }
   }
 
-  const handleMpesaConfirmed = (result: { orderNumber: string; mpesaReceipt: string; phone: string }) => {
+  const handlePaystackConfirmed = (result: { orderNumber: string; mpesaReceipt: string; phone: string; method: "mpesa" | "card" }) => {
     const snap = buildOrderSnapshot({
       orderNumber: result.orderNumber,
-      paymentMethod: "mpesa",
-      mpesaReceipt: result.mpesaReceipt,
+      paymentMethod: result.method,
+      // Only M-Pesa carries an M-Pesa receipt; card confirmations leave it unset.
+      mpesaReceipt: result.method === "mpesa" ? result.mpesaReceipt : undefined,
     })
-    // Persist to admin Sales & Orders as a confirmed Sale (M-Pesa payment captured).
+    // Persist to admin Sales & Orders as a confirmed Sale (payment captured).
     try {
-      persistAdminOrder(snap, "confirmed", {
+      persistAdminOrder(snap, "confirmed", result.method === "mpesa" ? {
         mpesaCode: result.mpesaReceipt,
         mpesaPhone: result.phone,
-      })
+      } : {})
     } catch { /* localStorage best-effort */ }
 
     // Auto-assign a delivery job to the best-matching logistics partner.
@@ -896,6 +899,7 @@ export function CheckoutPage() {
   if (orderResult) {
     const isWhatsApp = orderResult.orderNumber === "WhatsApp"
     const isMpesa    = orderResult.paymentMethod === "mpesa"
+    const isCard     = orderResult.paymentMethod === "card"
     const isCod      = orderResult.paymentMethod === "cod"
     const trackUrl   = isWhatsApp ? "/track-order" : `/track-order/${orderResult.orderNumber}`
 
@@ -907,14 +911,18 @@ export function CheckoutPage() {
     /* Payment callout content */
     const paymentTitle = isMpesa
       ? "M-PESA Payment Received"
-      : isCod
-          ? "Cash on Delivery"
-          : "WhatsApp Order"
+      : isCard
+          ? "Card Payment Received"
+          : isCod
+              ? "Cash on Delivery"
+              : "WhatsApp Order"
     const paymentBody = isMpesa
       ? "Your transaction has been submitted. Await admin confirmation via WhatsApp."
-      : isCod
-          ? "We'll call to confirm before dispatch. Pay in cash or M-PESA on delivery."
-          : "We'll confirm your order on WhatsApp shortly."
+      : isCard
+          ? "Your card payment has been received. A receipt has been recorded for your order."
+          : isCod
+              ? "We'll call to confirm before dispatch. Pay in cash or M-PESA on delivery."
+              : "We'll confirm your order on WhatsApp shortly."
 
     /* Delivery / pickup line */
     const deliveryLine = orderResult.fulfilmentMode === "pickup"
@@ -1751,9 +1759,9 @@ export function CheckoutPage() {
         defaultPhone={mpesaPhone}
         defaultEmail={formData.email || ""}
         customerName={formData.name  || savedAddress?.name  || ""}
-        createPendingOrder={createMpesaPendingOrder}
+        createPendingOrder={createPaystackPendingOrder}
         onPaymentConfirmed={(r) => {
-          handleMpesaConfirmed({ orderNumber: r.orderNumber, mpesaReceipt: r.mpesaReceipt, phone: r.phone })
+          handlePaystackConfirmed({ orderNumber: r.orderNumber, mpesaReceipt: r.mpesaReceipt, phone: r.phone, method: r.method })
           setTimeout(() => setShowPaystack(false), 1500)
         }}
         onPaymentFailed={r => trackAbandoned(`paystack_${r}`, "payment_failed")}

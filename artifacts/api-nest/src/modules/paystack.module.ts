@@ -71,6 +71,12 @@ interface PaystackChargeApiResponse {
   data?: { reference?: string; status?: string; display_text?: string; id?: number | string }
 }
 
+interface PaystackInitApiResponse {
+  status?: boolean
+  message?: string
+  data?: { authorization_url?: string; access_code?: string; reference?: string }
+}
+
 interface PaystackVerifyApiResponse {
   status?: boolean
   message?: string
@@ -105,6 +111,19 @@ function normalizeKePhone(raw: string): string {
   if (digits.startsWith("0") && digits.length >= 10) return `254${digits.slice(1)}`
   if (digits.length === 9) return `254${digits}`
   return digits
+}
+
+/**
+ * Paystack REQUIRES an email on every transaction and validates it server-side.
+ * Guest checkout often has no email, so we synthesise one — but the fallback
+ * MUST use a real, registered domain. A reserved TLD like ".local" is rejected
+ * by Paystack with "Invalid Email Address Passed", which is exactly what blocked
+ * guest M-Pesa checkout. Use the brand's real domain so the charge is accepted.
+ */
+function resolveCustomerEmail(rawEmail: string | undefined, phone: string): string {
+  const e = String(rawEmail ?? "").trim()
+  if (e && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)) return e
+  return `${phone || "guest"}@shaniidrx.com`
 }
 
 function paystackStatusToOurs(s?: string): PaystackStatus {
@@ -165,6 +184,20 @@ class PaystackService {
     const proto = (req.headers["x-forwarded-proto"] as string) || req.protocol || "https"
     const host = (req.headers["x-forwarded-host"] as string) || req.headers.host
     return host ? `${proto}://${host}/api/v2/payments/paystack/callback` : ""
+  }
+
+  /**
+   * Browser-facing return URL for the hosted card checkout. Unlike the webhook
+   * `buildCallbackUrl`, this is where Paystack redirects the customer's browser
+   * after they finish on the hosted page — so it must be a real page, not the
+   * POST webhook endpoint. We point it at the storefront origin; the storefront
+   * modal is already polling `/status` by reference, so this is just a courtesy
+   * landing for the popped-open tab.
+   */
+  private buildBrowserReturnUrl(req: Request): string {
+    const proto = (req.headers["x-forwarded-proto"] as string) || req.protocol || "https"
+    const host = (req.headers["x-forwarded-host"] as string) || req.headers.host
+    return host ? `${proto}://${host}/?paystack_return=1` : ""
   }
 
   private async paystackFetch<T>(path: string, init?: RequestInit): Promise<T> {
@@ -232,9 +265,7 @@ class PaystackService {
     this.requireConfigured()
     const phone = normalizeKePhone(input.phone ?? "")
     const amount = Math.max(1, Math.round(Number(input.amount ?? 0)))
-    const email = (input.email && input.email.includes("@"))
-      ? input.email.trim()
-      : `${phone || "guest"}@shaniidrx.local`
+    const email = resolveCustomerEmail(input.email, phone)
     if (!/^254[17]\d{8}$/.test(phone)) {
       throw new HttpException(
         "Please enter a valid phone number (e.g. 0712345678, +254712345678, or 0110123456)",
@@ -298,6 +329,82 @@ class PaystackService {
       publicKey: this.publicKey || null,
       message,
     }
+  }
+
+  /**
+   * Initialise a hosted Paystack transaction (card + any enabled channel).
+   *
+   * Why this exists alongside `charge`:
+   *   `charge` does an in-app M-Pesa STK push (great UX, mobile-money only).
+   *   Card payments cannot be collected via the raw charge API — Paystack's
+   *   documented flow is `POST /transaction/initialize` → redirect the customer
+   *   to the returned `authorization_url` (Paystack's PCI-compliant hosted page)
+   *   → verify by reference afterwards. We persist the pending row exactly like
+   *   `charge`, so the existing `/status` poll, `/transaction/verify`, and the
+   *   webhook all confirm card payments with zero extra plumbing.
+   */
+  async initialize(req: Request, input: ChargeInput): Promise<{
+    success: true
+    reference: string
+    authorizationUrl: string
+    publicKey: string | null
+  }> {
+    this.requireConfigured()
+    const amount = Math.max(1, Math.round(Number(input.amount ?? 0)))
+    const phone = normalizeKePhone(input.phone ?? "")
+    const email = resolveCustomerEmail(input.email, phone)
+    if (amount < 1) {
+      throw new HttpException("Amount must be at least KES 1", HttpStatus.BAD_REQUEST)
+    }
+    const orderNumber = String(input.orderNumber ?? "").trim() || `SHX-${Date.now().toString(36).toUpperCase()}`
+
+    const payload = {
+      email,
+      amount: amount * 100, // smallest currency unit
+      currency: "KES",
+      channels: ["card"],
+      metadata: {
+        order_number: orderNumber,
+        customer_name: input.customerName || "",
+        source: "shaniidrx-storefront",
+      },
+      callback_url: this.buildBrowserReturnUrl(req),
+    }
+
+    const res = await this.paystackFetch<PaystackInitApiResponse>("/transaction/initialize", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    })
+
+    const reference = res.data?.reference
+    const authorizationUrl = res.data?.authorization_url
+    if (!reference || !authorizationUrl) {
+      throw new HttpException(
+        res.message || "Paystack did not return a checkout URL.",
+        HttpStatus.BAD_GATEWAY,
+      )
+    }
+
+    const meta: ProviderMeta = { orderNumber, message: "Awaiting card payment" }
+    await db
+      .insert(payments)
+      .values({
+        id: newId("pay"),
+        reference,
+        provider: "paystack",
+        method: "card",
+        phone: phone || null,
+        amount,
+        currency: "KES",
+        status: "pending",
+        providerResponse: meta,
+      })
+      .onConflictDoUpdate({
+        target: payments.reference,
+        set: { status: "pending", amount, providerResponse: meta, updatedAt: new Date() },
+      })
+
+    return { success: true, reference, authorizationUrl, publicKey: this.publicKey || null }
   }
 
   /**
@@ -431,6 +538,11 @@ class PaystackController {
   @Post("charge")
   async charge(@Req() req: Request, @Body() body: ChargeInput) {
     return this.svc.charge(req, body ?? {})
+  }
+
+  @Post("initialize")
+  async initialize(@Req() req: Request, @Body() body: ChargeInput) {
+    return this.svc.initialize(req, body ?? {})
   }
 
   @Get("status")

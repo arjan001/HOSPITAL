@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
-import { X, Loader2, Smartphone, CheckCircle2, AlertCircle, RefreshCw, ShieldCheck } from "lucide-react"
+import { X, Loader2, Smartphone, CheckCircle2, AlertCircle, RefreshCw, ShieldCheck, CreditCard } from "lucide-react"
 import { formatPrice } from "@/lib/format"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -23,13 +23,15 @@ interface PaystackPaymentModalProps {
    * and we have an order number to send to Paystack. The parent decides
    * what to do with a confirmed payment (e.g. show receipt).
    */
-  onPaymentConfirmed: (result: { orderNumber: string; mpesaReceipt: string; phone: string; reference: string }) => void
+  onPaymentConfirmed: (result: { orderNumber: string; mpesaReceipt: string; phone: string; reference: string; method: "mpesa" | "card" }) => void
   /**
    * Creates the pending order on the server and returns its order number.
-   * We initiate the Paystack charge against that order number. May return
-   * an error string on failure so the modal can surface the real reason.
+   * We initiate the Paystack charge against that order number. The selected
+   * payment rail ("mpesa" | "card") is passed so the order is recorded with
+   * the correct payment method. May return an error string on failure so the
+   * modal can surface the real reason.
    */
-  createPendingOrder: () => Promise<{ orderNumber: string } | { error: string; hint?: string } | null>
+  createPendingOrder: (method: "mpesa" | "card") => Promise<{ orderNumber: string } | { error: string; hint?: string } | null>
   onPaymentFailed?: (reason: string) => void
   defaultPhone?: string
   defaultEmail?: string
@@ -55,6 +57,7 @@ export function PaystackPaymentModal({
   customerName,
 }: PaystackPaymentModalProps) {
   const [step, setStep] = useState<Step>("prompt")
+  const [method, setMethod] = useState<"mpesa" | "card">("mpesa")
   const [phone, setPhone] = useState(defaultPhone || "")
   const [error, setError] = useState("")
   const [statusMessage, setStatusMessage] = useState("")
@@ -100,6 +103,7 @@ export function PaystackPaymentModal({
   const resetAll = () => {
     stopPolling()
     setStep("prompt")
+    setMethod("mpesa")
     setError("")
     setStatusMessage("")
     setSecondsLeft(COUNTDOWN_SECONDS)
@@ -120,7 +124,7 @@ export function PaystackPaymentModal({
     onPaymentFailed?.("user_cancelled")
   }
 
-  const pollStatus = (reference: string, orderNumber: string) => {
+  const pollStatus = (reference: string, orderNumber: string, payMethod: "mpesa" | "card") => {
     stopPolling()
     pollsRef.current = 0
     setSecondsLeft(COUNTDOWN_SECONDS)
@@ -151,6 +155,7 @@ export function PaystackPaymentModal({
             mpesaReceipt: data.mpesaReceipt || "",
             phone: data.phone || cleanPhone,
             reference,
+            method: payMethod,
           })
         } else if (data.status === "failed" || data.status === "cancelled") {
           stopPolling()
@@ -176,7 +181,7 @@ export function PaystackPaymentModal({
     setStep("pushing")
     setStatusMessage("Creating your order...")
 
-    const created = await createPendingOrder()
+    const created = await createPendingOrder("mpesa")
     if (!created || "error" in created || !created.orderNumber) {
       setStep("failed")
       const reason = created && "error" in created ? created.error : ""
@@ -212,8 +217,68 @@ export function PaystackPaymentModal({
       setStatusMessage(data.message || "Check your phone and enter your M-PESA PIN to complete payment.")
       setActiveReference(data.reference)
       setActiveOrderNumber(created.orderNumber)
-      pollStatus(data.reference, created.orderNumber)
+      pollStatus(data.reference, created.orderNumber, "mpesa")
     } catch {
+      setStep("failed")
+      setError("Network error. Please check your connection and try again.")
+      onPaymentFailed?.("network_error")
+    }
+  }
+
+  const handleCardPay = async () => {
+    setError("")
+    // Open a blank tab synchronously inside the click gesture so popup blockers
+    // don't kill the redirect after our async order/initialize calls.
+    const checkoutTab = typeof window !== "undefined" ? window.open("about:blank", "_blank") : null
+    setStep("pushing")
+    setStatusMessage("Creating your order...")
+
+    const created = await createPendingOrder("card")
+    if (!created || "error" in created || !created.orderNumber) {
+      checkoutTab?.close()
+      setStep("failed")
+      const reason = created && "error" in created ? created.error : ""
+      const hint   = created && "hint"  in created ? created.hint  : ""
+      const combined = [reason, hint].filter(Boolean).join(" — ")
+      setError(combined ? `We could not save your order: ${combined}` : "We could not save your order. Please try again.")
+      onPaymentFailed?.("create_order_failed")
+      return
+    }
+
+    setStatusMessage("Opening secure Paystack card checkout...")
+
+    try {
+      const res = await fetch("/api/v2/payments/paystack/initialize", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          orderNumber: created.orderNumber,
+          amount: Math.round(total),
+          email: defaultEmail || undefined,
+          phone: cleanPhone || undefined,
+          customerName,
+        }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok || !data?.authorizationUrl || !data?.reference) {
+        checkoutTab?.close()
+        setStep("failed")
+        setError(data?.hint || data?.error || "Could not start card checkout. Please try again.")
+        onPaymentFailed?.("paystack_initialize_failed")
+        return
+      }
+      // Redirect the pre-opened tab to Paystack's hosted page (or fall back to a
+      // fresh tab if the browser blocked the synchronous open).
+      if (checkoutTab) checkoutTab.location.href = data.authorizationUrl
+      else window.open(data.authorizationUrl, "_blank", "noopener,noreferrer")
+
+      setStep("waiting")
+      setStatusMessage("Complete your card payment in the Paystack tab. We'll confirm here automatically.")
+      setActiveReference(data.reference)
+      setActiveOrderNumber(created.orderNumber)
+      pollStatus(data.reference, created.orderNumber, "card")
+    } catch {
+      checkoutTab?.close()
       setStep("failed")
       setError("Network error. Please check your connection and try again.")
       onPaymentFailed?.("network_error")
@@ -236,9 +301,11 @@ export function PaystackPaymentModal({
 
         <div className="px-6 pt-8 pb-6 text-center relative overflow-hidden" style={{ background: `linear-gradient(135deg, ${WINE} 0%, #6B0F1A 100%)` }}>
           <h2 className="text-white font-extrabold text-2xl tracking-tight">
-            M-PESA Payment
+            {method === "card" ? "Card Payment" : "M-PESA Payment"}
           </h2>
-          <p className="text-white/80 text-xs mt-1">Secure STK Push · Powered by Paystack</p>
+          <p className="text-white/80 text-xs mt-1">
+            {method === "card" ? "Secure Card Checkout · Powered by Paystack" : "Secure STK Push · Powered by Paystack"}
+          </p>
           <div className="flex justify-center mt-2">
             <div className="w-16 h-1 rounded-full" style={{ background: ORANGE }} />
           </div>
@@ -256,24 +323,56 @@ export function PaystackPaymentModal({
 
           {step === "prompt" && (
             <div className="mt-5 space-y-4">
-              <div>
-                <Label className="text-sm font-medium mb-1.5 block">M-PESA Phone Number *</Label>
-                <div className="relative">
-                  <Smartphone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    value={phone}
-                    onChange={(e) => { setPhone(e.target.value); setError("") }}
-                    placeholder="e.g. 0712 345 678 or 0110 123 456"
-                    className="h-11 pl-10"
-                    type="tel"
-                    inputMode="tel"
-                    autoFocus
-                  />
-                </div>
-                <p className="text-[11px] text-muted-foreground mt-1">
-                  We will send an M-PESA prompt to this number. Enter your PIN on the phone to approve.
-                </p>
+              {/* Payment method selector — Paystack handles both M-PESA and card */}
+              <div className="grid grid-cols-2 gap-2 p-1 rounded-sm bg-secondary/50">
+                <button
+                  type="button"
+                  onClick={() => { setMethod("mpesa"); setError("") }}
+                  className="flex items-center justify-center gap-1.5 h-9 rounded-sm text-xs font-semibold transition-colors"
+                  style={method === "mpesa"
+                    ? { background: WINE, color: "#fff" }
+                    : { color: WINE }}
+                >
+                  <Smartphone className="h-3.5 w-3.5" /> M-PESA
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setMethod("card"); setError("") }}
+                  className="flex items-center justify-center gap-1.5 h-9 rounded-sm text-xs font-semibold transition-colors"
+                  style={method === "card"
+                    ? { background: WINE, color: "#fff" }
+                    : { color: WINE }}
+                >
+                  <CreditCard className="h-3.5 w-3.5" /> Card
+                </button>
               </div>
+
+              {method === "mpesa" ? (
+                <div>
+                  <Label className="text-sm font-medium mb-1.5 block">M-PESA Phone Number *</Label>
+                  <div className="relative">
+                    <Smartphone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      value={phone}
+                      onChange={(e) => { setPhone(e.target.value); setError("") }}
+                      placeholder="e.g. 0712 345 678 or 0110 123 456"
+                      className="h-11 pl-10"
+                      type="tel"
+                      inputMode="tel"
+                      autoFocus
+                    />
+                  </div>
+                  <p className="text-[11px] text-muted-foreground mt-1">
+                    We will send an M-PESA prompt to this number. Enter your PIN on the phone to approve.
+                  </p>
+                </div>
+              ) : (
+                <div className="rounded-sm p-3 bg-secondary/40 text-[11px] text-muted-foreground leading-relaxed">
+                  You'll be taken to Paystack's secure checkout to pay with your
+                  debit or credit card (Visa, Mastercard). We'll confirm your
+                  payment here automatically when you're done.
+                </div>
+              )}
 
               {error && (
                 <div className="flex items-start gap-2 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 text-xs px-3 py-2 rounded-sm">
@@ -282,14 +381,24 @@ export function PaystackPaymentModal({
                 </div>
               )}
 
-              <Button
-                onClick={handlePay}
-                disabled={!isPhoneValid}
-                className="w-full h-12 text-white text-sm font-semibold disabled:opacity-40"
-                style={{ background: `linear-gradient(135deg, ${ORANGE} 0%, ${RED} 100%)` }}
-              >
-                Pay {formatPrice(total)} with M-PESA
-              </Button>
+              {method === "mpesa" ? (
+                <Button
+                  onClick={handlePay}
+                  disabled={!isPhoneValid}
+                  className="w-full h-12 text-white text-sm font-semibold disabled:opacity-40"
+                  style={{ background: `linear-gradient(135deg, ${ORANGE} 0%, ${RED} 100%)` }}
+                >
+                  Pay {formatPrice(total)} with M-PESA
+                </Button>
+              ) : (
+                <Button
+                  onClick={handleCardPay}
+                  className="w-full h-12 text-white text-sm font-semibold"
+                  style={{ background: `linear-gradient(135deg, ${ORANGE} 0%, ${RED} 100%)` }}
+                >
+                  Pay {formatPrice(total)} with Card
+                </Button>
+              )}
 
               <div className="flex items-center justify-center gap-1.5 text-[11px] text-muted-foreground">
                 <ShieldCheck className="h-3 w-3" />
@@ -331,10 +440,20 @@ export function PaystackPaymentModal({
 
               <div className="text-[11px] text-muted-foreground bg-secondary/40 rounded-sm px-3 py-2 text-left leading-relaxed">
                 <p className="font-semibold text-foreground mb-1">What to do now:</p>
-                1. Unlock your phone.<br />
-                2. Find the M-PESA pop-up showing {BUSINESS_NAME}.<br />
-                3. Enter your M-PESA PIN and press OK.<br />
-                4. Wait here for confirmation.
+                {method === "card" ? (
+                  <>
+                    1. Switch to the Paystack checkout tab.<br />
+                    2. Enter your card details and confirm.<br />
+                    3. Come back here — we'll confirm automatically.
+                  </>
+                ) : (
+                  <>
+                    1. Unlock your phone.<br />
+                    2. Find the M-PESA pop-up showing {BUSINESS_NAME}.<br />
+                    3. Enter your M-PESA PIN and press OK.<br />
+                    4. Wait here for confirmation.
+                  </>
+                )}
               </div>
 
               {step === "waiting" && (
@@ -355,6 +474,7 @@ export function PaystackPaymentModal({
                             mpesaReceipt: data.mpesaReceipt || "",
                             phone: data.phone || cleanPhone,
                             reference: activeReference,
+                            method,
                           })
                         } else if (data.status === "failed" || data.status === "cancelled") {
                           stopPolling()
