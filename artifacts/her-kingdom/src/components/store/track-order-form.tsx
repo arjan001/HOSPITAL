@@ -83,9 +83,9 @@ export function TrackOrderForm({ initialOrderNumber }: { initialOrderNumber?: st
     setLoading(true); setError(""); setOrders([]); setSearched(true)
     try {
       const param = type === "order"
-        ? `order_number=${encodeURIComponent(value.trim())}`
+        ? `orderNumber=${encodeURIComponent(value.trim())}`
         : `phone=${encodeURIComponent(value.trim())}`
-      const res  = await fetch(`/api/track-order?${param}`)
+      const res  = await fetch(`/api/v2/orders/track?${param}`, { credentials: "include" })
       const data = await res.json()
       if (!res.ok) setError(data.error || "Order not found")
       else setOrders(data)

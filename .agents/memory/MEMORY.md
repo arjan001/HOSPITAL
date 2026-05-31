@@ -8,3 +8,4 @@
 - [Prescription data sources](prescription-data-sources.md) — admin panel + patient page read real api-nest; legacy cmsStore keys still feed /user dashboard + consult history; backend-create failure must not show success.
 - [Admin RBAC model](admin-rbac-model.md) — AdminGuard fail-closed (every admin route needs @RequirePerm or @AnyAdmin, else super-only); backend role defaults MUST mirror frontend SEED_ROLES (contract test locks it).
 - [cms_docs JSON-array concurrency](cms-docs-concurrency.md) — public/high-concurrency appends to a cms_docs array must use createIfAbsent/putIfVersion CAS + retry, not read-modify-write, or sign-ups are lost.
+- [Order tracking (public)](order-tracking.md) — displayed order number must be stored verbatim in api-nest (else tracking 404s); public /orders/track is by order-number or FULL phone only — never a phone fragment (PII enumeration).

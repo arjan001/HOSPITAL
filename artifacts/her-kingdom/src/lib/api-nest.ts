@@ -125,6 +125,8 @@ export const apiNest = {
   orders: () => nestFetch<AccountOrder[]>("/me/orders"),
   order: (id: string) => nestFetch<AccountOrder>(`/me/orders/${id}`),
   createOrder: (input: {
+    orderNumber?: string
+    paid?: boolean
     items: AccountOrderLine[]
     deliveryFee?: number
     paymentMethod?: AccountOrder["paymentMethod"]

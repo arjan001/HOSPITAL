@@ -724,7 +724,7 @@ export function CheckoutPage() {
 
   /* ── Mirror successful order into the NestJS account backend so it
         appears in the customer's order history (signed-in or guest cookie). */
-  const persistOrderToAccount = async (snap: OrderSuccess): Promise<void> => {
+  const persistOrderToAccount = async (snap: OrderSuccess, paid = false): Promise<void> => {
     try {
       const method: AccountOrder["paymentMethod"] =
         snap.paymentMethod === "mpesa" || snap.paymentMethod === "card" || snap.paymentMethod === "cod"
@@ -732,6 +732,8 @@ export function CheckoutPage() {
           : "unknown"
       const addrParts = (snap.deliveryAddress || "").split(",").map(s => s.trim()).filter(Boolean)
       await apiNest.createOrder({
+        orderNumber: snap.orderNumber,
+        paid,
         items: snap.items.map((it, i) => {
           const slug = it.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "")
           return {
@@ -870,7 +872,7 @@ export function CheckoutPage() {
     }
 
     setOrderResult(snap)
-    void persistOrderToAccount(snap)
+    void persistOrderToAccount(snap, true)
     clearCart()
     setTimeout(() => setShowPaystack(false), 1500)
   }

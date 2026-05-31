@@ -30,10 +30,11 @@ import {
   Module,
   Param,
   Post,
+  Query,
   Req,
 } from "@nestjs/common"
 import type { Request } from "express"
-import { and, desc, eq, inArray } from "drizzle-orm"
+import { and, desc, eq, ilike, inArray } from "drizzle-orm"
 import { db, orders as ordersTable, orderItems as orderItemsTable } from "@workspace/db"
 import { ensureUserId } from "../common/session-user"
 import { newId } from "../common/repository"
@@ -64,11 +65,76 @@ export type Order = {
 }
 
 type OrderInput = {
+  /** Caller-supplied order number (the one shown to the customer). When present it
+   *  is stored verbatim so the confirmation screen, admin feed and tracking all
+   *  agree; otherwise a SHX- number is generated. */
+  orderNumber?: string
+  /** True when payment has already been confirmed (Paystack M-Pesa / card). Stores
+   *  the order as paid/confirmed instead of pending. */
+  paid?: boolean
   items?: Array<Partial<OrderLine>>
   deliveryFee?: number
   paymentMethod?: PaymentMethod
   customer?: Partial<Order["customer"]>
   shippingAddress?: Partial<Order["shippingAddress"]>
+}
+
+/** Public order-tracking shape (matches the storefront track-order page). */
+export type TrackedOrder = {
+  id: string
+  orderNumber: string
+  customer: string
+  phone: string
+  email: string
+  items: Array<{ name: string; qty: number; price: number; variation?: string }>
+  subtotal: number
+  deliveryFee: number
+  total: number
+  location: string
+  address: string
+  status: "pending" | "confirmed" | "dispatched" | "delivered" | "cancelled"
+  paymentMethod: PaymentMethod
+  createdAt: string
+}
+
+/** Map the stored lifecycle status to the customer-facing tracking status. */
+function toTrackStatus(s?: string | null): TrackedOrder["status"] {
+  switch ((s ?? "").toLowerCase()) {
+    case "paid":
+    case "confirmed":
+      return "confirmed"
+    case "dispatched":
+      return "dispatched"
+    case "fulfilled":
+    case "delivered":
+      return "delivered"
+    case "cancelled":
+      return "cancelled"
+    default:
+      return "pending"
+  }
+}
+
+function toTrackedOrder(
+  row: typeof ordersTable.$inferSelect,
+  items: (typeof orderItemsTable.$inferSelect)[],
+): TrackedOrder {
+  return {
+    id: row.id,
+    orderNumber: row.orderNumber,
+    customer: row.customerName,
+    phone: row.customerPhone,
+    email: row.customerEmail ?? "",
+    items: items.map((i) => ({ name: i.productName, qty: i.qty, price: i.unitPrice })),
+    subtotal: row.subtotal,
+    deliveryFee: row.deliveryFee,
+    total: row.total,
+    location: row.shippingCity || row.shippingRegion || "",
+    address: [row.shippingLine1, row.shippingLine2].filter(Boolean).join(", "),
+    status: toTrackStatus(row.status),
+    paymentMethod: (row.paymentMethod as PaymentMethod) ?? "cod",
+    createdAt: row.placedAt.toISOString(),
+  }
 }
 
 function toLine(raw: Partial<OrderLine>): OrderLine {
@@ -158,7 +224,11 @@ class OrdersService {
     const deliveryFee = Math.max(0, Number(data.deliveryFee ?? 0))
     const total = subtotal + deliveryFee
     const id = newId("ord")
-    const orderNumber = `SHX-${Date.now().toString(36).toUpperCase()}`
+    const provided =
+      typeof data.orderNumber === "string"
+        ? data.orderNumber.trim().replace(/[^a-zA-Z0-9\-]/g, "").slice(0, 40)
+        : ""
+    const orderNumber = provided || `SHX-${Date.now().toString(36).toUpperCase()}`
     const method = data.paymentMethod ?? "unknown"
     // orders.paymentMethod is NOT NULL and our schema's PaymentMethod union does
     // not include "unknown"; store the literal so the API round-trips, defaulting
@@ -170,9 +240,9 @@ class OrdersService {
         id,
         orderNumber,
         userId: uid,
-        status: "pending",
+        status: data.paid ? "paid" : "pending",
         paymentMethod: storedMethod,
-        paymentStatus: "pending",
+        paymentStatus: data.paid ? "paid" : "pending",
         customerName: String(data.customer?.fullName ?? ""),
         customerPhone: String(data.customer?.phone ?? ""),
         customerEmail: String(data.customer?.email ?? "") || null,
@@ -199,6 +269,60 @@ class OrdersService {
     // Return the API's original shape (method echoes the request, incl. "unknown").
     return { ...toOrder(row, []), items, paymentMethod: method }
   }
+
+  /**
+   * Public order tracking — looks an order up across all sessions by its order
+   * number (or recent orders by phone). Returns the customer-facing shape used by
+   * the storefront track-order page. Unauthenticated by design (parity with the
+   * legacy /api/track-order route): the order number / phone is the lookup key.
+   */
+  async track(params: { orderNumber?: string; phone?: string }): Promise<TrackedOrder[]> {
+    const orderNumber = (params.orderNumber ?? "").trim().replace(/[^a-zA-Z0-9\-]/g, "").slice(0, 40)
+    const phone = (params.phone ?? "").trim()
+    if (!orderNumber && !phone) {
+      throw new HttpException("Provide order number or phone number", HttpStatus.BAD_REQUEST)
+    }
+
+    let rows: (typeof ordersTable.$inferSelect)[]
+    if (orderNumber) {
+      rows = await db
+        .select()
+        .from(ordersTable)
+        .where(eq(ordersTable.orderNumber, orderNumber))
+        .orderBy(desc(ordersTable.placedAt))
+        .limit(10)
+    } else {
+      // Normalise to the 9 significant digits of a Kenyan mobile number
+      // (strip +254 / leading 0). Require the FULL number — a short fragment must
+      // not enumerate other customers' orders. Because `clean` is the entire
+      // significant portion, the substring match is effectively exact across the
+      // stored formats ("0712…", "+254712…", "254712…").
+      const clean = phone.replace(/[^0-9]/g, "").replace(/^254/, "").replace(/^0/, "")
+      if (clean.length < 9) {
+        throw new HttpException("Enter the full phone number used on the order", HttpStatus.BAD_REQUEST)
+      }
+      rows = await db
+        .select()
+        .from(ordersTable)
+        .where(ilike(ordersTable.customerPhone, `%${clean}%`))
+        .orderBy(desc(ordersTable.placedAt))
+        .limit(10)
+    }
+
+    if (rows.length === 0) throw new HttpException("No orders found", HttpStatus.NOT_FOUND)
+    const items = await this.itemsFor(rows.map((r) => r.id))
+    return rows.map((r) => toTrackedOrder(r, items.get(r.id) ?? []))
+  }
+}
+
+@Controller("orders")
+class OrderTrackingController {
+  constructor(@Inject(OrdersService) private readonly svc: OrdersService) {}
+
+  @Get("track")
+  track(@Query("orderNumber") orderNumber?: string, @Query("phone") phone?: string) {
+    return this.svc.track({ orderNumber, phone })
+  }
 }
 
 @Controller("me/orders")
@@ -222,7 +346,7 @@ class OrdersController {
 }
 
 @Module({
-  controllers: [OrdersController],
+  controllers: [OrderTrackingController, OrdersController],
   providers: [OrdersService],
 })
 export class OrdersModule {}
