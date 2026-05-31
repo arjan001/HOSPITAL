@@ -68,7 +68,7 @@ interface ChargeInput {
 interface PaystackChargeApiResponse {
   status?: boolean
   message?: string
-  data?: { reference?: string; status?: string; display_text?: string; id?: number | string }
+  data?: { reference?: string; status?: string; display_text?: string; message?: string; id?: number | string }
 }
 
 interface PaystackInitApiResponse {
@@ -224,7 +224,13 @@ class PaystackService {
     let json: unknown
     try { json = text ? JSON.parse(text) : {} } catch { json = { raw: text } }
     if (!res.ok) {
-      const msg = (json as { message?: string })?.message || `Paystack ${res.status}`
+      // Paystack nests the actionable decline reason in data.message (e.g.
+      // "Declined. Please use the test mobile money number…" in test mode, or a
+      // real gateway decline like "Insufficient funds"/"Request cancelled by
+      // user" in live mode). The top-level message is usually the useless
+      // generic "Charge attempted", so prefer the specific nested reason.
+      const body = json as { message?: string; data?: { message?: string } }
+      const msg = body?.data?.message || body?.message || `Paystack ${res.status}`
       // Paystack 4xx = caller-actionable validation rejection (e.g. "Invalid
       // phone number format", "Declined…"). Surface it as a 4xx so
       // AllExceptionsFilter passes the REAL reason through to the storefront
@@ -301,7 +307,11 @@ class PaystackService {
 
     const reference = res.data?.reference || `psk_${Date.now().toString(36)}`
     const status = paystackStatusToOurs(res.data?.status)
-    const message = res.data?.display_text || res.message || "STK push sent to your phone"
+    const message =
+      res.data?.display_text ||
+      (status === "failed" || status === "cancelled" ? res.data?.message : undefined) ||
+      res.message ||
+      "STK push sent to your phone"
     const meta: ProviderMeta = { orderNumber, message, paystackId: res.data?.id }
 
     await db

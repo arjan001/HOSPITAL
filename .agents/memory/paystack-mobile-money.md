@@ -22,6 +22,15 @@ Two hard-won facts about Paystack's KES mobile-money charge API
    transport (DNS/timeout) failures as 502 (those *should* read as a gateway
    outage). The storefront modal reads `data.error`/`data.hint`.
 
+3. **The actionable decline reason lives in `data.message`, not the top-level
+   `message`.** Paystack returns `{status:false, message:"Charge attempted",
+   data:{status:"failed", message:"Declined. Please use the test mobile money
+   number…"}}`. The top-level `message` is the useless generic "Charge attempted";
+   the real reason ("Insufficient funds", "Request cancelled by user", test-mode
+   decline) is in `data.message`. Always prefer `data.message || message` when
+   surfacing an error, both in the non-2xx throw path and in the success-path
+   message when the mapped status is `failed`/`cancelled`.
+
 **Why:** a real customer report of "Internal server error" on M-Pesa checkout was
 two stacked bugs — wrong phone format (every charge invalid) + the 502 mask
 hiding the cause. In Paystack **test** mode only test numbers approve; a
