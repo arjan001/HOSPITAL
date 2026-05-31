@@ -40,6 +40,7 @@ import { createHmac, timingSafeEqual } from "node:crypto"
 import { desc, eq, sql } from "drizzle-orm"
 import { db, payments } from "@workspace/db"
 import { newId } from "../common/repository"
+import { OrdersModule, OrdersService } from "./orders.module"
 
 type PaystackStatus = "pending" | "success" | "failed" | "cancelled"
 
@@ -50,6 +51,7 @@ export interface PaymentRecord {
   amount: number
   currency: "KES"
   status: PaystackStatus
+  method: string
   mpesaReceipt?: string
   message?: string
   createdAt: string
@@ -143,6 +145,7 @@ function toRecord(r: typeof payments.$inferSelect): PaymentRecord {
     amount: r.amount,
     currency: "KES",
     status: r.status as PaystackStatus,
+    method: r.method ?? "mpesa",
     mpesaReceipt: r.mpesaReceipt ?? undefined,
     message: meta.message ?? undefined,
     createdAt: r.createdAt.toISOString(),
@@ -158,8 +161,32 @@ class PaystackService {
   private readonly defaultCallback = process.env["PAYSTACK_CALLBACK_URL"] ?? ""
   private readonly base = "https://api.paystack.co"
 
+  constructor(@Inject(OrdersService) private readonly orders: OrdersService) {}
+
   isConfigured(): boolean {
     return Boolean(this.secret)
+  }
+
+  /**
+   * Advance the matching order to paid once a charge confirms. Returns the
+   * promise so callers choose their failure policy: the webhook AWAITS and lets
+   * it throw (a transient failure must surface as a non-2xx so Paystack retries —
+   * the payment row is idempotently success, so the retry just re-runs reconcile),
+   * while the storefront `/status` poll fires-and-forgets it as a best-effort
+   * secondary path.
+   */
+  private reconcileOrder(rec: PaymentRecord, reference: string): Promise<void> {
+    if (!rec.orderNumber) return Promise.resolve()
+    return this.orders
+      .reconcilePaid({
+        orderNumber: rec.orderNumber,
+        paymentRef: reference,
+        mpesaReceipt: rec.mpesaReceipt,
+        phone: rec.phone,
+        amount: rec.amount,
+        paymentMethod: rec.method === "card" ? "card" : "mpesa",
+      })
+      .then(() => {})
   }
 
   requireConfigured() {
@@ -445,7 +472,15 @@ class PaystackService {
         .update(payments)
         .set({ status, mpesaReceipt: mpesaReceipt ?? null, providerResponse: meta, updatedAt: new Date() })
         .where(eq(payments.reference, reference))
-      return { ...cached, status, mpesaReceipt, message, updatedAt: new Date().toISOString() }
+      const updated: PaymentRecord = { ...cached, status, mpesaReceipt, message, updatedAt: new Date().toISOString() }
+      if (status === "success") {
+        // Best-effort from the poll path; the webhook is the durable, retried one.
+        void this.reconcileOrder(updated, reference).catch((err) => {
+          // eslint-disable-next-line no-console
+          console.warn("[paystack] order reconcile (status) failed", err)
+        })
+      }
+      return updated
     } catch {
       // Stay "pending" if Paystack is briefly unreachable — the storefront keeps
       // polling, the webhook will catch us up.
@@ -532,6 +567,12 @@ class PaystackService {
       .update(payments)
       .set({ status, mpesaReceipt: mpesaReceipt ?? null, providerResponse: meta, updatedAt: new Date() })
       .where(eq(payments.reference, data.reference))
+    if (status === "success") {
+      // Await + propagate: a transient reconcile failure must surface as a non-2xx
+      // so Paystack retries this webhook. The payment row above is already
+      // idempotently "success", so the retry simply re-runs reconcile.
+      await this.reconcileOrder({ ...cached, status, mpesaReceipt, message }, data.reference)
+    }
     return { ok: true }
   }
 }
@@ -577,6 +618,7 @@ class PaystackController {
 }
 
 @Module({
+  imports: [OrdersModule],
   controllers: [PaystackController],
   providers: [PaystackService],
   exports: [PaystackService],

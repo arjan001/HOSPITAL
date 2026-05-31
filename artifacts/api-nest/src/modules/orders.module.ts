@@ -325,6 +325,122 @@ class OrdersService {
   }
 
   /**
+   * Server-side reconciliation: mark an order PAID once a payment provider
+   * (Paystack) confirms its charge — independent of any browser.
+   *
+   * Why this exists: the storefront's pending→paid transition used to run ONLY
+   * in the customer's tab (poll `/status` → success → POST `/me/orders`). If the
+   * tab closed, lost the network, or the modal timed out before that fired, the
+   * captured payment was orphaned — money taken, but the order stuck at pending
+   * and invisible to the pharmacy. This path is driven by the Paystack webhook
+   * (and the lazy `/status` re-verify), so a confirmed charge ALWAYS advances the
+   * order and surfaces it to admin. Idempotent: a re-delivered webhook just
+   * re-writes the same paid state.
+   */
+  async reconcilePaid(input: {
+    orderNumber: string
+    paymentRef?: string
+    mpesaReceipt?: string
+    phone?: string
+    amount?: number
+    paymentMethod?: PaymentMethod
+  }): Promise<{ matchedOrder: boolean }> {
+    const orderNumber = String(input.orderNumber ?? "")
+      .trim()
+      .replace(/[^a-zA-Z0-9\-]/g, "")
+      .slice(0, 40)
+    if (!orderNumber) return { matchedOrder: false }
+
+    const rows = await db
+      .select()
+      .from(ordersTable)
+      .where(eq(ordersTable.orderNumber, orderNumber))
+      .limit(1)
+    const row = rows[0]
+
+    if (row) {
+      // Defense in depth: never confirm an underpayment. The payment amount is
+      // server-recorded at init (not client-supplied at webhook time), but we
+      // re-check it against the order total before advancing. A short charge
+      // leaves the order pending so admin can reconcile it manually.
+      const amountOk = input.amount == null || input.amount >= row.total
+      // Advance to paid only when the charge is sufficient and the order isn't a
+      // terminal cancellation (never resurrect a cancelled order).
+      const advance = row.status !== "cancelled" && amountOk
+      if (advance) {
+        await db
+          .update(ordersTable)
+          .set({
+            status: "paid",
+            paymentStatus: "paid",
+            paymentReference: input.paymentRef ?? row.paymentReference,
+            mpesaReceipt: input.mpesaReceipt ?? row.mpesaReceipt,
+            updatedAt: new Date(),
+          })
+          .where(eq(ordersTable.id, row.id))
+      }
+
+      // Re-mirror into the admin Sales & Orders feed, carrying the full line items
+      // + payment detail. upsert() is no-demote and dedupes by orderNo, so this is
+      // safe whether or not the client already mirrored it. Status reflects the
+      // real outcome: confirmed on a clean charge, otherwise left pending (or
+      // cancelled) for staff attention.
+      const mirrorStatus = row.status === "cancelled" ? "cancelled" : advance ? "confirmed" : "pending"
+      const items = await db
+        .select()
+        .from(orderItemsTable)
+        .where(eq(orderItemsTable.orderId, row.id))
+      try {
+        await this.adminOrders.upsert({
+          orderNo: orderNumber,
+          customer: row.customerName,
+          phone: row.customerPhone,
+          email: row.customerEmail ?? "",
+          items: items.map((i) => ({ name: i.productName, qty: i.qty, price: i.unitPrice })),
+          subtotal: row.subtotal,
+          delivery: row.deliveryFee,
+          total: row.total,
+          location: row.shippingCity || row.shippingRegion || "",
+          address: [row.shippingLine1, row.shippingLine2, row.shippingCity, row.shippingRegion]
+            .filter(Boolean)
+            .join(", "),
+          status: mirrorStatus,
+          orderedVia: "website",
+          paymentMethod: row.paymentMethod,
+          mpesaCode: input.mpesaReceipt || row.mpesaReceipt || undefined,
+          mpesaPhone: input.phone || row.customerPhone || undefined,
+          paymentRef: input.paymentRef || row.paymentReference || undefined,
+        })
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.warn("[orders] reconcile admin mirror failed", err)
+      }
+      return { matchedOrder: true }
+    }
+
+    // No customer order row exists — the storefront confirm never ran. A captured
+    // payment must still NEVER be invisible to the pharmacy, so surface a
+    // confirmed admin order from the payment record alone (line items unknown).
+    try {
+      await this.adminOrders.upsert({
+        orderNo: orderNumber,
+        phone: input.phone ?? "",
+        total: input.amount ?? 0,
+        status: "confirmed",
+        orderedVia: "website",
+        paymentMethod: input.paymentMethod ?? "mpesa",
+        mpesaCode: input.mpesaReceipt || undefined,
+        mpesaPhone: input.phone || undefined,
+        paymentRef: input.paymentRef || undefined,
+      })
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn("[orders] reconcile admin fallback failed", err)
+    }
+    return { matchedOrder: false }
+  }
+
+  /**
    * Public order tracking — looks an order up across all sessions by its order
    * number (or recent orders by phone). Returns the customer-facing shape used by
    * the storefront track-order page. Unauthenticated by design (parity with the
@@ -403,5 +519,8 @@ class OrdersController {
   imports: [AdminOrdersModule],
   controllers: [OrderTrackingController, OrdersController],
   providers: [OrdersService],
+  exports: [OrdersService],
 })
 export class OrdersModule {}
+
+export { OrdersService }
