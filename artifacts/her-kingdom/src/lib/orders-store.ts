@@ -1,4 +1,5 @@
 import useSWR, { mutate as globalMutate } from "swr"
+import { adminAuthHeaders } from "./api-client"
 
 /**
  * Admin Sales & Orders client.
@@ -70,6 +71,7 @@ async function nestFetch<T>(path: string, init?: RequestInit): Promise<T> {
     credentials: "include",
     headers: {
       "Content-Type": "application/json",
+      ...adminAuthHeaders(),
       ...(init?.headers ?? {}),
     },
     ...init,

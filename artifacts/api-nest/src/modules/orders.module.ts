@@ -38,6 +38,7 @@ import { and, desc, eq, ilike, inArray } from "drizzle-orm"
 import { db, orders as ordersTable, orderItems as orderItemsTable } from "@workspace/db"
 import { ensureUserId } from "../common/session-user"
 import { newId } from "../common/repository"
+import { AdminOrdersModule, AdminOrdersService } from "./admin-orders.module"
 
 export type OrderLine = {
   productSlug: string
@@ -179,6 +180,10 @@ function toOrder(row: typeof ordersTable.$inferSelect, items: (typeof orderItems
 
 @Injectable()
 class OrdersService {
+  constructor(
+    @Inject(AdminOrdersService) private readonly adminOrders: AdminOrdersService,
+  ) {}
+
   private async itemsFor(orderIds: string[]): Promise<Map<string, (typeof orderItemsTable.$inferSelect)[]>> {
     const map = new Map<string, (typeof orderItemsTable.$inferSelect)[]>()
     if (orderIds.length === 0) return map
@@ -266,6 +271,39 @@ class OrdersService {
         total: i.unitPrice * i.quantity,
       })),
     )
+    // Mirror into the admin Sales & Orders feed (the global pharmacy view).
+    // This runs server-side so it works in production WITHOUT the guest holding
+    // an admin token — the storefront's client-side write to /admin/orders is
+    // rejected by AdminGuard in prod (fails closed) and silently swallowed.
+    // Best-effort: a mirror failure must never fail the customer's order.
+    try {
+      await this.adminOrders.upsert({
+        orderNo: orderNumber,
+        customer: String(data.customer?.fullName ?? ""),
+        phone: String(data.customer?.phone ?? ""),
+        email: String(data.customer?.email ?? ""),
+        items: items.map((i) => ({ name: i.name, qty: i.quantity, price: i.unitPrice })),
+        subtotal,
+        delivery: deliveryFee,
+        total,
+        location: String(data.shippingAddress?.city ?? data.shippingAddress?.region ?? ""),
+        address: [
+          data.shippingAddress?.line1,
+          data.shippingAddress?.line2,
+          data.shippingAddress?.city,
+          data.shippingAddress?.region,
+        ]
+          .filter(Boolean)
+          .join(", "),
+        status: data.paid ? "confirmed" : "pending",
+        orderedVia: "website",
+        paymentMethod: storedMethod,
+      })
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn("[orders] admin Sales & Orders mirror failed", err)
+    }
+
     // Return the API's original shape (method echoes the request, incl. "unknown").
     return { ...toOrder(row, []), items, paymentMethod: method }
   }
@@ -346,6 +384,7 @@ class OrdersController {
 }
 
 @Module({
+  imports: [AdminOrdersModule],
   controllers: [OrderTrackingController, OrdersController],
   providers: [OrdersService],
 })

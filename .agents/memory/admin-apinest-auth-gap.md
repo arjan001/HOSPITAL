@@ -35,3 +35,22 @@ the old loopback and has the same latent failure — convert it the same way.
 **Dev error visibility:** `AllExceptionsFilter` now appends `detail` + `stack`
 to 5xx JSON responses when `NODE_ENV !== "production"` only; prod stays masked.
 So a 5xx in dev shows the real cause instead of a bare "Internal server error".
+
+**Guest checkout must NEVER be the source-of-truth writer to an admin-guarded
+route.** The storefront wrote each order into the admin Sales & Orders feed via
+`POST /api/v2/admin/orders` — a guest has no admin token, so in prod AdminGuard
+fails closed and the (fire-and-forget) write is silently dropped → orders never
+reach admin. Fix pattern: **mirror server-side**. `OrdersService.create()`
+(`/me/orders`, session-authed, works in prod) `@Inject`s `AdminOrdersService` and
+upserts into `admin_orders` (best-effort try/catch; status confirmed if `paid`
+else pending). admin_orders is a SEPARATE table from customer `orders`, so no
+collision. Same shape as the loopback→direct-injection rule above: server→server
+goes through service injection, not an HTTP call to a guarded route.
+
+**Read side, per-store opt-in:** admin *list/mutate* fetchers (e.g.
+`orders-store.ts nestFetch`) must spread `adminAuthHeaders()` (from
+`lib/api-client.ts`, reads localStorage `shaniidrx.admin.token`) so the signed
+per-user admin token rides along — the guard's path-2 verifies it WITHOUT
+`ADMIN_API_TOKEN` env. This was fixed for orders only; **cms-store,
+notifications/pipeline-client, prescriptions, etc. still omit it and 503 in prod**
+— the systemic admin-panel read gap remains for those surfaces.
