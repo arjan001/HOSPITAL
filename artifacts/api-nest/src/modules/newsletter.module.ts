@@ -34,6 +34,7 @@ import {
 } from "@nestjs/common"
 import { newId } from "../common/repository"
 import { AdminCmsModule, AdminCmsService } from "./admin-cms.module"
+import { NotificationsModule, NotificationsService } from "./notifications.module"
 
 const CMS_KEY = "newsletter-subscribers"
 
@@ -47,7 +48,10 @@ interface Subscriber {
 
 @Controller("newsletter")
 export class NewsletterController {
-  constructor(@Inject(AdminCmsService) private readonly cms: AdminCmsService) {}
+  constructor(
+    @Inject(AdminCmsService) private readonly cms: AdminCmsService,
+    @Inject(NotificationsService) private readonly notifications: NotificationsService,
+  ) {}
 
   @Post()
   async subscribe(
@@ -59,31 +63,65 @@ export class NewsletterController {
     }
     const source = body?.source ? String(body.source).slice(0, 64) : undefined
 
-    const entry = await this.cms.get(CMS_KEY)
-    const existing = Array.isArray(entry?.value) ? (entry.value as Subscriber[]) : []
-    const match = existing.find((s) => s.email?.toLowerCase() === email)
-    if (match) {
-      // Re-activate a previously-unsubscribed email; otherwise no-op.
-      if (!match.is_active) {
+    // The subscriber list is a single JSON-array document, so a naive
+    // read-modify-write can drop a concurrent sign-up (lost update). Retry
+    // against the cms_docs row version (optimistic concurrency) until our write
+    // lands — this is what keeps PUBLIC, high-concurrency sign-ups durable.
+    for (let attempt = 0; attempt < 6; attempt++) {
+      const entry = await this.cms.get(CMS_KEY)
+      const existing = Array.isArray(entry?.value) ? (entry.value as Subscriber[]) : []
+      const match = existing.find((s) => s.email?.toLowerCase() === email)
+
+      if (match) {
+        // Already known: re-activate if previously unsubscribed, else no-op.
+        if (match.is_active) return { ok: true, alreadySubscribed: true }
         const next = existing.map((s) =>
           s.email?.toLowerCase() === email ? { ...s, is_active: true } : s,
         )
-        await this.cms.put(CMS_KEY, next)
+        const saved = await this.cms.putIfVersion(CMS_KEY, next, entry!.version)
+        if (saved) return { ok: true, alreadySubscribed: true }
+        continue // version moved under us → re-read and retry
       }
-      return { ok: true, alreadySubscribed: true }
+
+      const rec: Subscriber = {
+        id: newId("nl"),
+        email,
+        is_active: true,
+        subscribed_at: new Date().toISOString(),
+        ...(source ? { source } : {}),
+      }
+      const next = [rec, ...existing].slice(0, 5000)
+      const saved = entry
+        ? await this.cms.putIfVersion(CMS_KEY, next, entry.version)
+        : await this.cms.createIfAbsent(CMS_KEY, next)
+      if (!saved) continue // lost the race → re-read and retry
+
+      // Surface the sign-up to the admin notification bell (durable, Postgres).
+      // Fire-and-forget: a notification failure must never fail the subscription.
+      try {
+        await this.notifications.push("admin", {
+          module: "marketing",
+          level: "info",
+          title: "New newsletter subscriber",
+          body: source ? `${email} (via ${source})` : email,
+          href: "/admin/newsletter",
+        })
+      } catch {
+        /* non-fatal */
+      }
+
+      return { ok: true, alreadySubscribed: false }
     }
 
-    const rec: Subscriber = {
-      id: newId("nl"),
-      email,
-      is_active: true,
-      subscribed_at: new Date().toISOString(),
-      ...(source ? { source } : {}),
-    }
-    await this.cms.put(CMS_KEY, [rec, ...existing].slice(0, 5000))
-    return { ok: true, alreadySubscribed: false }
+    throw new HttpException(
+      "Could not save your subscription right now, please try again.",
+      HttpStatus.CONFLICT,
+    )
   }
 }
 
-@Module({ imports: [AdminCmsModule], controllers: [NewsletterController] })
+@Module({
+  imports: [AdminCmsModule, NotificationsModule],
+  controllers: [NewsletterController],
+})
 export class NewsletterModule {}

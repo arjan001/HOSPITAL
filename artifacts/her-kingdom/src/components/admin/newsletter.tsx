@@ -2,7 +2,8 @@
 
 import { useState, useEffect } from "react"
 import { Trash2, Download, Mail } from "lucide-react"
-import { useCmsDoc } from "@/lib/cms-store"
+import { useCmsDoc, cmsStore } from "@/lib/cms-store"
+import { NEWSLETTER_SEEN_KEY } from "./admin-shell"
 import { usePagination } from "@/hooks/use-pagination"
 import { PaginationControls } from "@/components/pagination-controls"
 import { AdminShell } from "./admin-shell"
@@ -27,6 +28,30 @@ export function NewsletterComponent() {
   const { paginatedItems, currentPage, totalPages, totalItems, itemsPerPage, goToPage, changePerPage, resetPage } = usePagination(filtered, { defaultPerPage: 15 })
 
   useEffect(() => { resetPage() }, [search])
+
+  // Pull the latest subscribers from Postgres (not the stale localStorage cache),
+  // THEN mark the list "seen" at the freshest signup we actually loaded (the max
+  // subscribed_at watermark) — NOT the wall clock. The cms hydrate swallows
+  // network errors (it never rejects), so on a failed refresh this is just the
+  // watermark of stale data: any newer, not-yet-fetched sign-up stays "new" and
+  // the badge won't hide it. Using the dataset watermark also dodges client
+  // clock skew.
+  useEffect(() => {
+    let cancelled = false
+    Promise.resolve(cmsStore.refresh("newsletter-subscribers")).then(() => {
+      if (cancelled) return
+      try {
+        const list = cmsStore.get<Subscriber[]>("newsletter-subscribers", [])
+        const watermark = list.reduce((max, s) => {
+          const t = s?.subscribed_at ? new Date(s.subscribed_at).getTime() : 0
+          return t > max ? t : max
+        }, 0)
+        window.localStorage.setItem(NEWSLETTER_SEEN_KEY, new Date(watermark).toISOString())
+        window.dispatchEvent(new Event("shaniidrx:newsletter-seen"))
+      } catch { /* ignore */ }
+    })
+    return () => { cancelled = true }
+  }, [])
 
   const handleDelete = (id: string) => {
     if (!confirm("Remove this subscriber?")) return

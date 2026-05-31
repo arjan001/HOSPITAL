@@ -35,7 +35,7 @@ import {
   Put,
   UseGuards,
 } from "@nestjs/common"
-import { asc, eq, sql } from "drizzle-orm"
+import { and, asc, eq, sql } from "drizzle-orm"
 import { db, cmsDocs } from "@workspace/db"
 import { AdminGuard, AnyAdmin } from "../common/admin-guard"
 
@@ -97,6 +97,40 @@ export class AdminCmsService {
         set: { value: v, version: sql`${cmsDocs.version} + 1`, updatedAt: new Date() },
       })
       .returning()
+    this.cache.set(key, v)
+    return toEntry(rows[0])
+  }
+
+  /**
+   * Insert a brand-new key only if it does not already exist. Returns the new
+   * entry, or `null` when another writer created the key first (caller retries).
+   * Used for lost-update-safe writes to JSON-array documents (e.g. newsletter).
+   */
+  async createIfAbsent(key: string, value: unknown): Promise<CmsEntry | null> {
+    const v = value === undefined ? null : value
+    const rows = await db
+      .insert(cmsDocs)
+      .values({ key, value: v, version: 1 })
+      .onConflictDoNothing({ target: cmsDocs.key })
+      .returning()
+    if (!rows[0]) return null
+    this.cache.set(key, v)
+    return toEntry(rows[0])
+  }
+
+  /**
+   * Optimistic-concurrency update: only writes when the row is still at
+   * `expectedVersion`. Returns the updated entry, or `null` on a version
+   * mismatch (someone else wrote first — caller should re-read and retry).
+   */
+  async putIfVersion(key: string, value: unknown, expectedVersion: number): Promise<CmsEntry | null> {
+    const v = value === undefined ? null : value
+    const rows = await db
+      .update(cmsDocs)
+      .set({ value: v, version: sql`${cmsDocs.version} + 1`, updatedAt: new Date() })
+      .where(and(eq(cmsDocs.key, key), eq(cmsDocs.version, expectedVersion)))
+      .returning()
+    if (!rows[0]) return null
     this.cache.set(key, v)
     return toEntry(rows[0])
   }

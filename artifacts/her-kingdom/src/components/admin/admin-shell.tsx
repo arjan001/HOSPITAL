@@ -7,6 +7,7 @@ import { Link } from "wouter"
 import { useLocation } from "wouter"
 import { useAdminOrders } from "@/lib/orders-store"
 import { useAdminPrescriptions } from "@/lib/api-nest"
+import { useCmsDoc, cmsStore } from "@/lib/cms-store"
 import { NotificationBell } from "@/components/admin/notification-bell"
 import {
   LayoutDashboard,
@@ -69,6 +70,8 @@ import {
 const COLLAPSE_KEY = "shaniidrx.admin.sidebarCollapsed"
 const EXPANDED_KEY = "shaniidrx.admin.sidebarExpanded"
 const SCROLL_KEY = "shaniidrx.admin.sidebarScrollTop"
+/** localStorage key: when the admin last viewed the newsletter list. */
+export const NEWSLETTER_SEEN_KEY = "shaniidrx.admin.newsletter.lastSeenAt"
 
 // ── Wine sidebar palette ───────────────────────────────────────────────────
 const S_BG         = "#3D0814"          // sidebar background
@@ -251,7 +254,7 @@ const NAV_GROUPS: NavGroup[] = [
       { label: "Offers & Banners",  href: "/admin/banners",      icon: ImageIcon,    perm: "cms.banners" },
       { label: "Announcement Bar",  href: "/admin/announcement", icon: MegaphoneAlt, perm: "cms.banners" },
       { label: "Popup Offer",       href: "/admin/popup-offer",  icon: Megaphone,    perm: "cms.banners" },
-      { label: "Newsletter",        href: "/admin/newsletter",   icon: Mail,         perm: "marketing.broadcast" },
+      { label: "Newsletter",        href: "/admin/newsletter",   icon: Mail,         perm: "marketing.broadcast", hasBadge: true },
       {
         label: "Campaigns",
         href: "/admin/campaigns",
@@ -692,6 +695,36 @@ export function AdminShell({ children, title }: { children: ReactNode; title: st
   const dispatchReady = ordersList.filter((o) => o.status === "confirmed").length
   const { data: adminRxList } = useAdminPrescriptions()
   const pendingRx = (adminRxList ?? []).filter((rx) => rx.status === "pending").length
+
+  // Newsletter "new since last viewed" badge (header bell mirrors this via the
+  // durable admin notification feed; this drives the sidebar counter).
+  const [newsletterSubs] = useCmsDoc<{ subscribed_at?: string }[]>("newsletter-subscribers", [])
+  const readSeenAt = () => {
+    if (typeof window === "undefined") return 0
+    const v = window.localStorage.getItem(NEWSLETTER_SEEN_KEY)
+    const t = v ? new Date(v).getTime() : 0
+    return Number.isFinite(t) ? t : 0 // malformed value must not suppress the badge
+  }
+  const [newsletterSeenAt, setNewsletterSeenAt] = useState<number>(readSeenAt)
+  useEffect(() => {
+    const sync = () => setNewsletterSeenAt(readSeenAt())
+    window.addEventListener("shaniidrx:newsletter-seen", sync)
+    window.addEventListener("storage", sync)
+    return () => {
+      window.removeEventListener("shaniidrx:newsletter-seen", sync)
+      window.removeEventListener("storage", sync)
+    }
+  }, [])
+  // Keep the sidebar count fresh on mount so new sign-ups appear without a reload.
+  useEffect(() => { cmsStore.refresh("newsletter-subscribers") }, [])
+  const newNewsletter = useMemo(
+    () =>
+      (Array.isArray(newsletterSubs) ? newsletterSubs : []).filter(
+        (s) => s?.subscribed_at && new Date(s.subscribed_at).getTime() > newsletterSeenAt,
+      ).length,
+    [newsletterSubs, newsletterSeenAt],
+  )
+
   const [search, setSearch] = useState("")
 
   useEffect(() => {
@@ -878,7 +911,7 @@ export function AdminShell({ children, title }: { children: ReactNode; title: st
               renderGroupedNav(
                 collapsed ? permittedGroups : filteredGroups,
                 pathname,
-                { "/admin/orders": pendingOrders, "/admin/logistics": dispatchReady, "/admin/prescriptions": pendingRx },
+                { "/admin/orders": pendingOrders, "/admin/logistics": dispatchReady, "/admin/prescriptions": pendingRx, "/admin/newsletter": newNewsletter },
                 collapsed,
                 searchAwareExpanded,
                 toggleExpanded,
@@ -1035,7 +1068,7 @@ export function AdminShell({ children, title }: { children: ReactNode; title: st
                   renderGroupedNav(
                     filteredGroups,
                     pathname,
-                    { "/admin/orders": pendingOrders, "/admin/logistics": dispatchReady, "/admin/prescriptions": pendingRx },
+                    { "/admin/orders": pendingOrders, "/admin/logistics": dispatchReady, "/admin/prescriptions": pendingRx, "/admin/newsletter": newNewsletter },
                     false,
                     searchAwareExpanded,
                     toggleExpanded,
