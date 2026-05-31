@@ -72,6 +72,10 @@ const EXPANDED_KEY = "shaniidrx.admin.sidebarExpanded"
 const SCROLL_KEY = "shaniidrx.admin.sidebarScrollTop"
 /** localStorage key: when the admin last viewed the newsletter list. */
 export const NEWSLETTER_SEEN_KEY = "shaniidrx.admin.newsletter.lastSeenAt"
+/** localStorage key: when the admin last viewed the Sales & Orders list. Drives
+ *  the "new orders since last viewed" sidebar badge (the header bell mirrors the
+ *  same events via the durable admin notification feed). */
+export const ORDERS_SEEN_KEY = "shaniidrx.admin.orders.lastSeenAt"
 
 // ── Wine sidebar palette ───────────────────────────────────────────────────
 const S_BG         = "#3D0814"          // sidebar background
@@ -691,8 +695,35 @@ export function AdminShell({ children, title }: { children: ReactNode; title: st
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null)
   const [loggingOut, setLoggingOut] = useState(false)
   const { items: ordersList } = useAdminOrders()
-  const pendingOrders = ordersList.filter((o) => o.status === "pending").length
   const dispatchReady = ordersList.filter((o) => o.status === "confirmed").length
+
+  // "New orders since last viewed" badge — any order placed after the admin last
+  // opened Sales & Orders, regardless of payment method or status (a paid card
+  // order lands as "confirmed", so a pending-only count would miss it). Mirrors
+  // the newsletter pattern; the header bell shows the same events via the feed.
+  const readOrdersSeenAt = () => {
+    if (typeof window === "undefined") return 0
+    const v = window.localStorage.getItem(ORDERS_SEEN_KEY)
+    const t = v ? new Date(v).getTime() : 0
+    return Number.isFinite(t) ? t : 0 // malformed value must not suppress the badge
+  }
+  const [ordersSeenAt, setOrdersSeenAt] = useState<number>(readOrdersSeenAt)
+  useEffect(() => {
+    const sync = () => setOrdersSeenAt(readOrdersSeenAt())
+    window.addEventListener("shaniidrx:orders-seen", sync)
+    window.addEventListener("storage", sync)
+    return () => {
+      window.removeEventListener("shaniidrx:orders-seen", sync)
+      window.removeEventListener("storage", sync)
+    }
+  }, [])
+  const newOrders = useMemo(
+    () =>
+      ordersList.filter(
+        (o) => o.createdAt && new Date(o.createdAt).getTime() > ordersSeenAt,
+      ).length,
+    [ordersList, ordersSeenAt],
+  )
   const { data: adminRxList } = useAdminPrescriptions()
   const pendingRx = (adminRxList ?? []).filter((rx) => rx.status === "pending").length
 
@@ -922,7 +953,7 @@ export function AdminShell({ children, title }: { children: ReactNode; title: st
               renderGroupedNav(
                 collapsed ? permittedGroups : filteredGroups,
                 pathname,
-                { "/admin/orders": pendingOrders, "/admin/logistics": dispatchReady, "/admin/prescriptions": pendingRx, "/admin/newsletter": newNewsletter },
+                { "/admin/orders": newOrders, "/admin/logistics": dispatchReady, "/admin/prescriptions": pendingRx, "/admin/newsletter": newNewsletter },
                 collapsed,
                 searchAwareExpanded,
                 toggleExpanded,
@@ -1079,7 +1110,7 @@ export function AdminShell({ children, title }: { children: ReactNode; title: st
                   renderGroupedNav(
                     filteredGroups,
                     pathname,
-                    { "/admin/orders": pendingOrders, "/admin/logistics": dispatchReady, "/admin/prescriptions": pendingRx, "/admin/newsletter": newNewsletter },
+                    { "/admin/orders": newOrders, "/admin/logistics": dispatchReady, "/admin/prescriptions": pendingRx, "/admin/newsletter": newNewsletter },
                     false,
                     searchAwareExpanded,
                     toggleExpanded,

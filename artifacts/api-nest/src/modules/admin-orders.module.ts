@@ -38,7 +38,7 @@ import {
   Query,
   UseGuards,
 } from "@nestjs/common"
-import { desc, eq, inArray } from "drizzle-orm"
+import { desc, eq, inArray, sql, getTableColumns } from "drizzle-orm"
 import { db, adminOrders as adminOrdersTable } from "@workspace/db"
 import { AdminGuard, RequirePerm } from "../common/admin-guard"
 import {
@@ -46,6 +46,7 @@ import {
   PatientNotificationsService,
   type PatientNotificationEvent,
 } from "./patient-notifications.module"
+import { NotificationsModule, NotificationsService } from "./notifications.module"
 
 export type AdminOrderStatus =
   | "pending"
@@ -81,6 +82,7 @@ export type AdminOrderRecord = {
   mpesaCode: string
   mpesaPhone: string
   mpesaMessage: string
+  paymentRef: string
   date: string
   createdAt: string
   updatedAt: string
@@ -127,6 +129,7 @@ function toRecord(row: AdminOrderRow): AdminOrderRecord {
     mpesaCode: row.mpesaCode,
     mpesaPhone: row.mpesaPhone,
     mpesaMessage: row.mpesaMessage,
+    paymentRef: row.paymentRef,
     date: todayLabel(row.createdAt),
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
@@ -143,6 +146,8 @@ class AdminOrdersService {
   constructor(
     @Inject(PatientNotificationsService)
     private readonly patientNotify: PatientNotificationsService,
+    @Inject(NotificationsService)
+    private readonly notifications: NotificationsService,
   ) {}
 
   /** Domain status → patient-notification event. Only statuses that should
@@ -244,6 +249,7 @@ class AdminOrdersService {
         mpesaCode: "",
         mpesaPhone: "",
         mpesaMessage: "",
+        paymentRef: "",
         date: todayLabel(now),
         createdAt: now.toISOString(),
         updatedAt: now.toISOString(),
@@ -275,6 +281,7 @@ class AdminOrdersService {
       mpesaCode: input.mpesaCode ?? base.mpesaCode,
       mpesaPhone: input.mpesaPhone ?? base.mpesaPhone,
       mpesaMessage: input.mpesaMessage ?? base.mpesaMessage,
+      paymentRef: input.paymentRef ?? base.paymentRef,
       updatedAt: now.toISOString(),
     }
 
@@ -298,25 +305,55 @@ class AdminOrdersService {
       mpesaCode: next.mpesaCode,
       mpesaPhone: next.mpesaPhone,
       mpesaMessage: next.mpesaMessage,
+      paymentRef: next.paymentRef,
       updatedAt: now,
     }
 
-    let savedRow: AdminOrderRow
-    if (existing) {
-      const [row] = await db
-        .update(adminOrdersTable)
-        .set(values)
-        .where(eq(adminOrdersTable.orderNo, next.orderNo))
-        .returning()
-      savedRow = row
-    } else {
-      const [row] = await db
-        .insert(adminOrdersTable)
-        .values({ ...values, createdAt: now })
-        .returning()
-      savedRow = row
+    // Atomic upsert keyed on the unique order_no. Doing INSERT ... ON CONFLICT
+    // (rather than a read-then-insert) means two concurrent first-writes for the
+    // same order (e.g. a client double-submit / retry) can't race into a unique
+    // violation — the loser folds into an UPDATE instead of throwing. Postgres'
+    // `xmax = 0` is true only for a freshly inserted row, so it tells us — at the
+    // DB level, immune to the read race above — whether THIS call created the
+    // order, which is what gates the one-time admin bell notification.
+    const [savedRow] = await db
+      .insert(adminOrdersTable)
+      .values({ ...values, createdAt: now })
+      .onConflictDoUpdate({ target: adminOrdersTable.orderNo, set: values })
+      .returning({
+        ...getTableColumns(adminOrdersTable),
+        wasInserted: sql<boolean>`(xmax = 0)`,
+      })
+    const { wasInserted, ...savedCols } = savedRow
+    const saved = toRecord(savedCols as AdminOrderRow)
+
+    // Brand-new order → alert the admin shell bell (durable feed) so staff see
+    // it land without polling the orders page. Fires once, on first insert only
+    // (DB-confirmed via wasInserted, so a concurrent duplicate write won't
+    // double-fire); later status updates flow through the patient-notify path.
+    if (wasInserted) {
+      void this.notifications
+        .push("admin", {
+          module: "orders",
+          level: saved.status === "pending" ? "warning" : "success",
+          title: `New order ${saved.orderNo}`,
+          body: [
+            saved.customer || "Guest",
+            `KSh ${saved.total.toLocaleString()}`,
+            saved.paymentMethod === "mpesa"
+              ? "M-Pesa"
+              : saved.paymentMethod === "card"
+                ? "Card"
+                : saved.paymentMethod.toUpperCase(),
+          ]
+            .filter(Boolean)
+            .join(" · "),
+          href: "/admin/orders",
+        })
+        .catch(() => {
+          /* best-effort: a notification failure must never fail the order write */
+        })
     }
-    const saved = toRecord(savedRow)
 
     // Auto-text the patient when the effective status advances to a new,
     // notifiable state (treat a brand-new order's baseline as "pending").
@@ -401,7 +438,7 @@ class AdminOrdersController {
 }
 
 @Module({
-  imports: [PatientNotificationsModule],
+  imports: [PatientNotificationsModule, NotificationsModule],
   controllers: [AdminOrdersController],
   providers: [AdminOrdersService],
   exports: [AdminOrdersService],

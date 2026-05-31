@@ -550,6 +550,9 @@ export function CheckoutPage() {
     /** Phone number that actually paid (from Paystack), which may differ from the
      *  delivery contact phone. Used to populate the admin order's M-Pesa payer. */
     mpesaPayerPhone?: string
+    /** Paystack gateway transaction reference (both M-Pesa-via-Paystack and card).
+     *  Distinct from the M-Pesa receipt; lets admin reconcile any payment. */
+    paymentRef?: string
     placedAt: string
   }
   const [orderResult,     setOrderResult]     = useState<OrderSuccess | null>(null)
@@ -765,6 +768,7 @@ export function CheckoutPage() {
         mpesaPhone: snap.paymentMethod === "mpesa"
           ? (snap.mpesaPayerPhone || snap.customerPhone || undefined)
           : undefined,
+        paymentRef: snap.paymentRef || undefined,
         specialInstructions: deliveryNote || undefined,
       })
       await refreshAccount()
@@ -790,7 +794,7 @@ export function CheckoutPage() {
     } catch (err) { return { error: err instanceof Error ? err.message : "Network error" } }
   }
 
-  const handlePaystackConfirmed = (result: { orderNumber: string; mpesaReceipt: string; phone: string; method: "mpesa" | "card" }) => {
+  const handlePaystackConfirmed = (result: { orderNumber: string; mpesaReceipt: string; phone: string; reference: string; method: "mpesa" | "card" }) => {
     const snap = buildOrderSnapshot({
       orderNumber: result.orderNumber,
       paymentMethod: result.method,
@@ -798,6 +802,8 @@ export function CheckoutPage() {
       mpesaReceipt: result.method === "mpesa" ? result.mpesaReceipt : undefined,
       // The actual paying phone from Paystack (may differ from the delivery contact).
       mpesaPayerPhone: result.method === "mpesa" ? result.phone : undefined,
+      // Paystack assigns a reference to every transaction (M-Pesa and card alike).
+      paymentRef: result.reference || undefined,
     })
 
     // Auto-assign a delivery job to the best-matching logistics partner.
@@ -1724,7 +1730,7 @@ export function CheckoutPage() {
         customerName={formData.name  || savedAddress?.name  || ""}
         createPendingOrder={createPaystackPendingOrder}
         onPaymentConfirmed={(r) => {
-          handlePaystackConfirmed({ orderNumber: r.orderNumber, mpesaReceipt: r.mpesaReceipt, phone: r.phone, method: r.method })
+          handlePaystackConfirmed({ orderNumber: r.orderNumber, mpesaReceipt: r.mpesaReceipt, phone: r.phone, reference: r.reference, method: r.method })
           setTimeout(() => setShowPaystack(false), 1500)
         }}
         onPaymentFailed={r => trackAbandoned(`paystack_${r}`, "payment_failed")}

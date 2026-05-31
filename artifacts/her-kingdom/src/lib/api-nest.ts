@@ -139,6 +139,7 @@ export const apiNest = {
     shippingAddress: AccountOrder["shippingAddress"]
     mpesaCode?: string
     mpesaPhone?: string
+    paymentRef?: string
     specialInstructions?: string
   }) =>
     nestFetch<AccountOrder>("/me/orders", { method: "POST", body: JSON.stringify(input) }),

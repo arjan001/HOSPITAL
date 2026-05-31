@@ -82,6 +82,9 @@ type OrderInput = {
    *  feed so the pharmacy sees the M-Pesa receipt, payer phone and delivery note. */
   mpesaCode?: string
   mpesaPhone?: string
+  /** Gateway transaction reference (Paystack reference, for M-Pesa-via-Paystack
+   *  and card). Mirrored into the admin feed so staff can reconcile the payment. */
+  paymentRef?: string
   specialInstructions?: string
 }
 
@@ -307,6 +310,7 @@ class OrdersService {
         mpesaPhone: data.mpesaPhone
           ? String(data.mpesaPhone)
           : String(data.customer?.phone ?? "") || undefined,
+        paymentRef: data.paymentRef ? String(data.paymentRef) : undefined,
         specialInstructions: data.specialInstructions
           ? String(data.specialInstructions)
           : undefined,

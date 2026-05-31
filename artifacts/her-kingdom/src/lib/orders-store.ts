@@ -50,6 +50,7 @@ export interface AdminOrderRecord {
   mpesaCode: string
   mpesaPhone: string
   mpesaMessage: string
+  paymentRef: string
   date: string
   createdAt: string
   updatedAt?: string
@@ -103,6 +104,7 @@ export interface UpsertOrderInput {
   mpesaCode?: string
   mpesaPhone?: string
   mpesaMessage?: string
+  paymentRef?: string
 }
 
 /** Create or update by orderNo. Fire-and-forget safe — see usage in checkout. */

@@ -2,10 +2,10 @@
 
 import { useState, useEffect } from "react"
 import { toast } from "sonner"
-import { Eye, Truck, CheckCircle, Clock, Package, XCircle, Search, Trash2, Loader2, MessageSquare, Phone, Download, DollarSign, StickyNote } from "lucide-react"
+import { Eye, Truck, CheckCircle, Clock, Package, XCircle, Search, Trash2, Loader2, MessageSquare, Phone, Download, DollarSign, StickyNote, CreditCard, Banknote } from "lucide-react"
 import { usePagination } from "@/hooks/use-pagination"
 import { PaginationControls } from "@/components/pagination-controls"
-import { AdminShell } from "./admin-shell"
+import { AdminShell, ORDERS_SEEN_KEY } from "./admin-shell"
 import { formatPrice } from "@/lib/format"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -56,6 +56,24 @@ export function AdminOrders() {
   const { paginatedItems, currentPage, totalPages, totalItems, itemsPerPage, goToPage, changePerPage, resetPage } = usePagination(filtered, { defaultPerPage: 15 })
 
   useEffect(() => { resetPage() }, [search, statusFilter, activeTab])
+
+  // Mark Sales & Orders "seen" up to the freshest order actually loaded (the max
+  // createdAt watermark, not the wall clock) so the sidebar "new orders" badge
+  // clears whenever staff open this page — and keeps clearing as the 15s SWR poll
+  // brings in new orders while they're viewing. Using the dataset watermark dodges
+  // client clock skew and never hides an order that hasn't been fetched yet.
+  useEffect(() => {
+    if (typeof window === "undefined" || items.length === 0) return
+    const watermark = items.reduce((max, o) => {
+      const t = o.createdAt ? new Date(o.createdAt).getTime() : 0
+      return t > max ? t : max
+    }, 0)
+    if (watermark <= 0) return
+    try {
+      window.localStorage.setItem(ORDERS_SEEN_KEY, new Date(watermark).toISOString())
+      window.dispatchEvent(new Event("shaniidrx:orders-seen"))
+    } catch { /* ignore */ }
+  }, [items])
 
   const toggleSelect = (id: string) => {
     setSelectedIds((prev) => {
@@ -434,35 +452,68 @@ export function AdminOrders() {
                 </div>
               )}
 
-              {/* M-PESA Details */}
-              {selectedOrder.paymentMethod === "mpesa" && (
-                <div className="border border-[#00843D]/20 rounded-sm overflow-hidden">
-                  <div className="bg-[#00843D]/5 px-4 py-2 flex items-center gap-2">
-                    <MessageSquare className="h-3.5 w-3.5 text-[#00843D]" />
-                    <span className="text-xs font-semibold uppercase tracking-wider text-[#00843D]">M-PESA Payment</span>
+              {/* Payment & Transaction — unified across M-Pesa, Card and COD so
+                  staff can reconcile every order from one place. The gateway
+                  reference (Paystack) is shown for any electronic payment; the
+                  M-Pesa receipt + STK message are shown when present. */}
+              {(() => {
+                const method = selectedOrder.paymentMethod
+                const isMpesa = method === "mpesa"
+                const isCard = method === "card"
+                const isElectronic = isMpesa || isCard
+                const paid = SALE_STATUSES.includes(selectedOrder.status)
+                const accent = isMpesa ? "#00843D" : isCard ? "#B91C1C" : "#6B0F1A"
+                const label = isMpesa ? "M-PESA Payment" : isCard ? "Card Payment" : "Cash on Delivery"
+                const Icon = isElectronic ? CreditCard : Banknote
+                const rows: { label: string; value: string; mono?: boolean }[] = []
+                if (selectedOrder.mpesaCode) rows.push({ label: "M-Pesa Receipt", value: selectedOrder.mpesaCode, mono: true })
+                if (selectedOrder.paymentRef) rows.push({ label: "Transaction Reference", value: selectedOrder.paymentRef, mono: true })
+                if (selectedOrder.mpesaPhone) rows.push({ label: "Paid From", value: selectedOrder.mpesaPhone })
+                return (
+                  <div className="border rounded-sm overflow-hidden" style={{ borderColor: `${accent}33` }}>
+                    <div className="px-4 py-2.5 flex items-center justify-between" style={{ backgroundColor: `${accent}0D` }}>
+                      <div className="flex items-center gap-2">
+                        <Icon className="h-3.5 w-3.5" style={{ color: accent }} />
+                        <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: accent }}>{label}</span>
+                      </div>
+                      <span
+                        className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-sm text-white"
+                        style={{ backgroundColor: paid ? accent : "#9CA3AF" }}
+                      >
+                        {paid ? "Paid" : isElectronic ? "Awaiting Payment" : "Pay on Delivery"}
+                      </span>
+                    </div>
+                    <div className="p-4 space-y-3">
+                      <div className="flex items-end justify-between">
+                        <span className="text-xs text-muted-foreground">Amount</span>
+                        <span className="text-lg font-bold" style={{ color: accent }}>{formatPrice(selectedOrder.total)}</span>
+                      </div>
+                      {rows.length > 0 && (
+                        <div className="grid gap-2 pt-1 border-t border-border">
+                          {rows.map((r) => (
+                            <div key={r.label} className="flex justify-between items-center gap-3 text-sm pt-2">
+                              <span className="text-muted-foreground flex-shrink-0">{r.label}</span>
+                              <span className={`text-right break-all ${r.mono ? "font-mono font-bold tracking-wider" : "font-medium"}`}>{r.value}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {isElectronic && !selectedOrder.mpesaCode && !selectedOrder.paymentRef && (
+                        <p className="text-xs text-muted-foreground italic pt-1 border-t border-border">No transaction reference recorded for this payment yet.</p>
+                      )}
+                      {selectedOrder.mpesaMessage && (
+                        <div className="pt-1">
+                          <div className="flex items-center gap-1.5 mb-1.5">
+                            <MessageSquare className="h-3 w-3 text-muted-foreground" />
+                            <p className="text-xs font-medium text-muted-foreground">M-Pesa Confirmation Message</p>
+                          </div>
+                          <div className="bg-secondary/70 rounded-sm p-3 text-xs leading-relaxed font-mono whitespace-pre-wrap break-words">{selectedOrder.mpesaMessage}</div>
+                        </div>
+                      )}
+                    </div>
                   </div>
-                  <div className="p-4 space-y-2">
-                    {selectedOrder.mpesaCode && (
-                      <div className="flex justify-between text-sm">
-                        <span className="text-muted-foreground">Transaction Code</span>
-                        <span className="font-mono font-bold tracking-wider">{selectedOrder.mpesaCode}</span>
-                      </div>
-                    )}
-                    {selectedOrder.mpesaPhone && (
-                      <div className="flex justify-between text-sm">
-                        <span className="text-muted-foreground">Phone Used</span>
-                        <span>{selectedOrder.mpesaPhone}</span>
-                      </div>
-                    )}
-                    {selectedOrder.mpesaMessage && (
-                      <div className="mt-3">
-                        <p className="text-xs font-medium text-muted-foreground mb-1.5">Transaction Message</p>
-                        <div className="bg-secondary/70 rounded-sm p-3 text-xs leading-relaxed font-mono whitespace-pre-wrap break-words">{selectedOrder.mpesaMessage}</div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
+                )
+              })()}
 
               {/* Items */}
               <div className="border border-border rounded-sm overflow-hidden">

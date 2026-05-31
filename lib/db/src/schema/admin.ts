@@ -90,6 +90,9 @@ export const adminOrders = pgTable("admin_orders", {
   mpesaCode: text("mpesa_code").notNull().default(""),
   mpesaPhone: text("mpesa_phone").notNull().default(""),
   mpesaMessage: text("mpesa_message").notNull().default(""),
+  // Gateway transaction reference (Paystack reference for both M-Pesa-via-Paystack
+  // and card payments). Distinct from mpesaCode, which is the M-Pesa receipt.
+  paymentRef: text("payment_ref").notNull().default(""),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 })

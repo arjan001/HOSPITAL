@@ -7,13 +7,14 @@ import type {
   PatientNotificationEvent,
   NotifyOptions,
 } from "./patient-notifications.module"
+import type { NotificationsService } from "./notifications.module"
 
 type NotifyCall = { event: PatientNotificationEvent; opts: NotifyOptions }
 
 // All order numbers this suite touches — wiped before each test (and after the
 // suite) so the Postgres-backed service starts from a clean slate and the
 // notify-once-per-status assertions hold on repeated runs.
-const ORDER_NOS = Array.from({ length: 9 }, (_, i) => `ORD-${i + 1}`)
+const ORDER_NOS = Array.from({ length: 10 }, (_, i) => `ORD-${i + 1}`)
 
 async function cleanup() {
   await db.delete(adminOrders).where(inArray(adminOrders.orderNo, ORDER_NOS))
@@ -26,8 +27,9 @@ function makeService() {
       notifyCalls.push({ event, opts })
     }),
   } as unknown as PatientNotificationsService
-  const svc = new AdminOrdersService(patientNotify)
-  return { svc, notifyCalls }
+  const adminNotify = { push: vi.fn(() => Promise.resolve()) } as unknown as NotificationsService
+  const svc = new AdminOrdersService(patientNotify, adminNotify)
+  return { svc, notifyCalls, adminNotify }
 }
 
 describe("AdminOrdersService notifications", () => {
@@ -134,5 +136,17 @@ describe("AdminOrdersService notifications", () => {
 
     await ctx.svc.patchStatus(order.id, "cancelled" as AdminOrderStatus)
     expect(ctx.notifyCalls[0].event).toBe("order_cancelled")
+  })
+
+  it("two concurrent first-writes for the same order don't throw and fire the admin bell exactly once", async () => {
+    // The atomic ON CONFLICT upsert + xmax insert-detection must survive a
+    // client double-submit / retry: neither call rejects on the unique order_no,
+    // and the one-time "new order" bell fires only for the call that truly created it.
+    const place = () =>
+      ctx.svc.upsert({ orderNo: "ORD-10", status: "pending", customer: "Hodan Ali", phone: "0712345678", total: 999, paymentMethod: "mpesa" })
+
+    const results = await Promise.allSettled([place(), place()])
+    expect(results.every((r) => r.status === "fulfilled")).toBe(true)
+    expect(ctx.adminNotify.push).toHaveBeenCalledTimes(1)
   })
 })
