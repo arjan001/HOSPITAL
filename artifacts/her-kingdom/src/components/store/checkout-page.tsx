@@ -17,7 +17,6 @@ import { Navbar } from "./navbar"
 import { Footer } from "./footer"
 import { PaystackPaymentModal } from "./paystack-payment-modal"
 import { cmsStore } from "@/lib/cms-store"
-import { upsertAdminOrder, type AdminOrderStatus } from "@/lib/orders-store"
 import { apiNest, refreshAccount, type AccountOrder } from "@/lib/api-nest"
 import { useCart } from "@/lib/cart-context"
 import { formatPrice } from "@/lib/format"
@@ -548,6 +547,9 @@ export function CheckoutPage() {
     deliveryFee: number
     total: number
     mpesaReceipt?: string
+    /** Phone number that actually paid (from Paystack), which may differ from the
+     *  delivery contact phone. Used to populate the admin order's M-Pesa payer. */
+    mpesaPayerPhone?: string
     placedAt: string
   }
   const [orderResult,     setOrderResult]     = useState<OrderSuccess | null>(null)
@@ -756,6 +758,14 @@ export function CheckoutPage() {
           city:  addrParts[addrParts.length - 2] || snap.locationLabel || "",
           region: addrParts[addrParts.length - 1] || "Kenya",
         },
+        // Payment + fulfilment detail. The server mirrors these into the admin
+        // Sales & Orders feed (via service injection) so the pharmacy sees the
+        // M-Pesa receipt and delivery note without the guest needing admin auth.
+        mpesaCode: snap.mpesaReceipt || undefined,
+        mpesaPhone: snap.paymentMethod === "mpesa"
+          ? (snap.mpesaPayerPhone || snap.customerPhone || undefined)
+          : undefined,
+        specialInstructions: deliveryNote || undefined,
       })
       await refreshAccount()
     } catch (err) {
@@ -763,47 +773,6 @@ export function CheckoutPage() {
       // eslint-disable-next-line no-console
       console.warn("Failed to mirror order into account backend", err)
     }
-  }
-
-  /* ── Persist an order into the admin cmsStore feed (Sales & Orders + Dashboard).
-        Status semantics:
-          - "pending"   = order placed, payment not yet confirmed (COD, M-Pesa awaiting receipt)
-          - "confirmed" = payment captured / cash received → counts as a Sale
-          - "cancelled" = failed / declined / abandoned        ── */
-  const persistAdminOrder = (
-    snap: OrderSuccess,
-    status: AdminOrderStatus,
-    extras: { mpesaCode?: string; mpesaPhone?: string; mpesaMessage?: string; notes?: string } = {},
-  ) => {
-    // Fire-and-forget — never block the success screen on the admin backend.
-    void upsertAdminOrder({
-      orderNo: snap.orderNumber,
-      customer: snap.customerName || "Guest",
-      phone: snap.customerPhone || "",
-      email: snap.customerEmail || "",
-      items: snap.items.map((it) => ({
-        name: it.name,
-        qty: it.qty,
-        price: it.unitPrice,
-        variation: it.variation,
-      })),
-      subtotal: snap.subtotal,
-      delivery: snap.deliveryFee,
-      total: snap.total,
-      location: snap.locationLabel || (snap.fulfilmentMode === "pickup" ? "Pickup" : ""),
-      address: snap.deliveryAddress || "",
-      notes: extras.notes || "",
-      specialInstructions: deliveryNote || "",
-      status,
-      orderedVia: "website",
-      paymentMethod: snap.paymentMethod,
-      mpesaCode: extras.mpesaCode,
-      mpesaPhone: extras.mpesaPhone,
-      mpesaMessage: extras.mpesaMessage,
-    }).catch((err) => {
-      // eslint-disable-next-line no-console
-      console.warn("Failed to mirror order into admin backend", err)
-    })
   }
 
   /* ── Paystack (M-Pesa STK + Card) ── */
@@ -815,11 +784,8 @@ export function CheckoutPage() {
       const data = await res.json().catch(() => ({}))
       if (!res.ok) return { error: data?.error || `Server error (${res.status})`, hint: data?.hint }
       if (!data?.orderNumber) return { error: "Server did not return an order number" }
-      // Record the pending Order immediately so admin sees it even if payment never confirms.
-      try {
-        const pendingSnap = buildOrderSnapshot({ orderNumber: data.orderNumber, paymentMethod: method })
-        persistAdminOrder(pendingSnap, "pending")
-      } catch { /* localStorage best-effort */ }
+      // The pending order is recorded server-side only once payment confirms (via
+      // persistOrderToAccount → /me/orders, which mirrors into admin Sales & Orders).
       return { orderNumber: data.orderNumber }
     } catch (err) { return { error: err instanceof Error ? err.message : "Network error" } }
   }
@@ -830,14 +796,9 @@ export function CheckoutPage() {
       paymentMethod: result.method,
       // Only M-Pesa carries an M-Pesa receipt; card confirmations leave it unset.
       mpesaReceipt: result.method === "mpesa" ? result.mpesaReceipt : undefined,
+      // The actual paying phone from Paystack (may differ from the delivery contact).
+      mpesaPayerPhone: result.method === "mpesa" ? result.phone : undefined,
     })
-    // Persist to admin Sales & Orders as a confirmed Sale (payment captured).
-    try {
-      persistAdminOrder(snap, "confirmed", result.method === "mpesa" ? {
-        mpesaCode: result.mpesaReceipt,
-        mpesaPhone: result.phone,
-      } : {})
-    } catch { /* localStorage best-effort */ }
 
     // Auto-assign a delivery job to the best-matching logistics partner.
     if (fulfilmentMode === "delivery") {
@@ -1702,8 +1663,8 @@ export function CheckoutPage() {
                             }
                             {
                               const snap = buildOrderSnapshot({ orderNumber: data.orderNumber, paymentMethod: "cod" })
-                              // COD: placed as pending — becomes a Sale only when admin confirms cash received.
-                              try { persistAdminOrder(snap, "pending") } catch { /* localStorage best-effort */ }
+                              // COD: placed as pending — the server mirrors it into admin
+                              // Sales & Orders; it becomes a Sale when admin confirms cash received.
                               setOrderResult(snap)
                               void persistOrderToAccount(snap)
                             }

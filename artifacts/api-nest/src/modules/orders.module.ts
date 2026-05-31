@@ -78,6 +78,11 @@ type OrderInput = {
   paymentMethod?: PaymentMethod
   customer?: Partial<Order["customer"]>
   shippingAddress?: Partial<Order["shippingAddress"]>
+  /** Optional payment + fulfilment detail, mirrored into the admin Sales & Orders
+   *  feed so the pharmacy sees the M-Pesa receipt, payer phone and delivery note. */
+  mpesaCode?: string
+  mpesaPhone?: string
+  specialInstructions?: string
 }
 
 /** Public order-tracking shape (matches the storefront track-order page). */
@@ -298,6 +303,13 @@ class OrdersService {
         status: data.paid ? "confirmed" : "pending",
         orderedVia: "website",
         paymentMethod: storedMethod,
+        mpesaCode: data.mpesaCode ? String(data.mpesaCode) : undefined,
+        mpesaPhone: data.mpesaPhone
+          ? String(data.mpesaPhone)
+          : String(data.customer?.phone ?? "") || undefined,
+        specialInstructions: data.specialInstructions
+          ? String(data.specialInstructions)
+          : undefined,
       })
     } catch (err) {
       // eslint-disable-next-line no-console

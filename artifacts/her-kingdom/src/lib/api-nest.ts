@@ -137,6 +137,9 @@ export const apiNest = {
     paymentMethod?: AccountOrder["paymentMethod"]
     customer: AccountOrder["customer"]
     shippingAddress: AccountOrder["shippingAddress"]
+    mpesaCode?: string
+    mpesaPhone?: string
+    specialInstructions?: string
   }) =>
     nestFetch<AccountOrder>("/me/orders", { method: "POST", body: JSON.stringify(input) }),
 }
