@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useRef, useMemo } from "react"
 import { Link } from "wouter"
 import { useLocation } from "wouter"
 import { Seo, organizationJsonLd, websiteJsonLd, breadcrumbJsonLd, faqJsonLd, productJsonLd } from "@/components/seo"
@@ -104,14 +104,6 @@ const pinIcon = L.divIcon({
   iconAnchor: [18, 46],
 })
 
-async function reverseGeocode(lat: number, lng: number): Promise<string> {
-  try {
-    const r = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`, { headers: { "Accept-Language": "en" } })
-    const d = await r.json()
-    return d?.display_name || ""
-  } catch { return "" }
-}
-
 async function forwardGeocode(query: string): Promise<{ lat: number; lng: number; label: string }[]> {
   try {
     const r = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=5&countrycodes=ke&addressdetails=1`, { headers: { "Accept-Language": "en" } })
@@ -119,6 +111,58 @@ async function forwardGeocode(query: string): Promise<{ lat: number; lng: number
     if (!Array.isArray(d)) return []
     return d.map((x: any) => ({ lat: parseFloat(x.lat), lng: parseFloat(x.lon), label: x.display_name }))
   } catch { return [] }
+}
+
+/* County → areas/towns within that county. Drives the cascading Area dropdown so
+   the options always belong to the chosen county (no Nairobi suburbs showing up
+   under Mombasa). Counties shown in the picker are derived from these keys, so
+   the two lists can never drift apart. */
+const COUNTY_AREAS: Record<string, string[]> = {
+  "Nairobi County": ["CBD","Westlands","Parklands","Karen","Kilimani","Hurlingham","Lavington","Kileleshwa","South B","South C","Eastleigh","Kasarani","Roysambu","Embakasi","Donholm","Buruburu","Umoja","Pipeline","Langata","Ngara"],
+  "Mombasa County": ["Mvita (CBD)","Nyali","Bamburi","Kisauni","Likoni","Tudor","Bombolulu","Shanzu","Mikindani","Changamwe"],
+  "Kisumu County": ["Kisumu CBD","Milimani","Mamboleo","Nyalenda","Kondele","Dunga","Manyatta","Kibos","Ahero","Maseno"],
+  "Nakuru County": ["Nakuru CBD","Naivasha","Gilgil","Lanet","Bahati","Njoro","Free Area","Section 58","Milimani","London"],
+  "Kiambu County": ["Ruiru","Thika","Kikuyu","Ruaka","Limuru","Kiambu Town","Juja","Githunguri","Kabete","Banana","Kahawa Sukari","Kahawa Wendani"],
+  "Machakos County": ["Machakos Town","Athi River","Mlolongo","Mavoko","Kangundo","Matuu","Kathiani","Tala"],
+  "Kajiado County": ["Kitengela","Ngong","Ongata Rongai","Kiserian","Kajiado Town","Isinya","Matasia","Rongai"],
+  "Nyeri County": ["Nyeri Town","Karatina","Othaya","Mweiga","Chaka","Naro Moru","Kiganjo"],
+  "Meru County": ["Meru Town","Maua","Nkubu","Timau","Mikinduri","Kianjai"],
+}
+const COUNTY_OPTIONS = Object.keys(COUNTY_AREAS)
+
+/* Normalise a raw Nominatim county/state string ("Nairobi", "Kiambu County",
+   "Nairobi City") to one of our canonical county keys, or "" if not in scope. */
+function matchCounty(raw: string): string {
+  if (!raw) return ""
+  const norm = raw.toLowerCase().replace(/\s*county\s*$/, "").replace(/\s*city\s*$/, "").trim()
+  return COUNTY_OPTIONS.find(c => c.toLowerCase().replace(/\s*county\s*$/, "").trim() === norm) || ""
+}
+
+/* Map a raw Nominatim suburb/neighbourhood to a canonical area within the given
+   county (case-insensitive, either contains the other). Returns the raw value
+   when there's no canonical match so a real detected area is never discarded. */
+function matchArea(county: string, raw: string): string {
+  if (!raw) return ""
+  const list = COUNTY_AREAS[county] || []
+  const r = raw.toLowerCase()
+  const hit = list.find(a => {
+    const la = a.toLowerCase().replace(/\s*\(.*\)\s*/, "").trim()
+    return la === r || la.includes(r) || r.includes(la)
+  })
+  return hit || raw
+}
+
+/* Reverse geocode that also extracts a canonical county + area for auto-filling
+   the dropdowns from the map pin / GPS. */
+async function reverseGeocodeFull(lat: number, lng: number): Promise<{ label: string; county: string; area: string }> {
+  try {
+    const r = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`, { headers: { "Accept-Language": "en" } })
+    const d = await r.json()
+    const a = d?.address || {}
+    const county = matchCounty(a.county || a.state || a.state_district || "")
+    const rawArea = a.suburb || a.neighbourhood || a.residential || a.city_district || a.town || a.village || a.hamlet || a.quarter || a.suburb || ""
+    return { label: d?.display_name || "", county, area: county ? matchArea(county, rawArea) : "" }
+  } catch { return { label: "", county: "", area: "" } }
 }
 
 function AddressModal({
@@ -148,6 +192,21 @@ function AddressModal({
   const [searching, setSearching] = useState(false)
   const [locating, setLocating] = useState(false)
   const [locateError, setLocateError] = useState("")
+  /* Monotonic id so only the LATEST reverse-geocode result is applied — a slow
+     response can't land after a newer pin/GPS/search. */
+  const geoReqRef = useRef(0)
+  /* True once the customer manually edits address/county/area, so the one-shot
+     GPS auto-prompt on open can't overwrite a selection they've started making.
+     Explicit gestures (repin, drag, suggestion, "Use My Location") still apply. */
+  const touchedRef = useRef(false)
+
+  /* Areas shown depend on the chosen county. If an auto-detected area isn't in
+     the canonical list (e.g. a real suburb we don't hardcode), surface it on top
+     so it still displays in the <select> instead of silently vanishing. */
+  const areaOptions = useMemo(() => {
+    const base = COUNTY_AREAS[region] || []
+    return area && !base.includes(area) ? [area, ...base] : base
+  }, [region, area])
 
   /* Init map when modal opens */
   useEffect(() => {
@@ -158,14 +217,12 @@ function AddressModal({
     marker.on("dragend", async () => {
       const ll = marker.getLatLng()
       setCoords([ll.lat, ll.lng])
-      const addr = await reverseGeocode(ll.lat, ll.lng)
-      if (addr) setSearch(addr)
+      await applyGeoFromPin(ll.lat, ll.lng)
     })
     map.on("click", async (e: L.LeafletMouseEvent) => {
       marker.setLatLng(e.latlng)
       setCoords([e.latlng.lat, e.latlng.lng])
-      const addr = await reverseGeocode(e.latlng.lat, e.latlng.lng)
-      if (addr) setSearch(addr)
+      await applyGeoFromPin(e.latlng.lat, e.latlng.lng)
     })
     mapRef.current = map
     markRef.current = marker
@@ -176,6 +233,8 @@ function AddressModal({
   /* Cleanup on close */
   useEffect(() => {
     if (open) return
+    touchedRef.current = false
+    geoReqRef.current++
     if (mapRef.current) {
       mapRef.current.remove()
       mapRef.current = null
@@ -193,8 +252,34 @@ function AddressModal({
     if (addr) setSearch(addr)
   }
 
+  /* Auto-fill address + county + area from a pinned/GPS coordinate.
+       - `force` (explicit gestures) overrides a manually-started edit; the
+         auto-open GPS prompt passes force=false so it can't clobber the user.
+       - Only the newest request is applied (geoReqRef) so a slow response can't
+         overwrite a fresher one.
+       - County/area are reconciled together: when the county changes, the area is
+         replaced with the newly-resolved one (or cleared if none) so a stale area
+         from a different county can never linger. When the county is unchanged we
+         only update the area if the geocoder actually resolved one. */
+  const applyGeoFromPin = async (lat: number, lng: number, force = true) => {
+    if (!force && touchedRef.current) return
+    const reqId = ++geoReqRef.current
+    const g = await reverseGeocodeFull(lat, lng)
+    if (reqId !== geoReqRef.current) return
+    if (!force && touchedRef.current) return
+    if (g.label) setSearch(g.label)
+    if (g.county) {
+      if (g.county !== region) {
+        setRegion(g.county)
+        setArea(g.area || "")
+      } else if (g.area) {
+        setArea(g.area)
+      }
+    }
+  }
+
   /* Request browser/phone GPS location */
-  const requestLocation = () => {
+  const requestLocation = (auto = false) => {
     setLocateError("")
     if (!navigator.geolocation) {
       setLocateError("Your browser doesn't support location access.")
@@ -204,8 +289,8 @@ function AddressModal({
     navigator.geolocation.getCurrentPosition(
       async pos => {
         const { latitude, longitude } = pos.coords
-        const addr = await reverseGeocode(latitude, longitude)
-        moveTo(latitude, longitude, addr || `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`)
+        moveTo(latitude, longitude)
+        await applyGeoFromPin(latitude, longitude, !auto)
         setLocating(false)
       },
       err => {
@@ -227,7 +312,7 @@ function AddressModal({
   /* Auto-prompt for location once when modal first opens (only if no address yet) */
   useEffect(() => {
     if (!open || initial?.address) return
-    const t = setTimeout(() => requestLocation(), 350)
+    const t = setTimeout(() => requestLocation(true), 350)
     return () => clearTimeout(t)
   }, [open]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -283,7 +368,7 @@ function AddressModal({
                 </div>
                 <input
                   value={search}
-                  onChange={e => { setSearch(e.target.value); setShowSugg(true) }}
+                  onChange={e => { touchedRef.current = true; setSearch(e.target.value); setShowSugg(true) }}
                   onFocus={() => setShowSugg(true)}
                   onBlur={() => setTimeout(() => setShowSugg(false), 180)}
                   placeholder="Search for a street, area or landmark…"
@@ -297,7 +382,7 @@ function AddressModal({
                       <button
                         key={i}
                         type="button"
-                        onMouseDown={() => { moveTo(s.lat, s.lng, s.label); setShowSugg(false); setSuggestions([]) }}
+                        onMouseDown={() => { moveTo(s.lat, s.lng, s.label); applyGeoFromPin(s.lat, s.lng); setShowSugg(false); setSuggestions([]) }}
                         className="w-full text-left px-3 py-2 text-xs hover:bg-gray-50 flex items-start gap-2 border-b last:border-b-0"
                         style={{ borderColor: "#f3f4f6", color: "#374151" }}
                       >
@@ -313,7 +398,7 @@ function AddressModal({
                 disabled={locating}
                 className="h-11 px-4 rounded-xl text-xs font-semibold flex items-center gap-1.5 flex-shrink-0 text-white transition-opacity hover:opacity-90 disabled:opacity-60"
                 style={{ background: `linear-gradient(135deg, #F97316 0%, #B91C1C 100%)` }}
-                onClick={requestLocation}
+                onClick={() => requestLocation()}
               >
                 {locating
                   ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -405,7 +490,7 @@ function AddressModal({
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="text-xs text-gray-500 mb-1 block">Selected Address</label>
-                <input value={search} onChange={e => setSearch(e.target.value)}
+                <input value={search} onChange={e => { touchedRef.current = true; setSearch(e.target.value) }}
                   placeholder="e.g. Kiuu, Kenya"
                   className="w-full h-10 px-3 rounded-lg border text-sm outline-none"
                   style={{ borderColor: PEACH_MED }} />
@@ -421,25 +506,24 @@ function AddressModal({
                 </div>
               </div>
               <div>
-                <label className="text-xs text-gray-500 mb-1 block">Region</label>
-                <select value={region} onChange={e => setRegion(e.target.value)}
+                <label className="text-xs text-gray-500 mb-1 block">County</label>
+                <select value={region} onChange={e => { touchedRef.current = true; setRegion(e.target.value); setArea("") }}
                   className="w-full h-10 px-3 rounded-lg border text-sm outline-none bg-white"
                   style={{ borderColor: PEACH_MED, color: region ? WINE : "#9ca3af" }}>
                   <option value="">Select County</option>
-                  {["Nairobi County","Mombasa County","Kisumu County","Nakuru County","Kiambu County",
-                    "Machakos County","Kajiado County","Nyeri County","Meru County"].map(c => (
+                  {COUNTY_OPTIONS.map(c => (
                     <option key={c} value={c}>{c}</option>
                   ))}
                 </select>
               </div>
               <div>
-                <label className="text-xs text-gray-500 mb-1 block">Area / Street</label>
-                <select value={area} onChange={e => setArea(e.target.value)}
-                  className="w-full h-10 px-3 rounded-lg border text-sm outline-none bg-white"
+                <label className="text-xs text-gray-500 mb-1 block">Area / Town</label>
+                <select value={area} onChange={e => { touchedRef.current = true; setArea(e.target.value) }}
+                  disabled={!region}
+                  className="w-full h-10 px-3 rounded-lg border text-sm outline-none bg-white disabled:bg-gray-50 disabled:cursor-not-allowed"
                   style={{ borderColor: PEACH_MED, color: area ? WINE : "#9ca3af" }}>
-                  <option value="">Select Area</option>
-                  {["Westlands","Parklands","Karen","Kilimani","Hurlingham","Lavington",
-                    "South B","South C","Eastleigh","Kasarani","Ruaka","Ngong","Kikuyu"].map(a => (
+                  <option value="">{region ? "Select Area" : "Select a county first"}</option>
+                  {areaOptions.map(a => (
                     <option key={a} value={a}>{a}</option>
                   ))}
                 </select>
