@@ -36,6 +36,35 @@ import { adminAuthHeaders } from "./api-client"
 const NAMESPACE = "shaniidrx.cms"
 const CHANGE_EVENT = "cms-store:change"
 const API_BASE = "/api/v2/admin/cms"
+/**
+ * Storefront-public CMS keys read by *every* visitor (logged-out shoppers
+ * included). In production the admin CMS routes fail closed, so these reads
+ * must go to the unauthenticated `GET /api/v2/cms/:key` endpoint instead.
+ * Keep this set in lockstep with `PUBLIC_CMS_KEYS` in
+ * `artifacts/api-nest/src/modules/admin-cms.module.ts`. Writes still go to the
+ * admin-guarded route (see `writeRaw`) — only reads are public.
+ */
+const PUBLIC_API_BASE = "/api/v2/cms"
+const PUBLIC_CMS_KEYS = new Set<string>([
+  "announcement",
+  "navbar-offers",
+  "categories",
+  "hero-slides",
+  "promo-banners",
+  "popup-offer",
+  "footer",
+  "custom-pages",
+])
+
+/** Base URL for *reads*: public storefront keys bypass AdminGuard. */
+function readBase(key: string): string {
+  return PUBLIC_CMS_KEYS.has(key) ? PUBLIC_API_BASE : API_BASE
+}
+
+/** Whether an admin token is available (logged-in admin session). */
+function hasAdminToken(): boolean {
+  return Object.keys(adminAuthHeaders()).length > 0
+}
 
 function fullKey(key: string) {
   return `${NAMESPACE}.${key}`
@@ -123,7 +152,7 @@ async function hydrateFromServer(key: string, getSeed?: () => unknown): Promise<
   if (existing) return existing
   const p = (async () => {
     try {
-      const res = await fetch(`${API_BASE}/${encodeURIComponent(key)}`, {
+      const res = await fetch(`${readBase(key)}/${encodeURIComponent(key)}`, {
         credentials: "include",
         headers: { ...adminAuthHeaders() },
       })
@@ -134,8 +163,11 @@ async function hydrateFromServer(key: string, getSeed?: () => unknown): Promise<
         // which resolves templates by trigger — can actually read it. Without
         // this, default seeds only ever lived in the browser and the backend
         // silently skipped every send.
+        // Seeding is a WRITE, which is always admin-guarded. Only attempt it
+        // when an admin token is present — otherwise a logged-out storefront
+        // visitor would fire a doomed PUT that 503s on every public read.
         const seed = getSeed?.()
-        if (isSeedable(seed)) {
+        if (isSeedable(seed) && hasAdminToken()) {
           void fetch(`${API_BASE}/${encodeURIComponent(key)}`, {
             method: "PUT",
             credentials: "include",

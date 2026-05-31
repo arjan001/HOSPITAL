@@ -185,8 +185,56 @@ class AdminCmsController {
   }
 }
 
+/**
+ * Storefront-public CMS keys. These documents power content shown to *every*
+ * visitor — logged-out shoppers included: the announcement bar, top-nav
+ * offers, category menu, hero/promo banners, popup offer, footer, and custom
+ * pages. They are served READ-ONLY through the unauthenticated
+ * `GET /api/v2/cms/:key` route below. Anything NOT in this set stays behind
+ * AdminGuard (audit log, message templates, settings, roles, error/storage
+ * config, etc.). Writes for these keys still require an admin token via the
+ * guarded PUT on AdminCmsController — only reads are public.
+ */
+export const PUBLIC_CMS_KEYS: ReadonlySet<string> = new Set([
+  "announcement",
+  "navbar-offers",
+  "categories",
+  "hero-slides",
+  "promo-banners",
+  "popup-offer",
+  "footer",
+  "custom-pages",
+])
+
+@Controller("cms")
+export class PublicCmsController {
+  constructor(@Inject(AdminCmsService) private readonly svc: AdminCmsService) {}
+
+  /** The keys that are publicly readable (storefront display content). */
+  @Get()
+  publicKeys(): { keys: string[] } {
+    return { keys: [...PUBLIC_CMS_KEYS] }
+  }
+
+  /**
+   * Read a single storefront-public CMS document. Only allowlisted keys are
+   * reachable; anything else 404s exactly as if it did not exist, so this
+   * route can never surface admin-only content without a token.
+   */
+  @Get(":key")
+  async get(@Param("key") key: string) {
+    assertKey(key)
+    if (!PUBLIC_CMS_KEYS.has(key)) {
+      throw new HttpException("Not found", HttpStatus.NOT_FOUND)
+    }
+    const entry = await this.svc.get(key)
+    if (!entry) throw new HttpException("Not found", HttpStatus.NOT_FOUND)
+    return entry
+  }
+}
+
 @Module({
-  controllers: [AdminCmsController],
+  controllers: [AdminCmsController, PublicCmsController],
   providers: [AdminCmsService],
   exports: [AdminCmsService],
 })
