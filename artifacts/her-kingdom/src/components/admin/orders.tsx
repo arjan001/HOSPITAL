@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { toast } from "sonner"
-import { Eye, Truck, CheckCircle, Clock, Package, XCircle, Search, Trash2, Loader2, MessageSquare, Phone, Download, DollarSign, StickyNote, CreditCard, Banknote } from "lucide-react"
+import { Eye, Truck, CheckCircle, Clock, Package, XCircle, Search, Trash2, Loader2, MessageSquare, Phone, Download, DollarSign, StickyNote, CreditCard, Banknote, AlertTriangle, RefreshCw } from "lucide-react"
 import { usePagination } from "@/hooks/use-pagination"
 import { PaginationControls } from "@/components/pagination-controls"
 import { AdminShell, ORDERS_SEEN_KEY } from "./admin-shell"
@@ -32,8 +32,14 @@ const statusConfig: Record<OrderStatus, { label: string; icon: typeof Clock; cla
 }
 
 export function AdminOrders() {
-  const { items, mutate } = useAdminOrders()
+  const { items, error, mutate } = useAdminOrders()
   const orders = [...items].sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""))
+  // Surface auth/fetch failures instead of silently showing an empty table.
+  // In production an unauthenticated admin gets 401/403/503 from /api/v2/admin/*
+  // — without this the page just looked "blank".
+  const errMsg = error?.message || ""
+  const isAuthError = /\b(401|403|503)\b/.test(errMsg)
+  const showError = !!error && items.length === 0
   const [search, setSearch] = useState("")
   const [statusFilter, setStatusFilter] = useState<string>("all")
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null)
@@ -224,6 +230,33 @@ export function AdminOrders() {
             Export PDF
           </Button>
         </div>
+
+        {/* Fetch / auth error banner — replaces the old silent blank table */}
+        {showError && (
+          <div className="border border-destructive/40 bg-destructive/10 text-destructive text-sm rounded-sm p-4 flex items-start gap-3">
+            <AlertTriangle className="h-5 w-5 flex-shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <p className="font-semibold">
+                {isAuthError ? "Admin sign-in required" : "Could not load orders"}
+              </p>
+              <p className="text-xs mt-1 opacity-80">
+                {isAuthError
+                  ? "Your admin session is missing or has expired, so the orders service rejected this request. Sign in again from the admin login to restore access. (If this is the published site, ensure the deployment has been republished after admin credentials were set.)"
+                  : "The orders service did not respond. Check your connection and try again."}
+              </p>
+              <div className="flex items-center gap-3 mt-3">
+                <Button variant="outline" size="sm" className="gap-2" onClick={() => mutate()}>
+                  <RefreshCw className="h-3.5 w-3.5" /> Retry
+                </Button>
+                {isAuthError && (
+                  <a href="/admin/login" className="text-xs font-semibold underline">
+                    Go to admin login
+                  </a>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Summary Cards */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">

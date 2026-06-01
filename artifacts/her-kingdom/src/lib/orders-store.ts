@@ -144,11 +144,11 @@ export async function deleteOrdersByIds(ids: string[]): Promise<number> {
 const swrFetcher = (path: string) => nestFetch<AdminOrderRecord[]>(path)
 
 export function useAdminOrders() {
-  const { data, mutate, isLoading } = useSWR<AdminOrderRecord[]>(LIST_KEY, swrFetcher, {
+  const { data, error, mutate, isLoading } = useSWR<AdminOrderRecord[]>(LIST_KEY, swrFetcher, {
     refreshInterval: 15_000,
     revalidateOnFocus: true,
   })
-  return { items: data ?? [], mutate, isLoading }
+  return { items: data ?? [], error: error as Error | undefined, mutate, isLoading }
 }
 
 export function refreshAdminOrders() {

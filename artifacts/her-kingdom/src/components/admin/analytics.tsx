@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react"
 import { apiFetch, authedFetcher as fetcher } from "@/lib/api-client"
 import { AdminShell } from "./admin-shell"
+import { useAdminOrders } from "@/lib/orders-store"
 import { formatPrice } from "@/lib/format"
 import {
   TrendingUp, TrendingDown, Users, ShoppingBag, Eye, DollarSign,
@@ -112,7 +113,10 @@ interface AnalyticsData {
 }
 
 export function AdminAnalytics() {
-  const { data: orders = [] } = useSWR<Order[]>("/api/admin/orders", fetcher)
+  // Sales/orders come from the real api-nest admin source (Postgres-durable,
+  // same data as the Orders page) — NOT the legacy /api/admin/orders stub,
+  // which returns sample/empty data and made the Sales figures wrong.
+  const { items: orders } = useAdminOrders()
   const { data: products = [] } = useSWR<Product[]>("/api/products", fetcher)
   const { data: analytics } = useSWR<AnalyticsData>("/api/admin/analytics?days=30", fetcher, { refreshInterval: 30000 })
   const [realTimeUsers, setRealTimeUsers] = useState(0)

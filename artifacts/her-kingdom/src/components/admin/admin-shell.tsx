@@ -224,26 +224,6 @@ const NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
-    name: "Communications",
-    items: [
-      {
-        label: "Integrations",
-        href: "/admin/integrations",
-        icon: Plug,
-        perm: "integrations.manage",
-        children: [
-          { label: "Channels",          href: "/admin/integrations",              icon: Plug,          perm: "integrations.manage" },
-          { label: "Message Templates", href: "/admin/integrations/templates",    icon: Send,          perm: "integrations.manage" },
-          { label: "Message Outbox",    href: "/admin/integrations/outbox",       icon: Inbox,         perm: "integrations.manage" },
-          { label: "Email",             href: "/admin/integrations?tab=email",    icon: Mail,          perm: "integrations.manage" },
-          { label: "SMS",               href: "/admin/integrations?tab=sms",      icon: MessageSquare, perm: "integrations.manage" },
-          { label: "WhatsApp",          href: "/admin/integrations?tab=whatsapp", icon: MessageSquare, perm: "integrations.manage" },
-          { label: "Video (Daily.co)",  href: "/admin/integrations?tab=video",    icon: Video,         perm: "integrations.manage" },
-        ],
-      },
-    ],
-  },
-  {
     name: "Storefront CMS",
     items: [
       { label: "Custom Pages",   href: "/admin/pages",    icon: FileText, perm: "cms.pages" },
@@ -281,6 +261,21 @@ const NAV_GROUPS: NavGroup[] = [
     name: "System",
     items: [
       { label: "Website Settings",    href: "/admin/website-settings", icon: Settings,    perm: "cms.settings" },
+      {
+        label: "Integrations",
+        href: "/admin/integrations",
+        icon: Plug,
+        perm: "integrations.manage",
+        children: [
+          { label: "Channels",          href: "/admin/integrations",              icon: Plug,          perm: "integrations.manage" },
+          { label: "Message Templates", href: "/admin/integrations/templates",    icon: Send,          perm: "integrations.manage" },
+          { label: "Message Outbox",    href: "/admin/integrations/outbox",       icon: Inbox,         perm: "integrations.manage" },
+          { label: "Email",             href: "/admin/integrations?tab=email",    icon: Mail,          perm: "integrations.manage" },
+          { label: "SMS",               href: "/admin/integrations?tab=sms",      icon: MessageSquare, perm: "integrations.manage" },
+          { label: "WhatsApp",          href: "/admin/integrations?tab=whatsapp", icon: MessageSquare, perm: "integrations.manage" },
+          { label: "Video (Daily.co)",  href: "/admin/integrations?tab=video",    icon: Video,         perm: "integrations.manage" },
+        ],
+      },
       { label: "Users & Roles",       href: "/admin/users",            icon: Users,       perm: "users.manage" },
       { label: "Admin Accounts",      href: "/admin/accounts",         icon: ShieldCheck, perm: "users.manage" },
       { label: "Roles & Permissions", href: "/admin/roles",            icon: Shield,      perm: "roles.manage" },
