@@ -15,8 +15,9 @@ import {
   type ChatMessage,
   type ChatThread,
 } from "@/lib/api-nest"
-import { MessagesSquare, Search, Trash2, Stethoscope, Phone, Circle, Video, Wifi, CheckCheck } from "lucide-react"
+import { MessagesSquare, Search, Trash2, Stethoscope, Phone, Circle, Video, Wifi, CheckCheck, Volume2, VolumeX, Bell } from "lucide-react"
 import { DailyCall } from "@/components/video/daily-call"
+import { playChime, isChatSoundEnabled, setChatSoundEnabled } from "@/lib/notify-sound"
 
 type Presence = { online: boolean; lastSeen: string | null }
 
@@ -63,6 +64,13 @@ export function AdminChat() {
   const [typingThreads, setTypingThreads] = useState<Record<string, boolean>>({})
   const typingClearRef = useRef<Record<string, number>>({})
 
+  // Notification sound + "new patient started a chat" alert.
+  const [soundOn, setSoundOn] = useState(true)
+  useEffect(() => { setSoundOn(isChatSoundEnabled()) }, [])
+  const [newPatientAlert, setNewPatientAlert] = useState<string | null>(null)
+  const alertClearRef = useRef<number | null>(null)
+  const knownThreadIdsRef = useRef<Set<string> | null>(null)
+
   // Outbound (staff) typing throttle for the active thread
   const lastTypingSentRef = useRef(0)
   const typingStopRef = useRef<number | null>(null)
@@ -88,6 +96,15 @@ export function AdminChat() {
             { revalidate: false },
           )
           globalMutate("/chat/admin/threads")
+          // Chime for inbound patient messages. Brand-new threads are handled by
+          // the new-thread effect below (a brighter alert), so skip them here to
+          // avoid a double sound.
+          if (
+            p.message?.sender === "patient" &&
+            knownThreadIdsRef.current?.has(p.threadId)
+          ) {
+            playChime("message")
+          }
         }
         if (p.type === "thread") {
           globalMutate("/chat/admin/threads")
@@ -127,6 +144,34 @@ export function AdminChat() {
       if (typingStopRef.current) window.clearTimeout(typingStopRef.current)
     }
   }, [])
+
+  // Detect a brand-new patient conversation → bright alert + transient banner.
+  useEffect(() => {
+    if (!threads) return
+    const ids = new Set(threads.map((t) => t.id))
+    if (knownThreadIdsRef.current === null) {
+      knownThreadIdsRef.current = ids
+      return
+    }
+    const prev = knownThreadIdsRef.current
+    const fresh = threads.filter((t) => !prev.has(t.id))
+    knownThreadIdsRef.current = ids
+    if (fresh.length > 0) {
+      playChime("newchat")
+      setNewPatientAlert(fresh[0].patientName || "A patient")
+      if (alertClearRef.current) window.clearTimeout(alertClearRef.current)
+      alertClearRef.current = window.setTimeout(() => setNewPatientAlert(null), 8000)
+    }
+  }, [threads])
+
+  useEffect(() => () => { if (alertClearRef.current) window.clearTimeout(alertClearRef.current) }, [])
+
+  const toggleSound = () => {
+    const next = !soundOn
+    setSoundOn(next)
+    setChatSoundEnabled(next)
+    if (next) playChime("message")
+  }
 
   // Mark active thread as read whenever it changes / new msg arrives
   useEffect(() => {
@@ -229,7 +274,27 @@ export function AdminChat() {
               Realtime conversations with patients. Messages stream live via Server-Sent Events.
             </p>
           </div>
+          <button
+            type="button"
+            onClick={toggleSound}
+            className="inline-flex items-center gap-1.5 h-9 px-3 rounded-md border border-border text-xs font-semibold hover:bg-muted/40 transition-colors"
+            title={soundOn ? "Notification sounds on — click to mute" : "Notification sounds muted — click to enable"}
+          >
+            {soundOn ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4 text-muted-foreground" />}
+            {soundOn ? "Sound on" : "Muted"}
+          </button>
         </div>
+
+        {newPatientAlert && (
+          <div
+            className="flex items-center gap-2.5 rounded-lg px-3.5 py-2.5 text-sm font-semibold text-white shadow-sm"
+            style={{ background: "#3D0814" }}
+            role="status"
+          >
+            <Bell className="h-4 w-4 flex-shrink-0" style={{ color: "#F97316" }} />
+            New patient started a chat: {newPatientAlert}
+          </div>
+        )}
 
         <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr] gap-0 rounded-xl border border-border overflow-hidden bg-background h-[72vh] min-h-[520px]">
           {/* Thread list */}

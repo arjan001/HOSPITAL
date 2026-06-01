@@ -9,7 +9,14 @@ import {
   Send, Plus, ShieldCheck, Video, X, FileText, Stethoscope, Brain, Pill, HeartPulse,
 } from "lucide-react"
 import { DailyCall } from "@/components/video/daily-call"
-import { useConsultationSettings, standbyDoctorOf } from "@/lib/consultation-settings"
+import {
+  useConsultationSettings,
+  standbyDoctorOf,
+  formatOverageLabel,
+  logOverageCharge,
+} from "@/lib/consultation-settings"
+import { SessionTimer } from "@/components/consultation/session-timer"
+import { useUser } from "@clerk/react"
 import { PaystackPaymentModal } from "@/components/store/paystack-payment-modal"
 import { pushAdminNotification } from "@/lib/notifications-client"
 import { ChatWindow } from "@/components/chat/chat-window"
@@ -123,6 +130,13 @@ function Shell({ children }: { children: React.ReactNode }) {
 export default function SpeakToADoctorPage() {
   const [consultSettings] = useConsultationSettings()
   const doc = standbyDoctorOf(consultSettings)
+  const { user, isSignedIn } = useUser()
+  /* When the patient is signed in we pass their real identity so the doctor
+     sees who they're talking to — no need to type their name. Guests stay
+     anonymous (default "Patient"). */
+  const patientName = (isSignedIn && (user?.fullName || user?.firstName)) || undefined
+  const patientPhone = (isSignedIn && user?.primaryPhoneNumber?.phoneNumber) || undefined
+  const patientMeta = patientName || patientPhone ? { name: patientName || "Patient", phone: patientPhone || "" } : undefined
   const [screen,     setScreen]     = useState<Screen>("select")
   const [consType,   setConsType]   = useState<"chat" | "call">("chat")
   const [category,   setCategory]   = useState("")
@@ -142,6 +156,23 @@ export default function SpeakToADoctorPage() {
   const lastTypingSentRef = useRef(0)
   const typingStopRef = useRef<number | null>(null)
   const seededRef = useRef(false)
+
+  /* Chat session countdown (mirrors /account/chat). The patient sees a live
+     timer; when the free window ends they confirm an overage to keep talking
+     or the session auto-ends. */
+  const [chatElapsed, setChatElapsed] = useState(0)
+  const [chatExtensionsSec, setChatExtensionsSec] = useState(0)
+  const [chatSessionEnded, setChatSessionEnded] = useState(false)
+  const chatStartMsRef = useRef<number>(0)
+  useEffect(() => {
+    if (screen !== "chat" || chatSessionEnded) return
+    if (!chatStartMsRef.current) chatStartMsRef.current = Date.now()
+    const tick = () => setChatElapsed(Math.floor((Date.now() - chatStartMsRef.current) / 1000))
+    tick()
+    const t = window.setInterval(tick, 1000)
+    return () => window.clearInterval(t)
+  }, [screen, chatSessionEnded])
+  const chatMaxSec = consultSettings.chatDurationMin * 60 + chatExtensionsSec
 
   /* connecting progress */
   useEffect(() => {
@@ -163,7 +194,7 @@ export default function SpeakToADoctorPage() {
             .filter(Boolean)
             .join("\n")
           if (concern) {
-            apiChat.sendAsPatient(concern).then(() => refreshChatPatient()).catch(() => {})
+            apiChat.sendAsPatient(concern, patientMeta).then(() => refreshChatPatient()).catch(() => {})
           }
         }
         setScreen("chat")
@@ -232,13 +263,13 @@ export default function SpeakToADoctorPage() {
   }, [screen, unreadStaffCount])
 
   const sendMessage = async (text: string) => {
-    await apiChat.sendAsPatient(text)
+    await apiChat.sendAsPatient(text, patientMeta)
     await refreshChatPatient()
   }
 
   const sendAttachment = async (file: File) => {
     const up = await apiUploads.putFile(file, "consultations")
-    await apiChat.sendAsPatient("", undefined, {
+    await apiChat.sendAsPatient("", patientMeta, {
       attachmentUrl: up.url,
       attachmentName: file.name,
       attachmentType: file.type.startsWith("image/") ? "image" : "file",
@@ -269,6 +300,18 @@ export default function SpeakToADoctorPage() {
   const endConsultation = () => {
     apiChat.closeMyThread().catch(() => {})
     setScreen("summary")
+  }
+
+  // Start a fresh consultation from the summary screen: clear the session timer
+  // and seed state so the next chat begins cleanly (no stale elapsed time,
+  // overage, ended-flag, or already-seeded guard leaking across consultations).
+  const startNewConsultation = () => {
+    chatStartMsRef.current = 0
+    setChatElapsed(0)
+    setChatExtensionsSec(0)
+    setChatSessionEnded(false)
+    seededRef.current = false
+    setScreen("select")
   }
 
   const fee = consType === "chat" ? consultSettings.chatPriceKes : consultSettings.callPriceKes
@@ -825,13 +868,39 @@ export default function SpeakToADoctorPage() {
               </p>
             </div>
           </div>
-          <button
-            onClick={endConsultation}
-            className="h-9 px-5 rounded-full font-semibold text-xs transition-opacity hover:opacity-90"
-            style={btnPrimary}
-          >
-            End Consultation
-          </button>
+          <div className="flex items-center gap-3">
+            {!chatSessionEnded && (
+              <SessionTimer
+                maxDurationSec={chatMaxSec}
+                elapsedSec={chatElapsed}
+                warnAtSecondsLeft={consultSettings.warnSecondsLeft}
+                overageLabel={formatOverageLabel(consultSettings)}
+                overageBlockMin={consultSettings.overageBlockMin}
+                onConfirmOverage={() => {
+                  setChatExtensionsSec((e) => e + consultSettings.overageBlockMin * 60)
+                  logOverageCharge({
+                    kind: "chat",
+                    roomOrThread: "speak-to-a-doctor",
+                    blockMin: consultSettings.overageBlockMin,
+                    amountKes: consultSettings.overageRateKes,
+                    patient: patientName || "Patient",
+                  })
+                }}
+                onEnd={() => {
+                  setChatSessionEnded(true)
+                  endConsultation()
+                }}
+                compact
+              />
+            )}
+            <button
+              onClick={endConsultation}
+              className="h-9 px-5 rounded-full font-semibold text-xs transition-opacity hover:opacity-90"
+              style={btnPrimary}
+            >
+              End Consultation
+            </button>
+          </div>
         </div>
 
         {/* Messages — shared realtime ChatWindow */}
@@ -840,10 +909,13 @@ export default function SpeakToADoctorPage() {
             messages={chatMessages || []}
             perspective="patient"
             onSend={sendMessage}
-            onSendAttachment={sendAttachment}
+            onSendAttachment={chatSessionEnded ? undefined : sendAttachment}
             onTyping={handleTyping}
             typing={staffTyping}
             typingLabel="Doctor is typing"
+            soundOnIncoming
+            composerDisabled={chatSessionEnded}
+            composerHint={chatSessionEnded ? "Consultation ended. Start a new chat to continue." : undefined}
           />
         </div>
       </main>
@@ -937,7 +1009,7 @@ export default function SpeakToADoctorPage() {
 
         <div className="flex justify-end gap-3 mt-8">
           <button
-            onClick={() => setScreen("select")}
+            onClick={startNewConsultation}
             className="h-11 px-6 rounded-full text-sm font-semibold flex items-center gap-2 hover:bg-gray-50 transition-colors"
             style={btnOutline}
           >

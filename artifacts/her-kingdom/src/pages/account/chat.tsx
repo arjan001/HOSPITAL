@@ -222,6 +222,7 @@ export default function AccountChatPage() {
             onTyping={handleTyping}
             typing={staffTyping}
             typingLabel="Pharmacist is typing"
+            soundOnIncoming
             composerDisabled={!isSignedIn || sessionEnded}
             composerHint={sessionEnded ? "Consultation ended. Start a new chat to continue." : "Sign in to start chatting"}
             emptyState={<EmptyState />}

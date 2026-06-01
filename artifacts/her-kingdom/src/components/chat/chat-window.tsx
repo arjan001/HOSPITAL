@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react"
 import { Send, Check, CheckCheck, Stethoscope, User as UserIcon, Paperclip, FileText, Loader2 } from "lucide-react"
 import { isSafeAttachmentUrl, type ChatMessage, type ChatSender } from "@/lib/api-nest"
+import { playChime } from "@/lib/notify-sound"
 
 const WINE = "#3D0814"
 const ACCENT = "#F97316"
@@ -40,6 +41,7 @@ export function ChatWindow({
   composerHint,
   emptyState,
   showStatus = true,
+  soundOnIncoming = false,
 }: {
   messages: ChatMessage[]
   perspective: ChatSender                       // who is "me" in this view
@@ -52,6 +54,8 @@ export function ChatWindow({
   composerHint?: string
   emptyState?: React.ReactNode
   showStatus?: boolean
+  /** Play a chime when a new message arrives from the other party. */
+  soundOnIncoming?: boolean
 }) {
   const [text, setText] = useState("")
   const [sending, setSending] = useState(false)
@@ -65,6 +69,26 @@ export function ChatWindow({
     if (!el) return
     el.scrollTop = el.scrollHeight
   }, [messages.length, typing])
+
+  // Chime on a newly-arrived message from the other party. We gate on the
+  // component mount time rather than "first non-empty render" so that an
+  // initially-empty thread still rings on its first live message, while
+  // history hydration (older timestamps) stays silent.
+  const lastChimeIdRef = useRef<string | null>(null)
+  const mountedAtRef = useRef<number>(Date.now())
+  useEffect(() => {
+    if (!soundOnIncoming) return
+    const last = messages[messages.length - 1]
+    if (!last) return
+    if (last.id === lastChimeIdRef.current) return
+    lastChimeIdRef.current = last.id
+    if (last.sender === perspective) return
+    // Only ring for messages that arrived after this view mounted; history
+    // loaded on open carries older timestamps and must not chime.
+    const t = new Date(last.createdAt).getTime()
+    if (Number.isFinite(t) && t < mountedAtRef.current - 1000) return
+    playChime("message")
+  }, [messages, soundOnIncoming, perspective])
 
   const submit = async (e?: React.FormEvent) => {
     e?.preventDefault()
