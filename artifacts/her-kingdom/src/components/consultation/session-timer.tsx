@@ -26,6 +26,12 @@ export type SessionTimerProps = {
   confirmGraceSec?: number
   /** Right-aligned compact pill (true) vs. inline (false). */
   compact?: boolean
+  /**
+   * True while an overage payment is in flight (the caller is showing its own
+   * payment modal). Hides this component's expiry modal and freezes the
+   * auto-end grace countdown so the patient isn't ended mid-payment.
+   */
+  paying?: boolean
 }
 
 function fmt(sec: number): string {
@@ -50,6 +56,7 @@ export function SessionTimer({
   onEnd,
   confirmGraceSec = 30,
   compact = false,
+  paying = false,
 }: SessionTimerProps) {
   const remaining = Math.max(0, maxDurationSec - elapsedSec)
   const expired = remaining <= 0
@@ -65,6 +72,9 @@ export function SessionTimer({
       setGraceLeft(confirmGraceSec)
       return
     }
+    // Freeze the auto-end countdown while a payment is in flight so the patient
+    // isn't ended mid-payment. We hold the remaining grace (don't reset it).
+    if (paying) return
     let ended = false
     const t = window.setInterval(() => {
       setGraceLeft((g) => {
@@ -82,7 +92,7 @@ export function SessionTimer({
       })
     }, 1000)
     return () => window.clearInterval(t)
-  }, [expired, confirmGraceSec])
+  }, [expired, confirmGraceSec, paying])
 
   return (
     <>
@@ -117,8 +127,9 @@ export function SessionTimer({
         </div>
       )}
 
-      {/* Hard expiry modal — patient must opt in to keep talking */}
-      {expired && (
+      {/* Hard expiry modal — patient must opt in to keep talking. Hidden while
+          a payment is in flight (the caller shows its own payment modal). */}
+      {expired && !paying && (
         <div className="fixed inset-0 z-[70] bg-black/55 flex items-center justify-center p-4" role="dialog" aria-modal="true">
           <div className="w-full max-w-sm rounded-2xl bg-white shadow-2xl overflow-hidden">
             <div className="px-5 pt-5 pb-3 flex items-start gap-3">

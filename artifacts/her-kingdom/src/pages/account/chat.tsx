@@ -20,6 +20,7 @@ import {
 import { useUser } from "@clerk/react"
 import { ShieldCheck, Stethoscope, MessageCircle, Wifi, Info } from "lucide-react"
 import { SessionTimer } from "@/components/consultation/session-timer"
+import { OveragePaymentModal } from "@/components/consultation/overage-payment-modal"
 import {
   useConsultationSettings,
   formatOverageLabel,
@@ -64,6 +65,8 @@ export default function AccountChatPage() {
   const [elapsed, setElapsed] = useState(0)
   const [extensionsSec, setExtensionsSec] = useState(0)
   const [sessionEnded, setSessionEnded] = useState(false)
+  // Overage payment is in flight — gates the session from resuming until paid.
+  const [overagePaying, setOveragePaying] = useState(false)
   const [endedByDoctor, setEndedByDoctor] = useState(false)
   const startMsRef = useRef<number>(Date.now())
   // Tracks the thread's current consultation so we can tell a genuine NEW
@@ -243,30 +246,53 @@ export default function AccountChatPage() {
           thread={thread}
           timerSlot={
             isSignedIn && !sessionEnded ? (
-              <SessionTimer
-                maxDurationSec={chatMaxSec}
-                elapsedSec={elapsed}
-                warnAtSecondsLeft={consultSettings.warnSecondsLeft}
-                overageLabel={formatOverageLabel(consultSettings)}
-                overageBlockMin={consultSettings.overageBlockMin}
-                onConfirmOverage={() => {
-                  setExtensionsSec((e) => e + consultSettings.overageBlockMin * 60)
-                  logOverageCharge({
-                    kind: "chat",
-                    roomOrThread: thread?.id || "patient-chat",
-                    blockMin: consultSettings.overageBlockMin,
-                    amountKes: consultSettings.overageRateKes,
-                    patient: userName,
-                  })
-                }}
-                onEnd={() => {
-                  setSessionEnded(true)
-                  closingByPatientRef.current = true
-                  // Preserve the transcript as a saved consultation record.
-                  apiChat.closeMyThread().catch(() => {})
-                }}
-                compact
-              />
+              <>
+                <SessionTimer
+                  maxDurationSec={chatMaxSec}
+                  elapsedSec={elapsed}
+                  warnAtSecondsLeft={consultSettings.warnSecondsLeft}
+                  overageLabel={formatOverageLabel(consultSettings)}
+                  overageBlockMin={consultSettings.overageBlockMin}
+                  paying={overagePaying}
+                  onConfirmOverage={() => setOveragePaying(true)}
+                  onEnd={() => {
+                    setSessionEnded(true)
+                    closingByPatientRef.current = true
+                    // Preserve the transcript as a saved consultation record.
+                    apiChat.closeMyThread().catch(() => {})
+                  }}
+                  compact
+                />
+                <OveragePaymentModal
+                  open={overagePaying}
+                  phone={userPhone}
+                  amountKes={consultSettings.overageRateKes}
+                  blockMin={consultSettings.overageBlockMin}
+                  currency={consultSettings.currency}
+                  kind="chat"
+                  customerName={userName}
+                  email={user?.primaryEmailAddress?.emailAddress || undefined}
+                  createOrderNumber={() => `CHAT-OVG-${Date.now()}`}
+                  onPaid={() => {
+                    setExtensionsSec((e) => e + consultSettings.overageBlockMin * 60)
+                    logOverageCharge({
+                      kind: "chat",
+                      roomOrThread: thread?.id || "patient-chat",
+                      blockMin: consultSettings.overageBlockMin,
+                      amountKes: consultSettings.overageRateKes,
+                      patient: userName,
+                    })
+                    setOveragePaying(false)
+                  }}
+                  onCancel={() => setOveragePaying(false)}
+                  onEnd={() => {
+                    setOveragePaying(false)
+                    setSessionEnded(true)
+                    closingByPatientRef.current = true
+                    apiChat.closeMyThread().catch(() => {})
+                  }}
+                />
+              </>
             ) : null
           }
         />

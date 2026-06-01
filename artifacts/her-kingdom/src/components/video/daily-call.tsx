@@ -5,6 +5,7 @@ import {
   Settings, Users, Loader2, AlertTriangle,
 } from "lucide-react"
 import { SessionTimer } from "@/components/consultation/session-timer"
+import { OveragePaymentModal } from "@/components/consultation/overage-payment-modal"
 import {
   useConsultationSettings,
   formatOverageLabel,
@@ -43,6 +44,10 @@ export type DailyCallProps = {
   doctorName?: string
   /** Short consultation topic (for admin live monitor). */
   topic?: string
+  /** Phone the first STK push was sent to — reused for the auto overage charge. */
+  patientPhone?: string
+  /** Patient email, used as the Paystack customer email on overage charges. */
+  patientEmail?: string
 }
 
 type ConfigState = "checking" | "ready" | "missing" | "error" | "ended"
@@ -75,6 +80,8 @@ export function DailyCall({
   patientName,
   doctorName,
   topic,
+  patientPhone,
+  patientEmail,
 }: DailyCallProps) {
   const [consultSettings] = useConsultationSettings()
   // Recording is gated by the admin Integrations → Video toggle. Default off so
@@ -89,6 +96,8 @@ export function DailyCall({
         ? consultSettings.videoDurationMin * 60
         : 0
   const [extensionsSec, setExtensionsSec] = useState(0)
+  // Overage payment in flight — gates the call from resuming until paid.
+  const [overagePaying, setOveragePaying] = useState(false)
   const effectiveMaxSec = baseDurationSec + extensionsSec
   const timerEnabled = !!consultationKind && baseDurationSec > 0
   const containerRef = useRef<HTMLDivElement | null>(null)
@@ -375,17 +384,8 @@ export function DailyCall({
                   warnAtSecondsLeft={consultSettings.warnSecondsLeft}
                   overageLabel={formatOverageLabel(consultSettings)}
                   overageBlockMin={consultSettings.overageBlockMin}
-                  onConfirmOverage={() => {
-                    const extra = consultSettings.overageBlockMin * 60
-                    setExtensionsSec((e) => e + extra)
-                    logOverageCharge({
-                      kind: consultationKind || "video",
-                      roomOrThread: roomName,
-                      blockMin: consultSettings.overageBlockMin,
-                      amountKes: consultSettings.overageRateKes,
-                      patient: userName,
-                    })
-                  }}
+                  paying={overagePaying}
+                  onConfirmOverage={() => setOveragePaying(true)}
                   onEnd={() => { void handleLeave() }}
                   compact
                 />
@@ -394,6 +394,34 @@ export function DailyCall({
           </div>
         )}
       </div>
+
+      {timerEnabled && (
+        <OveragePaymentModal
+          open={overagePaying}
+          phone={patientPhone}
+          amountKes={consultSettings.overageRateKes}
+          blockMin={consultSettings.overageBlockMin}
+          currency={consultSettings.currency}
+          kind={consultationKind === "voice" ? "voice" : "video"}
+          customerName={patientName || userName}
+          email={patientEmail}
+          createOrderNumber={() => `CALL-OVG-${Date.now()}`}
+          onPaid={({ phone }) => {
+            void phone
+            setExtensionsSec((e) => e + consultSettings.overageBlockMin * 60)
+            logOverageCharge({
+              kind: consultationKind || "video",
+              roomOrThread: roomName,
+              blockMin: consultSettings.overageBlockMin,
+              amountKes: consultSettings.overageRateKes,
+              patient: userName,
+            })
+            setOveragePaying(false)
+          }}
+          onCancel={() => setOveragePaying(false)}
+          onEnd={() => { setOveragePaying(false); void handleLeave() }}
+        />
+      )}
 
       {/* Center status while bootstrapping the SDK. Once `config === "ready"`,
           Daily's own prejoin lobby is visible and interactive — don't cover it.

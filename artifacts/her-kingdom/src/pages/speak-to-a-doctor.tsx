@@ -16,6 +16,7 @@ import {
   logOverageCharge,
 } from "@/lib/consultation-settings"
 import { SessionTimer } from "@/components/consultation/session-timer"
+import { OveragePaymentModal } from "@/components/consultation/overage-payment-modal"
 import { useUser } from "@clerk/react"
 import { PaystackPaymentModal } from "@/components/store/paystack-payment-modal"
 import { pushAdminNotification } from "@/lib/notifications-client"
@@ -184,6 +185,10 @@ export default function SpeakToADoctorPage() {
   const [chatElapsed, setChatElapsed] = useState(0)
   const [chatExtensionsSec, setChatExtensionsSec] = useState(0)
   const [chatSessionEnded, setChatSessionEnded] = useState(false)
+  // Overage: phone the FIRST STK push went to, reused for the auto second push,
+  // and the in-flight flag that gates the session from resuming until paid.
+  const [lastPaidPhone, setLastPaidPhone] = useState("")
+  const [overagePaying, setOveragePaying] = useState(false)
   const [endedByDoctor, setEndedByDoctor] = useState(false)
   // True briefly while the patient ends their own session, so the archived
   // thread event it triggers isn't mislabelled as "the doctor ended it".
@@ -838,7 +843,8 @@ export default function SpeakToADoctorPage() {
               total={fee}
               defaultPhone={mpesaPhone}
               createPendingOrder={async () => ({ orderNumber: `CONS-${Date.now()}` })}
-              onPaymentConfirmed={() => {
+              onPaymentConfirmed={(result) => {
+                if (result?.phone) setLastPaidPhone(result.phone)
                 setPaystackOpen(false)
                 setScreen("connecting")
                 // Notify the doctor audience that a new consultation has been paid and is connecting.
@@ -983,6 +989,8 @@ export default function SpeakToADoctorPage() {
         patientName="Patient"
         doctorName={doc.name}
         topic={category || doc.specialty}
+        patientPhone={lastPaidPhone || patientPhone || mpesaPhone}
+        patientEmail={(isSignedIn && user?.primaryEmailAddress?.emailAddress) || undefined}
         onSwitchToChat={() => setScreen("chat")}
         onLeave={endConsultation}
       />
@@ -1037,16 +1045,8 @@ export default function SpeakToADoctorPage() {
                 warnAtSecondsLeft={consultSettings.warnSecondsLeft}
                 overageLabel={formatOverageLabel(consultSettings)}
                 overageBlockMin={consultSettings.overageBlockMin}
-                onConfirmOverage={() => {
-                  setChatExtensionsSec((e) => e + consultSettings.overageBlockMin * 60)
-                  logOverageCharge({
-                    kind: "chat",
-                    roomOrThread: "speak-to-a-doctor",
-                    blockMin: consultSettings.overageBlockMin,
-                    amountKes: consultSettings.overageRateKes,
-                    patient: patientName || "Patient",
-                  })
-                }}
+                paying={overagePaying}
+                onConfirmOverage={() => setOveragePaying(true)}
                 onEnd={() => {
                   setChatSessionEnded(true)
                   endConsultation()
@@ -1054,6 +1054,35 @@ export default function SpeakToADoctorPage() {
                 compact
               />
             )}
+            <OveragePaymentModal
+              open={overagePaying}
+              phone={lastPaidPhone || patientPhone || mpesaPhone}
+              amountKes={consultSettings.overageRateKes}
+              blockMin={consultSettings.overageBlockMin}
+              currency={consultSettings.currency}
+              kind="chat"
+              customerName={patientName}
+              email={(isSignedIn && user?.primaryEmailAddress?.emailAddress) || undefined}
+              createOrderNumber={() => `CONS-OVG-${Date.now()}`}
+              onPaid={({ phone }) => {
+                if (phone) setLastPaidPhone(phone)
+                setChatExtensionsSec((e) => e + consultSettings.overageBlockMin * 60)
+                logOverageCharge({
+                  kind: "chat",
+                  roomOrThread: "speak-to-a-doctor",
+                  blockMin: consultSettings.overageBlockMin,
+                  amountKes: consultSettings.overageRateKes,
+                  patient: patientName || "Patient",
+                })
+                setOveragePaying(false)
+              }}
+              onCancel={() => setOveragePaying(false)}
+              onEnd={() => {
+                setOveragePaying(false)
+                setChatSessionEnded(true)
+                endConsultation()
+              }}
+            />
             <button
               onClick={endConsultation}
               className="h-9 px-5 rounded-full font-semibold text-xs transition-opacity hover:opacity-90"
