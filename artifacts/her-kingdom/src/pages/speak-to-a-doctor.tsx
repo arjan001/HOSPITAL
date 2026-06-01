@@ -177,6 +177,9 @@ export default function SpeakToADoctorPage() {
   const [chatExtensionsSec, setChatExtensionsSec] = useState(0)
   const [chatSessionEnded, setChatSessionEnded] = useState(false)
   const [endedByDoctor, setEndedByDoctor] = useState(false)
+  // True briefly while the patient ends their own session, so the archived
+  // thread event it triggers isn't mislabelled as "the doctor ended it".
+  const closingByPatientRef = useRef(false)
   const chatStartMsRef = useRef<number>(0)
   useEffect(() => {
     if (screen !== "chat" || chatSessionEnded) return
@@ -195,11 +198,18 @@ export default function SpeakToADoctorPage() {
   useEffect(() => {
     if (!initialCid) return
     let cancelled = false
-    apiChat
-      .myMessages()
-      .then((msgs) => {
+    Promise.all([
+      apiChat.myThread().catch(() => null),
+      apiChat.myMessages().catch(() => [] as ChatMessage[]),
+    ])
+      .then(([thread, msgs]) => {
         if (cancelled) return
         if (Array.isArray(msgs) && msgs.length > 0) {
+          // Resume into the transcript, but if it was already ended lock the
+          // chat so the patient can't reopen it by typing. We can't tell who
+          // closed it on a cold resume, so show the neutral ended state
+          // (not the live "doctor ended" notice).
+          if (thread?.status === "archived") setChatSessionEnded(true)
           setScreen("chat")
         } else {
           consultIdRef.current = null
@@ -289,8 +299,9 @@ export default function SpeakToADoctorPage() {
         }
         if (payload.type === "thread" && payload.thread?.status === "archived") {
           // Doctor ended the consultation — tell the patient and stop the live
-          // chat so they aren't left typing into a dead screen.
-          setEndedByDoctor(true)
+          // chat so they aren't left typing into a dead screen. Don't show the
+          // "doctor ended" notice if the patient closed it themselves.
+          if (!closingByPatientRef.current) setEndedByDoctor(true)
           setChatSessionEnded(true)
           setStaffTyping(false)
         }
@@ -365,6 +376,7 @@ export default function SpeakToADoctorPage() {
 
   // End the consultation: archive + preserve the transcript, then show summary.
   const endConsultation = () => {
+    closingByPatientRef.current = true
     apiChat.closeMyThread().catch(() => {})
     setScreen("summary")
   }
@@ -378,6 +390,7 @@ export default function SpeakToADoctorPage() {
     setChatExtensionsSec(0)
     setChatSessionEnded(false)
     setEndedByDoctor(false)
+    closingByPatientRef.current = false
     seededRef.current = false
     // Drop the consultation id from the URL so the next chat gets a fresh one.
     consultIdRef.current = null
@@ -987,15 +1000,16 @@ export default function SpeakToADoctorPage() {
           </div>
         </div>
 
-        {endedByDoctor && (
+        {chatSessionEnded && (
           <div
             className="px-6 py-3 flex items-start gap-2 text-sm"
             style={{ background: "#FEF2F2", borderBottom: `1px solid ${BORDER}`, color: "#B91C1C" }}
           >
             <Info className="h-4 w-4 shrink-0 mt-0.5" />
             <span>
-              The doctor has ended this consultation. Your conversation and any prescription are
-              saved — you can start a new consultation anytime.
+              {endedByDoctor
+                ? "The doctor has ended this consultation. Your conversation and any prescription are saved — you can start a new consultation anytime."
+                : "This consultation has ended. Your conversation and any prescription are saved — you can start a new consultation anytime."}
             </span>
           </div>
         )}
@@ -1016,7 +1030,7 @@ export default function SpeakToADoctorPage() {
               endedByDoctor
                 ? "The doctor has ended this consultation. Start a new consultation to continue."
                 : chatSessionEnded
-                ? "Consultation ended. Start a new chat to continue."
+                ? "This consultation has ended. Start a new consultation to continue."
                 : undefined
             }
           />

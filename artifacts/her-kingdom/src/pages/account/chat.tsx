@@ -53,6 +53,9 @@ export default function AccountChatPage() {
   // Outbound typing throttle
   const lastTypingSentRef = useRef(0)
   const typingStopRef = useRef<number | null>(null)
+  // True briefly while the patient ends their own session, so the archived
+  // thread event it triggers isn't mislabelled as "the pharmacist ended it".
+  const closingByPatientRef = useRef(false)
 
   // Consultation timer (chat window). Starts when the patient opens the page;
   // a hard "confirm overage or end" modal fires when it expires.
@@ -86,7 +89,9 @@ export default function AccountChatPage() {
         if (payload.type === "thread") {
           globalMutate("/chat/me", payload.thread, { revalidate: false })
           if (payload.thread?.status === "archived") {
-            setEndedByDoctor(true)
+            // Only call it a pharmacist-ended session if the patient didn't
+            // close it themselves (their own close also archives the thread).
+            if (!closingByPatientRef.current) setEndedByDoctor(true)
             setSessionEnded(true)
             setStaffTyping(false)
           }
@@ -123,6 +128,13 @@ export default function AccountChatPage() {
     if (!thread || thread.unreadByPatient === 0) return
     apiChat.markPatientRead().then(() => refreshChatPatient()).catch(() => {})
   }, [thread?.id, thread?.unreadByPatient])
+
+  // If the thread is already archived when the page loads (doctor ended it
+  // while the patient was away), lock the composer immediately so they can't
+  // type into — and silently reopen — an ended consultation.
+  useEffect(() => {
+    if (thread?.status === "archived") setSessionEnded(true)
+  }, [thread?.status])
 
   const userName = user?.fullName || user?.firstName || "Patient"
   const userPhone = user?.primaryPhoneNumber?.phoneNumber || ""
@@ -211,6 +223,7 @@ export default function AccountChatPage() {
                 }}
                 onEnd={() => {
                   setSessionEnded(true)
+                  closingByPatientRef.current = true
                   // Preserve the transcript as a saved consultation record.
                   apiChat.closeMyThread().catch(() => {})
                 }}
