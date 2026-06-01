@@ -17,7 +17,7 @@ import {
   type ChatThread,
 } from "@/lib/api-nest"
 import { useUser } from "@clerk/react"
-import { ShieldCheck, Stethoscope, MessageCircle, Wifi } from "lucide-react"
+import { ShieldCheck, Stethoscope, MessageCircle, Wifi, Info } from "lucide-react"
 import { SessionTimer } from "@/components/consultation/session-timer"
 import {
   useConsultationSettings,
@@ -60,6 +60,7 @@ export default function AccountChatPage() {
   const [elapsed, setElapsed] = useState(0)
   const [extensionsSec, setExtensionsSec] = useState(0)
   const [sessionEnded, setSessionEnded] = useState(false)
+  const [endedByDoctor, setEndedByDoctor] = useState(false)
   const startMsRef = useRef<number>(Date.now())
   useEffect(() => {
     if (sessionEnded) return
@@ -84,6 +85,11 @@ export default function AccountChatPage() {
         }
         if (payload.type === "thread") {
           globalMutate("/chat/me", payload.thread, { revalidate: false })
+          if (payload.thread?.status === "archived") {
+            setEndedByDoctor(true)
+            setSessionEnded(true)
+            setStaffTyping(false)
+          }
         }
         if (payload.type === "read" && payload.by === "staff") {
           // Pharmacist read the conversation → advance my ticks to read.
@@ -213,6 +219,18 @@ export default function AccountChatPage() {
             ) : null
           }
         />
+        {endedByDoctor && (
+          <div
+            className="px-4 py-3 border-t flex items-start gap-2 text-sm"
+            style={{ background: "#FEF2F2", borderColor: "#F2DCC8", color: "#B91C1C" }}
+          >
+            <Info className="h-4 w-4 shrink-0 mt-0.5" />
+            <span>
+              The pharmacist has ended this consultation. Your conversation is saved — you can
+              start a new chat anytime.
+            </span>
+          </div>
+        )}
         <div className="h-[60vh] min-h-[480px]">
           <ChatWindow
             messages={messages || []}
@@ -224,7 +242,13 @@ export default function AccountChatPage() {
             typingLabel="Pharmacist is typing"
             soundOnIncoming
             composerDisabled={!isSignedIn || sessionEnded}
-            composerHint={sessionEnded ? "Consultation ended. Start a new chat to continue." : "Sign in to start chatting"}
+            composerHint={
+              endedByDoctor
+                ? "The pharmacist has ended this consultation. Start a new chat to continue."
+                : sessionEnded
+                ? "Consultation ended. Start a new chat to continue."
+                : "Sign in to start chatting"
+            }
             emptyState={<EmptyState />}
           />
         </div>

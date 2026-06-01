@@ -6,7 +6,7 @@ import { Footer } from "@/components/store/footer"
 import { Seo, organizationJsonLd, websiteJsonLd, breadcrumbJsonLd, faqJsonLd, productJsonLd } from "@/components/seo"
 import {
   MessageSquare, Phone, Clock, Users, Check, Lock, ArrowLeft, ArrowRight,
-  Send, Plus, ShieldCheck, Video, X, FileText, Stethoscope, Brain, Pill, HeartPulse,
+  Send, Plus, ShieldCheck, Video, X, FileText, Stethoscope, Brain, Pill, HeartPulse, Info,
 } from "lucide-react"
 import { DailyCall } from "@/components/video/daily-call"
 import {
@@ -176,6 +176,7 @@ export default function SpeakToADoctorPage() {
   const [chatElapsed, setChatElapsed] = useState(0)
   const [chatExtensionsSec, setChatExtensionsSec] = useState(0)
   const [chatSessionEnded, setChatSessionEnded] = useState(false)
+  const [endedByDoctor, setEndedByDoctor] = useState(false)
   const chatStartMsRef = useRef<number>(0)
   useEffect(() => {
     if (screen !== "chat" || chatSessionEnded) return
@@ -286,6 +287,13 @@ export default function SpeakToADoctorPage() {
           globalMutate("/chat/me/messages", (prev: ChatMessage[] | undefined) =>
             foldChatMessage(prev, payload.message), { revalidate: false })
         }
+        if (payload.type === "thread" && payload.thread?.status === "archived") {
+          // Doctor ended the consultation — tell the patient and stop the live
+          // chat so they aren't left typing into a dead screen.
+          setEndedByDoctor(true)
+          setChatSessionEnded(true)
+          setStaffTyping(false)
+        }
         if (payload.type === "read" && payload.by === "staff") {
           globalMutate("/chat/me/messages", (prev: ChatMessage[] | undefined) =>
             prev ? prev.map(m => m.sender === "patient" ? { ...m, status: "read" as const } : m) : prev,
@@ -369,6 +377,7 @@ export default function SpeakToADoctorPage() {
     setChatElapsed(0)
     setChatExtensionsSec(0)
     setChatSessionEnded(false)
+    setEndedByDoctor(false)
     seededRef.current = false
     // Drop the consultation id from the URL so the next chat gets a fresh one.
     consultIdRef.current = null
@@ -978,6 +987,19 @@ export default function SpeakToADoctorPage() {
           </div>
         </div>
 
+        {endedByDoctor && (
+          <div
+            className="px-6 py-3 flex items-start gap-2 text-sm"
+            style={{ background: "#FEF2F2", borderBottom: `1px solid ${BORDER}`, color: "#B91C1C" }}
+          >
+            <Info className="h-4 w-4 shrink-0 mt-0.5" />
+            <span>
+              The doctor has ended this consultation. Your conversation and any prescription are
+              saved — you can start a new consultation anytime.
+            </span>
+          </div>
+        )}
+
         {/* Messages — shared realtime ChatWindow */}
         <div className="flex-1 min-h-0">
           <ChatWindow
@@ -990,7 +1012,13 @@ export default function SpeakToADoctorPage() {
             typingLabel="Doctor is typing"
             soundOnIncoming
             composerDisabled={chatSessionEnded}
-            composerHint={chatSessionEnded ? "Consultation ended. Start a new chat to continue." : undefined}
+            composerHint={
+              endedByDoctor
+                ? "The doctor has ended this consultation. Start a new consultation to continue."
+                : chatSessionEnded
+                ? "Consultation ended. Start a new chat to continue."
+                : undefined
+            }
           />
         </div>
       </main>
