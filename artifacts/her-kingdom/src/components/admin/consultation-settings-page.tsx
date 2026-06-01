@@ -172,6 +172,31 @@ export function AdminConsultationSettings() {
           </Row>
         </Card>
 
+        {/* Consultation price */}
+        <Card
+          title="Consultation price"
+          subtitle="What the patient pays up front to start a consultation. Charged once a doctor connects."
+        >
+          <Row icon={<MessagesSquare className="h-4 w-4" />} label="Chat consultation">
+            <NumberInput
+              value={draft.chatPriceKes}
+              onChange={(s) => set("chatPriceKes", num(s, 0, 1000000, draft.chatPriceKes))}
+              prefix={draft.currency}
+            />
+          </Row>
+          <Row icon={<Video className="h-4 w-4" />} label="Call / video consultation">
+            <NumberInput
+              value={draft.callPriceKes}
+              onChange={(s) => set("callPriceKes", num(s, 0, 1000000, draft.callPriceKes))}
+              prefix={draft.currency}
+            />
+          </Row>
+          <div className="mt-2 rounded-md bg-[#FFFBF5] border border-border px-3 py-2 text-xs text-muted-foreground">
+            Patient sees <strong>{draft.currency} {draft.chatPriceKes.toLocaleString()}</strong> for chat and{" "}
+            <strong>{draft.currency} {draft.callPriceKes.toLocaleString()}</strong> for a call on the booking page.
+          </div>
+        </Card>
+
         {/* Warning */}
         <Card title="Warning" subtitle="When to nudge the patient that time is almost up.">
           <Row icon={<AlertTriangle className="h-4 w-4" />} label="Warn at seconds remaining">

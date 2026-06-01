@@ -131,7 +131,7 @@ export default function SpeakToADoctorPage() {
   const [mpesaPhone, setMpesaPhone] = useState("")
   const [paystackOpen, setPaystackOpen] = useState(false)
   const [connectPct, setConnectPct] = useState(0)
-  const [callTimer,  setCallTimer]  = useState(480)
+  const [callTimer,  setCallTimer]  = useState(() => Math.max(60, consultSettings.videoDurationMin * 60))
 
   /* Real chat pipeline (shared with /account/chat + admin). Only active on the
      chat screen so merely browsing the funnel doesn't create live threads. */
@@ -177,9 +177,11 @@ export default function SpeakToADoctorPage() {
   /* call countdown */
   useEffect(() => {
     if (screen !== "videocall") return
+    // Start from the admin-configured call duration each time the call begins.
+    setCallTimer(Math.max(60, consultSettings.videoDurationMin * 60))
     const t = setInterval(() => setCallTimer(s => { if (s <= 0) { clearInterval(t); return 0 } return s - 1 }), 1000)
     return () => clearInterval(t)
-  }, [screen])
+  }, [screen, consultSettings.videoDurationMin])
 
   /* Realtime SSE — staff typing/presence/read (patient perspective). Only opens
      once the patient reaches the chat screen, so the funnel doesn't create a
@@ -269,7 +271,8 @@ export default function SpeakToADoctorPage() {
     setScreen("summary")
   }
 
-  const fee = consType === "chat" ? 1000 : 1500
+  const fee = consType === "chat" ? consultSettings.chatPriceKes : consultSettings.callPriceKes
+  const durationMin = consType === "chat" ? consultSettings.chatDurationMin : consultSettings.videoDurationMin
   const fmtTime = (s: number) => `${Math.floor(s/60)}:${String(s%60).padStart(2,"0")}`
 
   /* ══════════════════ SELECT ══════════════════════════════ */
@@ -312,14 +315,14 @@ export default function SpeakToADoctorPage() {
                 <MessageSquare className="h-5 w-5" style={{ color: ACCENT_RED }} />
               </div>
               <div className="text-right">
-                <p className="font-bold text-base" style={{ color: WINE }}>KSh 1,000</p>
+                <p className="font-bold text-base" style={{ color: WINE }}>KSh {consultSettings.chatPriceKes.toLocaleString()}</p>
                 <p className="text-xs" style={{ color: "#9ca3af" }}>one-time</p>
               </div>
             </div>
             <h2 className="text-lg font-bold mb-1" style={{ color: WINE }}>Chat Consultation</h2>
             <p className="text-sm mb-4" style={{ color: "#6b7280" }}>Text-based consultation with a licensed doctor</p>
             <div className="flex items-center gap-4 text-xs mb-5" style={{ color: "#6b7280" }}>
-              <span className="flex items-center gap-1.5"><Clock className="h-3.5 w-3.5" /> 5 min</span>
+              <span className="flex items-center gap-1.5"><Clock className="h-3.5 w-3.5" /> {consultSettings.chatDurationMin} min</span>
               <span className="flex items-center gap-1.5"><Users className="h-3.5 w-3.5" /> Available now</span>
             </div>
             <p className="text-xs font-semibold uppercase tracking-wide mb-3" style={{ color: "#6b7280" }}>What's included</p>
@@ -342,14 +345,14 @@ export default function SpeakToADoctorPage() {
                 <Phone className="h-5 w-5" style={{ color: ACCENT_RED }} />
               </div>
               <div className="text-right">
-                <p className="font-bold text-base" style={{ color: WINE }}>KSh 1,500</p>
+                <p className="font-bold text-base" style={{ color: WINE }}>KSh {consultSettings.callPriceKes.toLocaleString()}</p>
                 <p className="text-xs" style={{ color: "#9ca3af" }}>one-time</p>
               </div>
             </div>
             <h2 className="text-lg font-bold mb-1" style={{ color: WINE }}>Call Consultation</h2>
             <p className="text-sm mb-4" style={{ color: "#6b7280" }}>Voice or video call with a licensed doctor</p>
             <div className="flex items-center gap-4 text-xs mb-5" style={{ color: "#6b7280" }}>
-              <span className="flex items-center gap-1.5"><Clock className="h-3.5 w-3.5" /> 10 min</span>
+              <span className="flex items-center gap-1.5"><Clock className="h-3.5 w-3.5" /> {consultSettings.videoDurationMin} min</span>
               <span className="flex items-center gap-1.5"><Users className="h-3.5 w-3.5" /> Available now</span>
             </div>
             <p className="text-xs font-semibold uppercase tracking-wide mb-3" style={{ color: "#6b7280" }}>What's included</p>
@@ -610,7 +613,7 @@ export default function SpeakToADoctorPage() {
               </div>
               <div className="flex justify-between text-sm">
                 <span style={{ color: "#6b7280" }}>Duration</span>
-                <span className="font-semibold" style={{ color: WINE }}>{consType === "chat" ? "5 min" : "10 min"}</span>
+                <span className="font-semibold" style={{ color: WINE }}>{durationMin} min</span>
               </div>
               {category && (
                 <div className="flex justify-between text-sm">

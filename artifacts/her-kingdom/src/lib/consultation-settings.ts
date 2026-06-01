@@ -21,6 +21,10 @@ export type StandbyDoctor = {
 export type ConsultationSettings = {
   chatDurationMin: number
   videoDurationMin: number
+  /** Base price the patient pays to start a chat consultation. */
+  chatPriceKes: number
+  /** Base price the patient pays to start a call / video consultation. */
+  callPriceKes: number
   warnSecondsLeft: number
   overageRateKes: number
   overageBlockMin: number
@@ -31,6 +35,8 @@ export type ConsultationSettings = {
 export const CONSULTATION_DEFAULTS: ConsultationSettings = {
   chatDurationMin: 5,
   videoDurationMin: 10,
+  chatPriceKes: 1000,
+  callPriceKes: 1500,
   warnSecondsLeft: 60,
   overageRateKes: 200,
   overageBlockMin: 5,
