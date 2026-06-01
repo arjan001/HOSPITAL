@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react"
+import { useState, useRef, useEffect, useMemo } from "react"
 import { Link, useLocation } from "wouter"
 import { TopBar } from "@/components/store/top-bar"
 import { Navbar } from "@/components/store/navbar"
@@ -31,6 +31,7 @@ import {
   refreshChatPatient,
   useMyMessages,
   type ChatMessage,
+  type ChatPrescriptionDrug,
 } from "@/lib/api-nest"
 
 const CARD_PAYMENTS_ENABLED = import.meta.env.VITE_ENABLE_CARD_PAYMENTS === "true"
@@ -169,9 +170,13 @@ export default function SpeakToADoctorPage() {
   const [connectPct, setConnectPct] = useState(0)
   const [callTimer,  setCallTimer]  = useState(() => Math.max(60, consultSettings.videoDurationMin * 60))
 
-  /* Real chat pipeline (shared with /account/chat + admin). Only active on the
-     chat screen so merely browsing the funnel doesn't create live threads. */
-  const { data: chatMessages } = useMyMessages(screen === "chat")
+  /* Real chat pipeline (shared with /account/chat + admin). Active on the chat
+     and video-call screens (so prescriptions issued during a call are captured)
+     and on the summary screen (so the auto-generated summary can read the real
+     transcript). Merely browsing the funnel never creates a live thread. */
+  const { data: chatMessages, isLoading: messagesLoading, mutate: mutateMessages } = useMyMessages(
+    screen === "chat" || screen === "videocall" || screen === "summary",
+  )
   const [staffOnline, setStaffOnline] = useState(false)
   const [staffTyping, setStaffTyping] = useState(false)
   const typingClearRef = useRef<number | null>(null)
@@ -203,6 +208,48 @@ export default function SpeakToADoctorPage() {
     return () => window.clearInterval(t)
   }, [screen, chatSessionEnded])
   const chatMaxSec = consultSettings.chatDurationMin * 60 + chatExtensionsSec
+
+  /* Auto-generated consultation summary, derived live from the real transcript:
+     the medicines the doctor actually prescribed (prescription cards) and what
+     the doctor actually wrote (their chat messages). No hardcoded diagnosis or
+     dummy product — if the doctor prescribed nothing / wrote nothing, the
+     summary says so honestly. */
+  const summary = useMemo(() => {
+    const msgs = (chatMessages || []) as ChatMessage[]
+
+    const drugs: ChatPrescriptionDrug[] = []
+    const seen = new Set<string>()
+    for (const m of msgs) {
+      const meta = m.meta as { kind?: string; drugs?: ChatPrescriptionDrug[] } | null | undefined
+      if (meta?.kind === "prescription" && Array.isArray(meta.drugs)) {
+        for (const d of meta.drugs) {
+          if (!d?.name) continue
+          const key = `${d.name}|${d.dosage || ""}`.toLowerCase()
+          if (seen.has(key)) continue
+          seen.add(key)
+          drugs.push(d)
+        }
+      }
+    }
+
+    // What the doctor said: their text messages, oldest→newest, excluding the
+    // auto-text that rides along with a prescription card (the card shows that).
+    const doctorNotes = msgs
+      .filter(
+        (m) =>
+          m.sender === "staff" &&
+          !!m.text?.trim() &&
+          !m.attachmentUrl &&
+          (m.meta as { kind?: string } | null | undefined)?.kind !== "prescription",
+      )
+      .map((m) => m.text.trim())
+
+    return { drugs, doctorNotes }
+  }, [chatMessages])
+
+  // Only show "no notes / no medication" copy after the transcript has actually
+  // loaded once — never on the brief gap before the first fetch settles.
+  const summaryLoading = messagesLoading && !chatMessages
 
   /* Deep-link resume guard: when the page loads at /speak-to-a-doctor/:cid we
      resume into chat only if that id is the thread's CURRENT consultation —
@@ -422,10 +469,13 @@ export default function SpeakToADoctorPage() {
   }
 
   // End the consultation: archive + preserve the transcript, then show summary.
+  // Revalidate the transcript first so the auto-generated summary reads the real,
+  // up-to-date messages/prescriptions instead of a stale or empty snapshot.
   const endConsultation = () => {
     closingByPatientRef.current = true
     apiChat.closeMyThread().catch(() => {})
     setScreen("summary")
+    mutateMessages().catch(() => {})
   }
 
   // Start a fresh consultation from the summary screen: clear the session timer
@@ -1164,67 +1214,89 @@ export default function SpeakToADoctorPage() {
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-          {/* Diagnosis */}
+          {/* Doctor's notes — what the doctor actually wrote during the consult */}
           <div className="rounded-xl bg-white p-6" style={{ border: `1px solid ${BORDER}` }}>
             <div className="flex items-center gap-2 mb-4">
               <span className="w-8 h-8 rounded-md flex items-center justify-center"
                 style={{ background: PEACH_TINT, color: ACCENT_RED }}>
                 <FileText className="h-4 w-4" />
               </span>
-              <p className="font-semibold text-sm" style={{ color: WINE }}>Diagnosis & Recommendations</p>
+              <p className="font-semibold text-sm" style={{ color: WINE }}>Doctor's Notes</p>
             </div>
 
-            <div className="text-sm mb-4 pb-4" style={{ color: "#374151", borderBottom: `1px solid ${BORDER}` }}>
-              <span className="font-semibold" style={{ color: WINE }}>Diagnosis:</span> Common cold with mild symptoms
-            </div>
+            {summaryLoading ? (
+              <p className="text-sm" style={{ color: "#6b7280" }}>Loading your consultation notes…</p>
+            ) : summary.doctorNotes.length > 0 ? (
+              <ul className="space-y-2.5 text-sm" style={{ color: "#374151" }}>
+                {summary.doctorNotes.map((note, i) => (
+                  <li key={i} className="flex gap-2">
+                    <Check className="h-4 w-4 flex-shrink-0 mt-0.5" style={{ color: ACCENT_RED }} />
+                    <span className="whitespace-pre-wrap break-words">{note}</span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-sm" style={{ color: "#6b7280" }}>
+                {doc.name} did not leave additional written notes for this consultation.
+              </p>
+            )}
 
-            <p className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: "#6b7280" }}>Recommendations</p>
-            <ul className="space-y-1.5 text-sm mb-4" style={{ color: "#374151" }}>
-              {[
-                "Get adequate rest (7–8 hours of sleep)",
-                "Stay hydrated — drink plenty of water",
-                "Take prescribed medication as directed",
-                "Monitor temperature twice daily",
-              ].map(r => (
-                <li key={r} className="flex gap-2">
-                  <Check className="h-4 w-4 flex-shrink-0 mt-0.5" style={{ color: ACCENT_RED }} />
-                  {r}
-                </li>
-              ))}
-            </ul>
-
-            <div className="rounded-lg px-3 py-2.5 text-xs" style={{ background: SOFT_BG, border: `1px solid ${BORDER}`, color: WINE }}>
-              <strong>Follow-up:</strong> If symptoms persist beyond 5 days or worsen, please consult again.
+            <div className="rounded-lg px-3 py-2.5 text-xs mt-4" style={{ background: SOFT_BG, border: `1px solid ${BORDER}`, color: WINE }}>
+              <strong>Follow-up:</strong> If your symptoms persist or worsen, please start a new consultation.
             </div>
           </div>
 
-          {/* Recommended medicine */}
+          {/* Prescribed medicine — real prescription cards from this consult */}
           <div className="rounded-xl bg-white p-6" style={{ border: `1px solid ${BORDER}` }}>
             <div className="flex items-center gap-2 mb-4">
               <span className="w-8 h-8 rounded-md flex items-center justify-center"
                 style={{ background: PEACH_TINT, color: ACCENT_RED }}>
                 <Pill className="h-4 w-4" />
               </span>
-              <p className="font-semibold text-sm" style={{ color: WINE }}>Recommended Medicine</p>
+              <p className="font-semibold text-sm" style={{ color: WINE }}>Prescribed Medicine</p>
             </div>
 
-            <div className="rounded-lg p-4 flex items-center gap-4" style={{ background: SOFT_BG, border: `1px solid ${BORDER}` }}>
-              <div className="w-14 h-14 rounded-lg flex items-center justify-center flex-shrink-0"
-                style={{ background: "#fff", border: `1px solid ${BORDER}` }}>
-                <Pill className="h-7 w-7" style={{ color: ACCENT_RED }} />
+            {summaryLoading ? (
+              <div className="rounded-lg p-4 text-sm" style={{ background: SOFT_BG, border: `1px solid ${BORDER}`, color: "#6b7280" }}>
+                Loading your prescription…
               </div>
-              <div className="flex-1 min-w-0">
-                <p className="font-bold text-sm" style={{ color: WINE }}>Paracetamol 500mg</p>
-                <p className="text-xs" style={{ color: "#6b7280" }}>Take 1 tablet every 8 hours</p>
-                <p className="font-bold text-sm mt-1" style={{ color: ACCENT_RED }}>KSh 800</p>
+            ) : summary.drugs.length > 0 ? (
+              <div className="space-y-3">
+                {summary.drugs.map((d, i) => {
+                  const href = d.productSlug ? `/product/${d.productSlug}` : `/shop?search=${encodeURIComponent(d.name)}`
+                  return (
+                    <div key={`${d.name}-${i}`} className="rounded-lg p-4 flex items-center gap-4" style={{ background: SOFT_BG, border: `1px solid ${BORDER}` }}>
+                      <div className="w-14 h-14 rounded-lg flex items-center justify-center flex-shrink-0"
+                        style={{ background: "#fff", border: `1px solid ${BORDER}` }}>
+                        <Pill className="h-7 w-7" style={{ color: ACCENT_RED }} />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-bold text-sm" style={{ color: WINE }}>
+                          {d.name}{d.dosage ? ` · ${d.dosage}` : ""}
+                        </p>
+                        {d.instructions && (
+                          <p className="text-xs" style={{ color: "#6b7280" }}>{d.instructions}</p>
+                        )}
+                        {typeof d.price === "number" && d.price > 0 && (
+                          <p className="font-bold text-sm mt-1" style={{ color: ACCENT_RED }}>KSh {d.price.toLocaleString()}</p>
+                        )}
+                      </div>
+                      <Link
+                        href={href}
+                        className="h-10 px-5 rounded-full text-xs font-semibold flex items-center justify-center transition-opacity hover:opacity-90"
+                        style={btnPrimary}
+                      >
+                        View
+                      </Link>
+                    </div>
+                  )
+                })}
               </div>
-              <button
-                className="h-10 px-5 rounded-full text-xs font-semibold transition-opacity hover:opacity-90"
-                style={btnPrimary}
-              >
-                Add to Cart
-              </button>
-            </div>
+            ) : (
+              <div className="rounded-lg p-4 text-sm" style={{ background: SOFT_BG, border: `1px solid ${BORDER}`, color: "#6b7280" }}>
+                No medication was prescribed during this consultation. If you were advised to buy something specific, you can find it in the shop.
+              </div>
+            )}
           </div>
         </div>
 
