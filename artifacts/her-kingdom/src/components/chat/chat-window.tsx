@@ -1,8 +1,9 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
-import { Send, Check, CheckCheck, Stethoscope, User as UserIcon, Paperclip, FileText, Loader2 } from "lucide-react"
-import { isSafeAttachmentUrl, type ChatMessage, type ChatSender } from "@/lib/api-nest"
+import { Link } from "wouter"
+import { Send, Check, CheckCheck, Stethoscope, User as UserIcon, Paperclip, FileText, Loader2, ChevronDown, Pill, ShieldCheck, ChevronRight } from "lucide-react"
+import { isSafeAttachmentUrl, type ChatMessage, type ChatPrescriptionDrug, type ChatSender } from "@/lib/api-nest"
 import { playChime } from "@/lib/notify-sound"
 
 const WINE = "#3D0814"
@@ -27,6 +28,90 @@ function fmtDay(iso: string) {
   if (d.toDateString() === today.toDateString()) return "Today"
   if (d.toDateString() === yest.toDateString()) return "Yesterday"
   return d.toLocaleDateString([], { weekday: "long", day: "numeric", month: "short" })
+}
+
+/** Slugify a drug name for the /shop search fallback when no productSlug. */
+function searchHref(name: string) {
+  return `/shop?search=${encodeURIComponent(name)}`
+}
+
+/**
+ * Rich prescription card rendered in-thread when a doctor issues a prescription.
+ * Each drug links to its product page (or a /shop search fallback) so the
+ * patient can tap straight through to buy. Shown to both perspectives.
+ */
+function PrescriptionCard({
+  rxNumber,
+  drugs,
+  mine,
+}: {
+  rxNumber?: string
+  drugs: ChatPrescriptionDrug[]
+  mine: boolean
+}) {
+  return (
+    <div
+      className="rounded-2xl overflow-hidden shadow-sm w-full"
+      style={{
+        background: "#FFFFFF",
+        border: "1px solid rgba(61,8,20,0.12)",
+        borderTopRightRadius: mine ? 4 : 16,
+        borderTopLeftRadius: !mine ? 4 : 16,
+      }}
+    >
+      <div
+        className="flex items-center gap-2 px-3.5 py-2"
+        style={{ background: WINE, color: "#fff" }}
+      >
+        <ShieldCheck className="h-4 w-4 flex-shrink-0" style={{ color: "#FFD7A6" }} />
+        <span className="text-xs font-bold tracking-wide">Prescription issued</span>
+        {rxNumber && (
+          <span className="ml-auto text-[10px] font-semibold tabular-nums opacity-90">
+            {rxNumber}
+          </span>
+        )}
+      </div>
+      <ul className="divide-y" style={{ borderColor: "rgba(0,0,0,0.06)" }}>
+        {drugs.map((d, i) => {
+          const href = d.productSlug ? `/product/${d.productSlug}` : searchHref(d.name)
+          return (
+            <li key={`${d.name}-${i}`}>
+              <Link
+                href={href}
+                className="flex items-center gap-3 px-3.5 py-2.5 hover:bg-secondary/50 transition-colors"
+              >
+                <div
+                  className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0"
+                  style={{ background: "rgba(61,8,20,0.06)" }}
+                >
+                  <Pill className="h-4 w-4" style={{ color: WINE }} />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs font-bold truncate" style={{ color: "#1A1A1A" }}>
+                    {d.name}
+                  </p>
+                  {(d.dosage || d.instructions) && (
+                    <p className="text-[11px] text-muted-foreground truncate">
+                      {[d.dosage, d.instructions].filter(Boolean).join(" · ")}
+                    </p>
+                  )}
+                </div>
+                {typeof d.price === "number" && d.price > 0 && (
+                  <span className="text-xs font-bold flex-shrink-0" style={{ color: ACCENT }}>
+                    KSh {d.price.toLocaleString()}
+                  </span>
+                )}
+                <ChevronRight className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
+              </Link>
+            </li>
+          )
+        })}
+      </ul>
+      <div className="px-3.5 py-2 text-[10px] text-muted-foreground" style={{ background: "#FFFBF5" }}>
+        Tap a medicine to view it and add to your cart.
+      </div>
+    </div>
+  )
 }
 
 export function ChatWindow({
@@ -61,14 +146,47 @@ export function ChatWindow({
   const [sending, setSending] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [attachError, setAttachError] = useState<string | null>(null)
+  const [showJump, setShowJump] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
   const fileRef = useRef<HTMLInputElement>(null)
+  const atBottomRef = useRef(true)
+  const lastCountRef = useRef(messages.length)
 
-  useEffect(() => {
+  const scrollToBottom = (behavior: ScrollBehavior = "auto") => {
     const el = scrollRef.current
     if (!el) return
-    el.scrollTop = el.scrollHeight
-  }, [messages.length, typing])
+    el.scrollTo({ top: el.scrollHeight, behavior })
+    atBottomRef.current = true
+    setShowJump(false)
+  }
+
+  // WhatsApp-style scroll: only the message list scrolls. We auto-stick to the
+  // bottom when the reader is already there; if they've scrolled up to read
+  // history, a new message surfaces a "jump to latest" pill instead of yanking
+  // them down.
+  const onScroll = () => {
+    const el = scrollRef.current
+    if (!el) return
+    const distance = el.scrollHeight - el.scrollTop - el.clientHeight
+    const near = distance < 120
+    atBottomRef.current = near
+    if (near) setShowJump(false)
+  }
+
+  useEffect(() => {
+    const grew = messages.length > lastCountRef.current
+    lastCountRef.current = messages.length
+    if (atBottomRef.current) {
+      scrollToBottom()
+    } else if (grew) {
+      const last = messages[messages.length - 1]
+      if (last && last.sender !== perspective) setShowJump(true)
+    }
+  }, [messages.length, perspective])
+
+  useEffect(() => {
+    if (typing && atBottomRef.current) scrollToBottom()
+  }, [typing])
 
   // Chime on a newly-arrived message from the other party. We gate on the
   // component mount time rather than "first non-empty render" so that an
@@ -138,11 +256,12 @@ export function ChatWindow({
   })
 
   return (
-    <div className="flex flex-col h-full" style={{ background: CHAT_BG }}>
+    <div className="flex flex-col h-full min-h-0 relative" style={{ background: CHAT_BG }}>
       {/* Messages */}
       <div
         ref={scrollRef}
-        className="flex-1 overflow-y-auto px-4 sm:px-6 py-4"
+        onScroll={onScroll}
+        className="flex-1 min-h-0 overflow-y-auto px-4 sm:px-6 py-4"
         style={{
           backgroundImage:
             "radial-gradient(rgba(61,8,20,0.04) 1px, transparent 1px)",
@@ -177,6 +296,44 @@ export function ChatWindow({
                   const safeUrl = isSafeAttachmentUrl(m.attachmentUrl) ? m.attachmentUrl : undefined
                   const hasImage = !!safeUrl && m.attachmentType === "image"
                   const hasFile = !!safeUrl && m.attachmentType !== "image"
+                  const rx =
+                    m.meta && (m.meta as { kind?: string }).kind === "prescription"
+                      ? (m.meta as { rxNumber?: string; drugs?: ChatPrescriptionDrug[] })
+                      : null
+                  if (rx && Array.isArray(rx.drugs) && rx.drugs.length > 0) {
+                    return (
+                      <div
+                        key={m.id}
+                        className={`flex ${mine ? "justify-end" : "justify-start"} items-end gap-2`}
+                      >
+                        {!mine && (
+                          <div
+                            className="w-7 h-7 rounded-full flex items-center justify-center text-white flex-shrink-0"
+                            style={{ background: WINE }}
+                            title={m.authorName || "Pharmacist"}
+                          >
+                            <Stethoscope className="h-3.5 w-3.5" />
+                          </div>
+                        )}
+                        <div className="max-w-[88%] sm:max-w-[68%] w-full">
+                          <PrescriptionCard rxNumber={rx.rxNumber} drugs={rx.drugs} mine={mine} />
+                          <div
+                            className="flex items-center justify-end gap-1 mt-1 text-[10px] px-1"
+                            style={{ color: TIME_COLOR }}
+                          >
+                            <span>{fmtTime(m.createdAt)}</span>
+                            {mine && showStatus && (
+                              m.status === "read"
+                                ? <CheckCheck className="h-3 w-3" style={{ color: ACCENT }} />
+                                : m.status === "delivered"
+                                  ? <CheckCheck className="h-3 w-3 opacity-70" />
+                                  : <Check className="h-3 w-3 opacity-70" />
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  }
                   return (
                     <div
                       key={m.id}
@@ -279,6 +436,17 @@ export function ChatWindow({
           </div>
         )}
       </div>
+
+      {showJump && (
+        <button
+          type="button"
+          onClick={() => scrollToBottom("smooth")}
+          className="absolute left-1/2 -translate-x-1/2 bottom-20 z-20 inline-flex items-center gap-1.5 px-3.5 h-8 rounded-full text-white text-xs font-semibold shadow-lg transition-opacity hover:opacity-90"
+          style={{ background: WINE }}
+        >
+          <ChevronDown className="h-3.5 w-3.5" /> New messages
+        </button>
+      )}
 
       {attachError && (
         <div className="px-4 py-1.5 text-[11px] text-center" style={{ color: "#B91C1C", background: "#FEF2F2" }}>

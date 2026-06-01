@@ -15,11 +15,23 @@ import {
   type ChatMessage,
   type ChatThread,
 } from "@/lib/api-nest"
-import { MessagesSquare, Search, Trash2, Stethoscope, Phone, Circle, Video, Wifi, CheckCheck, Volume2, VolumeX, Bell } from "lucide-react"
+import { MessagesSquare, Search, Trash2, Stethoscope, Phone, Circle, Video, Wifi, CheckCheck, Volume2, VolumeX, Bell, Timer, Pill, X, Plus } from "lucide-react"
 import { DailyCall } from "@/components/video/daily-call"
+import { DrugPicker, type DrugRow } from "./drug-picker"
 import { playChime, isChatSoundEnabled, setChatSoundEnabled } from "@/lib/notify-sound"
+import { useConsultationSettings } from "@/lib/consultation-settings"
+import type { Product } from "@/lib/types"
+import type { ChatPrescriptionDrug } from "@/lib/api-nest"
 
 type Presence = { online: boolean; lastSeen: string | null }
+
+// Documented reasons a doctor may close a consultation without prescribing.
+const END_REASONS = [
+  { key: "no-medication", label: "No medication required" },
+  { key: "referred", label: "Referred to a specialist / facility" },
+  { key: "follow-up", label: "Follow-up booked" },
+  { key: "other", label: "Other (add a note)" },
+] as const
 
 function fmtClock(iso: string) {
   const d = new Date(iso)
@@ -58,6 +70,19 @@ export function AdminChat() {
   const [search, setSearch] = useState("")
   const [callMode, setCallMode] = useState<"video" | "voice" | null>(null)
   const { data: messages } = useAdminMessages(activeId)
+
+  // Prescribe-from-chat panel state
+  const [prescribeOpen, setPrescribeOpen] = useState(false)
+  const [rxDrugs, setRxDrugs] = useState<ChatPrescriptionDrug[]>([])
+  const [rxNote, setRxNote] = useState("")
+  const [issuing, setIssuing] = useState(false)
+  const [rxError, setRxError] = useState<string | null>(null)
+
+  // End-session guard state
+  const [endOpen, setEndOpen] = useState(false)
+  const [endReason, setEndReason] = useState("")
+  const [endNote, setEndNote] = useState("")
+  const [ending, setEnding] = useState(false)
 
   // Per-thread patient presence + typing
   const [presence, setPresence] = useState<Record<string, Presence>>({})
@@ -196,6 +221,32 @@ export function AdminChat() {
   const activePresence = activeId ? presence[activeId] : undefined
   const activeTyping = activeId ? !!typingThreads[activeId] : false
 
+  // Doctor-side conversation timer — mirrors the patient's countdown so the
+  // clinician can see how much consultation time is left. Read-only: no overage
+  // prompts on the staff side.
+  const [consultSettings] = useConsultationSettings()
+  const [nowTs, setNowTs] = useState(() => Date.now())
+  useEffect(() => {
+    if (!active || active.status === "archived") return
+    const id = window.setInterval(() => setNowTs(Date.now()), 1000)
+    return () => window.clearInterval(id)
+  }, [active?.id, active?.status])
+
+  const timer = useMemo(() => {
+    if (!active || active.status === "archived") return null
+    const startMs = new Date(active.createdAt).getTime()
+    if (Number.isNaN(startMs)) return null
+    const totalSec = Math.max(60, consultSettings.chatDurationMin * 60)
+    const elapsedSec = Math.max(0, Math.floor((nowTs - startMs) / 1000))
+    const leftSec = totalSec - elapsedSec
+    const over = leftSec < 0
+    const abs = Math.abs(leftSec)
+    const mm = String(Math.floor(abs / 60)).padStart(2, "0")
+    const ss = String(abs % 60).padStart(2, "0")
+    const warn = !over && leftSec <= consultSettings.warnSecondsLeft
+    return { label: `${over ? "+" : ""}${mm}:${ss}`, over, warn }
+  }, [active?.id, active?.status, active?.createdAt, nowTs, consultSettings])
+
   const send = async (text: string) => {
     if (!activeId) return
     await apiChat.sendAsStaff(activeId, text)
@@ -248,11 +299,101 @@ export function AdminChat() {
     await refreshChatAdmin()
   }
 
+  // Has a prescription already been issued in this thread? Used to gate the
+  // "End & save" action — a doctor must either prescribe a drug or document a
+  // reason before closing the consultation.
+  const hasPrescription = useMemo(
+    () =>
+      (messages || []).some(
+        (m) => m.meta && (m.meta as { kind?: string }).kind === "prescription",
+      ),
+    [messages],
+  )
+
+  // Drug picker → editable Rx rows. The picker hands us a DrugRow plus the
+  // source Product so we can capture the product slug + price for the card.
+  const addDrug = (row: DrugRow, source?: Product) => {
+    setRxError(null)
+    setRxDrugs((prev) => [
+      ...prev,
+      {
+        name: row.name,
+        dosage: row.dosage || "",
+        instructions: row.instructions || "",
+        productSlug: source?.slug ?? null,
+        price: typeof source?.price === "number" ? source.price : null,
+      },
+    ])
+  }
+  const updateDrug = (i: number, patch: Partial<ChatPrescriptionDrug>) =>
+    setRxDrugs((prev) => prev.map((d, idx) => (idx === i ? { ...d, ...patch } : d)))
+  const removeDrug = (i: number) =>
+    setRxDrugs((prev) => prev.filter((_, idx) => idx !== i))
+
+  const resetPrescribe = () => {
+    setPrescribeOpen(false)
+    setRxDrugs([])
+    setRxNote("")
+    setRxError(null)
+  }
+
+  const issuePrescription = async () => {
+    if (!activeId) return
+    const drugs = rxDrugs
+      .map((d) => ({ ...d, name: d.name.trim() }))
+      .filter((d) => d.name.length > 0)
+    if (drugs.length === 0) {
+      setRxError("Add at least one medicine before issuing.")
+      return
+    }
+    setIssuing(true)
+    setRxError(null)
+    try {
+      await apiChat.prescribe(activeId, { drugs, doctorNote: rxNote.trim() || undefined })
+      await refreshChatAdmin(activeId)
+      resetPrescribe()
+    } catch {
+      setRxError("Could not issue the prescription. Please try again.")
+    } finally {
+      setIssuing(false)
+    }
+  }
+
   // End the consultation and keep the transcript as a saved record (archived).
+  // Guarded: requires a prescribed drug OR a documented reason.
   const endAndSave = async () => {
     if (!activeId) return
-    await apiChat.closeThread(activeId)
-    await refreshChatAdmin(activeId)
+    if (hasPrescription) {
+      await apiChat.closeThread(activeId)
+      await refreshChatAdmin(activeId)
+      return
+    }
+    // No prescription — require a documented reason.
+    setEndReason("")
+    setEndNote("")
+    setEndOpen(true)
+  }
+
+  const confirmEndWithReason = async () => {
+    if (!activeId || !endReason) return
+    const label =
+      END_REASONS.find((r) => r.key === endReason)?.label || endReason
+    const note = endNote.trim()
+    if (endReason === "other" && !note) return
+    setEnding(true)
+    try {
+      // Document the clinical reason as a staff message so it lives in the
+      // saved transcript, then archive the thread.
+      await apiChat.sendAsStaff(
+        activeId,
+        `Consultation closed — ${label}${note ? `: ${note}` : ""}`,
+      )
+      await apiChat.closeThread(activeId)
+      await refreshChatAdmin(activeId)
+      setEndOpen(false)
+    } finally {
+      setEnding(false)
+    }
   }
 
   const totalUnread = (threads || []).reduce((s, t) => s + t.unreadByStaff, 0)
@@ -427,6 +568,32 @@ export function AdminChat() {
                   >
                     <Video className="h-3.5 w-3.5" /> Video call
                   </button>
+                  {timer && (
+                    <span
+                      className="text-[11px] font-semibold tabular-nums inline-flex items-center gap-1 px-2.5 h-7 rounded-full"
+                      style={
+                        timer.over
+                          ? { background: "#FEF2F2", color: "#B91C1C" }
+                          : timer.warn
+                            ? { background: "#FFF7ED", color: "#C2410C" }
+                            : { background: "#F3E8EB", color: "#6B0F1A" }
+                      }
+                      title={timer.over ? "Consultation time exceeded" : "Time left in this consultation"}
+                    >
+                      <Timer className="h-3 w-3" />
+                      {timer.over ? `Over ${timer.label.slice(1)}` : timer.label}
+                    </span>
+                  )}
+                  {active.status !== "archived" && (
+                    <button
+                      onClick={() => { setRxError(null); setPrescribeOpen(true) }}
+                      className="text-xs font-semibold text-white inline-flex items-center gap-1.5 px-3 h-8 rounded-md hover:opacity-90"
+                      style={{ background: "#F97316" }}
+                      title="Prescribe a medicine from the catalogue"
+                    >
+                      <Pill className="h-3.5 w-3.5" /> Prescribe
+                    </button>
+                  )}
                   {active.status !== "archived" && (
                     <button
                       onClick={endAndSave}
@@ -499,6 +666,168 @@ export function AdminChat() {
           onLeave={() => setCallMode(null)}
           onSwitchToChat={() => setCallMode(null)}
         />
+      )}
+
+      {/* Prescribe panel */}
+      {prescribeOpen && active && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ background: "rgba(0,0,0,0.45)" }}
+          onMouseDown={(e) => { if (e.target === e.currentTarget) resetPrescribe() }}
+        >
+          <div className="w-full max-w-lg rounded-xl bg-white shadow-2xl overflow-hidden flex flex-col max-h-[88vh]">
+            <div className="px-5 py-3.5 flex items-center gap-2 text-white" style={{ background: "#3D0814" }}>
+              <Pill className="h-4 w-4" style={{ color: "#F97316" }} />
+              <p className="font-semibold text-sm">Prescribe for {active.patientName}</p>
+              <button onClick={resetPrescribe} className="ml-auto opacity-80 hover:opacity-100" aria-label="Close">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="p-5 overflow-y-auto space-y-3">
+              {rxDrugs.length === 0 && (
+                <p className="text-xs text-muted-foreground text-center py-6">
+                  Search the catalogue and add one or more medicines. You can edit dosage and instructions for each.
+                </p>
+              )}
+              {rxDrugs.map((d, i) => (
+                <div key={i} className="rounded-lg border border-border p-3 space-y-2">
+                  <div className="flex items-center gap-2">
+                    <Pill className="h-3.5 w-3.5 flex-shrink-0" style={{ color: "#3D0814" }} />
+                    <input
+                      value={d.name}
+                      onChange={(e) => updateDrug(i, { name: e.target.value })}
+                      placeholder="Medicine name"
+                      className="flex-1 text-sm font-semibold h-8 px-2 rounded-md border border-border bg-background"
+                    />
+                    {d.productSlug && (
+                      <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full" style={{ background: "#F3E8EB", color: "#6B0F1A" }}>
+                        linked
+                      </span>
+                    )}
+                    <button onClick={() => removeDrug(i)} className="text-destructive hover:bg-destructive/10 rounded-md p-1" aria-label="Remove">
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <input
+                      value={d.dosage ?? ""}
+                      onChange={(e) => updateDrug(i, { dosage: e.target.value })}
+                      placeholder="Dosage (e.g. 1 tab)"
+                      className="text-xs h-8 px-2 rounded-md border border-border bg-background"
+                    />
+                    <input
+                      value={d.instructions ?? ""}
+                      onChange={(e) => updateDrug(i, { instructions: e.target.value })}
+                      placeholder="Instructions (e.g. 3x daily)"
+                      className="text-xs h-8 px-2 rounded-md border border-border bg-background"
+                    />
+                  </div>
+                </div>
+              ))}
+
+              <div className="flex justify-center pt-1">
+                <DrugPicker onPick={addDrug} clinicalContext={messages?.map((m) => m.text).join(" ")} triggerLabel="Add medicine" align="start" />
+              </div>
+
+              <div className="pt-2">
+                <label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground block mb-1.5">
+                  Doctor's note <span className="normal-case font-normal">(optional)</span>
+                </label>
+                <textarea
+                  rows={2}
+                  value={rxNote}
+                  onChange={(e) => setRxNote(e.target.value)}
+                  placeholder="Diagnosis or guidance to record with the prescription…"
+                  className="w-full text-sm px-3 py-2 rounded-md border border-border bg-background resize-none"
+                />
+              </div>
+
+              {rxError && <p className="text-xs font-semibold" style={{ color: "#B91C1C" }}>{rxError}</p>}
+            </div>
+
+            <div className="px-5 py-3 border-t border-border flex items-center justify-end gap-2">
+              <button onClick={resetPrescribe} className="text-xs font-semibold px-3 h-9 rounded-md hover:bg-secondary">
+                Cancel
+              </button>
+              <button
+                onClick={issuePrescription}
+                disabled={issuing || rxDrugs.length === 0}
+                className="text-xs font-semibold text-white inline-flex items-center gap-1.5 px-4 h-9 rounded-md hover:opacity-90 disabled:opacity-40"
+                style={{ background: "#B91C1C" }}
+              >
+                <Plus className="h-3.5 w-3.5" /> {issuing ? "Issuing…" : "Issue prescription"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* End-session guard: require a documented reason when no Rx was issued */}
+      {endOpen && active && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ background: "rgba(0,0,0,0.45)" }}
+          onMouseDown={(e) => { if (e.target === e.currentTarget) setEndOpen(false) }}
+        >
+          <div className="w-full max-w-md rounded-xl bg-white shadow-2xl overflow-hidden">
+            <div className="px-5 py-3.5 flex items-center gap-2 text-white" style={{ background: "#3D0814" }}>
+              <CheckCheck className="h-4 w-4" style={{ color: "#F97316" }} />
+              <p className="font-semibold text-sm">End consultation</p>
+              <button onClick={() => setEndOpen(false)} className="ml-auto opacity-80 hover:opacity-100" aria-label="Close">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="p-5 space-y-3">
+              <p className="text-xs text-muted-foreground">
+                No prescription was issued. Document a reason before closing so the consultation has a clinical record.
+              </p>
+              <div className="space-y-1.5">
+                {END_REASONS.map((r) => (
+                  <label
+                    key={r.key}
+                    className="flex items-center gap-2.5 px-3 py-2 rounded-md border cursor-pointer transition-colors"
+                    style={{
+                      borderColor: endReason === r.key ? "#3D0814" : "rgba(0,0,0,0.1)",
+                      background: endReason === r.key ? "#F3E8EB" : "#fff",
+                    }}
+                  >
+                    <input
+                      type="radio"
+                      name="end-reason"
+                      checked={endReason === r.key}
+                      onChange={() => setEndReason(r.key)}
+                      className="accent-[#3D0814]"
+                    />
+                    <span className="text-sm">{r.label}</span>
+                  </label>
+                ))}
+              </div>
+              {endReason === "other" && (
+                <textarea
+                  rows={2}
+                  value={endNote}
+                  onChange={(e) => setEndNote(e.target.value)}
+                  placeholder="Add a brief note…"
+                  className="w-full text-sm px-3 py-2 rounded-md border border-border bg-background resize-none"
+                />
+              )}
+            </div>
+            <div className="px-5 py-3 border-t border-border flex items-center justify-end gap-2">
+              <button onClick={() => setEndOpen(false)} className="text-xs font-semibold px-3 h-9 rounded-md hover:bg-secondary">
+                Cancel
+              </button>
+              <button
+                onClick={confirmEndWithReason}
+                disabled={ending || !endReason || (endReason === "other" && !endNote.trim())}
+                className="text-xs font-semibold text-white inline-flex items-center gap-1.5 px-4 h-9 rounded-md hover:opacity-90 disabled:opacity-40"
+                style={{ background: "#B91C1C" }}
+              >
+                <CheckCheck className="h-3.5 w-3.5" /> {ending ? "Saving…" : "End & save"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </AdminShell>
   )

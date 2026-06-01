@@ -6,7 +6,7 @@ import { createPortal } from "react-dom"
 import { Link } from "wouter"
 import { useLocation } from "wouter"
 import { useAdminOrders } from "@/lib/orders-store"
-import { useAdminPrescriptions } from "@/lib/api-nest"
+import { useAdminPrescriptions, useAdminThreads } from "@/lib/api-nest"
 import { useCmsDoc, cmsStore } from "@/lib/cms-store"
 import { NotificationBell } from "@/components/admin/notification-bell"
 import {
@@ -95,6 +95,7 @@ type NavNode = {
   href?: string
   icon: typeof LayoutDashboard
   hasBadge?: boolean
+  badgeColor?: "red" | "green"  // default red ("action required"); green = waiting reply
   perm?: string | string[]   // required permission(s) — omit = visible to all admins
   children?: NavNode[]
 }
@@ -134,10 +135,10 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { label: "Prescriptions",         href: "/admin/prescriptions",          icon: ClipboardList, perm: "rx.view", hasBadge: true },
       { label: "Consultations",         href: "/admin/consultations",          icon: Stethoscope,   perm: "consult.handle" },
+      { label: "Live Chat",             href: "/admin/chat",                   icon: MessagesSquare, perm: "chat.respond", hasBadge: true, badgeColor: "green" },
       { label: "Clinics & Partners",    href: "/admin/clinics",                icon: Building2,     perm: "users.manage" },
       { label: "Doctors",               href: "/admin/doctors",                icon: Stethoscope,   perm: "consult.handle" },
       { label: "Consultation Settings", href: "/admin/consultation-settings",  icon: Timer,         perm: "consult.handle" },
-      { label: "Live Chat",             href: "/admin/chat",                   icon: MessagesSquare, perm: "chat.respond" },
       { label: "Support Tickets",       href: "/admin/support",                icon: MessageSquare, perm: "chat.respond" },
     ],
   },
@@ -424,12 +425,12 @@ function NavLeaf({
       />
       {!collapsed && <span className="flex-1 truncate">{item.label}</span>}
       {showBadge && !collapsed && (
-        <span className="flex items-center justify-center min-w-[20px] h-5 px-1.5 text-[10px] font-bold bg-red-500 text-white rounded-full animate-pulse">
+        <span className={`flex items-center justify-center min-w-[20px] h-5 px-1.5 text-[10px] font-bold text-white rounded-full animate-pulse ${item.badgeColor === "green" ? "bg-emerald-500" : "bg-red-500"}`}>
           {pendingOrders}
         </span>
       )}
       {showBadge && collapsed && (
-        <span className="absolute -top-1 -right-1 h-4 w-4 text-[9px] font-bold bg-red-500 text-white rounded-full flex items-center justify-center" aria-hidden="true">
+        <span className={`absolute -top-1 -right-1 h-4 w-4 text-[9px] font-bold text-white rounded-full flex items-center justify-center ${item.badgeColor === "green" ? "bg-emerald-500" : "bg-red-500"}`} aria-hidden="true">
           {pendingOrders > 9 ? "9+" : pendingOrders}
         </span>
       )}
@@ -722,6 +723,12 @@ export function AdminShell({ children, title }: { children: ReactNode; title: st
   const { data: adminRxList } = useAdminPrescriptions()
   const pendingRx = (adminRxList ?? []).filter((rx) => rx.status === "pending").length
 
+  // Live-chat unread badge — total messages waiting for a doctor across all
+  // active threads. Rendered GREEN to distinguish "patient needs a reply" from
+  // the red "action required" badges (orders, prescriptions).
+  const { data: chatThreads } = useAdminThreads()
+  const chatUnread = (chatThreads ?? []).reduce((n, t) => n + (t.unreadByStaff || 0), 0)
+
   // Newsletter "new since last viewed" badge (header bell mirrors this via the
   // durable admin notification feed; this drives the sidebar counter).
   const [newsletterSubs] = useCmsDoc<{ subscribed_at?: string }[]>("newsletter-subscribers", [])
@@ -948,7 +955,7 @@ export function AdminShell({ children, title }: { children: ReactNode; title: st
               renderGroupedNav(
                 collapsed ? permittedGroups : filteredGroups,
                 pathname,
-                { "/admin/orders": newOrders, "/admin/logistics": dispatchReady, "/admin/prescriptions": pendingRx, "/admin/newsletter": newNewsletter },
+                { "/admin/orders": newOrders, "/admin/logistics": dispatchReady, "/admin/prescriptions": pendingRx, "/admin/chat": chatUnread, "/admin/newsletter": newNewsletter },
                 collapsed,
                 searchAwareExpanded,
                 toggleExpanded,
@@ -1105,7 +1112,7 @@ export function AdminShell({ children, title }: { children: ReactNode; title: st
                   renderGroupedNav(
                     filteredGroups,
                     pathname,
-                    { "/admin/orders": newOrders, "/admin/logistics": dispatchReady, "/admin/prescriptions": pendingRx, "/admin/newsletter": newNewsletter },
+                    { "/admin/orders": newOrders, "/admin/logistics": dispatchReady, "/admin/prescriptions": pendingRx, "/admin/chat": chatUnread, "/admin/newsletter": newNewsletter },
                     false,
                     searchAwareExpanded,
                     toggleExpanded,

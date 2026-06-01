@@ -44,10 +44,12 @@ import {
 } from "@nestjs/common"
 import type { Request } from "express"
 import { Observable, Subject, interval, map, merge } from "rxjs"
-import { and, asc, desc, eq, ne, sql } from "drizzle-orm"
-import { db, chatMessages, chatThreads } from "@workspace/db"
+import { and, asc, desc, eq, isNull, ne, sql } from "drizzle-orm"
+import { db, chatMessages, chatThreads, consultations } from "@workspace/db"
+import type { ChatMessageMeta } from "@workspace/db"
 import { newId } from "../common/repository"
 import { AdminGuard, RequirePerm } from "../common/admin-guard"
+import { PrescriptionsModule, PrescriptionsService } from "./prescriptions.module"
 
 export type ChatSender = "patient" | "staff"
 export type ChatStatus = "sent" | "delivered" | "read"
@@ -67,6 +69,9 @@ export type ChatMessage = {
   attachmentUrl?: string
   attachmentName?: string
   attachmentType?: AttachmentType
+  // Structured rich-card payload (e.g. a doctor-issued prescription). Absent on
+  // ordinary text/attachment messages.
+  meta?: ChatMessageMeta | null
 }
 
 export type ChatThread = {
@@ -108,6 +113,7 @@ type SendOpts = {
   attachmentUrl?: string
   attachmentName?: string
   attachmentType?: AttachmentType
+  meta?: ChatMessageMeta | null
 }
 
 // Row shapes inferred from the Drizzle tables.
@@ -162,6 +168,7 @@ function toApiMessage(r: MessageRow): ChatMessage {
     attachmentUrl: r.attachmentUrl ?? undefined,
     attachmentName: r.attachmentName ?? undefined,
     attachmentType: (r.attachmentType as AttachmentType | null) ?? undefined,
+    meta: (r.meta as ChatMessageMeta | null) ?? undefined,
   }
 }
 
@@ -326,6 +333,7 @@ class ChatService {
         attachmentUrl: opts.attachmentUrl ?? null,
         attachmentName: opts.attachmentName ?? null,
         attachmentType: opts.attachmentType ?? null,
+        meta: opts.meta ?? null,
         deliveredAt: delivered ? now : null,
         readAt: null,
         status: delivered ? "delivered" : "sent",
@@ -429,6 +437,48 @@ class ChatService {
     const thread = toApiThread(updated[0]!)
     this.emit(threadId, { type: "thread", thread })
     return thread
+  }
+
+  /**
+   * Ensure the thread has a durable consultation record and return its id. The
+   * consultation row is the retrievable record of this live session (durable
+   * across reloads/restarts); the id is surfaced in the patient URL so a reload
+   * resumes the same conversation. Idempotent and race-safe: if a concurrent
+   * call already linked a consultation, the orphan row we created is removed.
+   */
+  async ensureConsultation(threadId: string): Promise<{ consultationId: string; thread: ChatThread }> {
+    const t = await this.findThread(threadId)
+    if (!t) throw new HttpException("Thread not found", HttpStatus.NOT_FOUND)
+    if (t.consultationId) {
+      return { consultationId: t.consultationId, thread: toApiThread(t) }
+    }
+    const cid = newId("consult")
+    const now = new Date()
+    await db.insert(consultations).values({
+      id: cid,
+      type: "chat",
+      specialty: "General",
+      patientName: t.patientName || "Guest patient",
+      patientPhone: t.patientPhone || "",
+      status: "in_progress",
+      paymentStatus: "pending",
+      fee: 0,
+      startedAt: now,
+    })
+    const updated = await db
+      .update(chatThreads)
+      .set({ consultationId: cid })
+      .where(and(eq(chatThreads.id, threadId), isNull(chatThreads.consultationId)))
+      .returning()
+    if (updated[0]) {
+      const thread = toApiThread(updated[0])
+      this.emit(threadId, { type: "thread", thread })
+      return { consultationId: cid, thread }
+    }
+    // Lost the race — another call linked a consultation first. Drop our orphan.
+    await db.delete(consultations).where(eq(consultations.id, cid))
+    const again = await this.findThread(threadId)
+    return { consultationId: again!.consultationId!, thread: toApiThread(again!) }
   }
 
   setTyping(threadId: string, who: ChatSender, isTyping: boolean): void {
@@ -555,11 +605,27 @@ type SendBody = {
 }
 type TypingBody = { isTyping?: boolean }
 type CloseBody = { consultationId?: string }
+type PrescribeDrugBody = {
+  name?: string
+  dosage?: string
+  instructions?: string
+  productSlug?: string | null
+  price?: number | null
+  quantity?: number
+}
+type PrescribeBody = {
+  drugs?: PrescribeDrugBody[]
+  doctorNote?: string
+  doctorName?: string
+}
 
 @Controller("chat")
 @RequirePerm("chat.respond")
 class ChatController {
-  constructor(@Inject(ChatService) private readonly svc: ChatService) {}
+  constructor(
+    @Inject(ChatService) private readonly svc: ChatService,
+    @Inject(PrescriptionsService) private readonly rx: PrescriptionsService,
+  ) {}
 
   /* ── Patient ── */
   @Get("me")
@@ -604,6 +670,15 @@ class ChatController {
   async closeMyThread(@Req() req: Request, @Body() body: CloseBody) {
     await this.svc.ensureThread(req.sessionId)
     return this.svc.closeThread(req.sessionId, body?.consultationId)
+  }
+
+  // Assign (or return the existing) durable consultation id for this session's
+  // thread. The funnel calls this when the chat opens so it can put the id in
+  // the URL and resume the same conversation after a reload.
+  @Post("me/consultation")
+  async myConsultation(@Req() req: Request, @Body() body: SendBody) {
+    await this.svc.ensureThread(req.sessionId, { name: body?.name, phone: body?.phone })
+    return this.svc.ensureConsultation(req.sessionId)
   }
 
   @Post("me/test")
@@ -702,6 +777,72 @@ class ChatController {
     return this.svc.closeThread(id, body?.consultationId)
   }
 
+  // Doctor prescribes from inside the chat: create a verified prescription
+  // (linked to this thread's consultation) and post a staff message carrying a
+  // structured prescription card the patient can tap through to each product.
+  @UseGuards(AdminGuard)
+  @Post("admin/threads/:id/prescribe")
+  async prescribe(@Param("id") id: string, @Body() body: PrescribeBody) {
+    const thread = await this.svc.getThread(id)
+    const clean = (Array.isArray(body?.drugs) ? body.drugs : [])
+      .map((d) => ({
+        name: String(d?.name ?? "").trim(),
+        dosage: d?.dosage ? String(d.dosage).trim() : "",
+        instructions: d?.instructions ? String(d.instructions).trim() : "",
+        productSlug: d?.productSlug ? String(d.productSlug).trim() : null,
+        price:
+          typeof d?.price === "number" && Number.isFinite(d.price) && d.price >= 0
+            ? Math.round(d.price)
+            : null,
+        quantity:
+          typeof d?.quantity === "number" && Number.isFinite(d.quantity) && d.quantity >= 1
+            ? Math.round(d.quantity)
+            : 1,
+      }))
+      .filter((d) => d.name)
+    if (clean.length === 0) {
+      throw new HttpException("Add at least one medication to prescribe", HttpStatus.BAD_REQUEST)
+    }
+    const doctorName = body?.doctorName?.trim() || "Doctor"
+    const { consultationId } = await this.svc.ensureConsultation(id)
+    // The thread id IS the patient session id (ensureThread keys both on sid),
+    // so the prescription is owned by the right patient session.
+    const rx = await this.rx.createFromConsultation(id, {
+      patientName: thread.patientName,
+      phone: thread.patientPhone,
+      consultationId,
+      doctorNote: body?.doctorNote,
+      reviewedBy: doctorName,
+      drugs: clean.map(({ name, dosage, instructions, price, quantity }) => ({
+        name,
+        dosage,
+        instructions,
+        price,
+        quantity,
+      })),
+    })
+    const meta: ChatMessageMeta = {
+      kind: "prescription",
+      prescriptionId: rx.id,
+      rxNumber: rx.rxNumber,
+      drugs: clean.map((d) => ({
+        name: d.name,
+        dosage: d.dosage,
+        instructions: d.instructions,
+        productSlug: d.productSlug,
+        price: d.price,
+      })),
+    }
+    const summary = `Prescription issued (${rx.rxNumber}): ${clean
+      .map((d) => d.name)
+      .join(", ")}`
+    const message = await this.svc.sendMessage(id, "staff", summary, {
+      authorName: doctorName,
+      meta,
+    })
+    return { message, prescription: rx, consultationId }
+  }
+
   @UseGuards(AdminGuard)
   @Delete("admin/threads/:id")
   async deleteThread(@Param("id") id: string) {
@@ -730,6 +871,7 @@ class ChatController {
 }
 
 @Module({
+  imports: [PrescriptionsModule],
   controllers: [ChatController],
   providers: [ChatService],
 })

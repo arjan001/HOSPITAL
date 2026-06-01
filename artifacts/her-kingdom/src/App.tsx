@@ -415,6 +415,7 @@ function Router() {
         {() => <ProtectedAccount><UploadPrescriptionPage /></ProtectedAccount>}
       </Route>
       <Route path="/speak-to-a-doctor" component={SpeakToADoctorPage} />
+      <Route path="/speak-to-a-doctor/:cid" component={SpeakToADoctorPage} />
       <Route path="/doctor" component={DoctorPanelPage} />
       <Route path="/account/support" component={AccountSupportPage} />
       {/* Admin login — public, no AdminShell wrapper */}

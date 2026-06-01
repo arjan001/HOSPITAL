@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react"
-import { Link } from "wouter"
+import { Link, useLocation } from "wouter"
 import { TopBar } from "@/components/store/top-bar"
 import { Navbar } from "@/components/store/navbar"
 import { Footer } from "@/components/store/footer"
@@ -137,7 +137,20 @@ export default function SpeakToADoctorPage() {
   const patientName = (isSignedIn && (user?.fullName || user?.firstName)) || undefined
   const patientPhone = (isSignedIn && user?.primaryPhoneNumber?.phoneNumber) || undefined
   const patientMeta = patientName || patientPhone ? { name: patientName || "Patient", phone: patientPhone || "" } : undefined
+  /* Consultation id lives in the URL (/speak-to-a-doctor/:cid) so a reload
+     resumes the patient straight back into the same chat. */
+  const [, setLocation] = useLocation()
+  const initialCid = (() => {
+    const m = window.location.pathname.match(/\/speak-to-a-doctor\/([^/?#]+)/)
+    return m ? decodeURIComponent(m[1]) : null
+  })()
+  const consultIdRef = useRef<string | null>(initialCid)
+  const ensuredRef = useRef(false)
   const [screen,     setScreen]     = useState<Screen>("select")
+  /* While true we're verifying a /speak-to-a-doctor/:cid deep-link before
+     deciding whether to resume into chat — prevents the URL alone from
+     dropping anyone straight into a live chat (funnel/payment bypass). */
+  const [resuming,   setResuming]   = useState(!!initialCid)
   const [consType,   setConsType]   = useState<"chat" | "call">("chat")
   const [category,   setCategory]   = useState("")
   const [symptoms,   setSymptoms]   = useState("")
@@ -173,6 +186,52 @@ export default function SpeakToADoctorPage() {
     return () => window.clearInterval(t)
   }, [screen, chatSessionEnded])
   const chatMaxSec = consultSettings.chatDurationMin * 60 + chatExtensionsSec
+
+  /* Deep-link resume guard: when the page loads at /speak-to-a-doctor/:cid we
+     only drop the patient back into chat if this session already has a real
+     conversation (messages). An empty/unknown id sends them to the funnel so
+     the URL can't be used to skip concern/payment. Runs once on mount. */
+  useEffect(() => {
+    if (!initialCid) return
+    let cancelled = false
+    apiChat
+      .myMessages()
+      .then((msgs) => {
+        if (cancelled) return
+        if (Array.isArray(msgs) && msgs.length > 0) {
+          setScreen("chat")
+        } else {
+          consultIdRef.current = null
+          setLocation("/speak-to-a-doctor", { replace: true })
+        }
+      })
+      .catch(() => {
+        if (cancelled) return
+        consultIdRef.current = null
+        setLocation("/speak-to-a-doctor", { replace: true })
+      })
+      .finally(() => {
+        if (!cancelled) setResuming(false)
+      })
+    return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  /* Once the patient reaches the chat screen, assign (or resume) a durable
+     consultation id and reflect it in the URL so a reload lands them back in
+     the same conversation. Runs once per chat session. */
+  useEffect(() => {
+    if (screen !== "chat" || ensuredRef.current) return
+    ensuredRef.current = true
+    apiChat
+      .ensureMyConsultation(patientMeta)
+      .then((res) => {
+        consultIdRef.current = res.consultationId
+        setLocation(`/speak-to-a-doctor/${encodeURIComponent(res.consultationId)}`, { replace: true })
+      })
+      .catch(() => {})
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [screen])
 
   /* connecting progress */
   useEffect(() => {
@@ -311,6 +370,10 @@ export default function SpeakToADoctorPage() {
     setChatExtensionsSec(0)
     setChatSessionEnded(false)
     seededRef.current = false
+    // Drop the consultation id from the URL so the next chat gets a fresh one.
+    consultIdRef.current = null
+    ensuredRef.current = false
+    setLocation("/speak-to-a-doctor", { replace: true })
     setScreen("select")
   }
 
@@ -319,6 +382,18 @@ export default function SpeakToADoctorPage() {
   const fmtTime = (s: number) => `${Math.floor(s/60)}:${String(s%60).padStart(2,"0")}`
 
   /* ══════════════════ SELECT ══════════════════════════════ */
+  if (resuming) return (
+    <Shell>
+      <div className="mx-auto max-w-5xl px-4 py-24 flex flex-col items-center justify-center text-center gap-3">
+        <div
+          className="h-10 w-10 rounded-full border-2 border-t-transparent animate-spin"
+          style={{ borderColor: "#3D0814", borderTopColor: "transparent" }}
+        />
+        <p className="text-sm text-muted-foreground">Resuming your consultation…</p>
+      </div>
+    </Shell>
+  )
+
   if (screen === "select") return (
     <Shell>
       <div className="mx-auto max-w-5xl px-4 py-10 lg:py-14">
@@ -850,9 +925,9 @@ export default function SpeakToADoctorPage() {
 
   /* ══════════════════ CHAT ════════════════════════════════ */
   if (screen === "chat") return (
-    <div className="min-h-screen flex flex-col bg-white">
+    <div className="h-screen flex flex-col bg-white overflow-hidden">
       <TopBar /><Navbar />
-      <main className="flex-1 flex flex-col overflow-hidden">
+      <main className="flex-1 min-h-0 flex flex-col overflow-hidden">
         {/* Doctor header — clean white */}
         <div className="px-6 py-4 flex items-center justify-between bg-white" style={{ borderBottom: `1px solid ${BORDER}` }}>
           <div className="flex items-center gap-3">

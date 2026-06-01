@@ -391,6 +391,97 @@ export class PrescriptionsService {
     return saved
   }
 
+  /**
+   * Create a doctor-issued prescription from inside a live consultation. Unlike
+   * {@link create} (a patient uploading a scan to be reviewed), this lands the
+   * Rx already `verified` with the doctor's chosen medication line-items, linked
+   * back to the consultation it came from so it's retrievable from that record.
+   */
+  async createFromConsultation(
+    sid: string,
+    input: {
+      patientName?: string
+      phone?: string
+      consultationId?: string | null
+      doctorNote?: string
+      reviewedBy?: string
+      drugs: Array<Partial<ApprovedDrug>>
+    },
+  ): Promise<Prescription> {
+    const uid = await ensureUserId(sid)
+    const now = new Date()
+    const drugs = (input.drugs ?? []).map(normalizeDrug).filter((d) => d.name)
+    if (drugs.length === 0) {
+      throw new HttpException("At least one medication is required", HttpStatus.BAD_REQUEST)
+    }
+    const recipient = String(input.patientName ?? "").trim() || "Patient"
+    const id = newId("rx")
+    const rxNumber = nextRxNumber()
+    await db.insert(rxTable).values({
+      id,
+      rxNumber,
+      userId: uid,
+      consultationId: input.consultationId ?? null,
+      uploadId: null,
+      patientName: recipient,
+      recipient,
+      patientPhone: String(input.phone ?? ""),
+      email: "",
+      notes: "",
+      status: "verified",
+      paymentMethod: "unknown",
+      pharmacistNotes: "",
+      doctorNotes: String(input.doctorNote ?? ""),
+      reviewedBy: input.reviewedBy ?? "Doctor",
+      reviewedAt: now,
+      files: [],
+      submittedAt: now,
+      updatedAt: now,
+    })
+    await db.insert(drugTable).values(
+      drugs.map((d, i) => ({
+        id: newId("drug"),
+        prescriptionId: id,
+        name: d.name,
+        dosage: d.dosage,
+        instructions: d.instructions,
+        price: d.price,
+        quantity: d.quantity,
+        sortOrder: i,
+      })),
+    )
+    await db.insert(tlTable).values({
+      id: newId("tl"),
+      prescriptionId: id,
+      event: "verified",
+      note: "Prescribed by your doctor during the consultation",
+      actor: "pharmacist",
+      createdAt: now,
+    })
+
+    const saved = await this.loadById(id)
+    this.patientNotify.notify("prescription_verified", {
+      phone: saved.phone,
+      name: saved.recipient || saved.patientName,
+      variables: { rx_id: saved.rxNumber },
+    })
+    this.inApp.push(sid, {
+      module: "prescriptions",
+      level: "success",
+      title: "New prescription from your consultation",
+      body: `Your doctor prescribed ${drugs.length} item${drugs.length > 1 ? "s" : ""} — Rx ${saved.rxNumber}. Tap to review and order.`,
+      href: "/account/prescriptions",
+    })
+    this.inApp.push("admin", {
+      module: "prescriptions",
+      level: "info",
+      title: "Prescription issued in consultation",
+      body: `${saved.recipient || saved.patientName} · Rx ${saved.rxNumber}`,
+      href: "/admin/prescriptions",
+    })
+    return saved
+  }
+
   async update(sid: string, id: string, patch: UpdateInput): Promise<Prescription> {
     const current = await this.get(sid, id)
     const now = new Date()
@@ -828,5 +919,6 @@ class AdminPrescriptionsController {
   imports: [PaystackModule, UploadsModule, PatientNotificationsModule, NotificationsModule],
   controllers: [MyPrescriptionsController, AdminPrescriptionsController],
   providers: [PrescriptionsService],
+  exports: [PrescriptionsService],
 })
 export class PrescriptionsModule {}

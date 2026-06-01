@@ -20,6 +20,10 @@ export const prescriptions = pgTable("prescriptions", {
   rxNumber: text("rx_number").unique().notNull(),
   // Nullable because a guest visitor can upload an Rx before signing up.
   userId: text("user_id").references(() => users.id, { onDelete: "set null" }),
+  // Set when a doctor issues this Rx from inside a live consultation, so the Rx
+  // can be retrieved from the consultation record. No FK reference to avoid a
+  // cross-module circular import; the value is a consultations.id.
+  consultationId: text("consultation_id"),
   // Vestigial single-file FK — the model now supports multiple attachments,
   // stored in the `files` jsonb column below. Kept nullable for compatibility.
   uploadId: text("upload_id").references(() => uploads.id, { onDelete: "restrict" }),

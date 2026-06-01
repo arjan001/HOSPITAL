@@ -347,6 +347,25 @@ export type ChatSender = "patient" | "staff"
 export type ChatStatus = "sent" | "delivered" | "read"
 export type ChatAttachmentType = "image" | "file"
 
+/** One prescribed drug inside a prescription chat card. */
+export type ChatPrescriptionDrug = {
+  name: string
+  dosage?: string | null
+  instructions?: string | null
+  productSlug?: string | null
+  price?: number | null
+}
+
+/** Structured rich-card payload attached to a chat message. */
+export type ChatMessageMeta =
+  | {
+      kind: "prescription"
+      prescriptionId: string
+      rxNumber: string
+      drugs: ChatPrescriptionDrug[]
+    }
+  | Record<string, unknown>
+
 export type ChatMessage = {
   id: string
   threadId: string
@@ -360,6 +379,7 @@ export type ChatMessage = {
   attachmentUrl?: string
   attachmentName?: string
   attachmentType?: ChatAttachmentType
+  meta?: ChatMessageMeta | null
 }
 
 /** Presence payload pushed over SSE for patient/staff online + last-seen. */
@@ -425,6 +445,16 @@ export const apiChat = {
       method: "POST",
       body: JSON.stringify(consultationId ? { consultationId } : {}),
     }),
+  /**
+   * Assign (or return the existing) durable consultation id for this session's
+   * thread. Called when the chat opens so the id can be put in the URL and the
+   * conversation resumed after a reload.
+   */
+  ensureMyConsultation: (profile?: { name?: string; phone?: string }) =>
+    nestFetch<{ consultationId: string; thread: ChatThread }>("/chat/me/consultation", {
+      method: "POST",
+      body: JSON.stringify({ ...(profile || {}) }),
+    }),
 
   // Admin
   adminThreads: () => nestFetch<ChatThread[]>("/chat/admin/threads"),
@@ -458,6 +488,23 @@ export const apiChat = {
       method: "POST",
       body: JSON.stringify(consultationId ? { consultationId } : {}),
     }),
+  /**
+   * Doctor prescribes one or more drugs from inside the chat. Creates a verified
+   * prescription linked to the thread's consultation and posts a staff message
+   * carrying a tappable prescription card. Returns the posted message + Rx.
+   */
+  prescribe: (
+    threadId: string,
+    payload: {
+      drugs: ChatPrescriptionDrug[]
+      doctorNote?: string
+      doctorName?: string
+    },
+  ) =>
+    nestFetch<{ message: ChatMessage; prescription: AccountPrescription; consultationId: string }>(
+      `/chat/admin/threads/${threadId}/prescribe`,
+      { method: "POST", body: JSON.stringify(payload) },
+    ),
   deleteThread: (threadId: string) =>
     nestFetch<{ ok: boolean }>(`/chat/admin/threads/${threadId}`, { method: "DELETE" }),
 }

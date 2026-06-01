@@ -9,6 +9,14 @@ import { usePermission } from "@/lib/permissions"
 import { notify } from "@/lib/notify"
 import type { Prescription } from "./prescriptions"
 import { DrugPicker, SuggestFromNotesButton } from "./drug-picker"
+import { ChatWindow } from "@/components/chat/chat-window"
+import {
+  useAdminThreads,
+  useAdminMessages,
+  type ChatMessage,
+  type ChatThread,
+  type ChatPrescriptionDrug,
+} from "@/lib/api-nest"
 import {
   MessageSquare,
   Phone,
@@ -300,6 +308,9 @@ export function AdminConsultations() {
             <Plus className="h-4 w-4" /> New consultation
           </button>
         </div>
+
+        {/* Saved live-chat consultations (archived chat transcripts + Rx). */}
+        <ArchivedChatConsultations />
 
         {/* Live sessions monitor — auto-updates every 5s. */}
         {liveSessions.length > 0 && (
@@ -755,4 +766,138 @@ function timeAgo(iso: string): string {
   if (h < 24) return `${h}h ago`
   const d = Math.round(h / 24)
   return `${d}d ago`
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   Saved live-chat consultations (api-nest archived threads). Surfaces the
+   preserved transcript plus any drugs prescribed during the chat so the
+   doctor can review past consultations from one place.
+   ──────────────────────────────────────────────────────────────────────── */
+function rxDrugsFromMessages(messages: ChatMessage[]): ChatPrescriptionDrug[] {
+  const out: ChatPrescriptionDrug[] = []
+  for (const m of messages) {
+    const meta = m.meta as { kind?: string; drugs?: ChatPrescriptionDrug[] } | null | undefined
+    if (meta && meta.kind === "prescription" && Array.isArray(meta.drugs)) {
+      out.push(...meta.drugs)
+    }
+  }
+  return out
+}
+
+function ArchivedConsultationDetail({ thread }: { thread: ChatThread }) {
+  const { data: messages } = useAdminMessages(thread.id)
+  const msgs = messages || []
+  const drugs = useMemo(() => rxDrugsFromMessages(msgs), [msgs])
+  const apiBase = (import.meta.env.BASE_URL || "/").replace(/\/$/, "")
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-4">
+      <div className="rounded-xl border border-border bg-background overflow-hidden h-[460px] flex flex-col">
+        <ChatWindow
+          messages={msgs}
+          perspective="staff"
+          onSend={() => {}}
+          composerDisabled
+          composerHint="This consultation is archived — transcript is read-only."
+          showStatus={false}
+          emptyState={<p className="text-sm text-muted-foreground">No messages in this consultation.</p>}
+        />
+      </div>
+      <div className="rounded-xl border border-border bg-background p-4 space-y-3 h-fit">
+        <h3 className="text-sm font-bold flex items-center gap-1.5" style={{ color: "#3D0814" }}>
+          <Pill className="h-4 w-4" /> Prescribed drugs
+        </h3>
+        {drugs.length === 0 ? (
+          <p className="text-xs text-muted-foreground">No drugs were prescribed during this consultation.</p>
+        ) : (
+          <ul className="space-y-2">
+            {drugs.map((d, i) => (
+              <li key={i} className="rounded-lg border border-border p-2.5">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-sm font-semibold">{d.name}</p>
+                  {typeof d.price === "number" && (
+                    <span className="text-xs font-semibold" style={{ color: "#F97316" }}>
+                      KSh {d.price.toLocaleString()}
+                    </span>
+                  )}
+                </div>
+                {(d.dosage || d.instructions) && (
+                  <p className="text-[11px] text-muted-foreground mt-0.5">
+                    {[d.dosage, d.instructions].filter(Boolean).join(" · ")}
+                  </p>
+                )}
+                {d.productSlug && (
+                  <Link
+                    href={`${apiBase}/product/${d.productSlug}`}
+                    className="text-[11px] font-semibold inline-flex items-center gap-1 mt-1"
+                    style={{ color: "#6B0F1A" }}
+                  >
+                    View product →
+                  </Link>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </div>
+  )
+}
+
+export function ArchivedChatConsultations() {
+  const { data: threads } = useAdminThreads()
+  const archived = useMemo(
+    () =>
+      (threads || [])
+        .filter((t) => t.status === "archived")
+        .sort((a, b) => (b.closedAt || b.createdAt).localeCompare(a.closedAt || a.createdAt)),
+    [threads],
+  )
+  const [openId, setOpenId] = useState<string | null>(null)
+
+  if (archived.length === 0) return null
+
+  return (
+    <div className="rounded-xl border border-border bg-background p-4 space-y-3">
+      <div className="flex items-center gap-2">
+        <History className="h-4 w-4" style={{ color: "#3D0814" }} />
+        <h2 className="text-sm font-bold uppercase tracking-wider" style={{ color: "#3D0814" }}>
+          Saved live-chat consultations · {archived.length}
+        </h2>
+      </div>
+      <p className="text-[11px] text-muted-foreground -mt-1">
+        Archived chat transcripts with any drugs prescribed during the session.
+      </p>
+      <div className="space-y-2">
+        {archived.map((t) => {
+          const open = openId === t.id
+          return (
+            <div key={t.id} className="rounded-lg border border-border overflow-hidden">
+              <button
+                onClick={() => setOpenId(open ? null : t.id)}
+                className="w-full flex items-center justify-between gap-3 px-3.5 py-2.5 text-left hover:bg-secondary/50"
+              >
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold truncate">{t.patientName || "Patient"}</p>
+                  <p className="text-[11px] text-muted-foreground">
+                    Closed {timeAgo(t.closedAt || t.createdAt)}
+                  </p>
+                </div>
+                <span
+                  className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full"
+                  style={{ background: "#F3E8EB", color: "#6B0F1A" }}
+                >
+                  Archived
+                </span>
+              </button>
+              {open && (
+                <div className="p-3 border-t border-border bg-secondary/20">
+                  <ArchivedConsultationDetail thread={t} />
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
 }

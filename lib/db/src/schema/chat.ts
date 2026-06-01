@@ -1,9 +1,28 @@
-import { integer, pgTable, text, timestamp } from "drizzle-orm/pg-core"
+import { integer, jsonb, pgTable, text, timestamp } from "drizzle-orm/pg-core"
 import { createInsertSchema, createSelectSchema } from "drizzle-zod"
 import { z } from "zod/v4"
 import { consultations } from "./consultations"
 
 export type ChatSender = "patient" | "staff"
+
+// Structured payload attached to a chat message (rendered as a rich card on the
+// client). Today the only kind is a doctor-issued prescription, but the shape is
+// open so future card types (lab order, referral, etc.) can reuse it.
+export type ChatMessagePrescriptionDrug = {
+  name: string
+  dosage?: string | null
+  instructions?: string | null
+  productSlug?: string | null
+  price?: number | null
+}
+export type ChatMessageMeta =
+  | {
+      kind: "prescription"
+      prescriptionId: string
+      rxNumber: string
+      drugs: ChatMessagePrescriptionDrug[]
+    }
+  | Record<string, unknown>
 export type ChatMessageStatus = "sent" | "delivered" | "read"
 // "active" while a consultation is in progress; "archived" once the
 // consultation ends — the full transcript is then preserved as a record.
@@ -41,6 +60,9 @@ export const chatMessages = pgTable("chat_messages", {
   attachmentUrl: text("attachment_url"),
   attachmentName: text("attachment_name"),
   attachmentType: text("attachment_type"),
+  // Structured rich-card payload (e.g. a doctor-issued prescription). Null for
+  // ordinary text/attachment messages.
+  meta: jsonb("meta").$type<ChatMessageMeta>(),
   deliveredAt: timestamp("delivered_at"),
   readAt: timestamp("read_at"),
   status: text("status").notNull().default("sent"),
