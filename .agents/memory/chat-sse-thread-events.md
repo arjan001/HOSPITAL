@@ -23,3 +23,17 @@ useEffect on `thread?.consultationId`) and only run the reset when
 `newCid && prevCid && newCid !== prevCid`. The `prevCid` non-null guard avoids
 a false reset on first load. The funnel (speak-to-a-doctor) instead clears state
 imperatively right after `startNewConsultation` succeeds.
+
+## Close-attribution: set `closingByPatientRef` before any self-close
+
+**Rule:** Every client path that ends the patient's own session (the End button,
+`endConsultation`, AND any leave-guard `onConfirmLeave` on chat/videocall) MUST
+set `closingByPatientRef.current = true` *before* calling `closeMyThread()`.
+
+**Why:** The SSE archived-thread handler does `if (!closingByPatientRef.current)
+setEndedByDoctor(true)`. A self-close that forgets the ref races the archive
+event and shows the wrong "doctor ended this consultation" banner.
+
+**How to apply:** When adding a new way to leave/end an active consultation,
+mirror `endConsultation` (set ref, then close). It is easy to miss on
+leave-guard confirm handlers because they look like pure navigation.

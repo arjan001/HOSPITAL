@@ -15,7 +15,7 @@ import {
   type ChatMessage,
   type ChatThread,
 } from "@/lib/api-nest"
-import { MessagesSquare, Search, Trash2, Stethoscope, Phone, Circle, Video, Wifi, CheckCheck, Volume2, VolumeX, Bell, Timer, Pill, X, Plus } from "lucide-react"
+import { MessagesSquare, Search, Trash2, Stethoscope, Phone, Circle, Video, Wifi, CheckCheck, Volume2, VolumeX, Bell, Timer, Pill, X, Plus, ShieldCheck } from "lucide-react"
 import { DailyCall } from "@/components/video/daily-call"
 import { DrugPicker, type DrugRow } from "./drug-picker"
 import { playChime, isChatSoundEnabled, setChatSoundEnabled } from "@/lib/notify-sound"
@@ -552,22 +552,38 @@ export function AdminChat() {
                   >
                     <Wifi className="h-3.5 w-3.5" />
                   </button>
-                  <button
-                    onClick={() => setCallMode("voice")}
-                    className="text-xs font-semibold inline-flex items-center gap-1 px-2 h-8 rounded-md hover:bg-secondary"
-                    style={{ color: "#3D0814" }}
-                    title="Start voice call"
-                  >
-                    <Phone className="h-3.5 w-3.5" />
-                  </button>
-                  <button
-                    onClick={() => setCallMode("video")}
-                    className="text-xs font-semibold text-white inline-flex items-center gap-1.5 px-3 h-8 rounded-md hover:opacity-90"
-                    style={{ background: "#B91C1C" }}
-                    title="Start video call"
-                  >
-                    <Video className="h-3.5 w-3.5" /> Video call
-                  </button>
+                  {/* Voice/video escalation is gated by what the patient paid
+                      for: a chat-only consultation can never be switched to a
+                      call. Voice needs "call" or "video"; video needs "video". */}
+                  {(active.consultationType === "call" || active.consultationType === "video") && (
+                    <button
+                      onClick={() => setCallMode("voice")}
+                      className="text-xs font-semibold inline-flex items-center gap-1 px-2 h-8 rounded-md hover:bg-secondary"
+                      style={{ color: "#3D0814" }}
+                      title="Start voice call"
+                    >
+                      <Phone className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                  {active.consultationType === "video" && (
+                    <button
+                      onClick={() => setCallMode("video")}
+                      className="text-xs font-semibold text-white inline-flex items-center gap-1.5 px-3 h-8 rounded-md hover:opacity-90"
+                      style={{ background: "#B91C1C" }}
+                      title="Start video call"
+                    >
+                      <Video className="h-3.5 w-3.5" /> Video call
+                    </button>
+                  )}
+                  {active.consultationType !== "call" && active.consultationType !== "video" && (
+                    <span
+                      className="text-[11px] font-semibold inline-flex items-center gap-1 px-2.5 h-7 rounded-full"
+                      style={{ background: "#F3E8EB", color: "#6B0F1A" }}
+                      title="The patient paid for a chat consultation. Voice and video calls are not available for this session."
+                    >
+                      <MessagesSquare className="h-3 w-3" /> Chat only
+                    </span>
+                  )}
                   {timer && (
                     <span
                       className="text-[11px] font-semibold tabular-nums inline-flex items-center gap-1 px-2.5 h-7 rounded-full"
@@ -675,53 +691,86 @@ export function AdminChat() {
           style={{ background: "rgba(0,0,0,0.45)" }}
           onMouseDown={(e) => { if (e.target === e.currentTarget) resetPrescribe() }}
         >
-          <div className="w-full max-w-lg rounded-xl bg-white shadow-2xl overflow-hidden flex flex-col max-h-[88vh]">
-            <div className="px-5 py-3.5 flex items-center gap-2 text-white" style={{ background: "#3D0814" }}>
-              <Pill className="h-4 w-4" style={{ color: "#F97316" }} />
-              <p className="font-semibold text-sm">Prescribe for {active.patientName}</p>
-              <button onClick={resetPrescribe} className="ml-auto opacity-80 hover:opacity-100" aria-label="Close">
+          <div className="w-full max-w-lg rounded-2xl bg-white shadow-2xl overflow-hidden flex flex-col max-h-[88vh]">
+            <div className="px-5 py-4 flex items-center gap-3 text-white" style={{ background: "#3D0814" }}>
+              <span
+                className="h-9 w-9 rounded-full flex items-center justify-center flex-shrink-0"
+                style={{ background: "rgba(249,115,22,0.18)" }}
+              >
+                <Pill className="h-4.5 w-4.5" style={{ color: "#F97316" }} />
+              </span>
+              <div className="min-w-0">
+                <p className="font-semibold text-sm leading-tight">New prescription</p>
+                <p className="text-[11px] opacity-80 truncate">For {active.patientName}</p>
+              </div>
+              {rxDrugs.length > 0 && (
+                <span className="ml-auto text-[11px] font-semibold px-2.5 h-6 rounded-full inline-flex items-center" style={{ background: "rgba(255,255,255,0.16)" }}>
+                  {rxDrugs.length} {rxDrugs.length === 1 ? "medicine" : "medicines"}
+                </span>
+              )}
+              <button onClick={resetPrescribe} className={`${rxDrugs.length > 0 ? "ml-2" : "ml-auto"} opacity-80 hover:opacity-100`} aria-label="Close">
                 <X className="h-4 w-4" />
               </button>
             </div>
 
-            <div className="p-5 overflow-y-auto space-y-3">
+            <div className="p-5 overflow-y-auto space-y-3" style={{ background: "#FAFAFA" }}>
               {rxDrugs.length === 0 && (
-                <p className="text-xs text-muted-foreground text-center py-6">
-                  Search the catalogue and add one or more medicines. You can edit dosage and instructions for each.
-                </p>
+                <div className="rounded-xl border border-dashed border-border bg-white px-6 py-9 text-center">
+                  <span
+                    className="h-12 w-12 rounded-full mx-auto mb-3 flex items-center justify-center"
+                    style={{ background: "rgba(61,8,20,0.06)", color: "#3D0814" }}
+                  >
+                    <Pill className="h-5 w-5" />
+                  </span>
+                  <p className="text-sm font-semibold" style={{ color: "#3D0814" }}>No medicines added yet</p>
+                  <p className="text-xs text-muted-foreground mt-1 max-w-xs mx-auto">
+                    Search the catalogue below to add one or more medicines. You can set the dosage and instructions for each.
+                  </p>
+                </div>
               )}
               {rxDrugs.map((d, i) => (
-                <div key={i} className="rounded-lg border border-border p-3 space-y-2">
+                <div key={i} className="rounded-xl border border-border bg-white p-3.5 space-y-2.5 shadow-sm">
                   <div className="flex items-center gap-2">
-                    <Pill className="h-3.5 w-3.5 flex-shrink-0" style={{ color: "#3D0814" }} />
+                    <span
+                      className="h-6 w-6 rounded-full flex items-center justify-center flex-shrink-0 text-[11px] font-bold"
+                      style={{ background: "#F3E8EB", color: "#6B0F1A" }}
+                    >
+                      {i + 1}
+                    </span>
                     <input
                       value={d.name}
                       onChange={(e) => updateDrug(i, { name: e.target.value })}
                       placeholder="Medicine name"
-                      className="flex-1 text-sm font-semibold h-8 px-2 rounded-md border border-border bg-background"
+                      className="flex-1 text-sm font-semibold h-9 px-2.5 rounded-lg border border-border bg-background focus:outline-none focus:ring-2 focus:ring-[#3D0814]/15"
                     />
                     {d.productSlug && (
-                      <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full" style={{ background: "#F3E8EB", color: "#6B0F1A" }}>
-                        linked
+                      <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full inline-flex items-center gap-1" style={{ background: "#F3E8EB", color: "#6B0F1A" }}>
+                        <ShieldCheck className="h-3 w-3" /> Linked
                       </span>
                     )}
-                    <button onClick={() => removeDrug(i)} className="text-destructive hover:bg-destructive/10 rounded-md p-1" aria-label="Remove">
-                      <X className="h-3.5 w-3.5" />
+                    <button onClick={() => removeDrug(i)} className="text-destructive hover:bg-destructive/10 rounded-md p-1.5" aria-label="Remove medicine">
+                      <Trash2 className="h-3.5 w-3.5" />
                     </button>
                   </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <input
-                      value={d.dosage ?? ""}
-                      onChange={(e) => updateDrug(i, { dosage: e.target.value })}
-                      placeholder="Dosage (e.g. 1 tab)"
-                      className="text-xs h-8 px-2 rounded-md border border-border bg-background"
-                    />
-                    <input
-                      value={d.instructions ?? ""}
-                      onChange={(e) => updateDrug(i, { instructions: e.target.value })}
-                      placeholder="Instructions (e.g. 3x daily)"
-                      className="text-xs h-8 px-2 rounded-md border border-border bg-background"
-                    />
+                  <div className="grid grid-cols-2 gap-2 pl-8">
+                    <div>
+                      <label className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground block mb-1">Dosage</label>
+                      <input
+                        value={d.dosage ?? ""}
+                        onChange={(e) => updateDrug(i, { dosage: e.target.value })}
+                        placeholder="e.g. 1 tablet"
+                        className="w-full text-xs h-8 px-2.5 rounded-lg border border-border bg-background focus:outline-none focus:ring-2 focus:ring-[#3D0814]/15"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground block mb-1">Instructions</label>
+                      <input
+                        value={d.instructions ?? ""}
+                        onChange={(e) => updateDrug(i, { instructions: e.target.value })}
+                        placeholder="e.g. 3x daily after meals"
+                        className="w-full text-xs h-8 px-2.5 rounded-lg border border-border bg-background focus:outline-none focus:ring-2 focus:ring-[#3D0814]/15"
+                      />
+                    </div>
                   </div>
                 </div>
               ))}
@@ -730,7 +779,7 @@ export function AdminChat() {
                 <DrugPicker onPick={addDrug} clinicalContext={messages?.map((m) => m.text).join(" ")} triggerLabel="Add medicine" align="start" />
               </div>
 
-              <div className="pt-2">
+              <div className="rounded-xl border border-border bg-white p-3.5">
                 <label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground block mb-1.5">
                   Doctor's note <span className="normal-case font-normal">(optional)</span>
                 </label>
@@ -739,21 +788,30 @@ export function AdminChat() {
                   value={rxNote}
                   onChange={(e) => setRxNote(e.target.value)}
                   placeholder="Diagnosis or guidance to record with the prescription…"
-                  className="w-full text-sm px-3 py-2 rounded-md border border-border bg-background resize-none"
+                  className="w-full text-sm px-3 py-2 rounded-lg border border-border bg-background resize-none focus:outline-none focus:ring-2 focus:ring-[#3D0814]/15"
                 />
               </div>
 
-              {rxError && <p className="text-xs font-semibold" style={{ color: "#B91C1C" }}>{rxError}</p>}
+              {rxError && (
+                <p className="text-xs font-semibold flex items-center gap-1.5" style={{ color: "#B91C1C" }}>
+                  <X className="h-3.5 w-3.5" /> {rxError}
+                </p>
+              )}
             </div>
 
-            <div className="px-5 py-3 border-t border-border flex items-center justify-end gap-2">
-              <button onClick={resetPrescribe} className="text-xs font-semibold px-3 h-9 rounded-md hover:bg-secondary">
+            <div className="px-5 py-3.5 border-t border-border bg-white flex items-center gap-2">
+              <span className="text-[11px] text-muted-foreground">
+                {rxDrugs.length === 0
+                  ? "Add at least one medicine to issue"
+                  : `${rxDrugs.length} ${rxDrugs.length === 1 ? "medicine" : "medicines"} ready`}
+              </span>
+              <button onClick={resetPrescribe} className="ml-auto text-xs font-semibold px-4 h-9 rounded-lg hover:bg-secondary transition-colors">
                 Cancel
               </button>
               <button
                 onClick={issuePrescription}
                 disabled={issuing || rxDrugs.length === 0}
-                className="text-xs font-semibold text-white inline-flex items-center gap-1.5 px-4 h-9 rounded-md hover:opacity-90 disabled:opacity-40"
+                className="text-xs font-semibold text-white inline-flex items-center gap-1.5 px-4 h-9 rounded-lg hover:opacity-90 disabled:opacity-40 transition-opacity"
                 style={{ background: "#B91C1C" }}
               >
                 <Plus className="h-3.5 w-3.5" /> {issuing ? "Issuing…" : "Issue prescription"}

@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react"
 import { mutate as globalMutate } from "swr"
 import { AccountShell } from "@/components/account/account-shell"
 import { ChatWindow } from "@/components/chat/chat-window"
+import { LeaveGuard } from "@/components/consultation/leave-guard"
 import { Seo } from "@/components/seo"
 import {
   apiChat,
@@ -223,6 +224,17 @@ export default function AccountChatPage() {
         canonicalPath="/account/chat"
         noindex
       />
+      <LeaveGuard
+        active={!!isSignedIn && !sessionEnded && (messages?.length ?? 0) > 0}
+        title="End your chat?"
+        message="You have an active chat with the pharmacy team. If you leave this page, your consultation will end. Your conversation is always saved."
+        confirmLabel="End & leave"
+        onConfirmLeave={() => {
+          setSessionEnded(true)
+          closingByPatientRef.current = true
+          apiChat.closeMyThread().catch(() => {})
+        }}
+      />
       <div className="rounded-2xl overflow-hidden border bg-white" style={{ borderColor: "#F2DCC8" }}>
         <ChatHeader
           online={staffOnline}
@@ -270,7 +282,7 @@ export default function AccountChatPage() {
             </span>
           </div>
         )}
-        <div className="h-[60vh] min-h-[480px]">
+        <div className="h-[60dvh] min-h-[420px]">
           <ChatWindow
             messages={messages || []}
             perspective="patient"

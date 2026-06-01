@@ -490,6 +490,16 @@ export function ChatWindow({
             onTyping?.(e.target.value.trim().length > 0)
           }}
           onBlur={() => onTyping?.(false)}
+          onFocus={(e) => {
+            // On mobile the on-screen keyboard can cover the composer; pull it
+            // into view and keep the latest messages visible so the input is
+            // never hidden behind the keyboard.
+            const el = e.currentTarget
+            window.setTimeout(() => {
+              el.scrollIntoView({ block: "nearest", behavior: "smooth" })
+              scrollToBottom("smooth")
+            }, 250)
+          }}
           onKeyDown={(e) => {
             if (e.key === "Enter" && !e.shiftKey) {
               e.preventDefault()

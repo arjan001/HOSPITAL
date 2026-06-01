@@ -20,6 +20,7 @@ import { useUser } from "@clerk/react"
 import { PaystackPaymentModal } from "@/components/store/paystack-payment-modal"
 import { pushAdminNotification } from "@/lib/notifications-client"
 import { ChatWindow } from "@/components/chat/chat-window"
+import { LeaveGuard } from "@/components/consultation/leave-guard"
 import { mutate as globalMutate } from "swr"
 import {
   apiChat,
@@ -972,23 +973,35 @@ export default function SpeakToADoctorPage() {
 
   /* ══════════════════ VIDEO CALL ══════════════════════════ */
   if (screen === "videocall") return (
-    <DailyCall
-      roomName={`consult-${(category || "general").toLowerCase().replace(/\s+/g, "-").slice(0, 20)}-${Math.floor(Date.now() / 1000 / 600)}`}
-      userName="Patient"
-      title={doc.name}
-      subtitle={`${doc.specialty} · Connected`}
-      consultationKind="video"
-      patientName="Patient"
-      doctorName={doc.name}
-      topic={category || doc.specialty}
-      onSwitchToChat={() => setScreen("chat")}
-      onLeave={endConsultation}
-    />
+    <>
+      <DailyCall
+        roomName={`consult-${(category || "general").toLowerCase().replace(/\s+/g, "-").slice(0, 20)}-${Math.floor(Date.now() / 1000 / 600)}`}
+        userName="Patient"
+        title={doc.name}
+        subtitle={`${doc.specialty} · Connected`}
+        consultationKind="video"
+        patientName="Patient"
+        doctorName={doc.name}
+        topic={category || doc.specialty}
+        onSwitchToChat={() => setScreen("chat")}
+        onLeave={endConsultation}
+      />
+      <LeaveGuard
+        active
+        title="End your call?"
+        message="You have an active call with the doctor. If you leave this page, the call will end."
+        confirmLabel="End & leave"
+        onConfirmLeave={() => {
+          closingByPatientRef.current = true
+          apiChat.closeMyThread().catch(() => {})
+        }}
+      />
+    </>
   )
 
   /* ══════════════════ CHAT ════════════════════════════════ */
   if (screen === "chat") return (
-    <div className="h-screen flex flex-col bg-white overflow-hidden">
+    <div className="h-[100dvh] flex flex-col bg-white overflow-hidden">
       <TopBar /><Navbar />
       <main className="flex-1 min-h-0 flex flex-col overflow-hidden">
         {/* Doctor header — clean white */}
@@ -1087,6 +1100,17 @@ export default function SpeakToADoctorPage() {
           />
         </div>
       </main>
+      <LeaveGuard
+        active={!chatSessionEnded}
+        title="End your chat?"
+        message="You have an active chat with the doctor. If you leave this page, your consultation will end. Your conversation is always saved."
+        confirmLabel="End & leave"
+        onConfirmLeave={() => {
+          closingByPatientRef.current = true
+          setChatSessionEnded(true)
+          apiChat.closeMyThread().catch(() => {})
+        }}
+      />
     </div>
   )
 

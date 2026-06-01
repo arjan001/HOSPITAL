@@ -91,6 +91,10 @@ export type ChatThread = {
   // transcript is preserved as a saved record.
   status: ChatThreadStatus
   closedAt?: string | null
+  // The kind of consultation the patient paid for on the current segment
+  // ("chat" | "call" | "video"). Drives whether staff may escalate to a
+  // voice/video call. Only enriched on the admin thread list.
+  consultationType?: string | null
 }
 
 export type PresencePayload = {
@@ -298,7 +302,22 @@ class ChatService {
       .select()
       .from(chatThreads)
       .orderBy(desc(chatThreads.updatedAt))
-    return rows.map(toApiThread)
+    // Enrich each thread with the kind of consultation the patient paid for on
+    // its current segment so staff can gate voice/video escalation. Batched in
+    // a single lookup to avoid N+1 queries.
+    const cids = [...new Set(rows.map((r) => r.consultationId).filter(Boolean) as string[])]
+    const typeById = new Map<string, string>()
+    if (cids.length) {
+      const cs = await db
+        .select({ id: consultations.id, type: consultations.type })
+        .from(consultations)
+        .where(inArray(consultations.id, cids))
+      for (const c of cs) typeById.set(c.id, c.type)
+    }
+    return rows.map((r) => ({
+      ...toApiThread(r),
+      consultationType: r.consultationId ? typeById.get(r.consultationId) ?? "chat" : null,
+    }))
   }
 
   async getThread(id: string): Promise<ChatThread> {

@@ -480,6 +480,12 @@ export type ChatThread = {
   unreadByPatient: number
   status: ChatThreadStatus
   closedAt?: string | null
+  /**
+   * The kind of consultation the patient paid for on the current segment
+   * ("chat" | "call" | "video"). Only present on the admin thread list; used to
+   * gate whether staff may escalate to a voice/video call.
+   */
+  consultationType?: string | null
 }
 
 /**
