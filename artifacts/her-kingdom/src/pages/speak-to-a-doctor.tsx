@@ -7,6 +7,7 @@ import { Seo, organizationJsonLd, websiteJsonLd, breadcrumbJsonLd, faqJsonLd, pr
 import {
   MessageSquare, Phone, Clock, Users, Check, Lock, ArrowLeft, ArrowRight,
   Send, Plus, ShieldCheck, Video, X, FileText, Stethoscope, Brain, Pill, HeartPulse, Info,
+  ShoppingCart, Loader2, CheckCircle2, CalendarDays, MessageCircle,
 } from "lucide-react"
 import { DailyCall } from "@/components/video/daily-call"
 import {
@@ -22,6 +23,8 @@ import { PaystackPaymentModal } from "@/components/store/paystack-payment-modal"
 import { pushAdminNotification } from "@/lib/notifications-client"
 import { ChatWindow } from "@/components/chat/chat-window"
 import { LeaveGuard } from "@/components/consultation/leave-guard"
+import { useCart } from "@/lib/cart-context"
+import type { Product } from "@/lib/types"
 import { mutate as globalMutate } from "swr"
 import {
   apiChat,
@@ -250,6 +253,106 @@ export default function SpeakToADoctorPage() {
   // Only show "no notes / no medication" copy after the transcript has actually
   // loaded once — never on the brief gap before the first fetch settles.
   const summaryLoading = messagesLoading && !chatMessages
+
+  /* Dynamic at-a-glance metrics for the summary header — all derived from the
+     real session, nothing hardcoded: how long you spoke, how many messages
+     were exchanged, how many medicines were prescribed and their subtotal. */
+  const summaryMeta = useMemo(() => {
+    const msgs = (chatMessages || []) as ChatMessage[]
+    const rxSubtotal = summary.drugs.reduce(
+      (sum, d) => sum + (typeof d.price === "number" && d.price > 0 ? d.price : 0),
+      0,
+    )
+    const shoppable = summary.drugs.filter((d) => !!d.productSlug)
+    return {
+      messageCount: msgs.length,
+      rxCount: summary.drugs.length,
+      rxSubtotal,
+      shoppableCount: shoppable.length,
+    }
+  }, [chatMessages, summary.drugs])
+
+  /* ── Recommended medicines → cart ──────────────────────────
+     The prescription cards on the summary carry a productSlug when the doctor
+     linked a real catalogue item. We resolve that slug to the live product
+     (same /api/products/:slug source the PDP uses) and drop it into the cart.
+     "Continue Shopping" auto-adds every shoppable recommendation first, so the
+     patient lands in the shop with their prescription already in the basket. */
+  const { addItem, setIsCartOpen } = useCart()
+  const [addedSlugs, setAddedSlugs] = useState<Set<string>>(new Set())
+  const [addingSlug, setAddingSlug] = useState<string | null>(null)
+  const [addingAll, setAddingAll] = useState(false)
+  const [addNotice, setAddNotice] = useState<string | null>(null)
+  const productCacheRef = useRef<Map<string, Product>>(new Map())
+  // Synchronous mirror of addedSlugs so the async add-all loop never double-adds
+  // an item that was just added via a single "Add to cart" click (state hasn't
+  // re-rendered yet when the loop reads it).
+  const addedSlugsRef = useRef<Set<string>>(new Set())
+
+  async function resolveProduct(slug: string): Promise<Product | null> {
+    const cached = productCacheRef.current.get(slug)
+    if (cached) return cached
+    try {
+      const r = await fetch(`/api/products/${encodeURIComponent(slug)}`)
+      if (!r.ok) return null
+      const data = (await r.json()) as { product?: Product }
+      if (!data?.product?.id) return null
+      productCacheRef.current.set(slug, data.product)
+      return data.product
+    } catch {
+      return null
+    }
+  }
+
+  async function addRecommendationToCart(slug: string, openDrawer = true): Promise<boolean> {
+    if (addedSlugsRef.current.has(slug)) return true
+    const product = await resolveProduct(slug)
+    if (!product) return false
+    addItem(product, 1)
+    if (!openDrawer) setIsCartOpen(false)
+    addedSlugsRef.current.add(slug)
+    setAddedSlugs(new Set(addedSlugsRef.current))
+    return true
+  }
+
+  async function handleAddOne(slug: string) {
+    setAddNotice(null)
+    setAddingSlug(slug)
+    const ok = await addRecommendationToCart(slug, true)
+    setAddingSlug(null)
+    if (!ok) setLocation(`/shop?search=${encodeURIComponent(slug)}`)
+  }
+
+  async function handleContinueShopping() {
+    // Dedupe locally so a medicine listed twice isn't added twice.
+    const slugs = Array.from(
+      new Set(summary.drugs.map((d) => d.productSlug).filter((s): s is string => !!s)),
+    )
+    if (slugs.length === 0) {
+      setLocation("/shop")
+      return
+    }
+    setAddNotice(null)
+    setAddingAll(true)
+    let added = 0
+    const failed: string[] = []
+    for (const slug of slugs) {
+      if (addedSlugsRef.current.has(slug)) { added++; continue }
+      const ok = await addRecommendationToCart(slug, false)
+      if (ok) added++
+      else failed.push(slug)
+    }
+    setAddingAll(false)
+    if (added > 0) {
+      setIsCartOpen(true)
+      setLocation("/shop")
+      return
+    }
+    // Nothing could be resolved — keep the patient here and tell them plainly.
+    if (failed.length > 0) {
+      setAddNotice("We couldn't add these items automatically. Use “View” to find them in the shop.")
+    }
+  }
 
   /* Deep-link resume guard: when the page loads at /speak-to-a-doctor/:cid we
      resume into chat only if that id is the thread's CURRENT consultation —
@@ -489,6 +592,12 @@ export default function SpeakToADoctorPage() {
     setEndedByDoctor(false)
     closingByPatientRef.current = false
     seededRef.current = false
+    // Reset per-consultation cart-add UI so a fresh summary never inherits the
+    // previous consultation's "Added" badges or skips its auto-add.
+    setAddedSlugs(new Set())
+    setAddingSlug(null)
+    setAddingAll(false)
+    productCacheRef.current = new Map()
     // Drop the consultation id from the URL so the next chat gets a fresh one.
     applyConsultId(null)
     ensuredRef.current = false
@@ -1203,7 +1312,7 @@ export default function SpeakToADoctorPage() {
           <span style={{ color: WINE }}>Consultation Summary</span>
         </nav>
 
-        <div className="mb-8 flex items-start gap-4">
+        <div className="mb-6 flex items-start gap-4">
           <DoctorAvatar size={52} initials={doc.initials} avatarUrl={doc.avatarUrl} />
           <div>
             <h1 className="text-2xl font-bold" style={{ color: WINE }}>Consultation Summary</h1>
@@ -1212,6 +1321,30 @@ export default function SpeakToADoctorPage() {
             </p>
           </div>
         </div>
+
+        {/* At-a-glance, fully derived from this session */}
+        {!summaryLoading && (
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-8">
+            {[
+              { icon: CalendarDays, label: "Date", value: new Date().toLocaleDateString() },
+              { icon: MessageCircle, label: "Messages", value: String(summaryMeta.messageCount) },
+              { icon: Pill, label: "Prescribed", value: `${summaryMeta.rxCount} item${summaryMeta.rxCount === 1 ? "" : "s"}` },
+              {
+                icon: ShoppingCart,
+                label: "Rx subtotal",
+                value: summaryMeta.rxSubtotal > 0 ? `KSh ${summaryMeta.rxSubtotal.toLocaleString()}` : "—",
+              },
+            ].map((stat) => (
+              <div key={stat.label} className="rounded-xl bg-white px-4 py-3.5" style={{ border: `1px solid ${BORDER}` }}>
+                <div className="flex items-center gap-1.5 mb-1.5">
+                  <stat.icon className="h-3.5 w-3.5" style={{ color: ACCENT_RED }} />
+                  <span className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: "#9ca3af" }}>{stat.label}</span>
+                </div>
+                <p className="text-base font-bold leading-none" style={{ color: WINE }}>{stat.value}</p>
+              </div>
+            ))}
+          </div>
+        )}
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
           {/* Doctor's notes — what the doctor actually wrote during the consult */}
@@ -1264,6 +1397,8 @@ export default function SpeakToADoctorPage() {
               <div className="space-y-3">
                 {summary.drugs.map((d, i) => {
                   const href = d.productSlug ? `/product/${d.productSlug}` : `/shop?search=${encodeURIComponent(d.name)}`
+                  const isAdded = !!d.productSlug && addedSlugs.has(d.productSlug)
+                  const isAdding = !!d.productSlug && addingSlug === d.productSlug
                   return (
                     <div key={`${d.name}-${i}`} className="rounded-lg p-4 flex items-center gap-4" style={{ background: SOFT_BG, border: `1px solid ${BORDER}` }}>
                       <div className="w-14 h-14 rounded-lg flex items-center justify-center flex-shrink-0"
@@ -1281,13 +1416,32 @@ export default function SpeakToADoctorPage() {
                           <p className="font-bold text-sm mt-1" style={{ color: ACCENT_RED }}>KSh {d.price.toLocaleString()}</p>
                         )}
                       </div>
-                      <Link
-                        href={href}
-                        className="h-10 px-5 rounded-full text-xs font-semibold flex items-center justify-center transition-opacity hover:opacity-90"
-                        style={btnPrimary}
-                      >
-                        View
-                      </Link>
+                      <div className="flex flex-col items-stretch gap-2 flex-shrink-0">
+                        {d.productSlug ? (
+                          <button
+                            type="button"
+                            onClick={() => handleAddOne(d.productSlug!)}
+                            disabled={isAdding}
+                            className="h-10 px-5 rounded-full text-xs font-semibold flex items-center justify-center gap-1.5 transition-opacity hover:opacity-90 disabled:opacity-60"
+                            style={isAdded ? { ...btnOutline, color: "#15803d", borderColor: "#86efac" } : btnPrimary}
+                          >
+                            {isAdding ? (
+                              <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Adding…</>
+                            ) : isAdded ? (
+                              <><CheckCircle2 className="h-3.5 w-3.5" /> Added</>
+                            ) : (
+                              <><ShoppingCart className="h-3.5 w-3.5" /> Add to cart</>
+                            )}
+                          </button>
+                        ) : null}
+                        <Link
+                          href={href}
+                          className="h-10 px-5 rounded-full text-xs font-semibold flex items-center justify-center transition-colors hover:bg-gray-50"
+                          style={btnOutline}
+                        >
+                          View
+                        </Link>
+                      </div>
                     </div>
                   )
                 })}
@@ -1300,6 +1454,12 @@ export default function SpeakToADoctorPage() {
           </div>
         </div>
 
+        {addNotice && (
+          <div className="rounded-lg px-4 py-3 text-sm mt-6" style={{ background: PEACH_TINT, border: `1px solid ${BORDER}`, color: WINE }}>
+            {addNotice}
+          </div>
+        )}
+
         <div className="flex justify-end gap-3 mt-8">
           <button
             onClick={startNewConsultation}
@@ -1308,13 +1468,21 @@ export default function SpeakToADoctorPage() {
           >
             <ArrowLeft className="h-4 w-4" /> New Consultation
           </button>
-          <Link
-            href="/shop"
-            className="h-11 px-8 rounded-full text-sm font-semibold flex items-center justify-center gap-2 hover:opacity-90 transition-opacity"
+          <button
+            type="button"
+            onClick={handleContinueShopping}
+            disabled={addingAll}
+            className="h-11 px-8 rounded-full text-sm font-semibold flex items-center justify-center gap-2 hover:opacity-90 transition-opacity disabled:opacity-60"
             style={btnPrimary}
           >
-            Continue Shopping <ArrowRight className="h-4 w-4" />
-          </Link>
+            {addingAll ? (
+              <><Loader2 className="h-4 w-4 animate-spin" /> Adding to cart…</>
+            ) : summaryMeta.shoppableCount > 0 ? (
+              <><ShoppingCart className="h-4 w-4" /> Add all & Continue Shopping <ArrowRight className="h-4 w-4" /></>
+            ) : (
+              <>Continue Shopping <ArrowRight className="h-4 w-4" /></>
+            )}
+          </button>
         </div>
       </div>
     </Shell>
