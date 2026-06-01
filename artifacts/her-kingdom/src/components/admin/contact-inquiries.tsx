@@ -2,7 +2,14 @@
 
 import { useMemo, useState } from "react"
 import { AdminShell } from "./admin-shell"
-import { useCmsDoc } from "@/lib/cms-store"
+import {
+  useContactInquiries,
+  updateContactInquiry,
+  deleteContactInquiry,
+  type ContactInquiry,
+  type InquiryStatus,
+  type InquiryCategory,
+} from "@/lib/contact-inquiries-client"
 import {
   Inbox,
   Search,
@@ -19,93 +26,7 @@ import {
   MessageSquare,
 } from "lucide-react"
 
-export type InquiryStatus = "new" | "in-progress" | "resolved" | "spam"
-export type InquiryCategory =
-  | "general"
-  | "prescription"
-  | "order"
-  | "delivery"
-  | "product"
-  | "billing"
-  | "complaint"
-  | "partnership"
-  | "other"
-
-export type ContactInquiry = {
-  id: string
-  fullName: string
-  email: string
-  phone: string
-  category: InquiryCategory
-  subject: string
-  message: string
-  preferredContact: "email" | "phone" | "whatsapp"
-  isExistingPatient: boolean
-  patientId?: string
-  dob?: string
-  consent: boolean
-  status: InquiryStatus
-  internalNote: string
-  source: string
-  createdAt: string
-  updatedAt: string
-}
-
-const SEED: ContactInquiry[] = [
-  {
-    id: "inq-001",
-    fullName: "Mary Wanjiru",
-    email: "mary.w@example.com",
-    phone: "+254 712 345 678",
-    category: "prescription",
-    subject: "Refill question for hypertension meds",
-    message: "Hi, I would like to know if I can refill my BP medication without coming in for a new prescription. I've been on Amlodipine 5mg for over a year now.",
-    preferredContact: "whatsapp",
-    isExistingPatient: true,
-    patientId: "PT-1042",
-    dob: "1978-05-22",
-    consent: true,
-    status: "new",
-    internalNote: "",
-    source: "Contact Page",
-    createdAt: new Date(Date.now() - 1000 * 60 * 35).toISOString(),
-    updatedAt: new Date(Date.now() - 1000 * 60 * 35).toISOString(),
-  },
-  {
-    id: "inq-002",
-    fullName: "James Otieno",
-    email: "j.otieno@example.com",
-    phone: "+254 720 998 877",
-    category: "delivery",
-    subject: "Delivery to Kisumu — same day?",
-    message: "Do you offer same-day delivery for orders going to Kisumu? My order number is #SR-3320.",
-    preferredContact: "phone",
-    isExistingPatient: false,
-    consent: true,
-    status: "in-progress",
-    internalNote: "Called back at 11:15 — left voicemail. Will retry after lunch.",
-    source: "Contact Page",
-    createdAt: new Date(Date.now() - 1000 * 60 * 60 * 5).toISOString(),
-    updatedAt: new Date(Date.now() - 1000 * 60 * 60 * 2).toISOString(),
-  },
-  {
-    id: "inq-003",
-    fullName: "Faith N.",
-    email: "faith.n@example.com",
-    phone: "+254 733 111 222",
-    category: "product",
-    subject: "Stock for SPLAT Biocalcium toothpaste",
-    message: "When will the SPLAT Biocalcium toothpaste be back in stock?",
-    preferredContact: "email",
-    isExistingPatient: false,
-    consent: true,
-    status: "resolved",
-    internalNote: "Replied 2026-05-12 — restock expected next week. Customer happy.",
-    source: "Contact Page",
-    createdAt: new Date(Date.now() - 1000 * 60 * 60 * 24 * 2).toISOString(),
-    updatedAt: new Date(Date.now() - 1000 * 60 * 60 * 24).toISOString(),
-  },
-]
+export type { InquiryStatus, InquiryCategory, ContactInquiry }
 
 const STATUS_META: Record<InquiryStatus, { label: string; cls: string; icon: any }> = {
   "new":         { label: "New",         cls: "bg-blue-50 text-blue-700 border border-blue-200",       icon: AlertCircle },
@@ -135,10 +56,12 @@ function timeAgo(iso: string) {
 }
 
 export function AdminContactInquiries() {
-  const [inquiries, setInquiries] = useCmsDoc<ContactInquiry[]>("contact-inquiries", SEED)
+  const { items: inquiries, loading, error, refresh } = useContactInquiries()
   const [filter, setFilter] = useState<"all" | InquiryStatus>("all")
   const [q, setQ] = useState("")
   const [activeId, setActiveId] = useState<string | null>(null)
+  const [noteDraft, setNoteDraft] = useState<{ id: string; value: string } | null>(null)
+  const [mutationError, setMutationError] = useState<string | null>(null)
 
   const counts = useMemo(() => {
     const c: Record<string, number> = { all: inquiries.length, new: 0, "in-progress": 0, resolved: 0, spam: 0 }
@@ -163,14 +86,24 @@ export function AdminContactInquiries() {
 
   const active = inquiries.find((i) => i.id === activeId) || null
 
-  function update(id: string, patch: Partial<ContactInquiry>) {
-    setInquiries((prev) =>
-      prev.map((i) => (i.id === id ? { ...i, ...patch, updatedAt: new Date().toISOString() } : i))
-    )
+  async function update(id: string, patch: { status?: InquiryStatus; internalNote?: string; category?: InquiryCategory }) {
+    const res = await updateContactInquiry(id, patch)
+    if (!res) {
+      setMutationError("Couldn't save that change. Check your admin sign-in and try again.")
+      return
+    }
+    setMutationError(null)
+    await refresh()
   }
-  function remove(id: string) {
-    setInquiries((prev) => prev.filter((i) => i.id !== id))
+  async function remove(id: string) {
+    const ok = await deleteContactInquiry(id)
+    if (!ok) {
+      setMutationError("Couldn't delete that enquiry. Check your admin sign-in and try again.")
+      return
+    }
+    setMutationError(null)
     if (activeId === id) setActiveId(null)
+    await refresh()
   }
 
   return (
@@ -185,6 +118,12 @@ export function AdminContactInquiries() {
           </p>
         </div>
       </div>
+
+      {mutationError && (
+        <div className="mb-4 rounded-md border border-red-200 bg-red-50 px-4 py-2.5 text-sm text-red-700">
+          {mutationError}
+        </div>
+      )}
 
       {/* Filter chips + search */}
       <div className="flex flex-wrap items-center gap-2 mb-4">
@@ -230,7 +169,15 @@ export function AdminContactInquiries() {
           <div className="text-right">Action</div>
         </div>
 
-        {visible.length === 0 ? (
+        {loading && inquiries.length === 0 ? (
+          <div className="px-5 py-12 text-center text-sm text-muted-foreground">
+            Loading inquiries…
+          </div>
+        ) : error && inquiries.length === 0 ? (
+          <div className="px-5 py-12 text-center text-sm text-red-600">
+            Couldn't load inquiries ({error}). Check your admin sign-in and try again.
+          </div>
+        ) : visible.length === 0 ? (
           <div className="px-5 py-12 text-center text-sm text-muted-foreground">
             No inquiries match your filters.
           </div>
@@ -387,10 +334,16 @@ export function AdminContactInquiries() {
               <div>
                 <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground mb-2">Internal note</p>
                 <textarea
-                  value={active.internalNote}
-                  onChange={(e) => update(active.id, { internalNote: e.target.value })}
+                  value={noteDraft?.id === active.id ? noteDraft.value : active.internalNote}
+                  onChange={(e) => setNoteDraft({ id: active.id, value: e.target.value })}
+                  onBlur={() => {
+                    if (noteDraft?.id === active.id && noteDraft.value !== active.internalNote) {
+                      void update(active.id, { internalNote: noteDraft.value })
+                    }
+                    setNoteDraft(null)
+                  }}
                   rows={4}
-                  placeholder="Add a note for your team — won't be visible to the customer."
+                  placeholder="Add a note for your team — won't be visible to the customer. Saved when you click away."
                   className="w-full px-3 py-2 text-sm border border-border rounded-md focus:outline-none focus:border-foreground resize-none"
                 />
               </div>

@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core"
+import { boolean, pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core"
 import { createInsertSchema, createSelectSchema } from "drizzle-zod"
 import { z } from "zod/v4"
 
@@ -97,6 +97,47 @@ export const insertCampaignSendSchema = createInsertSchema(campaignSends)
 export const selectCampaignSendSchema = createSelectSchema(campaignSends)
 export type InsertCampaignSend = z.infer<typeof insertCampaignSendSchema>
 export type CampaignSend = typeof campaignSends.$inferSelect
+
+/**
+ * contact_inquiries — durable, per-row store for messages submitted from the
+ * public contact page (and any future inbound enquiry source).
+ *
+ * Previously these lived as a single concatenated JSON array in `cms_docs`
+ * (key `contact-inquiries`), which made per-row triage, concurrency-safe
+ * appends, and querying awkward. Each submission is now its own row so the
+ * public form can append without read-modify-write races and admins can
+ * triage individually.
+ */
+export type InquiryStatus = "new" | "in-progress" | "resolved" | "spam"
+export type InquiryCategory =
+  | "general" | "prescription" | "order" | "delivery"
+  | "product" | "billing" | "complaint" | "partnership" | "other"
+export type PreferredContact = "email" | "phone" | "whatsapp"
+
+export const contactInquiries = pgTable("contact_inquiries", {
+  id: text("id").primaryKey(),
+  fullName: text("full_name").notNull(),
+  email: text("email").notNull(),
+  phone: text("phone").notNull().default(""),
+  category: text("category").notNull().default("general"),
+  subject: text("subject").notNull().default(""),
+  message: text("message").notNull(),
+  preferredContact: text("preferred_contact").notNull().default("whatsapp"),
+  isExistingPatient: boolean("is_existing_patient").notNull().default(false),
+  patientId: text("patient_id"),
+  dob: text("dob"),
+  consent: boolean("consent").notNull().default(false),
+  status: text("status").notNull().default("new"),
+  internalNote: text("internal_note").notNull().default(""),
+  source: text("source").notNull().default("Contact Page"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+})
+
+export const insertContactInquirySchema = createInsertSchema(contactInquiries)
+export const selectContactInquirySchema = createSelectSchema(contactInquiries)
+export type InsertContactInquiry = z.infer<typeof insertContactInquirySchema>
+export type ContactInquiryRow = typeof contactInquiries.$inferSelect
 
 export const insertCommunicationOutboxSchema = createInsertSchema(communicationOutbox)
 export const selectCommunicationOutboxSchema = createSelectSchema(communicationOutbox)

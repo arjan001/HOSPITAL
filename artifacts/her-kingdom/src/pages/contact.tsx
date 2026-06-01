@@ -5,8 +5,7 @@ import { TopBar } from "@/components/store/top-bar"
 import { Navbar } from "@/components/store/navbar"
 import { Footer } from "@/components/store/footer"
 import { useStoreContact } from "@/hooks/use-store-contact"
-import { cmsStore, newId } from "@/lib/cms-store"
-import type { ContactInquiry, InquiryCategory } from "@/components/admin/contact-inquiries"
+import { submitContactInquiry, type InquiryCategory } from "@/lib/contact-inquiries-client"
 import { Seo, organizationJsonLd, websiteJsonLd, breadcrumbJsonLd, faqJsonLd, productJsonLd } from "@/components/seo"
 
 const TEAL = "#16a3a3"
@@ -47,12 +46,13 @@ export default function ContactPage() {
   const [form, setForm] = useState(EMPTY)
   const [submitted, setSubmitted] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [submitting, setSubmitting] = useState(false)
 
   function update<K extends keyof typeof EMPTY>(k: K, v: (typeof EMPTY)[K]) {
     setForm((f) => ({ ...f, [k]: v }))
   }
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError(null)
 
@@ -63,9 +63,8 @@ export default function ContactPage() {
     if (!form.message.trim()) return setError("Please type your message.")
     if (!form.consent) return setError("Please tick the consent box so we can reply to you.")
 
-    const now = new Date().toISOString()
-    const inquiry: ContactInquiry = {
-      id: newId("inq"),
+    setSubmitting(true)
+    const result = await submitContactInquiry({
       fullName: form.fullName.trim(),
       email: form.email.trim(),
       phone: form.phone.trim(),
@@ -77,15 +76,14 @@ export default function ContactPage() {
       patientId: form.patientId.trim() || undefined,
       dob: form.dob.trim() || undefined,
       consent: form.consent,
-      status: "new",
-      internalNote: "",
       source: "Contact Page",
-      createdAt: now,
-      updatedAt: now,
-    }
+    })
+    setSubmitting(false)
 
-    const existing = cmsStore.get<ContactInquiry[]>("contact-inquiries", [])
-    cmsStore.set("contact-inquiries", [inquiry, ...existing])
+    if ("error" in result) {
+      setError("We couldn't send your message just now. Please try again or call us directly.")
+      return
+    }
 
     setSubmitted(true)
     setForm(EMPTY)
@@ -343,12 +341,13 @@ export default function ContactPage() {
 
                   <button
                     type="submit"
-                    className="px-8 py-3 rounded-full text-white text-sm font-semibold uppercase tracking-wider transition-colors"
+                    disabled={submitting}
+                    className="px-8 py-3 rounded-full text-white text-sm font-semibold uppercase tracking-wider transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                     style={{ background: TEAL }}
                     onMouseEnter={(e) => (e.currentTarget.style.background = TEAL_DARK)}
                     onMouseLeave={(e) => (e.currentTarget.style.background = TEAL)}
                   >
-                    Submit enquiry
+                    {submitting ? "Sending…" : "Submit enquiry"}
                   </button>
 
                   <p className="text-xs text-neutral-500">

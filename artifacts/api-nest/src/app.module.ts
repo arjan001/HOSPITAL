@@ -55,6 +55,7 @@ import { ErrorReportingModule } from "./modules/error-reporting.module"
 import { StorageModule } from "./modules/storage.module"
 import { NewsletterModule } from "./modules/newsletter.module"
 import { AuditModule } from "./modules/audit.module"
+import { ContactInquiriesModule } from "./modules/contact-inquiries.module"
 
 @Module({
   imports: [
@@ -88,6 +89,7 @@ import { AuditModule } from "./modules/audit.module"
     StorageModule,
     NewsletterModule,
     AuditModule,
+    ContactInquiriesModule,
   ],
   providers: [
     // Global catch-all exception filter: normalises every error response and

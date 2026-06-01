@@ -7,6 +7,7 @@ import { useCmsDoc, newId, cmsStore } from "@/lib/cms-store"
 import { notify } from "@/lib/notify"
 import { usePermission } from "@/lib/permissions"
 import { pipelineClient, type CampaignRecipientResult } from "@/lib/pipeline-client"
+import { pushAdminNotification } from "@/lib/notifications-client"
 import {
   Megaphone, Send, Mail, MessageSquare, Users, GitBranch, ListChecks, Settings as SettingsIcon,
   Plus, Trash2, Edit3, Copy, Play, Pause, RotateCcw, CheckCircle2, AlertCircle, Clock,
@@ -51,7 +52,10 @@ export type EmailCampaign = {
   status: CampaignStatus
   scheduledAt: string | null
   sentAt: string | null
-  stats: { recipients: number; sent: number; failed: number; opens: number; clicks: number }
+  // Real delivery metrics only — derived from the send queue / campaign_sends
+  // ledger. We do NOT track email opens/clicks (no pixel/redirect tracking),
+  // so we never fabricate engagement numbers here.
+  stats: { recipients: number; sent: number; failed: number }
   createdAt: string
   updatedAt: string
 }
@@ -271,7 +275,29 @@ let simulatorRefCount = 0
 let simulatorTimer: number | null = null
 const inFlightCampaigns = new Set<string>()
 
-/** Recompute parent campaign stats + status from the current queue. */
+/**
+ * Fire a single admin bell notification when a campaign finishes dispatching.
+ * Called exactly once per campaign at the not-sent → sent transition (the
+ * `!c.sentAt` guard in rollupCampaignStats prevents repeats). Level reflects
+ * real outcome: alert if all failed, warning if some failed, success if clean.
+ */
+function notifyCampaignComplete(kind: "Email" | "SMS", name: string, id: string, sent: number, failed: number) {
+  const level: "success" | "warning" | "alert" = failed === 0 ? "success" : sent === 0 ? "alert" : "warning"
+  const outcome =
+    failed === 0
+      ? `Delivered to ${sent} recipient${sent === 1 ? "" : "s"}.`
+      : sent === 0
+      ? `All ${failed} message${failed === 1 ? "" : "s"} failed to send.`
+      : `${sent} sent, ${failed} failed — review the failures.`
+  void pushAdminNotification({
+    module: "communications",
+    level,
+    title: `${kind} campaign "${name}" ${failed === 0 ? "completed" : "needs attention"}`,
+    body: outcome,
+    href: "/admin/campaigns",
+  })
+}
+
 function rollupCampaignStats() {
   const queue = cmsStore.get<QueueItem[]>("campaign-queue", [])
   const emails = cmsStore.get<EmailCampaign[]>("campaign-emails", [])
@@ -283,16 +309,17 @@ function rollupCampaignStats() {
     const sent = items.filter((i) => i.status === "sent").length
     const failed = items.filter((i) => i.status === "failed").length
     const remaining = items.filter((i) => i.status === "queued" || i.status === "sending").length
-    const opens = Math.round(sent * 0.42)
-    const clicks = Math.round(sent * 0.11)
-    if (c.stats.sent !== sent || c.stats.failed !== failed || c.stats.opens !== opens || c.stats.clicks !== clicks) {
-      c.stats = { ...c.stats, sent, failed, opens, clicks }
+    if (c.stats.sent !== sent || c.stats.failed !== failed) {
+      c.stats = { ...c.stats, sent, failed }
       emailsTouched = true
     }
     const newStatus: CampaignStatus = remaining === 0 ? "sent" : "sending"
     if (c.status !== newStatus) {
       c.status = newStatus
-      if (newStatus === "sent" && !c.sentAt) c.sentAt = new Date().toISOString()
+      if (newStatus === "sent" && !c.sentAt) {
+        c.sentAt = new Date().toISOString()
+        notifyCampaignComplete("Email", c.name, c.id, sent, failed)
+      }
       emailsTouched = true
     }
   }
@@ -309,7 +336,10 @@ function rollupCampaignStats() {
     const newStatus: CampaignStatus = remaining === 0 ? "sent" : "sending"
     if (c.status !== newStatus) {
       c.status = newStatus
-      if (newStatus === "sent" && !c.sentAt) c.sentAt = new Date().toISOString()
+      if (newStatus === "sent" && !c.sentAt) {
+        c.sentAt = new Date().toISOString()
+        notifyCampaignComplete("SMS", c.name, c.id, sent, failed)
+      }
       smsTouched = true
     }
   }
@@ -588,17 +618,17 @@ export function AdminCampaignsOverview() {
   const [pipelines] = useCmsDoc<Pipeline[]>("campaign-pipelines", [])
 
   const stats = useMemo(() => {
-    const all: { status: CampaignStatus; recipients: number; sent: number; opens?: number; clicks?: number }[] = [
-      ...emails.map((e) => ({ status: e.status, recipients: e.stats.recipients, sent: e.stats.sent, opens: e.stats.opens, clicks: e.stats.clicks })),
-      ...sms.map((s) => ({ status: s.status, recipients: s.stats.recipients, sent: s.stats.sent })),
+    const all: { status: CampaignStatus; recipients: number; sent: number; failed: number }[] = [
+      ...emails.map((e) => ({ status: e.status, recipients: e.stats.recipients, sent: e.stats.sent, failed: e.stats.failed })),
+      ...sms.map((s) => ({ status: s.status, recipients: s.stats.recipients, sent: s.stats.sent, failed: s.stats.failed })),
     ]
     const totalRecipients = all.reduce((n, c) => n + c.recipients, 0)
     const totalSent       = all.reduce((n, c) => n + c.sent, 0)
-    const totalOpens      = emails.reduce((n, e) => n + e.stats.opens, 0)
-    const totalClicks     = emails.reduce((n, e) => n + e.stats.clicks, 0)
     const queued          = queue.filter((q) => q.status === "queued" || q.status === "sending").length
     const failed          = queue.filter((q) => q.status === "failed").length
-    return { totalRecipients, totalSent, totalOpens, totalClicks, queued, failed, openRate: totalSent ? Math.round(totalOpens / totalSent * 100) : 0 }
+    // Real delivery rate = successfully sent / total recipients across campaigns.
+    const deliveredRate   = totalRecipients ? Math.round((totalSent / totalRecipients) * 100) : 0
+    return { totalRecipients, totalSent, queued, failed, deliveredRate }
   }, [emails, sms, queue])
 
   const recent = useMemo(() => {
@@ -618,7 +648,7 @@ export function AdminCampaignsOverview() {
         <Kpi label="Campaigns"      value={emails.length + sms.length} icon={Megaphone} />
         <Kpi label="Recipients"     value={stats.totalRecipients}      icon={Users} />
         <Kpi label="Sent"           value={stats.totalSent}            icon={Send}   tone="emerald" />
-        <Kpi label="Open rate"      value={`${stats.openRate}%`}       icon={Eye}    tone="blue" />
+        <Kpi label="Delivered"      value={`${stats.deliveredRate}%`}  icon={CheckCircle2} tone="blue" />
         <Kpi label="In queue"       value={stats.queued}               icon={Clock}  tone="amber" />
         <Kpi label="Failed"         value={stats.failed}               icon={AlertCircle} tone="red" />
       </div>
@@ -756,7 +786,7 @@ const BLANK_EMAIL = (): EmailCampaign => ({
   status: "draft",
   scheduledAt: null,
   sentAt: null,
-  stats: { recipients: 0, sent: 0, failed: 0, opens: 0, clicks: 0 },
+  stats: { recipients: 0, sent: 0, failed: 0 },
   createdAt: new Date().toISOString(),
   updatedAt: new Date().toISOString(),
 })
@@ -799,7 +829,7 @@ export function AdminCampaignsEmail() {
       status: "draft",
       scheduledAt: null,
       sentAt: null,
-      stats: { recipients: 0, sent: 0, failed: 0, opens: 0, clicks: 0 },
+      stats: { recipients: 0, sent: 0, failed: 0 },
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     }
@@ -912,8 +942,8 @@ export function AdminCampaignsEmail() {
                 <th className="text-left px-4 py-2 font-medium">Subject</th>
                 <th className="text-left px-4 py-2 font-medium">Status</th>
                 <th className="text-right px-4 py-2 font-medium">Recipients</th>
-                <th className="text-right px-4 py-2 font-medium">Opens</th>
-                <th className="text-right px-4 py-2 font-medium">Clicks</th>
+                <th className="text-right px-4 py-2 font-medium">Sent</th>
+                <th className="text-right px-4 py-2 font-medium">Failed</th>
                 <th className="px-4 py-2 w-1" />
               </tr>
             </thead>
@@ -924,8 +954,8 @@ export function AdminCampaignsEmail() {
                   <td className="px-4 py-2.5 text-stone-700 max-w-[260px] truncate">{c.subject || <span className="text-stone-400">(no subject)</span>}</td>
                   <td className="px-4 py-2.5"><StatusPill status={c.status} /></td>
                   <td className="px-4 py-2.5 text-right tabular-nums">{c.stats.recipients}</td>
-                  <td className="px-4 py-2.5 text-right tabular-nums">{c.stats.opens}</td>
-                  <td className="px-4 py-2.5 text-right tabular-nums">{c.stats.clicks}</td>
+                  <td className="px-4 py-2.5 text-right tabular-nums">{c.stats.sent}</td>
+                  <td className="px-4 py-2.5 text-right tabular-nums">{c.stats.failed > 0 ? <span className="text-red-600">{c.stats.failed}</span> : c.stats.failed}</td>
                   <td className="px-4 py-2.5 whitespace-nowrap text-right">
                     <button onClick={() => setEditing(c)} className="p-1.5 text-stone-500 hover:text-stone-900" title="Edit"><Edit3 className="h-4 w-4" /></button>
                     {canManage && <button onClick={() => duplicate(c)} className="p-1.5 text-stone-500 hover:text-stone-900" title="Duplicate"><Copy className="h-4 w-4" /></button>}
