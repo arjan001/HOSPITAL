@@ -145,6 +145,13 @@ export default function SpeakToADoctorPage() {
     return m ? decodeURIComponent(m[1]) : null
   })()
   const consultIdRef = useRef<string | null>(initialCid)
+  // Reactive mirror of consultIdRef so the chat header can display the id and a
+  // visible change is surfaced when a new consultation starts (ask: URL/id).
+  const [consultId, setConsultId] = useState<string | null>(initialCid)
+  const applyConsultId = (id: string | null) => {
+    consultIdRef.current = id
+    setConsultId(id)
+  }
   const ensuredRef = useRef(false)
   const [screen,     setScreen]     = useState<Screen>("select")
   /* While true we're verifying a /speak-to-a-doctor/:cid deep-link before
@@ -192,27 +199,33 @@ export default function SpeakToADoctorPage() {
   const chatMaxSec = consultSettings.chatDurationMin * 60 + chatExtensionsSec
 
   /* Deep-link resume guard: when the page loads at /speak-to-a-doctor/:cid we
-     only drop the patient back into chat if this session already has a real
-     conversation (messages). An empty/unknown id sends them to the funnel so
-     the URL can't be used to skip concern/payment. Runs once on mount. */
+     resume into chat only if that id is the thread's CURRENT consultation —
+     i.e. the active, in-progress session. This holds even before any message
+     is sent (concern/symptoms are optional), so a mid-session reload always
+     resumes. A stale/archived/unknown id (or a past consultation, which lives
+     in the account history) sends the patient back to the funnel so the URL
+     can't be used to skip concern/payment. Runs once on mount. */
   useEffect(() => {
     if (!initialCid) return
     let cancelled = false
-    Promise.all([
-      apiChat.myThread().catch(() => null),
-      apiChat.myMessages().catch(() => [] as ChatMessage[]),
-    ])
-      .then(([thread, msgs]) => {
+    apiChat
+      .myThread()
+      .catch(() => null)
+      .then((thread) => {
         if (cancelled) return
-        if (Array.isArray(msgs) && msgs.length > 0) {
-          // Resume into the transcript, but if it was already ended lock the
-          // chat so the patient can't reopen it by typing. We can't tell who
-          // closed it on a cold resume, so show the neutral ended state
-          // (not the live "doctor ended" notice).
+        const currentCid = thread?.consultationId
+        if (currentCid && currentCid === initialCid) {
+          // The deep-linked id is the live consultation — resume it. If it was
+          // already ended, lock the chat so the patient can't reopen it by
+          // typing (neutral ended state on a cold resume).
+          applyConsultId(currentCid)
           if (thread?.status === "archived") setChatSessionEnded(true)
+          // Mid-session reload resumes the SAME consultation — don't start a
+          // new one (the fresh-start path only runs from the funnel).
+          ensuredRef.current = true
           setScreen("chat")
         } else {
-          consultIdRef.current = null
+          applyConsultId(null)
           setLocation("/speak-to-a-doctor", { replace: true })
         }
       })
@@ -237,7 +250,7 @@ export default function SpeakToADoctorPage() {
     apiChat
       .ensureMyConsultation(patientMeta)
       .then((res) => {
-        consultIdRef.current = res.consultationId
+        applyConsultId(res.consultationId)
         setLocation(`/speak-to-a-doctor/${encodeURIComponent(res.consultationId)}`, { replace: true })
       })
       .catch(() => {})
@@ -256,18 +269,38 @@ export default function SpeakToADoctorPage() {
     if (connectPct < 100) return
     const timer = setTimeout(() => {
       if (consType === "chat") {
-        // Seed the patient's concern as the first real message so the pharmacy
-        // team sees it in the live admin chat.
-        if (!seededRef.current) {
-          seededRef.current = true
-          const concern = [category && `Concern: ${category}`, symptoms?.trim()]
-            .filter(Boolean)
-            .join("\n")
-          if (concern) {
-            apiChat.sendAsPatient(concern, patientMeta).then(() => refreshChatPatient()).catch(() => {})
+        void (async () => {
+          // Open a BRAND-NEW consultation for this funnel run so a returning
+          // patient starts fresh — their previous chat is preserved as history.
+          // Done before seeding the concern (so it lands in the new segment)
+          // and pushed to the URL as a real, visible navigation (new id).
+          if (!ensuredRef.current) {
+            try {
+              const res = await apiChat.startNewConsultation(patientMeta)
+              // Only claim the consultation as ensured AFTER it succeeds, so a
+              // failed request doesn't strand us on a stale segment — the
+              // chat-screen effect can then fall back to ensureMyConsultation.
+              ensuredRef.current = true
+              applyConsultId(res.consultationId)
+              setLocation(`/speak-to-a-doctor/${encodeURIComponent(res.consultationId)}`)
+            } catch {}
           }
-        }
-        setScreen("chat")
+          // Seed the patient's concern as the first real message so the pharmacy
+          // team sees it in the live admin chat.
+          if (!seededRef.current) {
+            seededRef.current = true
+            const concern = [category && `Concern: ${category}`, symptoms?.trim()]
+              .filter(Boolean)
+              .join("\n")
+            if (concern) {
+              try {
+                await apiChat.sendAsPatient(concern, patientMeta)
+                await refreshChatPatient()
+              } catch {}
+            }
+          }
+          setScreen("chat")
+        })()
       } else {
         setScreen("videocall")
       }
@@ -393,7 +426,7 @@ export default function SpeakToADoctorPage() {
     closingByPatientRef.current = false
     seededRef.current = false
     // Drop the consultation id from the URL so the next chat gets a fresh one.
-    consultIdRef.current = null
+    applyConsultId(null)
     ensuredRef.current = false
     setLocation("/speak-to-a-doctor", { replace: true })
     setScreen("select")
@@ -963,6 +996,16 @@ export default function SpeakToADoctorPage() {
                 />
                 {staffTyping ? "typing…" : staffOnline ? `${doc.specialty} · Online` : `${doc.specialty} · Away`}
               </p>
+              {consultId && (
+                <p
+                  className="mt-1 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold tracking-wide font-mono"
+                  style={{ background: PEACH_TINT, color: WINE }}
+                  title={`Consultation ${consultId}`}
+                >
+                  <ShieldCheck className="h-3 w-3" />
+                  Consultation {consultId}
+                </p>
+              )}
             </div>
           </div>
           <div className="flex items-center gap-3">

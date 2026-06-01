@@ -54,6 +54,13 @@ export const chatMessages = pgTable("chat_messages", {
   threadId: text("thread_id")
     .notNull()
     .references(() => chatThreads.id, { onDelete: "cascade" }),
+  // The consultation segment this message belongs to. A single thread (patient
+  // session) can hold many consultations over time; each message is tagged with
+  // the consultation that was current when it was sent, so live views show only
+  // the current segment and past consultations remain a retrievable transcript.
+  consultationId: text("consultation_id").references(() => consultations.id, {
+    onDelete: "set null",
+  }),
   sender: text("sender").notNull(),
   authorName: text("author_name"),
   text: text("text").notNull(),

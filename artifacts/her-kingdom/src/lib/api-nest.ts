@@ -369,6 +369,7 @@ export type ChatMessageMeta =
 export type ChatMessage = {
   id: string
   threadId: string
+  consultationId?: string | null
   sender: ChatSender
   text: string
   createdAt: string
@@ -414,6 +415,27 @@ export type ChatThread = {
   closedAt?: string | null
 }
 
+/**
+ * One consultation segment of a thread, enriched for list/history views
+ * (account "past conversations" + admin consultations module).
+ */
+export type ConsultationSummary = {
+  id: string
+  threadId: string | null
+  patientName: string
+  patientPhone: string
+  type: string
+  status: string
+  threadStatus: ChatThreadStatus | null
+  startedAt: string | null
+  endedAt: string | null
+  createdAt: string
+  messageCount: number
+  lastMessage: string
+  lastMessageAt: string | null
+  prescriptionCount: number
+}
+
 export const apiChat = {
   // Patient
   myThread: () => nestFetch<ChatThread>("/chat/me"),
@@ -455,6 +477,20 @@ export const apiChat = {
       method: "POST",
       body: JSON.stringify({ ...(profile || {}) }),
     }),
+  /**
+   * Start a BRAND-NEW consultation: closes the current one (kept as history)
+   * and opens a clean conversation. Used when a returning patient begins again.
+   */
+  startNewConsultation: (profile?: { name?: string; phone?: string }) =>
+    nestFetch<{ consultationId: string; thread: ChatThread }>("/chat/me/consultation/new", {
+      method: "POST",
+      body: JSON.stringify({ ...(profile || {}) }),
+    }),
+  /** The signed-in patient's past consultations (newest first). */
+  myConsultations: () => nestFetch<ConsultationSummary[]>("/chat/me/consultations"),
+  /** The transcript of one of the patient's own past consultations. */
+  myConsultationMessages: (consultationId: string) =>
+    nestFetch<ChatMessage[]>(`/chat/me/consultations/${consultationId}/messages`),
 
   // Admin
   adminThreads: () => nestFetch<ChatThread[]>("/chat/admin/threads"),
@@ -507,6 +543,11 @@ export const apiChat = {
     ),
   deleteThread: (threadId: string) =>
     nestFetch<{ ok: boolean }>(`/chat/admin/threads/${threadId}`, { method: "DELETE" }),
+  /** Every live-chat consultation across all patients (real data, no seeds). */
+  adminConsultations: () => nestFetch<ConsultationSummary[]>("/chat/admin/consultations"),
+  /** The transcript of one consultation (admin). */
+  adminConsultationMessages: (consultationId: string) =>
+    nestFetch<ChatMessage[]>(`/chat/admin/consultations/${consultationId}/messages`),
 }
 
 export function chatStreamUrl(scope: "me" | "admin"): string {
@@ -550,8 +591,20 @@ export function useMyMessages(enabled = true) {
     refreshInterval: 30_000, // SSE handles realtime; this is a safety net
   })
 }
+export function useMyConsultations(enabled = true) {
+  return useSWR<ConsultationSummary[]>(
+    enabled ? "/chat/me/consultations" : null,
+    swrFetcher,
+    { refreshInterval: 30_000 },
+  )
+}
 export function useAdminThreads() {
   return useSWR<ChatThread[]>("/chat/admin/threads", swrFetcher)
+}
+export function useAdminConsultations() {
+  return useSWR<ConsultationSummary[]>("/chat/admin/consultations", swrFetcher, {
+    refreshInterval: 20_000,
+  })
 }
 export function useAdminMessages(threadId: string | null) {
   return useSWR<ChatMessage[]>(

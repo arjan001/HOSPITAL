@@ -35,6 +35,10 @@ export const consultations = pgTable("consultations", {
   // Nullable because consultations can be booked anonymously (phone only)
   // until the visitor signs up.
   userId: text("user_id").references(() => users.id, { onDelete: "set null" }),
+  // The live-chat thread (patient session) this consultation came from, so a
+  // session's consultation history can be listed. Nullable for consultations
+  // booked through other (call/video) flows that have no chat thread.
+  threadId: text("thread_id"),
   doctorId: text("doctor_id").references(() => doctors.id, { onDelete: "set null" }),
   type: text("type").notNull(),
   specialty: text("specialty").notNull(),

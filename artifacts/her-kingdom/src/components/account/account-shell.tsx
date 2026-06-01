@@ -1,10 +1,12 @@
 "use client"
 
-import { type ReactNode } from "react"
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react"
 import { Link, useLocation } from "wouter"
 import { TopBar } from "@/components/store/top-bar"
 import { Navbar } from "@/components/store/navbar"
 import { Footer } from "@/components/store/footer"
+import { AccountNotificationBell } from "@/components/account/account-notification-bell"
+import { useMyNotifications } from "@/lib/notifications-client"
 import {
   UserCircle,
   MapPin,
@@ -17,6 +19,7 @@ import {
   LogOut,
   ChevronRight,
   MessagesSquare,
+  History,
 } from "lucide-react"
 
 const WINE = "#3D0814"
@@ -27,6 +30,7 @@ const NAV: Array<{ href: string; label: string; icon: typeof UserCircle; hint?: 
   { href: "/account/settings",      label: "Profile & Settings", icon: UserCircle, hint: "Personal info" },
   { href: "/account/orders",        label: "Orders",             icon: Receipt },
   { href: "/account/chat",          label: "Talk to Pharmacist", icon: MessagesSquare, hint: "Live chat" },
+  { href: "/account/consultations", label: "Past Consultations", icon: History, hint: "Saved chats" },
   { href: "/account/prescriptions", label: "Prescriptions",      icon: Pill },
   { href: "/account/addresses",     label: "Addresses",          icon: MapPin },
   { href: "/account/wishlist",      label: "Wishlist",           icon: Heart },
@@ -46,6 +50,47 @@ export function AccountShell({
   children: ReactNode
 }) {
   const [pathname] = useLocation()
+  const { items, unread, markAllRead, refresh } = useMyNotifications()
+
+  // Unread count per nav item — an unread notification badges the tab whose
+  // href it points to (chat, prescriptions, orders, etc.).
+  const navBadges = useMemo(() => {
+    const out: Record<string, number> = {}
+    for (const n of items) {
+      if (n.read || !n.href) continue
+      const match = NAV.find((item) => n.href!.startsWith(item.href))
+      if (match) out[match.href] = (out[match.href] || 0) + 1
+    }
+    return out
+  }, [items])
+
+  // Pulse a tab for a few seconds whenever its badge count climbs (a process
+  // moved stage-to-stage), so the change is noticeable without sound.
+  const prevBadges = useRef<Record<string, number>>({})
+  const [pulsing, setPulsing] = useState<Record<string, boolean>>({})
+  useEffect(() => {
+    const next: Record<string, boolean> = {}
+    let changed = false
+    for (const href of Object.keys(navBadges)) {
+      if ((navBadges[href] || 0) > (prevBadges.current[href] || 0)) {
+        next[href] = true
+        changed = true
+      }
+    }
+    prevBadges.current = navBadges
+    if (changed) {
+      setPulsing((p) => ({ ...p, ...next }))
+      const t = setTimeout(() => {
+        setPulsing((p) => {
+          const copy = { ...p }
+          for (const k of Object.keys(next)) delete copy[k]
+          return copy
+        })
+      }, 5000)
+      return () => clearTimeout(t)
+    }
+    return undefined
+  }, [navBadges])
 
   return (
     <div className="min-h-screen flex flex-col" style={{ background: CREAM }}>
@@ -87,12 +132,20 @@ export function AccountShell({
                 <p className="text-white/70 text-sm mt-1">{user.email}</p>
               </div>
             </div>
-            <Link
-              href="/"
-              className="inline-flex items-center gap-1.5 text-xs text-white/80 hover:text-white transition-colors"
-            >
-              ← Back to store
-            </Link>
+            <div className="flex items-center gap-4">
+              <AccountNotificationBell
+                items={items}
+                unread={unread}
+                onMarkAllRead={() => { void markAllRead() }}
+                onRefresh={() => { void refresh() }}
+              />
+              <Link
+                href="/"
+                className="inline-flex items-center gap-1.5 text-xs text-white/80 hover:text-white transition-colors"
+              >
+                ← Back to store
+              </Link>
+            </div>
           </div>
         </div>
       </header>
@@ -121,6 +174,22 @@ export function AccountShell({
                   >
                     <item.icon className="h-4 w-4 flex-shrink-0" />
                     <span className="flex-1 truncate">{item.label}</span>
+                    {(navBadges[item.href] || 0) > 0 && (
+                      <span className="relative flex">
+                        {pulsing[item.href] && (
+                          <span
+                            className="absolute inline-flex h-full w-full rounded-full opacity-75 animate-ping"
+                            style={{ background: "#F97316" }}
+                          />
+                        )}
+                        <span
+                          className="relative min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-bold flex items-center justify-center text-white"
+                          style={{ background: "#B91C1C" }}
+                        >
+                          {navBadges[item.href] > 9 ? "9+" : navBadges[item.href]}
+                        </span>
+                      </span>
+                    )}
                     <ChevronRight className={`h-3 w-3 ${isActive ? "text-white/70" : "text-muted-foreground"}`} />
                   </Link>
                 )

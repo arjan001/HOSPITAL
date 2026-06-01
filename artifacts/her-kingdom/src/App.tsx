@@ -98,6 +98,7 @@ import { AdminProfile } from "@/components/admin/profile";
 import { AdminPrescriptions } from "@/components/admin/prescriptions";
 import { AdminChat } from "@/components/admin/chat";
 import AccountChatPage from "@/pages/account/chat";
+import AccountConsultationsPage from "@/pages/account/consultations";
 import { AdminRolesPermissions } from "@/components/admin/roles-permissions";
 import { AdminAccounts } from "@/components/admin/admin-accounts";
 import { AdminConsultations } from "@/components/admin/consultations";
@@ -477,6 +478,9 @@ function Router() {
       <Route path="/admin/chat" component={AdminChat} />
       <Route path="/account/chat">
         {() => <ProtectedAccount><AccountChatPage /></ProtectedAccount>}
+      </Route>
+      <Route path="/account/consultations">
+        {() => <ProtectedAccount><AccountConsultationsPage /></ProtectedAccount>}
       </Route>
       <Route path="/admin/roles" component={AdminRolesPermissions} />
       <Route path="/admin/audit-log" component={AdminAuditLog} />

@@ -44,8 +44,8 @@ import {
 } from "@nestjs/common"
 import type { Request } from "express"
 import { Observable, Subject, interval, map, merge } from "rxjs"
-import { and, asc, desc, eq, isNull, ne, sql } from "drizzle-orm"
-import { db, chatMessages, chatThreads, consultations } from "@workspace/db"
+import { and, asc, desc, eq, inArray, isNotNull, isNull, ne, sql } from "drizzle-orm"
+import { db, chatMessages, chatThreads, consultations, prescriptions } from "@workspace/db"
 import type { ChatMessageMeta } from "@workspace/db"
 import { newId } from "../common/repository"
 import { AdminGuard, RequirePerm } from "../common/admin-guard"
@@ -59,6 +59,7 @@ export type AttachmentType = "image" | "file"
 export type ChatMessage = {
   id: string
   threadId: string
+  consultationId?: string | null
   sender: ChatSender
   text: string
   createdAt: string
@@ -96,6 +97,24 @@ export type PresencePayload = {
   threadId: string
   online: boolean
   lastSeen: string | null
+}
+
+// A single consultation segment of a thread, enriched for list/history views.
+export type ConsultationSummary = {
+  id: string
+  threadId: string | null
+  patientName: string
+  patientPhone: string
+  type: string
+  status: string
+  threadStatus: ChatThreadStatus | null
+  startedAt: string | null
+  endedAt: string | null
+  createdAt: string
+  messageCount: number
+  lastMessage: string
+  lastMessageAt: string | null
+  prescriptionCount: number
 }
 
 type StreamEvent =
@@ -158,6 +177,7 @@ function toApiMessage(r: MessageRow): ChatMessage {
   return {
     id: r.id,
     threadId: r.threadId,
+    consultationId: r.consultationId ?? null,
     sender: r.sender as ChatSender,
     text: r.text,
     createdAt: r.createdAt.toISOString(),
@@ -284,11 +304,34 @@ class ChatService {
     return toApiThread(t)
   }
 
+  /**
+   * Messages for the LIVE view of a thread: only the current consultation
+   * segment. After a patient starts a new consultation the prior segment's
+   * messages drop out of the live chat (they remain in history).
+   */
   async listMessages(threadId: string): Promise<ChatMessage[]> {
+    const t = await this.findThread(threadId)
     const rows = await db
       .select()
       .from(chatMessages)
-      .where(eq(chatMessages.threadId, threadId))
+      .where(
+        t?.consultationId
+          ? and(
+              eq(chatMessages.threadId, threadId),
+              eq(chatMessages.consultationId, t.consultationId),
+            )
+          : eq(chatMessages.threadId, threadId),
+      )
+      .orderBy(asc(chatMessages.createdAt))
+    return rows.map(toApiMessage)
+  }
+
+  /** All messages of one consultation segment (for a saved-transcript view). */
+  async listConsultationMessages(consultationId: string): Promise<ChatMessage[]> {
+    const rows = await db
+      .select()
+      .from(chatMessages)
+      .where(eq(chatMessages.consultationId, consultationId))
       .orderBy(asc(chatMessages.createdAt))
     return rows.map(toApiMessage)
   }
@@ -319,6 +362,14 @@ class ChatService {
     const t = await this.findThread(threadId)
     if (!t) throw new HttpException("Thread not found", HttpStatus.NOT_FOUND)
 
+    // Tag the message with the thread's current consultation segment so the
+    // live view shows only this consultation and past ones stay a separate,
+    // retrievable transcript. Lazily open a consultation if none exists yet.
+    let consultationId = t.consultationId
+    if (!consultationId) {
+      consultationId = (await this.ensureConsultation(threadId)).consultationId
+    }
+
     // A connected recipient means the message is delivered immediately.
     const now = new Date()
     const delivered = this.recipientOnline(threadId, sender)
@@ -327,6 +378,7 @@ class ChatService {
       .values({
         id: newId("msg"),
         threadId,
+        consultationId,
         sender,
         authorName: opts.authorName ?? null,
         text: trimmed,
@@ -456,6 +508,7 @@ class ChatService {
     const now = new Date()
     await db.insert(consultations).values({
       id: cid,
+      threadId,
       type: "chat",
       specialty: "General",
       patientName: t.patientName || "Guest patient",
@@ -471,6 +524,12 @@ class ChatService {
       .where(and(eq(chatThreads.id, threadId), isNull(chatThreads.consultationId)))
       .returning()
     if (updated[0]) {
+      // Attach any not-yet-segmented messages of this thread to this first
+      // consultation so the opening conversation is captured.
+      await db
+        .update(chatMessages)
+        .set({ consultationId: cid })
+        .where(and(eq(chatMessages.threadId, threadId), isNull(chatMessages.consultationId)))
       const thread = toApiThread(updated[0])
       this.emit(threadId, { type: "thread", thread })
       return { consultationId: cid, thread }
@@ -479,6 +538,147 @@ class ChatService {
     await db.delete(consultations).where(eq(consultations.id, cid))
     const again = await this.findThread(threadId)
     return { consultationId: again!.consultationId!, thread: toApiThread(again!) }
+  }
+
+  /**
+   * Begin a brand-new consultation on this session's thread. The current
+   * consultation (if any) is closed and kept as a saved transcript; the live
+   * chat then starts clean. A returning patient gets a fresh conversation
+   * instead of being dropped back into their previous one.
+   */
+  async startNewConsultation(
+    sid: string,
+    profile?: { name?: string; phone?: string },
+  ): Promise<{ consultationId: string; thread: ChatThread }> {
+    const t = await this.ensureThread(sid, profile)
+    if (t.consultationId) {
+      await db
+        .update(consultations)
+        .set({ status: "completed", endedAt: new Date() })
+        .where(and(eq(consultations.id, t.consultationId), ne(consultations.status, "completed")))
+    }
+    const cid = newId("consult")
+    const now = new Date()
+    const cur = await this.findThread(sid)
+    await db.insert(consultations).values({
+      id: cid,
+      threadId: sid,
+      type: "chat",
+      specialty: "General",
+      patientName: cur?.patientName || "Guest patient",
+      patientPhone: cur?.patientPhone || "",
+      status: "in_progress",
+      paymentStatus: "pending",
+      fee: 0,
+      startedAt: now,
+    })
+    const updated = await db
+      .update(chatThreads)
+      .set({
+        consultationId: cid,
+        status: "active",
+        closedAt: null,
+        lastMessage: "",
+        lastSender: null,
+        unreadByStaff: 0,
+        unreadByPatient: 0,
+        updatedAt: now,
+      })
+      .where(eq(chatThreads.id, sid))
+      .returning()
+    const thread = toApiThread(updated[0]!)
+    this.emit(sid, { type: "thread", thread })
+    return { consultationId: cid, thread }
+  }
+
+  /** Enrich consultation rows with message counts, last activity and Rx count. */
+  private async buildSummaries(
+    rows: (typeof consultations.$inferSelect)[],
+  ): Promise<ConsultationSummary[]> {
+    if (rows.length === 0) return []
+    const ids = rows.map((r) => r.id)
+    const msgs = await db
+      .select()
+      .from(chatMessages)
+      .where(inArray(chatMessages.consultationId, ids))
+      .orderBy(asc(chatMessages.createdAt))
+    const rxs = await db
+      .select({ id: prescriptions.id, consultationId: prescriptions.consultationId })
+      .from(prescriptions)
+      .where(inArray(prescriptions.consultationId, ids))
+    const threadIds = [...new Set(rows.map((r) => r.threadId).filter(Boolean) as string[])]
+    const threads = threadIds.length
+      ? await db.select().from(chatThreads).where(inArray(chatThreads.id, threadIds))
+      : []
+    const threadById = new Map(threads.map((t) => [t.id, t]))
+
+    const agg = new Map<string, { count: number; last: MessageRow }>()
+    for (const m of msgs) {
+      if (!m.consultationId) continue
+      const cur = agg.get(m.consultationId)
+      if (cur) {
+        cur.count++
+        cur.last = m // asc order → last seen is the latest
+      } else {
+        agg.set(m.consultationId, { count: 1, last: m })
+      }
+    }
+    const rxCount = new Map<string, number>()
+    for (const r of rxs) {
+      if (r.consultationId) rxCount.set(r.consultationId, (rxCount.get(r.consultationId) ?? 0) + 1)
+    }
+
+    return rows.map((r) => {
+      const a = agg.get(r.id)
+      const th = r.threadId ? threadById.get(r.threadId) : null
+      return {
+        id: r.id,
+        threadId: r.threadId ?? null,
+        patientName: th?.patientName?.trim() || r.patientName || "Guest patient",
+        patientPhone: th?.patientPhone || r.patientPhone || "",
+        type: r.type,
+        status: r.status,
+        threadStatus: th ? (th.status as ChatThreadStatus) : null,
+        startedAt: r.startedAt ? r.startedAt.toISOString() : null,
+        endedAt: r.endedAt ? r.endedAt.toISOString() : null,
+        createdAt: r.createdAt.toISOString(),
+        messageCount: a?.count ?? 0,
+        lastMessage: a?.last?.text ?? "",
+        lastMessageAt: a?.last ? a.last.createdAt.toISOString() : null,
+        prescriptionCount: rxCount.get(r.id) ?? 0,
+      }
+    })
+  }
+
+  /** A patient session's own consultations, newest first (history view). */
+  async listSessionConsultations(sid: string): Promise<ConsultationSummary[]> {
+    const rows = await db
+      .select()
+      .from(consultations)
+      .where(eq(consultations.threadId, sid))
+      .orderBy(desc(consultations.createdAt))
+    return this.buildSummaries(rows)
+  }
+
+  /** Every live-chat consultation (admin). Excludes non-chat bookings. */
+  async listAllConsultations(): Promise<ConsultationSummary[]> {
+    const rows = await db
+      .select()
+      .from(consultations)
+      .where(isNotNull(consultations.threadId))
+      .orderBy(desc(consultations.createdAt))
+    return this.buildSummaries(rows)
+  }
+
+  /** A past consultation's transcript, authorised to the owning session. */
+  async patientConsultationMessages(sid: string, cid: string): Promise<ChatMessage[]> {
+    const rows = await db
+      .select()
+      .from(consultations)
+      .where(and(eq(consultations.id, cid), eq(consultations.threadId, sid)))
+      .limit(1)
+    if (!rows[0]) throw new HttpException("Consultation not found", HttpStatus.NOT_FOUND)
+    return this.listConsultationMessages(cid)
   }
 
   setTyping(threadId: string, who: ChatSender, isTyping: boolean): void {
@@ -681,6 +881,26 @@ class ChatController {
     return this.svc.ensureConsultation(req.sessionId)
   }
 
+  // Start a brand-new consultation: closes the current one (kept as history)
+  // and opens a clean conversation. Used when a returning patient begins again.
+  @Post("me/consultation/new")
+  async newConsultation(@Req() req: Request, @Body() body: SendBody) {
+    return this.svc.startNewConsultation(req.sessionId, { name: body?.name, phone: body?.phone })
+  }
+
+  // The signed-in patient's past consultations (newest first).
+  @Get("me/consultations")
+  async myConsultations(@Req() req: Request) {
+    await this.svc.ensureThread(req.sessionId)
+    return this.svc.listSessionConsultations(req.sessionId)
+  }
+
+  // The transcript of one of the patient's own past consultations.
+  @Get("me/consultations/:cid/messages")
+  async myConsultationMessages(@Req() req: Request, @Param("cid") cid: string) {
+    return this.svc.patientConsultationMessages(req.sessionId, cid)
+  }
+
   @Post("me/test")
   async patientTest(@Req() req: Request, @Body() body: SendBody) {
     const t = await this.svc.ensureThread(req.sessionId, { name: body?.name, phone: body?.phone })
@@ -848,6 +1068,20 @@ class ChatController {
   async deleteThread(@Param("id") id: string) {
     await this.svc.deleteThread(id)
     return { ok: true }
+  }
+
+  // Live + past consultations across all patients, enriched for the admin
+  // consultations module (real data — no seeds).
+  @UseGuards(AdminGuard)
+  @Get("admin/consultations")
+  adminConsultations() {
+    return this.svc.listAllConsultations()
+  }
+
+  @UseGuards(AdminGuard)
+  @Get("admin/consultations/:cid/messages")
+  adminConsultationMessages(@Param("cid") cid: string) {
+    return this.svc.listConsultationMessages(cid)
   }
 
   @UseGuards(AdminGuard)
