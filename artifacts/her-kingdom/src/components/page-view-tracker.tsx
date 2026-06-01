@@ -70,6 +70,39 @@ export function PageViewTracker() {
     return () => window.removeEventListener("scroll", onScroll)
   }, [])
 
+  // Global click tracking — captures meaningful clicks on links and buttons so
+  // the admin Analytics "clicks" pipeline reflects real interactions. Admin /
+  // auth surfaces and bot sessions are excluded.
+  useEffect(() => {
+    const onClick = (e: MouseEvent) => {
+      try {
+        const path = window.location.pathname
+        if (path.startsWith("/admin") || path.startsWith("/auth")) return
+        if (isBot.current) return
+        const el = (e.target as HTMLElement | null)?.closest("a,button,[role='button'],[data-track-click]")
+        if (!el) return
+        const label =
+          el.getAttribute("data-track-click") ||
+          el.getAttribute("aria-label") ||
+          (el.textContent || "").trim().replace(/\s+/g, " ").slice(0, 80) ||
+          el.getAttribute("href") ||
+          el.tagName.toLowerCase()
+        if (!label) return
+        const payload = JSON.stringify({
+          name: "click",
+          target: label,
+          path,
+          sessionId: getSessionId(),
+          visitorId: getVisitorId(),
+        })
+        if (navigator.sendBeacon) navigator.sendBeacon("/api/track-event", new Blob([payload], { type: "application/json" }))
+        else fetch("/api/track-event", { method: "POST", headers: { "Content-Type": "application/json" }, body: payload, keepalive: true }).catch(() => {})
+      } catch { /* never let tracking break a click */ }
+    }
+    document.addEventListener("click", onClick, { capture: true })
+    return () => document.removeEventListener("click", onClick, { capture: true })
+  }, [])
+
   useEffect(() => {
     const onBeforeUnload = () => sendDuration()
     window.addEventListener("beforeunload", onBeforeUnload)

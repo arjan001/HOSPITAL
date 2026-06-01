@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react"
 import { Link } from "wouter"
-import { Bell, Check } from "lucide-react"
+import { Bell, Check, Trash2 } from "lucide-react"
 import type { ClientNotification } from "@/lib/notifications-client"
 
 const WINE = "#3D0814"
@@ -31,11 +31,13 @@ export function AccountNotificationBell({
   items,
   unread,
   onMarkAllRead,
+  onClearAll,
   onRefresh,
 }: {
   items: ClientNotification[]
   unread: number
   onMarkAllRead: () => void
+  onClearAll: () => void
   onRefresh: () => void
 }) {
   const [open, setOpen] = useState(false)
@@ -105,14 +107,24 @@ export function AccountNotificationBell({
                 {unread > 0 ? `${unread} unread` : "All caught up"}
               </p>
             </div>
-            {unread > 0 && (
-              <button
-                onClick={onMarkAllRead}
-                className="inline-flex items-center gap-1 text-[11px] font-semibold text-muted-foreground hover:text-foreground"
-              >
-                <Check className="h-3 w-3" /> Mark all read
-              </button>
-            )}
+            <div className="flex items-center gap-3">
+              {unread > 0 && (
+                <button
+                  onClick={onMarkAllRead}
+                  className="inline-flex items-center gap-1 text-[11px] font-semibold text-muted-foreground hover:text-foreground"
+                >
+                  <Check className="h-3 w-3" /> Mark all read
+                </button>
+              )}
+              {items.length > 0 && (
+                <button
+                  onClick={onClearAll}
+                  className="inline-flex items-center gap-1 text-[11px] font-semibold text-muted-foreground hover:text-[#B91C1C]"
+                >
+                  <Trash2 className="h-3 w-3" /> Clear all
+                </button>
+              )}
+            </div>
           </div>
           <div className="flex-1 overflow-y-auto">
             {items.length === 0 ? (

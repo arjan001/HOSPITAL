@@ -19,7 +19,7 @@
  *    and are an auditable record — the backend exposes no create/delete.
  */
 
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { AdminShell } from "./admin-shell"
 import { newId, cmsStore } from "@/lib/cms-store"
 import { usePermission } from "@/lib/permissions"
@@ -27,7 +27,7 @@ import { notify } from "@/lib/notify"
 import type { Consultation } from "./consultations"
 import { DrugPicker, SuggestFromNotesButton } from "./drug-picker"
 import {
-  useAdminPrescriptions,
+  useAdminPrescriptionsPaged,
   apiAdminPrescriptions,
   adminRxFileUrl,
   DEFAULT_DRUG_PRICE,
@@ -58,6 +58,8 @@ import {
   RefreshCw,
   Loader2,
   ExternalLink,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react"
 
 const WINE = "#3D0814"
@@ -125,12 +127,32 @@ const ksh = (n: number) => `KSh ${Math.round(n).toLocaleString()}`
 const drugQty = (d: ApprovedDrug) => (typeof d.quantity === "number" && d.quantity >= 1 ? d.quantity : 1)
 const drugUnit = (d: ApprovedDrug) => (typeof d.price === "number" && d.price >= 0 ? d.price : DEFAULT_DRUG_PRICE)
 
-export function AdminPrescriptions() {
-  const { data, isLoading, mutate } = useAdminPrescriptions()
-  const items = useMemo<AccountPrescription[]>(() => data ?? [], [data])
+const PAGE_SIZE = 20
 
+export function AdminPrescriptions() {
   const [filter, setFilter] = useState<RxStatus | "all">("all")
   const [search, setSearch] = useState("")
+  const [debouncedSearch, setDebouncedSearch] = useState("")
+  const [page, setPage] = useState(1)
+
+  // Debounce the search box so we don't refetch on every keystroke.
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search), 300)
+    return () => clearTimeout(t)
+  }, [search])
+
+  // Reset to page 1 whenever the active filter or search changes.
+  useEffect(() => {
+    setPage(1)
+  }, [filter, debouncedSearch])
+
+  const { data, isLoading, mutate } = useAdminPrescriptionsPaged({
+    page,
+    pageSize: PAGE_SIZE,
+    status: filter,
+    search: debouncedSearch,
+  })
+  const items = useMemo<AccountPrescription[]>(() => data?.items ?? [], [data])
   // `active` is an editable working copy of the selected record. Notes + drugs
   // are edited locally and only persisted on Save or a status action.
   const [active, setActive] = useState<AccountPrescription | null>(null)
@@ -154,30 +176,19 @@ export function AdminPrescriptions() {
     setActive(null)
   }
 
-  const filtered = useMemo(() => {
-    return items
-      .filter((p) => filter === "all" || p.status === filter)
-      .filter((p) => {
-        if (!search.trim()) return true
-        const s = search.toLowerCase()
-        return (
-          (p.recipient || "").toLowerCase().includes(s) ||
-          (p.patientName || "").toLowerCase().includes(s) ||
-          (p.phone || "").toLowerCase().includes(s) ||
-          (p.rxNumber || "").toLowerCase().includes(s) ||
-          p.id.toLowerCase().includes(s)
-        )
-      })
-      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
-  }, [items, filter, search])
+  // Server already filters/paginates/sorts; render `items` as-is.
+  const filtered = items
 
-  const counts = useMemo(() => {
-    const out: Record<RxStatus | "all", number> = {
-      all: items.length, pending: 0, verified: 0, dispensed: 0, rejected: 0,
-    }
-    items.forEach((p) => { out[p.status]++ })
-    return out
-  }, [items])
+  const counts = useMemo<Record<RxStatus | "all", number>>(
+    () =>
+      data?.counts ?? {
+        all: 0, pending: 0, verified: 0, dispensed: 0, rejected: 0,
+      },
+    [data],
+  )
+
+  const total = data?.total ?? 0
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
 
   const updateActive = (patch: Partial<AccountPrescription>) =>
     setActive((a) => (a ? { ...a, ...patch } : a))
@@ -419,6 +430,35 @@ export function AdminPrescriptions() {
             </tbody>
           </table>
         </div>
+
+        {/* Pagination */}
+        {total > 0 && (
+          <div className="flex items-center justify-between flex-wrap gap-3">
+            <p className="text-xs text-muted-foreground">
+              Showing {filtered.length === 0 ? 0 : (page - 1) * PAGE_SIZE + 1}
+              –{(page - 1) * PAGE_SIZE + filtered.length} of {total}
+            </p>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={page <= 1}
+                className="h-8 px-3 rounded-md text-xs font-semibold inline-flex items-center gap-1 border border-border bg-background hover:bg-secondary disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <ChevronLeft className="h-3.5 w-3.5" /> Prev
+              </button>
+              <span className="text-xs text-muted-foreground">
+                Page {page} of {totalPages}
+              </span>
+              <button
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                disabled={page >= totalPages}
+                className="h-8 px-3 rounded-md text-xs font-semibold inline-flex items-center gap-1 border border-border bg-background hover:bg-secondary disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                Next <ChevronRight className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* ── MODAL: review prescription ── */}

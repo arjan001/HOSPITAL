@@ -8,6 +8,7 @@ import type {
   NotifyOptions,
 } from "./patient-notifications.module"
 import type { NotificationsService } from "./notifications.module"
+import type { AuditService } from "./audit.module"
 
 type NotifyCall = { event: PatientNotificationEvent; opts: NotifyOptions }
 
@@ -28,7 +29,8 @@ function makeService() {
     }),
   } as unknown as PatientNotificationsService
   const adminNotify = { push: vi.fn(() => Promise.resolve()) } as unknown as NotificationsService
-  const svc = new AdminOrdersService(patientNotify, adminNotify)
+  const audit = { record: vi.fn(() => Promise.resolve()) } as unknown as AuditService
+  const svc = new AdminOrdersService(patientNotify, adminNotify, audit)
   return { svc, notifyCalls, adminNotify }
 }
 

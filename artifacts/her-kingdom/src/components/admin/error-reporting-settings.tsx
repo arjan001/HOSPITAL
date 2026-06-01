@@ -12,13 +12,14 @@
  * - Provider readiness comes from GET /api/v2/admin/error-reporting/status.
  * - "Send test event" hits POST /api/v2/admin/error-reporting/test.
  */
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import useSWR from "swr"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Switch } from "@/components/ui/switch"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Label } from "@/components/ui/label"
+import { Input } from "@/components/ui/input"
 import { Separator } from "@/components/ui/separator"
 import { useToast } from "@/hooks/use-toast"
 import { useCmsDoc } from "@/lib/cms-store"
@@ -34,12 +35,28 @@ type ErrorReportingStatus = {
 type ForwardResult = { ok: boolean; skipped?: boolean; reason?: string; status?: number }
 type TestResult = { ok: boolean; sentry?: ForwardResult; slack?: ForwardResult }
 
+type SecretView = { set: boolean; masked: string; source: "db" | "env" | "none" }
+type PlainView = { value: string; source: "db" | "env" | "default" }
+type ConfigView = {
+  sentryDsn: SecretView
+  slackWebhookUrl: SecretView
+  sentryEnvironment: PlainView
+  sentryRelease: PlainView
+}
+
 type Toggles = { sentryEnabled: boolean; slackEnabled: boolean }
 const DEFAULTS: Toggles = { sentryEnabled: true, slackEnabled: true }
 
 const STATUS_URL = "/api/v2/admin/error-reporting/status"
+const CONFIG_URL = "/api/v2/admin/error-reporting/config"
 
 const statusFetcher = async (url: string): Promise<ErrorReportingStatus> => {
+  const res = await fetch(url, { credentials: "include", headers: adminAuthHeaders() })
+  if (!res.ok) throw new Error(`Request failed (${res.status})`)
+  return res.json()
+}
+
+const configFetcher = async (url: string): Promise<ConfigView> => {
   const res = await fetch(url, { credentials: "include", headers: adminAuthHeaders() })
   if (!res.ok) throw new Error(`Request failed (${res.status})`)
   return res.json()
@@ -63,7 +80,55 @@ export function ErrorReportingSettings() {
     statusFetcher,
     { revalidateOnFocus: false },
   )
+  const { data: config, mutate: mutateConfig } = useSWR<ConfigView>(
+    CONFIG_URL,
+    configFetcher,
+    { revalidateOnFocus: false },
+  )
   const [testing, setTesting] = useState(false)
+  const [saving, setSaving] = useState(false)
+
+  // Credential form. Inputs are seeded with the masked value; the operator
+  // overwrites a field to change it, clears it to fall back to the env secret,
+  // or leaves the mask untouched to keep the current value.
+  const [form, setForm] = useState({
+    sentryDsn: "",
+    slackWebhookUrl: "",
+    sentryEnvironment: "",
+    sentryRelease: "",
+  })
+  useEffect(() => {
+    if (!config) return
+    setForm({
+      sentryDsn: config.sentryDsn.masked,
+      slackWebhookUrl: config.slackWebhookUrl.masked,
+      sentryEnvironment: config.sentryEnvironment.value,
+      sentryRelease: config.sentryRelease.value,
+    })
+  }, [config])
+
+  async function saveConfig() {
+    setSaving(true)
+    try {
+      const res = await fetch(CONFIG_URL, {
+        method: "PUT",
+        credentials: "include",
+        headers: { "Content-Type": "application/json", ...adminAuthHeaders() },
+        body: JSON.stringify(form),
+      })
+      if (!res.ok) throw new Error(`Request failed (${res.status})`)
+      toast({ title: "Credentials saved", description: "Error-reporting destinations updated." })
+      await Promise.all([mutateConfig(), mutate()])
+    } catch (err) {
+      toast({
+        title: "Save failed",
+        description: err instanceof Error ? err.message : "Request failed",
+        variant: "destructive",
+      })
+    } finally {
+      setSaving(false)
+    }
+  }
 
   async function sendTest() {
     setTesting(true)
@@ -119,6 +184,93 @@ export function ErrorReportingSettings() {
               forwarding.
             </div>
           )}
+
+          {/* Credentials */}
+          <div className="space-y-4 rounded-md border border-border bg-card p-4">
+            <div className="space-y-1">
+              <Label className="text-base">Credentials</Label>
+              <p className="text-sm text-muted-foreground">
+                Stored securely server-side. Existing values are masked — overwrite a
+                field to change it, or clear it to fall back to the server secret.
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <Label htmlFor="er-sentry-dsn" className="text-sm">Sentry DSN</Label>
+                {config && (
+                  <span className="text-[11px] text-muted-foreground">
+                    source: <span className="font-mono">{config.sentryDsn.source}</span>
+                  </span>
+                )}
+              </div>
+              <Input
+                id="er-sentry-dsn"
+                value={form.sentryDsn}
+                placeholder="https://<key>@o0.ingest.sentry.io/0"
+                onChange={(e) => setForm((p) => ({ ...p, sentryDsn: e.target.value }))}
+                autoComplete="off"
+                spellCheck={false}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <Label htmlFor="er-slack" className="text-sm">Slack webhook URL</Label>
+                {config && (
+                  <span className="text-[11px] text-muted-foreground">
+                    source: <span className="font-mono">{config.slackWebhookUrl.source}</span>
+                  </span>
+                )}
+              </div>
+              <Input
+                id="er-slack"
+                value={form.slackWebhookUrl}
+                placeholder="https://hooks.slack.com/services/…"
+                onChange={(e) => setForm((p) => ({ ...p, slackWebhookUrl: e.target.value }))}
+                autoComplete="off"
+                spellCheck={false}
+              />
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="er-env" className="text-sm">Environment</Label>
+                <Input
+                  id="er-env"
+                  value={form.sentryEnvironment}
+                  placeholder="production"
+                  onChange={(e) => setForm((p) => ({ ...p, sentryEnvironment: e.target.value }))}
+                  autoComplete="off"
+                  spellCheck={false}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="er-release" className="text-sm">Release</Label>
+                <Input
+                  id="er-release"
+                  value={form.sentryRelease}
+                  placeholder="dev"
+                  onChange={(e) => setForm((p) => ({ ...p, sentryRelease: e.target.value }))}
+                  autoComplete="off"
+                  spellCheck={false}
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-end">
+              <Button
+                onClick={saveConfig}
+                disabled={saving}
+                style={{ background: "#B91C1C" }}
+                className="text-white hover:opacity-90"
+              >
+                {saving ? "Saving…" : "Save credentials"}
+              </Button>
+            </div>
+          </div>
+
+          <Separator />
 
           {/* Sentry */}
           <div className="flex items-start justify-between gap-4">

@@ -39,6 +39,7 @@ export const auditLog = pgTable("audit_log", {
   action: text("action").notNull(),
   key: text("key"),
   summary: text("summary"),
+  severity: text("severity"),
   before: jsonb("before"),
   after: jsonb("after"),
   ip: text("ip"),

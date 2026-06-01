@@ -77,7 +77,15 @@ export function useMyNotifications(pollMs = 30_000) {
     }).catch(() => {})
     void refresh()
   }, [refresh])
-  return { ...data, loading, refresh, markAllRead }
+  const clearAll = useCallback(async () => {
+    // Optimistically blank the bell, then wipe the feed server-side.
+    setData({ items: [], unread: 0 })
+    await fetch(`${BASE}/me/notifications?scope=all`, {
+      method: "DELETE", credentials: "include",
+    }).catch(() => {})
+    void refresh()
+  }, [refresh])
+  return { ...data, loading, refresh, markAllRead, clearAll }
 }
 
 /* ---------- Notifications: admin/doctor/pharmacist ---------- */
@@ -103,7 +111,15 @@ export function useAdminNotifications(audience: "admin" | "doctor" | "pharmacist
     }).catch(() => {})
     void refresh()
   }, [audience, refresh])
-  return { ...data, refresh, markAllRead }
+  const clearAll = useCallback(async () => {
+    // Optimistically blank the bell, then wipe the feed server-side.
+    setData({ items: [], unread: 0 })
+    await fetch(`${BASE}/admin/notifications?audience=${audience}&scope=all`, {
+      method: "DELETE", credentials: "include", headers: { ...adminAuthHeaders() },
+    }).catch(() => {})
+    void refresh()
+  }, [audience, refresh])
+  return { ...data, refresh, markAllRead, clearAll }
 }
 
 export async function pushAdminNotification(input: {

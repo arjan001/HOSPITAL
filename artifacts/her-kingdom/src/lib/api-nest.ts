@@ -292,6 +292,73 @@ export function refreshAdminPrescriptions() {
   return globalMutate("/admin/prescriptions")
 }
 
+export type AdminPrescriptionsPage = {
+  items: AccountPrescription[]
+  total: number
+  page: number
+  pageSize: number
+  counts: Record<RxStatus | "all", number>
+}
+
+/* ────────────────────────────────────────────────────────────
+   Audit log — server-side append-only activity log for the admin
+   panel (api-nest writes: orders, payments, prescriptions,
+   consultations). Surfaced alongside the local cmsStore entries.
+─────────────────────────────────────────────────────────────*/
+
+export type ServerAuditSeverity = "info" | "warning" | "danger"
+
+export type ServerAuditEntry = {
+  id: string
+  ts: number
+  module: string
+  action: string
+  target?: string
+  summary?: string
+  userId?: string
+  ip?: string
+  severity: ServerAuditSeverity
+  meta?: Record<string, unknown>
+}
+
+export type ServerAuditPage = {
+  items: ServerAuditEntry[]
+  total: number
+  page: number
+  pageSize: number
+}
+
+export function useAdminAuditLog(opts: { page: number; pageSize: number }) {
+  const params = new URLSearchParams({
+    page: String(opts.page),
+    pageSize: String(opts.pageSize),
+  })
+  const key = `/admin/audit?${params.toString()}`
+  return useSWR<ServerAuditPage>(key, swrFetcher, {
+    refreshInterval: 20_000,
+    keepPreviousData: true,
+  })
+}
+
+export function useAdminPrescriptionsPaged(opts: {
+  page: number
+  pageSize: number
+  status?: RxStatus | "all"
+  search?: string
+}) {
+  const params = new URLSearchParams({
+    page: String(opts.page),
+    pageSize: String(opts.pageSize),
+  })
+  if (opts.status && opts.status !== "all") params.set("status", opts.status)
+  if (opts.search?.trim()) params.set("search", opts.search.trim())
+  const key = `/admin/prescriptions?${params.toString()}`
+  return useSWR<AdminPrescriptionsPage>(key, swrFetcher, {
+    refreshInterval: 20_000,
+    keepPreviousData: true,
+  })
+}
+
 /* ────────────────────────────────────────────────────────────
    Uploads — generic binary upload to NestJS Storage backend.
    Today persisted to local disk; swap to S3 by editing

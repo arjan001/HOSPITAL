@@ -37,10 +37,11 @@ import {
 } from "@nestjs/common"
 import type { Request } from "express"
 import { createHmac, timingSafeEqual } from "node:crypto"
-import { desc, eq, sql } from "drizzle-orm"
+import { and, desc, eq, ne, sql } from "drizzle-orm"
 import { db, payments } from "@workspace/db"
 import { newId } from "../common/repository"
 import { OrdersModule, OrdersService } from "./orders.module"
+import { AuditService } from "./audit.module"
 
 type PaystackStatus = "pending" | "success" | "failed" | "cancelled"
 
@@ -161,7 +162,10 @@ class PaystackService {
   private readonly defaultCallback = process.env["PAYSTACK_CALLBACK_URL"] ?? ""
   private readonly base = "https://api.paystack.co"
 
-  constructor(@Inject(OrdersService) private readonly orders: OrdersService) {}
+  constructor(
+    @Inject(OrdersService) private readonly orders: OrdersService,
+    @Inject(AuditService) private readonly audit: AuditService,
+  ) {}
 
   isConfigured(): boolean {
     return Boolean(this.secret)
@@ -175,7 +179,7 @@ class PaystackService {
    * while the storefront `/status` poll fires-and-forgets it as a best-effort
    * secondary path.
    */
-  private reconcileOrder(rec: PaymentRecord, reference: string): Promise<void> {
+  private reconcileOrder(rec: PaymentRecord, reference: string, firstTransition = false): Promise<void> {
     if (!rec.orderNumber) return Promise.resolve()
     return this.orders
       .reconcilePaid({
@@ -186,7 +190,24 @@ class PaystackService {
         amount: rec.amount,
         paymentMethod: rec.method === "card" ? "card" : "mpesa",
       })
-      .then(() => {})
+      .then(() => {
+        // Dedupe: reconcile fires from both the storefront poll and the (retried)
+        // webhook, so only audit the *first* pending→success transition for a
+        // reference. Repeat reconciles are idempotent no-ops to the log.
+        if (!firstTransition) return
+        void this.audit.record({
+          module: "Payments",
+          action: "paid",
+          key: reference,
+          summary: `Payment confirmed for ${rec.orderNumber} — KSh ${Number(rec.amount).toLocaleString()}`,
+          after: {
+            orderNumber: rec.orderNumber,
+            amount: rec.amount,
+            method: rec.method,
+            reference,
+          },
+        })
+      })
   }
 
   requireConfigured() {
@@ -468,14 +489,27 @@ class PaystackService {
       const mpesaReceipt = verify.data?.metadata?.receipt_number || cached.mpesaReceipt
       const message = verify.data?.gateway_response || cached.message
       const meta: ProviderMeta = { orderNumber: cached.orderNumber, message, paystackId: cached.paystackId }
-      await db
-        .update(payments)
-        .set({ status, mpesaReceipt: mpesaReceipt ?? null, providerResponse: meta, updatedAt: new Date() })
-        .where(eq(payments.reference, reference))
+      let firstTransition = false
+      if (status === "success") {
+        // Atomic transition guard: only the call that flips a not-yet-success row
+        // to success gets a row back. A concurrent poll/webhook racing on the same
+        // pending row therefore audits exactly once.
+        const rows = await db
+          .update(payments)
+          .set({ status, mpesaReceipt: mpesaReceipt ?? null, providerResponse: meta, updatedAt: new Date() })
+          .where(and(eq(payments.reference, reference), ne(payments.status, "success")))
+          .returning({ id: payments.id })
+        firstTransition = rows.length > 0
+      } else {
+        await db
+          .update(payments)
+          .set({ status, mpesaReceipt: mpesaReceipt ?? null, providerResponse: meta, updatedAt: new Date() })
+          .where(eq(payments.reference, reference))
+      }
       const updated: PaymentRecord = { ...cached, status, mpesaReceipt, message, updatedAt: new Date().toISOString() }
       if (status === "success") {
         // Best-effort from the poll path; the webhook is the durable, retried one.
-        void this.reconcileOrder(updated, reference).catch((err) => {
+        void this.reconcileOrder(updated, reference, firstTransition).catch((err) => {
           // eslint-disable-next-line no-console
           console.warn("[paystack] order reconcile (status) failed", err)
         })
@@ -563,15 +597,29 @@ class PaystackService {
       (data.metadata as { receipt_number?: string } | undefined)?.receipt_number || cached.mpesaReceipt
     const message = data.gateway_response || cached.message
     const meta: ProviderMeta = { orderNumber: cached.orderNumber, message, paystackId: cached.paystackId }
-    await db
-      .update(payments)
-      .set({ status, mpesaReceipt: mpesaReceipt ?? null, providerResponse: meta, updatedAt: new Date() })
-      .where(eq(payments.reference, data.reference))
+    let firstTransition = false
+    if (status === "success") {
+      // Atomic transition guard (mirrors status()): the guarded update only
+      // touches a not-yet-success row, so the one call that wins the race audits
+      // exactly once even if the poll path runs concurrently.
+      const rows = await db
+        .update(payments)
+        .set({ status, mpesaReceipt: mpesaReceipt ?? null, providerResponse: meta, updatedAt: new Date() })
+        .where(and(eq(payments.reference, data.reference), ne(payments.status, "success")))
+        .returning({ id: payments.id })
+      firstTransition = rows.length > 0
+    } else {
+      await db
+        .update(payments)
+        .set({ status, mpesaReceipt: mpesaReceipt ?? null, providerResponse: meta, updatedAt: new Date() })
+        .where(eq(payments.reference, data.reference))
+    }
     if (status === "success") {
       // Await + propagate: a transient reconcile failure must surface as a non-2xx
       // so Paystack retries this webhook. The payment row above is already
-      // idempotently "success", so the retry simply re-runs reconcile.
-      await this.reconcileOrder({ ...cached, status, mpesaReceipt, message }, data.reference)
+      // idempotently "success", so the retry simply re-runs reconcile. Only the
+      // first non-success→success transition audits; retries are no-ops to the log.
+      await this.reconcileOrder({ ...cached, status, mpesaReceipt, message }, data.reference, firstTransition)
     }
     return { ok: true }
   }

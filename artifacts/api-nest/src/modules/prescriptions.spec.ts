@@ -11,6 +11,7 @@ import type {
   NotifyOptions,
 } from "./patient-notifications.module"
 import type { NotificationsService } from "./notifications.module"
+import type { AuditService } from "./audit.module"
 
 type NotifyCall = { event: PatientNotificationEvent; opts: NotifyOptions }
 
@@ -50,7 +51,9 @@ function makeService() {
   // In-app bell notifications are a side channel; record nothing, just absorb.
   const inApp = { push: vi.fn() } as unknown as NotificationsService
 
-  const svc = new PrescriptionsService(paystack, uploads, patientNotify, inApp)
+  const audit = { record: vi.fn(() => Promise.resolve()) } as unknown as AuditService
+
+  const svc = new PrescriptionsService(paystack, uploads, patientNotify, inApp, audit)
   return { svc, notifyCalls, paystack, verifyPaidReference }
 }
 

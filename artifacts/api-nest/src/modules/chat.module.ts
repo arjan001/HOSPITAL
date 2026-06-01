@@ -50,6 +50,7 @@ import type { ChatMessageMeta } from "@workspace/db"
 import { newId } from "../common/repository"
 import { AdminGuard, RequirePerm } from "../common/admin-guard"
 import { PrescriptionsModule, PrescriptionsService } from "./prescriptions.module"
+import { AuditService } from "./audit.module"
 
 export type ChatSender = "patient" | "staff"
 export type ChatStatus = "sent" | "delivered" | "read"
@@ -205,6 +206,8 @@ class ChatService {
   private patientLastSeen = new Map<string, string>()
   private staffConns = 0
   private staffLastSeen: string | null = null
+
+  constructor(@Inject(AuditService) private readonly audit: AuditService) {}
 
   private streamFor(threadId: string): Subject<StreamEvent> {
     let s = this.threadStreams.get(threadId)
@@ -488,6 +491,13 @@ class ChatService {
       .returning()
     const thread = toApiThread(updated[0]!)
     this.emit(threadId, { type: "thread", thread })
+    void this.audit.record({
+      module: "Consultations",
+      action: "end",
+      key: thread.consultationId ?? threadId,
+      summary: `Consultation ended (thread ${threadId})`,
+      after: { status: "archived", consultationId: thread.consultationId ?? null },
+    })
     return thread
   }
 
@@ -701,6 +711,15 @@ class ChatService {
     this.emit(threadId, { type: "deleted", threadId })
     this.threadStreams.get(threadId)?.complete()
     this.threadStreams.delete(threadId)
+    const t = deleted[0]
+    void this.audit.record({
+      module: "Consultations",
+      action: "delete",
+      key: threadId,
+      summary: `Consultation thread deleted${t?.lastMessage ? ` — "${t.lastMessage.slice(0, 60)}"` : ""}`,
+      severity: "danger",
+      before: { threadId, status: t?.status ?? undefined, closedAt: t?.closedAt ?? undefined },
+    })
   }
 
   /* ── Presence (runtime-only, in-memory) ──────────────────── */

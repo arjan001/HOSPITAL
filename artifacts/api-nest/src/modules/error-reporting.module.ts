@@ -28,18 +28,45 @@
  * controller/service constructor dependency is injected explicitly.
  */
 import {
+  Body,
   Controller,
   Get,
   Global,
   Inject,
   Injectable,
   Module,
+  OnModuleInit,
   Post,
+  Put,
   UseGuards,
 } from "@nestjs/common"
 import { randomUUID } from "node:crypto"
+import { eq, inArray } from "drizzle-orm"
+import { db, secretConfigs } from "@workspace/db"
 import { AdminGuard, RequirePerm } from "../common/admin-guard"
 import { AdminCmsModule, AdminCmsService } from "./admin-cms.module"
+
+/* ---------- secure config keys ---------- */
+
+const KEY = {
+  sentryDsn: "error_reporting.sentry_dsn",
+  slackWebhookUrl: "error_reporting.slack_webhook_url",
+  sentryEnvironment: "error_reporting.sentry_environment",
+  sentryRelease: "error_reporting.sentry_release",
+} as const
+
+/** Mask a secret for display: keep only the last 4 chars, never the rest. */
+function maskSecret(v: string): string {
+  const s = (v || "").trim()
+  if (!s) return ""
+  if (s.length <= 4) return "••••"
+  return "••••••••" + s.slice(-4)
+}
+
+/** A value the client sends back unchanged still contains the mask bullets. */
+function isMasked(v: string): boolean {
+  return v.includes("•")
+}
 
 /* ---------- types ---------- */
 
@@ -112,33 +139,164 @@ function assertSafeOutbound(rawUrl: string): URL {
 /* ---------- service ---------- */
 
 @Injectable()
-export class ErrorReportingService {
+export class ErrorReportingService implements OnModuleInit {
   /** fingerprint → last-forwarded epoch ms, to suppress duplicate spam. */
   private readonly lastSent = new Map<string, number>()
   private readonly DEDUP_MS = 60_000
   private readonly DEDUP_MAX_KEYS = 2_000
 
+  /**
+   * Cache of the DB-backed secure config. Kept in memory so the sync hot path
+   * (`forward()`) never touches the DB. Refreshed on write and lazily when
+   * older than the TTL (fire-and-forget — a slightly stale read is fine).
+   */
+  private secretCache = new Map<string, string>()
+  private secretCacheAt = 0
+  private readonly SECRET_TTL_MS = 30_000
+
   constructor(
     @Inject(AdminCmsService) private readonly cms: AdminCmsService,
   ) {}
 
+  async onModuleInit(): Promise<void> {
+    await this.refreshSecrets().catch(() => undefined)
+  }
+
+  /* --- secure config (DB → env fallback) --- */
+
+  private async refreshSecrets(): Promise<void> {
+    try {
+      const rows = await db.select().from(secretConfigs).where(
+        inArray(secretConfigs.key, [
+          KEY.sentryDsn,
+          KEY.slackWebhookUrl,
+          KEY.sentryEnvironment,
+          KEY.sentryRelease,
+        ]),
+      )
+      const next = new Map<string, string>()
+      for (const r of rows) next.set(r.key, r.value || "")
+      this.secretCache = next
+      this.secretCacheAt = Date.now()
+    } catch {
+      /* leave the previous cache in place on failure */
+    }
+  }
+
+  /** Lazy, non-blocking refresh used by sync hot paths. */
+  private maybeRefreshSecrets(): void {
+    if (Date.now() - this.secretCacheAt > this.SECRET_TTL_MS) {
+      void this.refreshSecrets()
+    }
+  }
+
+  /** DB value (if non-empty) wins, otherwise the env fallback. */
+  private resolve(dbKey: string, envVar: string): string {
+    const fromDb = (this.secretCache.get(dbKey) || "").trim()
+    if (fromDb) return fromDb
+    return (process.env[envVar] || "").trim()
+  }
+
   /* --- config readers --- */
 
   private sentryDsn(): string {
-    return (process.env["SENTRY_DSN"] || "").trim()
+    this.maybeRefreshSecrets()
+    return this.resolve(KEY.sentryDsn, "SENTRY_DSN")
   }
   private slackWebhook(): string {
-    return (process.env["SLACK_WEBHOOK_URL"] || "").trim()
+    this.maybeRefreshSecrets()
+    return this.resolve(KEY.slackWebhookUrl, "SLACK_WEBHOOK_URL")
   }
   private environment(): string {
     return (
-      process.env["SENTRY_ENVIRONMENT"] ||
+      this.resolve(KEY.sentryEnvironment, "SENTRY_ENVIRONMENT") ||
       process.env["NODE_ENV"] ||
       "development"
     )
   }
   private release(): string {
-    return process.env["SENTRY_RELEASE"] || process.env["GIT_SHA"] || "dev"
+    return (
+      this.resolve(KEY.sentryRelease, "SENTRY_RELEASE") ||
+      process.env["GIT_SHA"] ||
+      "dev"
+    )
+  }
+
+  /**
+   * Masked view of the credential config for the admin Settings tab. Secrets
+   * are never returned in the clear — only a masked hint and the source
+   * (db = operator-set here, env = server secret, none = unset).
+   */
+  async configView(): Promise<{
+    sentryDsn: { set: boolean; masked: string; source: "db" | "env" | "none" }
+    slackWebhookUrl: { set: boolean; masked: string; source: "db" | "env" | "none" }
+    sentryEnvironment: { value: string; source: "db" | "env" | "default" }
+    sentryRelease: { value: string; source: "db" | "env" | "default" }
+  }> {
+    await this.refreshSecrets()
+    const secretView = (dbKey: string, envVar: string) => {
+      const dbVal = (this.secretCache.get(dbKey) || "").trim()
+      const envVal = (process.env[envVar] || "").trim()
+      const source: "db" | "env" | "none" = dbVal ? "db" : envVal ? "env" : "none"
+      const effective = dbVal || envVal
+      return { set: !!effective, masked: maskSecret(effective), source }
+    }
+    const plainView = (dbKey: string, envVar: string, fallback: string) => {
+      const dbVal = (this.secretCache.get(dbKey) || "").trim()
+      const envVal = (process.env[envVar] || "").trim()
+      if (dbVal) return { value: dbVal, source: "db" as const }
+      if (envVal) return { value: envVal, source: "env" as const }
+      return { value: fallback, source: "default" as const }
+    }
+    return {
+      sentryDsn: secretView(KEY.sentryDsn, "SENTRY_DSN"),
+      slackWebhookUrl: secretView(KEY.slackWebhookUrl, "SLACK_WEBHOOK_URL"),
+      sentryEnvironment: plainView(KEY.sentryEnvironment, "SENTRY_ENVIRONMENT", process.env["NODE_ENV"] || "development"),
+      sentryRelease: plainView(KEY.sentryRelease, "SENTRY_RELEASE", process.env["GIT_SHA"] || "dev"),
+    }
+  }
+
+  /**
+   * Persist operator-supplied credentials to the DB store.
+   *   - undefined field            → leave unchanged
+   *   - masked value (contains •)  → leave unchanged (client echoed the mask)
+   *   - empty string               → clear the DB row (env fallback resumes)
+   *   - any other string           → upsert
+   */
+  async saveConfig(input: {
+    sentryDsn?: string
+    slackWebhookUrl?: string
+    sentryEnvironment?: string
+    sentryRelease?: string
+  }): Promise<{ ok: true }> {
+    const updates: Array<{ key: string; value: string }> = []
+    const clears: string[] = []
+    const stage = (dbKey: string, raw: string | undefined) => {
+      if (raw === undefined) return
+      const v = raw.trim()
+      if (isMasked(v)) return
+      if (v === "") clears.push(dbKey)
+      else updates.push({ key: dbKey, value: v })
+    }
+    stage(KEY.sentryDsn, input.sentryDsn)
+    stage(KEY.slackWebhookUrl, input.slackWebhookUrl)
+    stage(KEY.sentryEnvironment, input.sentryEnvironment)
+    stage(KEY.sentryRelease, input.sentryRelease)
+
+    for (const u of updates) {
+      await db
+        .insert(secretConfigs)
+        .values({ key: u.key, value: u.value, updatedAt: new Date() })
+        .onConflictDoUpdate({
+          target: secretConfigs.key,
+          set: { value: u.value, updatedAt: new Date() },
+        })
+    }
+    if (clears.length) {
+      await db.delete(secretConfigs).where(inArray(secretConfigs.key, clears))
+    }
+    await this.refreshSecrets()
+    return { ok: true }
   }
 
   /** Read the admin enable toggles from the cms `error-reporting` doc. */
@@ -419,6 +577,24 @@ class ErrorReportingController {
   @Get("status")
   status() {
     return this.svc.status()
+  }
+
+  @Get("config")
+  config() {
+    return this.svc.configView()
+  }
+
+  @Put("config")
+  saveConfig(
+    @Body()
+    body: {
+      sentryDsn?: string
+      slackWebhookUrl?: string
+      sentryEnvironment?: string
+      sentryRelease?: string
+    },
+  ) {
+    return this.svc.saveConfig(body || {})
   }
 
   @Post("test")

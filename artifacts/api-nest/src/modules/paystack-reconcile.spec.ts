@@ -11,6 +11,7 @@ import type {
   NotifyOptions,
 } from "./patient-notifications.module"
 import type { NotificationsService } from "./notifications.module"
+import type { AuditService } from "./audit.module"
 
 // Regression suite for the orphaned-payment bug: a Paystack charge succeeded but
 // the storefront tab closed before its client-side confirm could advance the
@@ -23,14 +24,16 @@ const ORDER_CANCELLED = "TEST-PSR-CANCELLED"
 const ORDER_ORPHAN = "TEST-PSR-ORPHAN"
 const ORDER_DUP = "TEST-PSR-DUP"
 const ORDER_SHORT = "TEST-PSR-SHORT"
-const ALL_ORDER_NOS = [ORDER_MATCHED, ORDER_CANCELLED, ORDER_ORPHAN, ORDER_DUP, ORDER_SHORT]
+const ORDER_RACE = "TEST-PSR-RACE"
+const ALL_ORDER_NOS = [ORDER_MATCHED, ORDER_CANCELLED, ORDER_ORPHAN, ORDER_DUP, ORDER_SHORT, ORDER_RACE]
 
 const REF_MATCHED = "TEST-REF-MATCHED"
 const REF_CANCELLED = "TEST-REF-CANCELLED"
 const REF_ORPHAN = "TEST-REF-ORPHAN"
 const REF_DUP = "TEST-REF-DUP"
 const REF_SHORT = "TEST-REF-SHORT"
-const ALL_REFS = [REF_MATCHED, REF_CANCELLED, REF_ORPHAN, REF_DUP, REF_SHORT]
+const REF_RACE = "TEST-REF-RACE"
+const ALL_REFS = [REF_MATCHED, REF_CANCELLED, REF_ORPHAN, REF_DUP, REF_SHORT, REF_RACE]
 
 async function cleanup() {
   await db.delete(adminOrders).where(inArray(adminOrders.orderNo, ALL_ORDER_NOS))
@@ -91,10 +94,19 @@ function makePaystack() {
     notify: vi.fn((_e: PatientNotificationEvent, _o: NotifyOptions) => {}),
   } as unknown as PatientNotificationsService
   const adminNotify = { push: vi.fn(() => Promise.resolve()) } as unknown as NotificationsService
-  const adminOrdersSvc = new AdminOrdersService(patientNotify, adminNotify)
+  const audit = { record: vi.fn(() => Promise.resolve()) } as unknown as AuditService
+  const adminOrdersSvc = new AdminOrdersService(patientNotify, adminNotify, audit)
   const ordersSvc = new OrdersService(adminOrdersSvc)
-  const paystack = new PaystackService(ordersSvc)
-  return { paystack }
+  const paystack = new PaystackService(ordersSvc, audit)
+  return { paystack, audit }
+}
+
+/** Count "Payments/paid" audit writes recorded on the mocked AuditService. */
+function paidAuditCalls(audit: AuditService) {
+  const mock = audit.record as unknown as {
+    mock: { calls: Array<[{ module?: string; action?: string }]> }
+  }
+  return mock.mock.calls.filter((c) => c[0]?.module === "Payments" && c[0]?.action === "paid").length
 }
 
 describe("Paystack → order reconciliation (orphaned-payment fix)", () => {
@@ -248,5 +260,23 @@ describe("Paystack → order reconciliation (orphaned-payment fix)", () => {
       .where(eq(adminOrders.orderNo, ORDER_SHORT))
       .limit(1)
     expect(adminRow?.status).toBe("pending")
+  })
+
+  it("audits 'payment paid' exactly once when concurrent webhooks race on the same reference", async () => {
+    await seedPendingOrder(ORDER_RACE)
+    await seedPendingPayment(REF_RACE, ORDER_RACE)
+    const { paystack, audit } = makePaystack()
+
+    const event = {
+      event: "charge.success",
+      data: { reference: REF_RACE, status: "success", gateway_response: "Approved" },
+    }
+    // Two deliveries fired concurrently (not awaited in sequence) both observe a
+    // pending row pre-update; the atomic `status != 'success'` guard must let only
+    // one of them record the audit.
+    await Promise.all([paystack.applyCallback(event), paystack.applyCallback(event)])
+    await new Promise((r) => setTimeout(r, 50))
+
+    expect(paidAuditCalls(audit)).toBe(1)
   })
 })

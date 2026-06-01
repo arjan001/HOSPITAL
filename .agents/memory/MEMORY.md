@@ -8,6 +8,7 @@
 - [Prescription data sources](prescription-data-sources.md) — admin panel + patient page read real api-nest; legacy cmsStore keys still feed /user dashboard + consult history; backend-create failure must not show success.
 - [Admin RBAC model](admin-rbac-model.md) — AdminGuard fail-closed (every admin route needs @RequirePerm or @AnyAdmin, else super-only); backend role defaults MUST mirror frontend SEED_ROLES (contract test locks it).
 - [cms_docs JSON-array concurrency](cms-docs-concurrency.md) — public/high-concurrency appends to a cms_docs array must use createIfAbsent/putIfVersion CAS + retry, not read-modify-write, or sign-ups are lost.
+- [Audit + payment dedupe](audit-payment-dedupe.md) — audit_log persists severity (don't recompute); payment-paid audits fire from poll+webhook so dedupe via an atomic `status!='success'` guarded UPDATE + RETURNING.
 - [Chat URL resume guard](chat-url-resume-guard.md) — resume a chat from a URL id only when the session already has messages; the ensure/get endpoints upsert a thread, so trusting the URL alone bypasses the funnel.
 - [Paystack order reconciliation](payment-order-reconciliation.md) — paid→order transition must run server-side (webhook awaited+retried, /status best-effort); never confirm an underpayment; admin mirror is idempotent.
 - [admin_orders atomic upsert](admin-orders-atomic-upsert.md) — upsert by unique order_no via INSERT ... ON CONFLICT; detect true first-insert with Postgres `(xmax = 0)` to fire one-time side effects exactly once, not on a pre-read !existing flag.

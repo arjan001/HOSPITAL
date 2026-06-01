@@ -34,12 +34,13 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   Req,
   Res,
   UseGuards,
 } from "@nestjs/common"
 import type { Request, Response } from "express"
-import { and, desc, eq, inArray, isNull } from "drizzle-orm"
+import { and, desc, eq, ilike, inArray, isNull, or, sql } from "drizzle-orm"
 import {
   db,
   prescriptions as rxTable,
@@ -55,6 +56,7 @@ import { PaystackModule, PaystackService } from "./paystack.module"
 import { UploadsModule, UploadsService } from "./uploads.module"
 import { PatientNotificationsModule, PatientNotificationsService, type PatientNotificationEvent } from "./patient-notifications.module"
 import { NotificationsModule, NotificationsService } from "./notifications.module"
+import { AuditService } from "./audit.module"
 
 export type PrescriptionStatus = "pending" | "verified" | "dispensed" | "rejected"
 export type PaymentMethod = "cash" | "insurance" | "unknown"
@@ -210,6 +212,7 @@ export class PrescriptionsService {
     // and the pharmacy team ("admin" audience). Distinct from patientNotify,
     // which is the SMS/WhatsApp transport.
     @Inject(NotificationsService) private readonly inApp: NotificationsService,
+    @Inject(AuditService) private readonly audit: AuditService,
   ) {}
 
   private async rowById(id: string): Promise<RxRow | undefined> {
@@ -280,6 +283,81 @@ export class PrescriptionsService {
     const rows = await db.select().from(rxTable).orderBy(desc(rxTable.submittedAt))
     const { drugs, timeline } = await this.childMaps(rows.map((r) => r.id))
     return this.buildMany(rows, drugs, timeline)
+  }
+
+  /**
+   * Admin paginated list with status counts. Status/search filters are applied
+   * in the DB so pagination stays correct; the KPI counts aggregate the whole
+   * table (not just the current page).
+   */
+  async listAllPaged(opts: {
+    page?: number
+    pageSize?: number
+    status?: string
+    search?: string
+  }): Promise<{
+    items: Prescription[]
+    total: number
+    page: number
+    pageSize: number
+    counts: Record<PrescriptionStatus | "all", number>
+  }> {
+    const page = Math.max(1, Number(opts.page) || 1)
+    const pageSize = Math.min(100, Math.max(1, Number(opts.pageSize) || 20))
+    const offset = (page - 1) * pageSize
+
+    const filters = []
+    const status = (opts.status ?? "").toLowerCase()
+    if (status && status !== "all") {
+      filters.push(eq(rxTable.status, status))
+    }
+    if (opts.search) {
+      const q = `%${opts.search.trim()}%`
+      filters.push(
+        or(
+          ilike(rxTable.rxNumber, q),
+          ilike(rxTable.patientName, q),
+          ilike(rxTable.patientPhone, q),
+          ilike(rxTable.email, q),
+        ),
+      )
+    }
+    const where = filters.length ? and(...filters) : undefined
+
+    const [rows, countRows, statusRows] = await Promise.all([
+      db
+        .select()
+        .from(rxTable)
+        .where(where)
+        .orderBy(desc(rxTable.submittedAt))
+        .limit(pageSize)
+        .offset(offset),
+      db.select({ count: sql<number>`count(*)::int` }).from(rxTable).where(where),
+      db.select({ status: rxTable.status, count: sql<number>`count(*)::int` }).from(rxTable).groupBy(rxTable.status),
+    ])
+
+    const counts: Record<PrescriptionStatus | "all", number> = {
+      all: 0,
+      pending: 0,
+      verified: 0,
+      dispensed: 0,
+      rejected: 0,
+    }
+    for (const r of statusRows) {
+      const st = r.status as PrescriptionStatus
+      const n = Number(r.count ?? 0)
+      counts.all += n
+      if (st in counts) counts[st] = n
+    }
+
+    const { drugs, timeline } = await this.childMaps(rows.map((r) => r.id))
+    return {
+      items: this.buildMany(rows, drugs, timeline),
+      total: Number(countRows[0]?.count ?? 0),
+      page,
+      pageSize,
+      counts,
+    }
   }
 
   /** Admin-only: find a prescription by id, resolving its owner session. */
@@ -388,6 +466,13 @@ export class PrescriptionsService {
       body: `${saved.recipient || saved.patientName} · Rx ${saved.rxNumber}`,
       href: "/admin/prescriptions",
     })
+    void this.audit.record({
+      module: "Prescriptions",
+      action: "create",
+      key: `RX-${saved.rxNumber}`,
+      summary: `Rx RX-${saved.rxNumber} uploaded by ${saved.recipient || saved.patientName}`,
+      after: { status: saved.status },
+    })
     return saved
   }
 
@@ -478,6 +563,13 @@ export class PrescriptionsService {
       title: "Prescription issued in consultation",
       body: `${saved.recipient || saved.patientName} · Rx ${saved.rxNumber}`,
       href: "/admin/prescriptions",
+    })
+    void this.audit.record({
+      module: "Prescriptions",
+      action: "create",
+      key: `RX-${saved.rxNumber}`,
+      summary: `Rx RX-${saved.rxNumber} issued during consultation — ${drugs.length} item${drugs.length > 1 ? "s" : ""}`,
+      after: { rxNumber: saved.rxNumber, drugs: drugs.length, source: "consultation" },
     })
     return saved
   }
@@ -599,6 +691,36 @@ export class PrescriptionsService {
         })
       }
     }
+    if (patch.status && patch.status !== current.status) {
+      void this.audit.record({
+        module: "Prescriptions",
+        action: "status",
+        key: `RX-${saved.rxNumber}`,
+        summary: `Rx RX-${saved.rxNumber}: ${current.status} → ${patch.status}`,
+        before: { status: current.status },
+        after: { status: patch.status },
+      })
+    } else {
+      // Capture meaningful non-status edits (pharmacist/doctor notes, approved-drug
+      // replacement) that would otherwise bypass the audit trail entirely.
+      const changedFields: string[] = []
+      if (patch.pharmacistNote !== undefined && patch.pharmacistNote !== current.pharmacistNote) {
+        changedFields.push("pharmacist note")
+      }
+      if (patch.doctorNote !== undefined && patch.doctorNote !== current.doctorNote) {
+        changedFields.push("doctor note")
+      }
+      if (Array.isArray(patch.approvedDrugs)) changedFields.push("approved medication")
+      if (changedFields.length > 0) {
+        void this.audit.record({
+          module: "Prescriptions",
+          action: "update",
+          key: `RX-${saved.rxNumber}`,
+          summary: `Rx RX-${saved.rxNumber}: updated ${changedFields.join(", ")}`,
+          after: { changed: changedFields },
+        })
+      }
+    }
     return saved
   }
 
@@ -717,6 +839,13 @@ export class PrescriptionsService {
     ])
 
     const saved = await this.loadById(id)
+    void this.audit.record({
+      module: "Prescriptions",
+      action: "payment",
+      key: `RX-${saved.rxNumber}`,
+      summary: `Rx RX-${saved.rxNumber} paid — KSh ${amount.toLocaleString()}`,
+      after: { status: "dispensed", amount, reference },
+    })
     // Auto-text the patient: "payment received".
     this.patientNotify.notify("payment_received", {
       phone: saved.phone,
@@ -856,8 +985,23 @@ class AdminPrescriptionsController {
   constructor(@Inject(PrescriptionsService) private readonly svc: PrescriptionsService) {}
 
   @Get()
-  list() {
-    return this.svc.listAll()
+  list(
+    @Query("page") page?: string,
+    @Query("pageSize") pageSize?: string,
+    @Query("status") status?: string,
+    @Query("search") search?: string,
+  ) {
+    // Paginated when ?page is present; otherwise return the full list so any
+    // existing caller keeps working unchanged.
+    if (page === undefined && pageSize === undefined && !status && !search) {
+      return this.svc.listAll()
+    }
+    return this.svc.listAllPaged({
+      page: page ? Number(page) : undefined,
+      pageSize: pageSize ? Number(pageSize) : undefined,
+      status,
+      search,
+    })
   }
 
   @Get(":id")

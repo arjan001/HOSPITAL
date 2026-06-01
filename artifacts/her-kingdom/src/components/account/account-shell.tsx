@@ -50,7 +50,7 @@ export function AccountShell({
   children: ReactNode
 }) {
   const [pathname] = useLocation()
-  const { items, unread, markAllRead, refresh } = useMyNotifications()
+  const { items, unread, markAllRead, clearAll, refresh } = useMyNotifications()
 
   // Unread count per nav item — an unread notification badges the tab whose
   // href it points to (chat, prescriptions, orders, etc.).
@@ -137,6 +137,7 @@ export function AccountShell({
                 items={items}
                 unread={unread}
                 onMarkAllRead={() => { void markAllRead() }}
+                onClearAll={() => { void clearAll() }}
                 onRefresh={() => { void refresh() }}
               />
               <Link

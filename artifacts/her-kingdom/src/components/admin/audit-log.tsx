@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react"
 import { AdminShell } from "./admin-shell"
 import { useAuditLog, clearAuditLog, logActivity, type AuditEntry } from "@/lib/audit-log"
+import { useAdminAuditLog, type ServerAuditEntry } from "@/lib/api-nest"
 import { notify } from "@/lib/notify"
 import {
   Search, Download, Trash2, ShieldAlert, Activity, User, Filter, X,
@@ -34,8 +35,28 @@ const SEVERITY_STYLES: Record<AuditEntry["severity"], { bg: string; fg: string; 
   danger:  { bg: "#FEE2E2", fg: "#991B1B", label: "Danger" },
 }
 
+/** Map a server-side audit entry (api-nest) into the unified local shape. */
+function fromServer(e: ServerAuditEntry): AuditEntry {
+  return {
+    id: `srv_${e.id}`,
+    ts: e.ts,
+    actorEmail: e.userId ? `user:${e.userId}` : "system",
+    actorRole: "system",
+    module: e.module,
+    action: e.action,
+    target: e.target,
+    meta: e.summary ? { summary: e.summary, ...(e.meta ?? {}) } : e.meta,
+    severity: e.severity,
+  }
+}
+
 export function AdminAuditLog() {
-  const entries = useAuditLog()
+  const localEntries = useAuditLog()
+  const { data: serverPage } = useAdminAuditLog({ page: 1, pageSize: 200 })
+  const entries = useMemo(() => {
+    const server = (serverPage?.items ?? []).map(fromServer)
+    return [...localEntries, ...server].sort((a, b) => b.ts - a.ts)
+  }, [localEntries, serverPage])
   const [q, setQ] = useState("")
   const [moduleFilter, setModuleFilter] = useState<string>("all")
   const [actionFilter, setActionFilter] = useState<string>("all")
@@ -298,7 +319,7 @@ export function AdminAuditLog() {
         </div>
 
         <p className="text-xs text-[#9CA3AF] px-1">
-          Stored locally for now (cmsStore key <code className="font-mono">audit-log</code>). When the NestJS backend ships, this same module will stream events to the server in one place — no per-page changes required.
+          Combines admin-panel CMS changes (stored locally, cmsStore key <code className="font-mono">audit-log</code>) with server-side system events from the NestJS backend (orders, payments, prescriptions, consultations). Clearing the log only clears the local entries.
         </p>
       </div>
 

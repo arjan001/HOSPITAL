@@ -20,6 +20,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpException,
   HttpStatus,
@@ -201,6 +202,22 @@ export class NotificationsService {
     return rows.length
   }
 
+  /**
+   * Permanently remove notifications for an audience so the bell goes blank.
+   * `readOnly` (default) clears only already-read items, preserving anything
+   * still unread; pass false to wipe the whole feed.
+   */
+  async clearAll(audience: Audience, opts: { readOnly?: boolean } = {}): Promise<number> {
+    const where = opts.readOnly === false
+      ? eq(notificationsTable.audience, audience)
+      : and(eq(notificationsTable.audience, audience), eq(notificationsTable.read, true))
+    const rows = await db
+      .delete(notificationsTable)
+      .where(where)
+      .returning({ id: notificationsTable.id })
+    return rows.length
+  }
+
   /* ---- Support tickets ---- */
 
   private async messagesFor(ticketId: string): Promise<(typeof messagesTable.$inferSelect)[]> {
@@ -361,6 +378,12 @@ class MyNotificationsController {
       : await this.svc.markRead(req.sessionId, Array.isArray(body?.ids) ? body!.ids : [])
     return { ok: true, updated }
   }
+
+  @Delete()
+  async clear(@Req() req: Request, @Query("scope") scope?: string) {
+    const removed = await this.svc.clearAll(req.sessionId, { readOnly: scope !== "all" })
+    return { ok: true, removed }
+  }
 }
 
 @UseGuards(AdminGuard)
@@ -399,6 +422,13 @@ class AdminNotificationsController {
     const a = (body?.audience === "doctor" || body?.audience === "pharmacist") ? body.audience : "admin"
     const updated = body?.all ? await this.svc.markAllRead(a) : await this.svc.markRead(a, Array.isArray(body?.ids) ? body!.ids : [])
     return { ok: true, updated }
+  }
+
+  @Delete()
+  async clear(@Query("audience") audience?: string, @Query("scope") scope?: string) {
+    const a = (audience === "doctor" || audience === "pharmacist") ? audience : "admin"
+    const removed = await this.svc.clearAll(a, { readOnly: scope !== "all" })
+    return { ok: true, removed }
   }
 }
 

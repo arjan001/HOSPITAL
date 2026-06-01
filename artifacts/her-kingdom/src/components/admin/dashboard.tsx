@@ -8,8 +8,8 @@ import {
   ChevronLeft, ChevronRight, AlertTriangle, TrendingUp,
   Clock, CheckCircle2, XCircle, Truck, RefreshCw,
 } from "lucide-react"
-import { authedFetcher as fetcher } from "@/lib/api-client"
 import { safeFetcher, asArray } from "@/lib/fetcher"
+import { useAdminOrders } from "@/lib/orders-store"
 import { Button } from "@/components/ui/button"
 import { AdminShell } from "./admin-shell"
 import { formatPrice } from "@/lib/format"
@@ -107,33 +107,57 @@ function statusMeta(s: string) {
    Page
 ────────────────────────────────────────────────────────────── */
 
-export function AdminDashboard() {
-  const { data } = useSWR<DashboardData>("/api/admin/dashboard", fetcher)
-  const { data: allProducts } = useSWR<Product[]>("/api/products", safeFetcher)
+// Statuses that count as realised revenue (mirrors the Analytics page so the
+// two dashboards never disagree).
+const SALE_STATUSES = ["confirmed", "dispatched", "delivered"]
 
-  const recentProducts = data?.recentProducts || []
-  const recentOrders   = data?.recentOrders || []
+export function AdminDashboard() {
+  // Real sources only:
+  //   • Orders        → api-nest admin orders (Postgres-durable), same as the
+  //                     Orders page — NOT the unregistered /api/admin/dashboard.
+  //   • Products      → /api/products (live catalogue).
+  //   • Categories    → /api/categories (live).
+  const { items: adminOrders } = useAdminOrders()
+  const { data: allProducts } = useSWR<Product[]>("/api/products", safeFetcher)
+  const { data: allCategories } = useSWR<unknown[]>("/api/categories", safeFetcher)
+
+  const products = useMemo(() => asArray<Product>(allProducts), [allProducts])
+  const categories = useMemo(() => asArray<unknown>(allCategories), [allCategories])
+
+  // Recent orders, newest first, normalised to the row shape the table renders.
+  const recentOrders = useMemo<DashboardData["recentOrders"]>(() => {
+    return [...adminOrders]
+      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+      .map((o) => ({ id: o.id, orderNo: o.orderNo, customer: o.customer, total: o.total, status: o.status, date: o.date }))
+  }, [adminOrders])
+
+  // Recent products, newest first.
+  const recentProducts = useMemo<DashboardData["recentProducts"]>(() => {
+    return [...products]
+      .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime())
+      .map((p) => ({ id: p.id, name: p.name, price: p.price, category: p.category }))
+  }, [products])
+
+  const totalProducts = products.length
+  const totalCategories = categories.length
+  const activeOffers = useMemo(
+    () => products.filter((p) => (p.offerPercentage ?? 0) > 0 || (p.originalPrice ?? 0) > p.price).length,
+    [products],
+  )
+  const totalOrders = adminOrders.length
+  const totalRevenue = useMemo(
+    () => adminOrders.filter((o) => SALE_STATUSES.includes(o.status)).reduce((s, o) => s + (o.total || 0), 0),
+    [adminOrders],
+  )
 
   const orderCountSeries = useMemo(() => buildDailySeries(recentOrders, "count"),   [recentOrders])
   const revenueSeries    = useMemo(() => buildDailySeries(recentOrders, "revenue"), [recentOrders])
 
-  const productGrowth = useMemo(() => {
-    const total = data?.stats.totalProducts || 0
-    if (total === 0) return [0, 0, 0, 0, 0, 0, 0]
-    const base = Math.max(1, Math.floor(total * 0.85))
-    return Array.from({ length: 7 }, (_, i) => base + Math.round(((total - base) * (i + 1)) / 7))
-  }, [data?.stats.totalProducts])
-
-  const offerSeries = useMemo(() => {
-    const n = data?.stats.activeOffers || 0
-    return Array.from({ length: 7 }, (_, i) => Math.max(0, n - 3 + i))
-  }, [data?.stats.activeOffers])
-
   const stats = [
-    { label: "Total Products", value: data?.stats.totalProducts ?? 0,   icon: Package,      change: "Live from DB",                              series: productGrowth, color: WINE },
-    { label: "Categories",     value: data?.stats.totalCategories ?? 0, icon: Tag,          change: "Active",                                    series: productGrowth, color: "#475569" },
-    { label: "Active Offers",  value: data?.stats.activeOffers ?? 0,    icon: Percent,      change: "Running",                                   series: offerSeries,   color: ACCENT_ORANGE },
-    { label: "Total Orders",   value: data?.stats.totalOrders ?? 0,     icon: ShoppingCart, change: formatPrice(data?.stats.totalRevenue || 0) + " revenue", series: orderCountSeries, color: "#15803D" },
+    { label: "Total Products", value: totalProducts,   icon: Package,      change: "Live from catalogue",                       series: [] as number[], color: WINE },
+    { label: "Categories",     value: totalCategories,  icon: Tag,          change: "Active",                                    series: [] as number[], color: "#475569" },
+    { label: "Active Offers",  value: activeOffers,     icon: Percent,      change: "Running",                                   series: [] as number[], color: ACCENT_ORANGE },
+    { label: "Total Orders",   value: totalOrders,      icon: ShoppingCart, change: formatPrice(totalRevenue) + " revenue",      series: orderCountSeries, color: "#15803D" },
   ]
 
   /* Low-stock */

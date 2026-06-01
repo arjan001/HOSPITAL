@@ -47,6 +47,7 @@ import {
   type PatientNotificationEvent,
 } from "./patient-notifications.module"
 import { NotificationsModule, NotificationsService } from "./notifications.module"
+import { AuditService } from "./audit.module"
 
 export type AdminOrderStatus =
   | "pending"
@@ -148,6 +149,8 @@ class AdminOrdersService {
     private readonly patientNotify: PatientNotificationsService,
     @Inject(NotificationsService)
     private readonly notifications: NotificationsService,
+    @Inject(AuditService)
+    private readonly audit: AuditService,
   ) {}
 
   /** Domain status → patient-notification event. Only statuses that should
@@ -361,6 +364,25 @@ class AdminOrdersService {
     if (effectiveStatus !== prevStatus) {
       this.notifyStatusChange(saved, effectiveStatus)
     }
+
+    if (wasInserted) {
+      void this.audit.record({
+        module: "Orders",
+        action: "create",
+        key: saved.orderNo,
+        summary: `Order ${saved.orderNo} placed (${saved.customer || "Guest"}, KSh ${saved.total.toLocaleString()})`,
+        after: { status: saved.status, total: saved.total },
+      })
+    } else if (effectiveStatus !== prevStatus) {
+      void this.audit.record({
+        module: "Orders",
+        action: "status",
+        key: saved.orderNo,
+        summary: `Order ${saved.orderNo}: ${prevStatus} → ${effectiveStatus}`,
+        before: { status: prevStatus },
+        after: { status: effectiveStatus },
+      })
+    }
     return saved
   }
 
@@ -374,6 +396,14 @@ class AdminOrdersService {
     const saved = toRecord(row)
     if (status !== target.status) {
       this.notifyStatusChange(saved, status)
+      void this.audit.record({
+        module: "Orders",
+        action: "status",
+        key: saved.orderNo,
+        summary: `Order ${saved.orderNo}: ${target.status} → ${status}`,
+        before: { status: target.status },
+        after: { status },
+      })
     }
     return saved
   }
@@ -384,6 +414,13 @@ class AdminOrdersService {
       .delete(adminOrdersTable)
       .where(inArray(adminOrdersTable.id, ids))
       .returning({ id: adminOrdersTable.id })
+    void this.audit.record({
+      module: "Orders",
+      action: "delete",
+      summary: `Deleted ${removed.length} order${removed.length === 1 ? "" : "s"}`,
+      after: { ids: removed.map((r) => r.id) },
+      severity: "danger",
+    })
     return { deleted: removed.length }
   }
 }
