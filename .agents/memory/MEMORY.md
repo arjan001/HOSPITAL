@@ -14,3 +14,4 @@
 - [Paystack order reconciliation](payment-order-reconciliation.md) — paid→order transition must run server-side (webhook awaited+retried, /status best-effort); never confirm an underpayment; admin mirror is idempotent.
 - [admin_orders atomic upsert](admin-orders-atomic-upsert.md) — upsert by unique order_no via INSERT ... ON CONFLICT; detect true first-insert with Postgres `(xmax = 0)` to fire one-time side effects exactly once, not on a pre-read !existing flag.
 - [Order tracking (public)](order-tracking.md) — displayed order number must be stored verbatim in api-nest (else tracking 404s); public /orders/track is by order-number or FULL phone only — never a phone fragment (PII enumeration).
+- [Customer profile persistence](customer-profile-persistence.md) — profile (name/phone/DOB/health) lives in /api/v2/me (users cols + profile jsonb), NOT a cms_doc; reuse via useMe→Clerk fallback, fill blanks only.

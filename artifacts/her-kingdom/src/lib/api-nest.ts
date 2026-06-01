@@ -48,13 +48,33 @@ async function nestFetch<T>(path: string, init?: RequestInit): Promise<T> {
   return (await res.json()) as T
 }
 
+export type MeProfileDetails = {
+  firstName?: string
+  lastName?: string
+  gender?: "male" | "female" | "other" | "prefer_not"
+  language?: "en" | "sw"
+  country?: string
+  health?: {
+    bloodGroup?: string
+    allergies?: string[]
+    chronicConditions?: string[]
+    currentMedications?: string[]
+    emergencyContactName?: string
+    emergencyContactPhone?: string
+  }
+  notifications?: Record<string, unknown>
+  security?: Record<string, unknown>
+}
+
 export type MeProfile = {
   id: string
   sessionId: string
   fullName: string
   email: string
   phone: string
+  dateOfBirth: string
   preferences: { marketingEmails: boolean; smsAlerts: boolean }
+  profile: MeProfileDetails
   createdAt: string
   updatedAt: string
 }
@@ -104,8 +124,11 @@ export const apiNest = {
   health: () => nestFetch<{ ok: boolean }>("/healthz"),
 
   me: () => nestFetch<MeProfile>("/me"),
-  updateMe: (patch: Partial<Pick<MeProfile, "fullName" | "email" | "phone" | "preferences">>) =>
-    nestFetch<MeProfile>("/me", { method: "PUT", body: JSON.stringify(patch) }),
+  updateMe: (
+    patch: Partial<
+      Pick<MeProfile, "fullName" | "email" | "phone" | "dateOfBirth" | "preferences" | "profile">
+    >,
+  ) => nestFetch<MeProfile>("/me", { method: "PUT", body: JSON.stringify(patch) }),
 
   addresses: () => nestFetch<AccountAddress[]>("/me/addresses"),
   addAddress: (data: Partial<AccountAddress>) =>

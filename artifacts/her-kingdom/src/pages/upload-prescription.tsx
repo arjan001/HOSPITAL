@@ -1,4 +1,5 @@
-import { useState, useRef } from "react"
+import { useState, useRef, useEffect } from "react"
+import { useUser } from "@clerk/react"
 import { Link, useLocation } from "wouter"
 import { TopBar } from "@/components/store/top-bar"
 import { Navbar } from "@/components/store/navbar"
@@ -8,7 +9,7 @@ import { useStoreContact } from "@/hooks/use-store-contact"
 import { Seo, organizationJsonLd, websiteJsonLd, breadcrumbJsonLd, faqJsonLd, productJsonLd } from "@/components/seo"
 import { cmsStore, newId } from "@/lib/cms-store"
 import type { Prescription } from "@/components/admin/prescriptions"
-import { apiPrescriptions, apiUploads, refreshMyPrescriptions } from "@/lib/api-nest"
+import { apiPrescriptions, apiUploads, refreshMyPrescriptions, useMe } from "@/lib/api-nest"
 import { pushAdminNotification } from "@/lib/notifications-client"
 
 type UserPrescriptionRow = {
@@ -153,6 +154,29 @@ export default function UploadPrescriptionPage() {
   const [lastName,  setLastName]  = useState("")
   const [gender,    setGender]    = useState("")
   const [dob,       setDob]       = useState("")
+
+  /* Prefill the recipient from the signed-in customer's saved profile (and Clerk
+     identity), so name/DOB they already entered in Settings are reused here.
+     Only fills blank fields once, so the customer can still edit or prescribe
+     for someone else. */
+  const { user: clerkUser } = useUser()
+  const { data: me } = useMe()
+  const prefilledRef = useRef(false)
+  useEffect(() => {
+    if (prefilledRef.current) return
+    if (!me && !clerkUser) return
+    const d = me?.profile ?? {}
+    const f = d.firstName || clerkUser?.firstName || (me?.fullName || "").trim().split(/\s+/)[0] || ""
+    const l = d.lastName || clerkUser?.lastName || (me?.fullName || "").trim().split(/\s+/).slice(1).join(" ") || ""
+    const b = me?.dateOfBirth || ""
+    if (f || l || b) {
+      setFirstName((cur) => cur || f)
+      setLastName((cur) => cur || l)
+      if (b) setDob((cur) => cur || b)
+      if (d.gender && d.gender !== "prefer_not") setGender((cur) => cur || d.gender!)
+      prefilledRef.current = true
+    }
+  }, [me, clerkUser])
 
   const addFiles = (fl: FileList | null) => {
     if (!fl) return

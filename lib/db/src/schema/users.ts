@@ -2,6 +2,24 @@ import { boolean, jsonb, pgTable, text, timestamp } from "drizzle-orm/pg-core"
 import { createInsertSchema, createSelectSchema } from "drizzle-zod"
 import { z } from "zod/v4"
 
+export type ProfileDetails = {
+  firstName?: string
+  lastName?: string
+  gender?: "male" | "female" | "other" | "prefer_not"
+  language?: "en" | "sw"
+  country?: string
+  health?: {
+    bloodGroup?: string
+    allergies?: string[]
+    chronicConditions?: string[]
+    currentMedications?: string[]
+    emergencyContactName?: string
+    emergencyContactPhone?: string
+  }
+  notifications?: Record<string, unknown>
+  security?: Record<string, unknown>
+}
+
 export const users = pgTable("users", {
   id: text("id").primaryKey(),
   clerkId: text("clerk_id").unique().notNull(),
@@ -9,11 +27,13 @@ export const users = pgTable("users", {
   email: text("email"),
   phone: text("phone"),
   photoUrl: text("photo_url"),
+  dateOfBirth: text("date_of_birth"),
   preferences: jsonb("preferences").$type<{
     newsletter?: boolean
     smsAlerts?: boolean
     emailAlerts?: boolean
   }>(),
+  profile: jsonb("profile").$type<ProfileDetails>(),
   role: text("role").notNull().default("customer"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),

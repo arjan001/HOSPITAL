@@ -1,9 +1,9 @@
 "use client"
 
-import { useState, useMemo } from "react"
+import { useState, useMemo, useEffect, useRef } from "react"
 import { useUser, useClerk } from "@clerk/react"
 import { AccountShell } from "@/components/account/account-shell"
-import { useCmsDoc } from "@/lib/cms-store"
+import { useMe, apiNest, refreshAccount, type MeProfile } from "@/lib/api-nest"
 import { notify } from "@/lib/notify"
 import { Seo, organizationJsonLd, websiteJsonLd, breadcrumbJsonLd, faqJsonLd, productJsonLd } from "@/components/seo"
 import {
@@ -50,10 +50,10 @@ type CustomerProfile = {
 
 const PROFILE_DEFAULTS: CustomerProfile = {
   identity: {
-    firstName: "Aisha",
-    lastName: "Mohamed",
-    email: "aisha@example.com",
-    phone: "+254 712 345 678",
+    firstName: "",
+    lastName: "",
+    email: "",
+    phone: "",
     dateOfBirth: "",
     gender: "prefer_not",
     language: "en",
@@ -91,35 +91,104 @@ const TABS: Array<{ id: Tab; label: string; icon: typeof User }> = [
   { id: "danger",      label: "Danger zone",     icon: AlertTriangle },
 ]
 
-export default function AccountSettingsPage() {
-  const [profile, setProfile] = useCmsDoc("customer-profile", PROFILE_DEFAULTS)
-  const [draft, setDraft] = useState<CustomerProfile>(profile)
-  const [tab, setTab] = useState<Tab>("profile")
+/* Map the per-user backend profile (+ Clerk identity for first-time/empty
+   fields) into the form's CustomerProfile shape. Saved values win; Clerk fills
+   any identity field the customer has never set (e.g. fresh Google sign-up). */
+function fromBackend(me: MeProfile | undefined, clerk: ReturnType<typeof useUser>["user"]): CustomerProfile {
+  const d = me?.profile ?? {}
+  const clerkFirst = clerk?.firstName || ""
+  const clerkLast = clerk?.lastName || ""
+  const clerkEmail = clerk?.primaryEmailAddress?.emailAddress || ""
+  const clerkPhone = clerk?.primaryPhoneNumber?.phoneNumber || ""
+  const nameParts = (me?.fullName || "").trim().split(/\s+/).filter(Boolean)
+  return {
+    identity: {
+      firstName: d.firstName || clerkFirst || nameParts[0] || "",
+      lastName: d.lastName || clerkLast || nameParts.slice(1).join(" ") || "",
+      email: me?.email || clerkEmail,
+      phone: me?.phone || clerkPhone,
+      dateOfBirth: me?.dateOfBirth || "",
+      gender: d.gender || PROFILE_DEFAULTS.identity.gender,
+      language: d.language || PROFILE_DEFAULTS.identity.language,
+      country: d.country || PROFILE_DEFAULTS.identity.country,
+    },
+    health: { ...PROFILE_DEFAULTS.health, ...(d.health ?? {}) },
+    preferences: { ...PROFILE_DEFAULTS.preferences, ...((d.notifications as CustomerProfile["preferences"]) ?? {}) },
+    security: { ...PROFILE_DEFAULTS.security, ...((d.security as CustomerProfile["security"]) ?? {}) },
+  }
+}
 
+export default function AccountSettingsPage() {
+  const { user, isLoaded: clerkLoaded } = useUser()
+  const { data: me, isLoading: meLoading } = useMe()
+  const serverProfile = useMemo(() => fromBackend(me, user), [me, user])
+  const [draft, setDraft] = useState<CustomerProfile>(serverProfile)
+  const [tab, setTab] = useState<Tab>("profile")
+  const [saving, setSaving] = useState(false)
+  const seededRef = useRef(false)
+
+  // Seed the editable draft once the per-user profile + Clerk identity have
+  // settled, so we never present empty fields (or someone else's data) first.
+  useEffect(() => {
+    if (seededRef.current) return
+    if (!clerkLoaded || meLoading) return
+    setDraft(serverProfile)
+    seededRef.current = true
+  }, [clerkLoaded, meLoading, serverProfile])
+
+  const loaded = seededRef.current
   const dirty = useMemo(
-    () => JSON.stringify(draft) !== JSON.stringify(profile),
-    [draft, profile],
+    () => loaded && JSON.stringify(draft) !== JSON.stringify(serverProfile),
+    [loaded, draft, serverProfile],
   )
 
-  const save = () => {
-    setProfile(draft)
-    notify.saved("Profile updated")
+  const save = async () => {
+    const id = draft.identity
+    setSaving(true)
+    try {
+      await apiNest.updateMe({
+        fullName: `${id.firstName} ${id.lastName}`.trim(),
+        email: id.email,
+        phone: id.phone,
+        dateOfBirth: id.dateOfBirth,
+        preferences: {
+          marketingEmails: draft.preferences.newsletterSubscribed,
+          smsAlerts: draft.preferences.notifyOrderUpdates.sms,
+        },
+        profile: {
+          firstName: id.firstName,
+          lastName: id.lastName,
+          gender: id.gender,
+          language: id.language,
+          country: id.country,
+          health: draft.health,
+          notifications: draft.preferences,
+          security: draft.security,
+        },
+      })
+      await refreshAccount()
+      notify.saved("Profile updated")
+    } catch {
+      notify.error("Could not save your profile. Please try again.")
+    } finally {
+      setSaving(false)
+    }
   }
   const discard = () => {
-    setDraft(profile)
+    setDraft(serverProfile)
     notify.info("Changes discarded")
   }
 
   const update = <S extends keyof CustomerProfile>(section: S, patch: Partial<CustomerProfile[S]>) =>
     setDraft((d) => ({ ...d, [section]: { ...d[section], ...patch } }))
 
-  const fullName = `${profile.identity.firstName} ${profile.identity.lastName}`.trim() || "Customer"
+  const fullName = `${draft.identity.firstName} ${draft.identity.lastName}`.trim() || "Customer"
 
   return (
     <AccountShell
       title="Profile & Settings"
       subtitle="Personal information, health profile, notification preferences and security."
-      user={{ name: fullName, email: profile.identity.email, phone: profile.identity.phone }}
+      user={{ name: fullName, email: draft.identity.email, phone: draft.identity.phone }}
     >
       <Seo title="Profile & Account Settings" description="Update your Shaniid RX profile, addresses, notification preferences and account security in one calm, organized place." canonicalPath="/account/settings" noindex />
       <div className="space-y-5">
@@ -333,13 +402,13 @@ export default function AccountSettingsPage() {
             style={{ borderColor: PEACH_BORDER }}
           >
             <p className="text-xs text-muted-foreground">
-              {dirty ? "You have unsaved changes." : "All changes saved."}
+              {!loaded ? "Loading your profile…" : dirty ? "You have unsaved changes." : "All changes saved."}
             </p>
             <div className="flex items-center gap-2">
               <button
                 type="button"
                 onClick={discard}
-                disabled={!dirty}
+                disabled={!dirty || saving}
                 className="px-3 h-9 rounded-md text-sm border bg-white hover:bg-[#FFFBF5] disabled:opacity-40"
                 style={{ borderColor: PEACH_BORDER, color: WINE }}
               >
@@ -348,11 +417,11 @@ export default function AccountSettingsPage() {
               <button
                 type="button"
                 onClick={save}
-                disabled={!dirty}
+                disabled={!dirty || saving}
                 className="px-4 h-9 rounded-md text-sm font-semibold text-white inline-flex items-center gap-2 disabled:opacity-40"
                 style={{ background: WINE }}
               >
-                <Save className="h-4 w-4" /> Save changes
+                <Save className="h-4 w-4" /> {saving ? "Saving…" : "Save changes"}
               </button>
             </div>
           </div>
