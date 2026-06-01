@@ -325,9 +325,34 @@ export interface StorageStatus {
       region: string
       endpoint: string | null
       publicBaseUrl: string | null
+      forcePathStyle: boolean
+      // Per-credential presence — booleans ONLY (never the secret values), so
+      // the admin UI can show "Set / Missing" against each required env key.
+      keys: {
+        S3_BUCKET: boolean
+        S3_REGION: boolean
+        S3_ENDPOINT: boolean
+        S3_ACCESS_KEY_ID: boolean
+        S3_SECRET_ACCESS_KEY: boolean
+        S3_PUBLIC_BASE_URL: boolean
+        S3_FORCE_PATH_STYLE: boolean
+      }
     }
-    cloudinary: { configured: boolean; cloudName: string | null }
+    cloudinary: {
+      configured: boolean
+      cloudName: string | null
+      keys: {
+        CLOUDINARY_CLOUD_NAME: boolean
+        CLOUDINARY_API_KEY: boolean
+        CLOUDINARY_API_SECRET: boolean
+      }
+    }
   }
+}
+
+// True when an env var is present and non-empty after trimming.
+function envSet(name: string): boolean {
+  return !!(process.env[name] || "").trim()
 }
 
 export function getStorageStatus(): StorageStatus {
@@ -345,10 +370,27 @@ export function getStorageStatus(): StorageStatus {
         region: process.env["S3_REGION"] || "us-east-1",
         endpoint: process.env["S3_ENDPOINT"] || null,
         publicBaseUrl: process.env["S3_PUBLIC_BASE_URL"] || null,
+        forcePathStyle:
+          process.env["S3_FORCE_PATH_STYLE"] === "1" ||
+          process.env["S3_FORCE_PATH_STYLE"] === "true",
+        keys: {
+          S3_BUCKET: envSet("S3_BUCKET"),
+          S3_REGION: envSet("S3_REGION"),
+          S3_ENDPOINT: envSet("S3_ENDPOINT"),
+          S3_ACCESS_KEY_ID: envSet("S3_ACCESS_KEY_ID"),
+          S3_SECRET_ACCESS_KEY: envSet("S3_SECRET_ACCESS_KEY"),
+          S3_PUBLIC_BASE_URL: envSet("S3_PUBLIC_BASE_URL"),
+          S3_FORCE_PATH_STYLE: envSet("S3_FORCE_PATH_STYLE"),
+        },
       },
       cloudinary: {
         configured: cloudinaryConfigured(),
         cloudName: process.env["CLOUDINARY_CLOUD_NAME"] || null,
+        keys: {
+          CLOUDINARY_CLOUD_NAME: envSet("CLOUDINARY_CLOUD_NAME"),
+          CLOUDINARY_API_KEY: envSet("CLOUDINARY_API_KEY"),
+          CLOUDINARY_API_SECRET: envSet("CLOUDINARY_API_SECRET"),
+        },
       },
     },
   }
