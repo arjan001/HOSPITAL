@@ -19,6 +19,8 @@ import {
 } from "lucide-react"
 
 const ACCENT_RED = "#B91C1C"
+// Refunds are temporarily hidden from the UI (the backend route stays intact).
+const SHOW_REFUND = false
 
 type PaymentStatus = "success" | "pending" | "failed" | "cancelled" | "refunded"
 
@@ -298,7 +300,7 @@ export function AdminPayments() {
                           >
                             View
                           </button>
-                          {tx.status === "success" && (
+                          {SHOW_REFUND && tx.status === "success" && (
                             <button
                               type="button"
                               disabled={refundingId === tx.id}
@@ -378,7 +380,7 @@ export function AdminPayments() {
               <DetailRow label="Updated" value={formatDate(selected.updatedAt)} />
               {selected.message && <DetailRow label="Message" value={selected.message} />}
             </div>
-            {selected.status === "success" && (
+            {SHOW_REFUND && selected.status === "success" && (
               <div className="flex justify-end gap-2 px-5 py-4 border-t border-border">
                 <button
                   type="button"

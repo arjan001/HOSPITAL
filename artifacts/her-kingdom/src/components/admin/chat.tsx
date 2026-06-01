@@ -437,7 +437,7 @@ export function AdminChat() {
           </div>
         )}
 
-        <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr] gap-0 rounded-xl border border-border overflow-hidden bg-background h-[72vh] min-h-[520px]">
+        <div className="grid grid-cols-1 lg:grid-cols-[260px_1fr] gap-0 rounded-xl border border-border overflow-hidden bg-background h-[72vh] min-h-[520px]">
           {/* Thread list */}
           <aside className="border-r border-border flex flex-col bg-background">
             <div className="p-3 border-b border-border">

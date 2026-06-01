@@ -65,6 +65,13 @@ export default function AccountChatPage() {
   const [sessionEnded, setSessionEnded] = useState(false)
   const [endedByDoctor, setEndedByDoctor] = useState(false)
   const startMsRef = useRef<number>(Date.now())
+  // Tracks the thread's current consultation so we can tell a genuine NEW
+  // consultation (id changed) apart from routine "active" thread events
+  // (send/read/ensure all re-broadcast status:"active" on the same segment).
+  const lastConsultIdRef = useRef<string | null>(null)
+  useEffect(() => {
+    if (thread?.consultationId) lastConsultIdRef.current = thread.consultationId
+  }, [thread?.consultationId])
   useEffect(() => {
     if (sessionEnded) return
     // Wall-clock arithmetic — survives background-tab throttling.
@@ -94,6 +101,25 @@ export default function AccountChatPage() {
             if (!closingByPatientRef.current) setEndedByDoctor(true)
             setSessionEnded(true)
             setStaffTyping(false)
+          } else if (payload.thread?.status === "active") {
+            // Only treat this as a fresh start when the consultation id actually
+            // changed — routine active-thread events (send/read/ensure) keep the
+            // same id and must NOT reset the timer or reload mid-session.
+            const newCid: string | null = payload.thread?.consultationId ?? null
+            const prevCid = lastConsultIdRef.current
+            if (newCid && prevCid && newCid !== prevCid) {
+              // A brand-new consultation reopened the thread — clear the old
+              // ended notice, reset the timer, and reload messages so the patient
+              // sees a fresh window instead of the previous (ended) conversation.
+              setEndedByDoctor(false)
+              setSessionEnded(false)
+              closingByPatientRef.current = false
+              startMsRef.current = Date.now()
+              setElapsed(0)
+              setExtensionsSec(0)
+              globalMutate("/chat/me/messages", undefined, { revalidate: true })
+            }
+            lastConsultIdRef.current = newCid
           }
         }
         if (payload.type === "read" && payload.by === "staff") {

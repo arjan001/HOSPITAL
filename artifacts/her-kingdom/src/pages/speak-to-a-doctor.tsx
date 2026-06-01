@@ -283,6 +283,14 @@ export default function SpeakToADoctorPage() {
               ensuredRef.current = true
               applyConsultId(res.consultationId)
               setLocation(`/speak-to-a-doctor/${encodeURIComponent(res.consultationId)}`)
+              // Fresh segment: drop any leftover ended-state and clear the old
+              // message cache so the new consultation opens on a clean window.
+              // The previous chat stays preserved in account history, not here.
+              setChatSessionEnded(false)
+              setEndedByDoctor(false)
+              closingByPatientRef.current = false
+              globalMutate("/chat/me/messages", [], { revalidate: false })
+              await refreshChatPatient()
             } catch {}
           }
           // Seed the patient's concern as the first real message so the pharmacy
