@@ -1,5 +1,6 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import { Switch, Route, Redirect, useLocation, Router as WouterRouter } from "wouter";
+import useSWR from "swr";
 import { QueryClient, QueryClientProvider, useQueryClient } from "@tanstack/react-query";
 import { ClerkProvider, AuthenticateWithRedirectCallback, Show, useClerk } from "@clerk/react";
 import { publishableKeyFromHost } from "@clerk/react/internal";
@@ -514,6 +515,88 @@ function GlobalOverlays() {
   );
 }
 
+function MaintenanceScreen() {
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-[#3D0814] text-white px-6 text-center">
+      <div className="max-w-md space-y-4">
+        <h1 className="text-2xl font-serif font-bold">We'll be back shortly</h1>
+        <p className="text-white/80 text-sm leading-relaxed">
+          Shaniid RX is undergoing brief scheduled maintenance to keep your
+          medicine delivery safe and reliable. Please check back in a little while.
+        </p>
+        <p className="text-white/60 text-xs">Thank you for your patience.</p>
+      </div>
+    </div>
+  );
+}
+
+// Reads the admin-controlled `maintenance_mode` flag from /api/site-data and,
+// when enabled, takes the public storefront offline. Admin and auth surfaces
+// stay reachable so staff can sign in and toggle it back off.
+function MaintenanceGate({ children }: { children: ReactNode }) {
+  const [location] = useLocation();
+  const { data } = useSWR<{ settings?: { maintenance_mode?: boolean } }>(
+    "/api/site-data",
+    (url: string) => fetch(url).then((r) => r.json()),
+    { revalidateOnFocus: false, dedupingInterval: 60_000 },
+  );
+  const maintenance = data?.settings?.maintenance_mode === true;
+  const exempt =
+    location.startsWith("/admin") ||
+    location.startsWith("/account/login") ||
+    location.startsWith("/account/register") ||
+    location.startsWith("/account/sso-callback") ||
+    location.startsWith("/sign-in") ||
+    location.startsWith("/sign-up");
+  if (maintenance && !exempt) return <MaintenanceScreen />;
+  return <>{children}</>;
+}
+
+interface SiteHeadSettings {
+  site_title?: string;
+  site_description?: string;
+  meta_keywords?: string;
+  favicon_url?: string;
+}
+
+// Applies the admin-controlled SEO fields (saved under `store-settings` and
+// exposed via /api/site-data) to the document head so they are actually
+// consumed by the storefront. No-ops for any field left blank in admin.
+function SiteHead() {
+  const { data } = useSWR<{ settings?: SiteHeadSettings }>(
+    "/api/site-data",
+    (url: string) => fetch(url).then((r) => r.json()),
+    { revalidateOnFocus: false, dedupingInterval: 60_000 },
+  );
+  const s = data?.settings;
+  useEffect(() => {
+    if (!s) return;
+    if (s.site_title) document.title = s.site_title;
+    const setMeta = (name: string, content: string | undefined) => {
+      if (!content) return;
+      let el = document.querySelector<HTMLMetaElement>(`meta[name="${name}"]`);
+      if (!el) {
+        el = document.createElement("meta");
+        el.setAttribute("name", name);
+        document.head.appendChild(el);
+      }
+      el.setAttribute("content", content);
+    };
+    setMeta("description", s.site_description);
+    setMeta("keywords", s.meta_keywords);
+    if (s.favicon_url) {
+      let link = document.querySelector<HTMLLinkElement>('link[rel="icon"]');
+      if (!link) {
+        link = document.createElement("link");
+        link.setAttribute("rel", "icon");
+        document.head.appendChild(link);
+      }
+      link.setAttribute("href", s.favicon_url);
+    }
+  }, [s]);
+  return null;
+}
+
 function ClerkProviderWithRoutes() {
   const [, setLocation] = useLocation();
 
@@ -544,11 +627,14 @@ function ClerkProviderWithRoutes() {
       <QueryClientProvider client={queryClient}>
         <ClerkQueryClientCacheInvalidator />
         <CustomerMirror />
+        <SiteHead />
         <ScrollToTop />
         <WishlistProvider>
           <CartProvider>
             <ErrorBoundary scope="routes">
-              <Router />
+              <MaintenanceGate>
+                <Router />
+              </MaintenanceGate>
             </ErrorBoundary>
             <GlobalOverlays />
             <PageViewTracker />
