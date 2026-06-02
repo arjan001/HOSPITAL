@@ -1,139 +1,275 @@
 "use client"
 
 /**
- * Supplier Partner Portal — /portal/supplier
+ * Supplier Partner Portal — /portal/supplier (and /portal/supplier/accept)
  *
- * Suppliers log in with their email + portal code (issued by admin on onboarding).
- * The session is a lightweight localStorage entry; Clerk JWT replaces it in Phase 2.
+ * Backed by the real partner API via partners-client.ts. Auth is a server-side
+ * signed token in an HttpOnly cookie (no localStorage, no portal codes).
  *
- * Tabs: Overview · Products · Purchase Orders · KYC Status · Profile
+ * Auth screen has two modes: Sign in and Apply to join. The accept-invite mode
+ * is mounted at /portal/supplier/accept?token=… and lets an invited supplier set
+ * their password.
+ *
+ * Tabs: Overview · Catalog · Opportunities · Quotes · KYC · Profile
  */
 
-import { useState } from "react"
-import { Link } from "wouter"
-import { useCmsDoc } from "@/lib/cms-store"
+import { useMemo, useState } from "react"
+import { Link, useLocation } from "wouter"
 import {
-  getPortalSessionForType, loginPartnerLocal, signOutPartner,
-  submitPartnerOrder, type PortalSession,
-} from "@/lib/portal-auth"
-import type { Supplier } from "@/components/admin/suppliers"
+  partnerLogin, partnerApply, partnerAcceptInvite, partnerSignout,
+  usePartnerMe, refreshPartnerMe,
+  useSupplierCatalog, addSupplierProduct, updateSupplierProduct, deleteSupplierProduct,
+  useSupplierOpportunities, useSupplierQuotes, submitSupplierQuote,
+  type PartnerAccount, type SupplierProduct, type SourcingOpportunity, type PartnerQuote,
+} from "@/lib/partners-client"
 import {
-  Building2, ShieldCheck, LogOut, Package, ClipboardList,
-  BarChart3, User, AlertTriangle, CheckCircle2, XCircle,
-  Eye, EyeOff, ArrowRight, Star, Truck, TrendingUp,
-  Bell, Copy, RefreshCw, ChevronRight, ChevronLeft, Hash, Mail, Phone,
-  MapPin, CreditCard, FileText, Shield, Clock, Boxes, Menu, X,
+  ShieldCheck, LogOut, ClipboardList, BarChart3, User, AlertTriangle,
+  CheckCircle2, XCircle, Eye, EyeOff, ArrowRight, Star, TrendingUp,
+  ChevronRight, ChevronLeft, Hash, Mail, FileText, Shield, Clock, Boxes,
+  Menu, X, Plus, Pencil, Trash2, Loader2, PackageSearch, Building2,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
 
-const WINE    = "#3D0814"
-const ORANGE  = "#F97316"
-const GREEN   = "#15803D"
-const S_TEXT  = "rgba(255,255,255,0.88)"
-const S_MUTED = "rgba(255,255,255,0.45)"
-const S_BORDER= "rgba(255,255,255,0.10)"
+const WINE     = "#3D0814"
+const WINE_2   = "#6B0F1A"
+const ORANGE   = "#F97316"
+const RED       = "#B91C1C"
+const GREEN    = "#15803D"
+const S_TEXT   = "rgba(255,255,255,0.88)"
+const S_MUTED  = "rgba(255,255,255,0.45)"
+const S_BORDER = "rgba(255,255,255,0.10)"
 
-/* ─── Login Page ─────────────────────────────────────────────── */
+const CURRENCY_DEFAULT = "KES"
 
-function SupplierLoginPage({ onLogin, error }: {
-  onLogin: (email: string, code: string) => void
-  error: string
-}) {
+function fmtMoney(amount: number, currency = CURRENCY_DEFAULT): string {
+  return `${currency} ${Number(amount || 0).toLocaleString()}`
+}
+
+/* ─── Auth screen (Sign in / Apply to join) ──────────────────── */
+
+const AUTH_FEATURES: { icon: typeof Boxes; title: string; desc: string }[] = [
+  { icon: Boxes,         title: "Manage your catalog",      desc: "List, price and update the products you supply to the Shaniid RX network." },
+  { icon: PackageSearch, title: "Sourcing opportunities",   desc: "See open sourcing needs the moment they're posted and submit competitive quotes." },
+  { icon: ShieldCheck,   title: "Trust Seal certification", desc: "Complete your KYC to earn the Shaniid RX Trust Seal — the mark pharmacies trust." },
+  { icon: BarChart3,     title: "Performance insights",     desc: "Track your quotes, catalog and win-rate from a single dashboard." },
+]
+
+function BrandPanel() {
+  return (
+    <div className="hidden lg:flex w-1/2 flex-col justify-between p-12" style={{ background: WINE }}>
+      <div>
+        <div className="flex items-center gap-2.5">
+          <img src="/logo-rx.png" alt="Shaniid RX" className="h-12 w-auto object-contain" onError={e => { (e.target as HTMLImageElement).style.display = "none" }} />
+          <span className="text-white font-bold text-xl tracking-tight">Shaniid RX</span>
+        </div>
+        <p className="text-white/60 text-sm mt-1">Supplier Partner Portal</p>
+      </div>
+      <div className="space-y-8">
+        {AUTH_FEATURES.map(({ icon: Icon, title, desc }) => (
+          <div key={title} className="flex gap-4">
+            <div className="h-10 w-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: "rgba(255,255,255,0.12)" }}>
+              <Icon className="h-5 w-5 text-white" />
+            </div>
+            <div>
+              <p className="text-white font-semibold text-sm">{title}</p>
+              <p className="text-white/60 text-xs mt-0.5 leading-relaxed">{desc}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+      <div>
+        <p className="text-white/40 text-xs">"If it comes through Shaniid RX, it is genuine, fairly priced, and delivered with integrity."</p>
+      </div>
+    </div>
+  )
+}
+
+function ErrorBanner({ message }: { message: string }) {
+  return (
+    <div className="mb-5 flex items-center gap-2.5 p-3.5 rounded-xl bg-red-50 border border-red-200 text-sm text-red-700">
+      <AlertTriangle className="h-4 w-4 flex-shrink-0" />
+      <span>{message}</span>
+    </div>
+  )
+}
+
+function SupplierAuthScreen() {
+  const [mode, setMode] = useState<"signin" | "apply">("signin")
+
+  // Sign in state
   const [email, setEmail] = useState("")
-  const [code, setCode] = useState("")
-  const [showCode, setShowCode] = useState(false)
+  const [password, setPassword] = useState("")
+  const [showPwd, setShowPwd] = useState(false)
+  const [signinErr, setSigninErr] = useState("")
+  const [signingIn, setSigningIn] = useState(false)
 
-  const submit = (e: React.FormEvent) => {
+  // Apply state
+  const [orgName, setOrgName] = useState("")
+  const [contactName, setContactName] = useState("")
+  const [applyEmail, setApplyEmail] = useState("")
+  const [phone, setPhone] = useState("")
+  const [message, setMessage] = useState("")
+  const [applyErr, setApplyErr] = useState("")
+  const [applying, setApplying] = useState(false)
+  const [applied, setApplied] = useState(false)
+
+  const submitSignin = async (e: React.FormEvent) => {
     e.preventDefault()
-    onLogin(email.trim().toLowerCase(), code.trim().toUpperCase())
+    setSigninErr("")
+    setSigningIn(true)
+    try {
+      await partnerLogin("supplier", email.trim().toLowerCase(), password)
+      await refreshPartnerMe()
+    } catch (err) {
+      setSigninErr(err instanceof Error ? err.message : "Sign in failed. Please try again.")
+    } finally {
+      setSigningIn(false)
+    }
+  }
+
+  const submitApply = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setApplyErr("")
+    setApplying(true)
+    try {
+      await partnerApply({
+        partnerType: "supplier",
+        orgName: orgName.trim(),
+        contactName: contactName.trim(),
+        email: applyEmail.trim().toLowerCase(),
+        phone: phone.trim() || undefined,
+        message: message.trim() || undefined,
+      })
+      setApplied(true)
+    } catch (err) {
+      setApplyErr(err instanceof Error ? err.message : "Could not submit your application. Please try again.")
+    } finally {
+      setApplying(false)
+    }
   }
 
   return (
     <div className="min-h-screen flex" style={{ background: "#faf9f8" }}>
-      {/* Left brand panel */}
-      <div className="hidden lg:flex w-1/2 flex-col justify-between p-12" style={{ background: WINE }}>
-        <div>
-          <div className="flex items-center gap-2.5">
-            <img src="/logo-rx.png" alt="Shaniid RX" className="h-12 w-auto object-contain" onError={e => { (e.target as HTMLImageElement).style.display = "none" }} />
-            <span className="text-white font-bold text-xl tracking-tight">Shaniid RX</span>
-          </div>
-          <p className="text-white/60 text-sm mt-1">Supplier Partner Portal</p>
-        </div>
-        <div className="space-y-8">
-          {[
-            { icon: Package, title: "Manage your catalog", desc: "List, update and track your pharmaceutical products on the Shaniid RX platform." },
-            { icon: ClipboardList, title: "Purchase orders, live", desc: "See every PO from Shaniid RX the moment it's raised, confirm delivery timelines and manage disputes." },
-            { icon: ShieldCheck, title: "Trust Seal certification", desc: "Complete your KYC to earn the Shaniid RX Trust Seal — the quality mark patients and pharmacies trust." },
-            { icon: BarChart3, title: "Performance insights", desc: "On-time rate, quality scores and revenue dashboards updated daily." },
-          ].map(({ icon: Icon, title, desc }) => (
-            <div key={title} className="flex gap-4">
-              <div className="h-10 w-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: "rgba(255,255,255,0.12)" }}>
-                <Icon className="h-5 w-5 text-white" />
-              </div>
-              <div>
-                <p className="text-white font-semibold text-sm">{title}</p>
-                <p className="text-white/60 text-xs mt-0.5 leading-relaxed">{desc}</p>
-              </div>
-            </div>
-          ))}
-        </div>
-        <div>
-          <p className="text-white/40 text-xs">"If it comes through Shaniid RX, it is genuine, fairly priced, and delivered with integrity."</p>
-        </div>
-      </div>
+      <BrandPanel />
 
-      {/* Right login form */}
       <div className="flex-1 flex items-center justify-center p-6">
         <div className="w-full max-w-md">
           <div className="lg:hidden flex items-center gap-2 mb-8">
             <img src="/logo-rx.png" alt="Shaniid RX" className="h-14 w-auto object-contain" />
           </div>
 
-          <h1 className="text-2xl font-bold text-gray-800 mb-1">Supplier sign in</h1>
-          <p className="text-gray-500 text-sm mb-8">
-            Enter the email and portal code you received during onboarding.
-          </p>
+          {/* Mode toggle */}
+          <div className="flex gap-1 p-1 mb-6 rounded-xl bg-gray-100 w-full">
+            {([
+              { id: "signin" as const, label: "Sign in" },
+              { id: "apply" as const, label: "Apply to join" },
+            ]).map(t => (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => setMode(t.id)}
+                className="flex-1 text-sm font-semibold py-2 rounded-lg transition-all"
+                style={mode === t.id ? { background: "#fff", color: WINE, boxShadow: "0 1px 2px rgba(0,0,0,0.06)" } : { color: "#6B7280" }}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
 
-          {error && (
-            <div className="mb-5 flex items-center gap-2.5 p-3.5 rounded-xl bg-red-50 border border-red-200 text-sm text-red-700">
-              <AlertTriangle className="h-4 w-4 flex-shrink-0" />
-              {error}
+          {mode === "signin" ? (
+            <>
+              <h1 className="text-2xl font-bold text-gray-800 mb-1">Supplier sign in</h1>
+              <p className="text-gray-500 text-sm mb-8">Enter the email and password for your supplier account.</p>
+
+              {signinErr && <ErrorBanner message={signinErr} />}
+
+              <form onSubmit={submitSignin} className="space-y-4">
+                <div>
+                  <Label className="text-sm font-medium text-gray-700">Email address</Label>
+                  <Input
+                    type="email" required value={email} onChange={e => setEmail(e.target.value)}
+                    placeholder="you@company.co.ke" className="mt-1 h-11"
+                  />
+                </div>
+                <div>
+                  <Label className="text-sm font-medium text-gray-700">Password</Label>
+                  <div className="relative mt-1">
+                    <Input
+                      type={showPwd ? "text" : "password"} required
+                      value={password} onChange={e => setPassword(e.target.value)}
+                      placeholder="Your password" className="h-11 pr-10"
+                    />
+                    <button type="button" onClick={() => setShowPwd(s => !s)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                      {showPwd ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                  </div>
+                </div>
+                <Button type="submit" disabled={signingIn} className="w-full h-11 text-white font-semibold gap-2" style={{ background: WINE }}>
+                  {signingIn ? <Loader2 className="h-4 w-4 animate-spin" /> : <>Sign in to your portal <ArrowRight className="h-4 w-4" /></>}
+                </Button>
+              </form>
+
+              <p className="text-xs text-gray-400 text-center mt-6">
+                New supplier? <button type="button" onClick={() => setMode("apply")} className="underline" style={{ color: WINE }}>Apply to join</button>
+              </p>
+            </>
+          ) : applied ? (
+            <div className="text-center py-6">
+              <div className="h-14 w-14 rounded-2xl flex items-center justify-center mx-auto mb-4" style={{ background: `${GREEN}15` }}>
+                <CheckCircle2 className="h-7 w-7" style={{ color: GREEN }} />
+              </div>
+              <h1 className="text-2xl font-bold text-gray-800 mb-2">Thanks — we'll review your application</h1>
+              <p className="text-gray-500 text-sm">
+                Our partnerships team will review your details and reach out by email. Once approved you'll receive an invite to set your password and access the portal.
+              </p>
+              <Button onClick={() => { setMode("signin"); setApplied(false) }} variant="outline" className="mt-6">
+                Back to sign in
+              </Button>
             </div>
+          ) : (
+            <>
+              <h1 className="text-2xl font-bold text-gray-800 mb-1">Apply to join</h1>
+              <p className="text-gray-500 text-sm mb-8">Tell us about your business and we'll get back to you.</p>
+
+              {applyErr && <ErrorBanner message={applyErr} />}
+
+              <form onSubmit={submitApply} className="space-y-4">
+                <div>
+                  <Label className="text-sm font-medium text-gray-700">Company name <span className="text-red-500">*</span></Label>
+                  <Input required value={orgName} onChange={e => setOrgName(e.target.value)} placeholder="Acme Pharmaceuticals Ltd" className="mt-1 h-11" />
+                </div>
+                <div>
+                  <Label className="text-sm font-medium text-gray-700">Contact person <span className="text-red-500">*</span></Label>
+                  <Input required value={contactName} onChange={e => setContactName(e.target.value)} placeholder="Full name" className="mt-1 h-11" />
+                </div>
+                <div>
+                  <Label className="text-sm font-medium text-gray-700">Email address <span className="text-red-500">*</span></Label>
+                  <Input type="email" required value={applyEmail} onChange={e => setApplyEmail(e.target.value)} placeholder="you@company.co.ke" className="mt-1 h-11" />
+                </div>
+                <div>
+                  <Label className="text-sm font-medium text-gray-700">Phone</Label>
+                  <Input value={phone} onChange={e => setPhone(e.target.value)} placeholder="+254…" className="mt-1 h-11" />
+                </div>
+                <div>
+                  <Label className="text-sm font-medium text-gray-700">Message</Label>
+                  <Textarea value={message} onChange={e => setMessage(e.target.value)} placeholder="What do you supply? Categories, certifications, scale…" className="mt-1" rows={3} />
+                </div>
+                <Button type="submit" disabled={applying} className="w-full h-11 text-white font-semibold gap-2" style={{ background: ORANGE }}>
+                  {applying ? <Loader2 className="h-4 w-4 animate-spin" /> : <>Submit application <ArrowRight className="h-4 w-4" /></>}
+                </Button>
+              </form>
+
+              <p className="text-xs text-gray-400 text-center mt-6">
+                Already a partner? <button type="button" onClick={() => setMode("signin")} className="underline" style={{ color: WINE }}>Sign in</button>
+              </p>
+            </>
           )}
 
-          <form onSubmit={submit} className="space-y-4">
-            <div>
-              <Label className="text-sm font-medium text-gray-700">Email address</Label>
-              <Input
-                type="email" required value={email} onChange={e => setEmail(e.target.value)}
-                placeholder="you@company.co.ke" className="mt-1 h-11"
-              />
-            </div>
-            <div>
-              <Label className="text-sm font-medium text-gray-700">Portal code</Label>
-              <div className="relative mt-1">
-                <Input
-                  type={showCode ? "text" : "password"} required
-                  value={code} onChange={e => setCode(e.target.value)}
-                  placeholder="SUP-XXXX-XXXX" className="h-11 pr-10 font-mono uppercase"
-                />
-                <button type="button" onClick={() => setShowCode(s => !s)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
-                  {showCode ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                </button>
-              </div>
-            </div>
-            <Button type="submit" className="w-full h-11 text-white font-semibold gap-2" style={{ background: WINE }}>
-              Sign in to your portal <ArrowRight className="h-4 w-4" />
-            </Button>
-          </form>
-
-          <p className="text-xs text-gray-400 text-center mt-6">
-            Don't have a portal code? Contact <a href="mailto:suppliers@shaniidrx.com" className="underline" style={{ color: WINE }}>suppliers@shaniidrx.com</a>
-          </p>
-          <p className="text-xs text-gray-300 text-center mt-1">
+          <p className="text-xs text-gray-300 text-center mt-3">
             <Link href="/admin" className="hover:text-gray-500 transition-colors">Admin portal →</Link>
           </p>
         </div>
@@ -142,7 +278,87 @@ function SupplierLoginPage({ onLogin, error }: {
   )
 }
 
-/* ─── KPI Card ───────────────────────────────────────────────── */
+/* ─── Accept invite (set password) ───────────────────────────── */
+
+function AcceptInviteScreen({ token }: { token: string }) {
+  const [, navigate] = useLocation()
+  const [password, setPassword] = useState("")
+  const [confirm, setConfirm] = useState("")
+  const [showPwd, setShowPwd] = useState(false)
+  const [err, setErr] = useState("")
+  const [busy, setBusy] = useState(false)
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setErr("")
+    if (password.length < 8) {
+      setErr("Password must be at least 8 characters.")
+      return
+    }
+    if (password !== confirm) {
+      setErr("Passwords do not match.")
+      return
+    }
+    setBusy(true)
+    try {
+      await partnerAcceptInvite(token, password)
+      await refreshPartnerMe()
+      navigate("/portal/supplier")
+    } catch (e2) {
+      setErr(e2 instanceof Error ? e2.message : "Could not accept the invite. The link may have expired.")
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="min-h-screen flex" style={{ background: "#faf9f8" }}>
+      <BrandPanel />
+      <div className="flex-1 flex items-center justify-center p-6">
+        <div className="w-full max-w-md">
+          <div className="lg:hidden flex items-center gap-2 mb-8">
+            <img src="/logo-rx.png" alt="Shaniid RX" className="h-14 w-auto object-contain" />
+          </div>
+
+          <h1 className="text-2xl font-bold text-gray-800 mb-1">Set your password</h1>
+          <p className="text-gray-500 text-sm mb-8">Choose a password to activate your supplier account.</p>
+
+          {err && <ErrorBanner message={err} />}
+
+          <form onSubmit={submit} className="space-y-4">
+            <div>
+              <Label className="text-sm font-medium text-gray-700">New password</Label>
+              <div className="relative mt-1">
+                <Input
+                  type={showPwd ? "text" : "password"} required
+                  value={password} onChange={e => setPassword(e.target.value)}
+                  placeholder="At least 8 characters" className="h-11 pr-10"
+                />
+                <button type="button" onClick={() => setShowPwd(s => !s)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                  {showPwd ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
+            </div>
+            <div>
+              <Label className="text-sm font-medium text-gray-700">Confirm password</Label>
+              <Input
+                type={showPwd ? "text" : "password"} required
+                value={confirm} onChange={e => setConfirm(e.target.value)}
+                placeholder="Re-enter password" className="mt-1 h-11"
+              />
+            </div>
+            <Button type="submit" disabled={busy} className="w-full h-11 text-white font-semibold gap-2" style={{ background: WINE }}>
+              {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <>Activate account <ArrowRight className="h-4 w-4" /></>}
+            </Button>
+          </form>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/* ─── Small UI helpers ───────────────────────────────────────── */
 
 function KpiCard({ icon: Icon, label, value, sub, color = WINE }: {
   icon: typeof Building2; label: string; value: string | number; sub?: string; color?: string
@@ -161,49 +377,360 @@ function KpiCard({ icon: Icon, label, value, sub, color = WINE }: {
   )
 }
 
-/* ─── Dashboard Shell ─────────────────────────────────────────── */
+function LoadingState({ label }: { label: string }) {
+  return (
+    <div className="bg-white rounded-xl border border-gray-100 p-10 text-center text-gray-400">
+      <Loader2 className="h-8 w-8 mx-auto mb-3 animate-spin opacity-40" />
+      <p className="text-sm">{label}</p>
+    </div>
+  )
+}
 
-type Tab = "overview" | "products" | "orders" | "kyc" | "profile"
+function ErrorState({ label, onRetry }: { label: string; onRetry?: () => void }) {
+  return (
+    <div className="bg-white rounded-xl border border-red-100 p-10 text-center">
+      <AlertTriangle className="h-8 w-8 mx-auto mb-3" style={{ color: RED }} />
+      <p className="text-sm text-red-700 font-medium">{label}</p>
+      {onRetry && (
+        <Button variant="outline" size="sm" className="mt-4" onClick={onRetry}>Try again</Button>
+      )}
+    </div>
+  )
+}
+
+function EmptyState({ icon: Icon, title, desc }: { icon: typeof Boxes; title: string; desc: string }) {
+  return (
+    <div className="bg-white rounded-xl border border-gray-100 p-10 text-center text-gray-400">
+      <Icon className="h-10 w-10 mx-auto mb-3 opacity-20" />
+      <p className="font-medium">{title}</p>
+      <p className="text-sm mt-1">{desc}</p>
+    </div>
+  )
+}
+
+/* ─── Dashboard ──────────────────────────────────────────────── */
+
+type Tab = "overview" | "catalog" | "opportunities" | "quotes" | "kyc" | "profile"
 
 const TABS: { id: Tab; label: string; icon: typeof Building2 }[] = [
-  { id: "overview",  label: "Overview",         icon: BarChart3     },
-  { id: "products",  label: "My Products",       icon: Boxes         },
-  { id: "orders",    label: "Purchase Orders",   icon: ClipboardList },
-  { id: "kyc",       label: "KYC & Trust Seal",  icon: ShieldCheck   },
-  { id: "profile",   label: "My Profile",        icon: User          },
+  { id: "overview",      label: "Overview",        icon: BarChart3     },
+  { id: "catalog",       label: "Catalog",         icon: Boxes         },
+  { id: "opportunities", label: "Opportunities",   icon: PackageSearch },
+  { id: "quotes",        label: "My Quotes",       icon: ClipboardList },
+  { id: "kyc",           label: "KYC & Trust Seal", icon: ShieldCheck  },
+  { id: "profile",       label: "My Profile",      icon: User          },
 ]
 
-type SourcingRequest = {
-  id: string
+const PARTNER_STATUS: Record<PartnerAccount["status"], { label: string; color: string; bg: string }> = {
+  invited:   { label: "Invite Pending", color: "#92400E", bg: "#FEF3C7" },
+  active:    { label: "Active Supplier", color: "#065F46", bg: "#D1FAE5" },
+  suspended: { label: "Account Suspended", color: "#991B1B", bg: "#FEE2E2" },
+}
+
+const QUOTE_STATUS_BADGE: Record<string, { color: string; bg: string }> = {
+  pending:   { color: "#92400E", bg: "#FEF3C7" },
+  submitted: { color: "#1D4ED8", bg: "#EFF6FF" },
+  accepted:  { color: "#065F46", bg: "#D1FAE5" },
+  rejected:  { color: "#991B1B", bg: "#FEE2E2" },
+  withdrawn: { color: "#6B7280", bg: "#F3F4F6" },
+}
+
+const URGENCY_BADGE: Record<string, { color: string; bg: string }> = {
+  low:    { color: "#374151", bg: "#F3F4F6" },
+  normal: { color: "#1D4ED8", bg: "#EFF6FF" },
+  medium: { color: "#1D4ED8", bg: "#EFF6FF" },
+  high:   { color: "#92400E", bg: "#FEF3C7" },
+  urgent: { color: "#991B1B", bg: "#FEE2E2" },
+}
+
+function statusBadge(map: Record<string, { color: string; bg: string }>, key: string) {
+  return map[key.toLowerCase()] ?? { color: "#6B7280", bg: "#F3F4F6" }
+}
+
+/* ─── Catalog product form ───────────────────────────────────── */
+
+type ProductForm = {
   productName: string
-  sku?: string
-  qty: number
-  priority: "low" | "normal" | "high" | "urgent"
-  status: "draft" | "open" | "quoting" | "ordered" | "received" | "cancelled"
-  notes?: string
-  createdAt: string
-  updatedAt: string
+  sku: string
+  category: string
+  unitPrice: string
+  currency: string
+  moq: string
+  leadTimeDays: string
+  stockQty: string
+  status: "active" | "inactive"
+  notes: string
 }
 
-const PRIORITY_BADGE: Record<SourcingRequest["priority"], { label: string; color: string; bg: string }> = {
-  low:    { label: "Low",    color: "#374151", bg: "#F3F4F6" },
-  normal: { label: "Normal", color: "#1D4ED8", bg: "#EFF6FF" },
-  high:   { label: "High",   color: "#92400E", bg: "#FEF3C7" },
-  urgent: { label: "Urgent", color: "#991B1B", bg: "#FEE2E2" },
+const EMPTY_PRODUCT: ProductForm = {
+  productName: "", sku: "", category: "", unitPrice: "", currency: CURRENCY_DEFAULT,
+  moq: "1", leadTimeDays: "1", stockQty: "0", status: "active", notes: "",
 }
 
-const STATUS_BADGE: Record<SourcingRequest["status"], { label: string; color: string; bg: string }> = {
-  draft:     { label: "Draft",    color: "#6B7280", bg: "#F9FAFB" },
-  open:      { label: "Open",     color: "#065F46", bg: "#D1FAE5" },
-  quoting:   { label: "Quoting",  color: "#1D4ED8", bg: "#EFF6FF" },
-  ordered:   { label: "Ordered",  color: "#92400E", bg: "#FEF3C7" },
-  received:  { label: "Received", color: "#065F46", bg: "#DCFCE7" },
-  cancelled: { label: "Cancelled",color: "#6B7280", bg: "#F3F4F6" },
+function productToForm(p: SupplierProduct): ProductForm {
+  return {
+    productName: p.productName,
+    sku: p.sku ?? "",
+    category: p.category ?? "",
+    unitPrice: String(p.unitPrice ?? ""),
+    currency: p.currency || CURRENCY_DEFAULT,
+    moq: String(p.moq ?? 1),
+    leadTimeDays: String(p.leadTimeDays ?? 1),
+    stockQty: String(p.stockQty ?? 0),
+    status: p.status,
+    notes: p.notes ?? "",
+  }
 }
 
-function SupplierDashboard({ supplier, session, onLogout }: {
-  supplier: Supplier
-  session: PortalSession
+function ProductModal({ initial, onClose, onSaved }: {
+  initial: SupplierProduct | null
+  onClose: () => void
+  onSaved: () => void
+}) {
+  const [form, setForm] = useState<ProductForm>(initial ? productToForm(initial) : EMPTY_PRODUCT)
+  const [err, setErr] = useState("")
+  const [saving, setSaving] = useState(false)
+
+  const set = <K extends keyof ProductForm>(key: K, value: ProductForm[K]) =>
+    setForm(prev => ({ ...prev, [key]: value }))
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setErr("")
+    if (!form.productName.trim()) { setErr("Product name is required."); return }
+    if (!form.unitPrice || Number(form.unitPrice) < 0) { setErr("Enter a valid unit price."); return }
+    setSaving(true)
+    try {
+      const payload: Partial<SupplierProduct> = {
+        productName: form.productName.trim(),
+        sku: form.sku.trim() || null,
+        category: form.category.trim() || null,
+        unitPrice: Number(form.unitPrice),
+        currency: form.currency.trim() || CURRENCY_DEFAULT,
+        moq: Number(form.moq) || 1,
+        leadTimeDays: Number(form.leadTimeDays) || 0,
+        stockQty: Number(form.stockQty) || 0,
+        status: form.status,
+        notes: form.notes.trim() || null,
+      }
+      if (initial) await updateSupplierProduct(initial.id, payload)
+      else await addSupplierProduct(payload)
+      onSaved()
+    } catch (e2) {
+      setErr(e2 instanceof Error ? e2.message : "Could not save the product.")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+        <div className="flex items-start justify-between p-6 border-b sticky top-0 bg-white">
+          <h2 className="font-bold text-gray-900 text-lg">{initial ? "Edit product" : "Add product"}</h2>
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+        <form onSubmit={submit} className="p-6 space-y-4">
+          {err && <ErrorBanner message={err} />}
+          <div>
+            <Label className="text-sm font-semibold text-gray-700">Product name <span className="text-red-500">*</span></Label>
+            <Input value={form.productName} onChange={e => set("productName", e.target.value)} placeholder="Paracetamol 500mg" className="mt-1" />
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <Label className="text-sm font-semibold text-gray-700">SKU</Label>
+              <Input value={form.sku} onChange={e => set("sku", e.target.value)} placeholder="SKU-001" className="mt-1" />
+            </div>
+            <div>
+              <Label className="text-sm font-semibold text-gray-700">Category</Label>
+              <Input value={form.category} onChange={e => set("category", e.target.value)} placeholder="Medications" className="mt-1" />
+            </div>
+          </div>
+          <div className="grid grid-cols-3 gap-4">
+            <div>
+              <Label className="text-sm font-semibold text-gray-700">Unit price <span className="text-red-500">*</span></Label>
+              <Input type="number" min={0} step="0.01" value={form.unitPrice} onChange={e => set("unitPrice", e.target.value)} placeholder="450" className="mt-1" />
+            </div>
+            <div>
+              <Label className="text-sm font-semibold text-gray-700">Currency</Label>
+              <Input value={form.currency} onChange={e => set("currency", e.target.value.toUpperCase())} placeholder="KES" className="mt-1 uppercase" />
+            </div>
+            <div>
+              <Label className="text-sm font-semibold text-gray-700">MOQ</Label>
+              <Input type="number" min={1} value={form.moq} onChange={e => set("moq", e.target.value)} className="mt-1" />
+            </div>
+          </div>
+          <div className="grid grid-cols-3 gap-4">
+            <div>
+              <Label className="text-sm font-semibold text-gray-700">Lead time (days)</Label>
+              <Input type="number" min={0} value={form.leadTimeDays} onChange={e => set("leadTimeDays", e.target.value)} className="mt-1" />
+            </div>
+            <div>
+              <Label className="text-sm font-semibold text-gray-700">Stock qty</Label>
+              <Input type="number" min={0} value={form.stockQty} onChange={e => set("stockQty", e.target.value)} className="mt-1" />
+            </div>
+            <div>
+              <Label className="text-sm font-semibold text-gray-700">Status</Label>
+              <select
+                value={form.status}
+                onChange={e => set("status", e.target.value as "active" | "inactive")}
+                className="mt-1 w-full h-10 rounded-md border border-input bg-background px-3 text-sm"
+              >
+                <option value="active">Active</option>
+                <option value="inactive">Inactive</option>
+              </select>
+            </div>
+          </div>
+          <div>
+            <Label className="text-sm font-semibold text-gray-700">Notes</Label>
+            <Textarea value={form.notes} onChange={e => set("notes", e.target.value)} placeholder="Packaging, batch info, delivery terms…" className="mt-1" rows={2} />
+          </div>
+          <div className="flex gap-3 pt-2">
+            <Button type="button" variant="outline" className="flex-1" onClick={onClose}>Cancel</Button>
+            <Button type="submit" disabled={saving} className="flex-1 text-white" style={{ background: WINE }}>
+              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : initial ? "Save changes" : "Add product"}
+            </Button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
+function DeleteConfirm({ product, onClose, onDeleted }: {
+  product: SupplierProduct
+  onClose: () => void
+  onDeleted: () => void
+}) {
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState("")
+
+  const remove = async () => {
+    setBusy(true)
+    setErr("")
+    try {
+      await deleteSupplierProduct(product.id)
+      onDeleted()
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Could not delete the product.")
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6">
+        <h2 className="font-bold text-gray-900 text-lg">Delete product</h2>
+        <p className="text-sm text-gray-500 mt-1">
+          Remove <strong>{product.productName}</strong> from your catalog? This cannot be undone.
+        </p>
+        {err && <div className="mt-3"><ErrorBanner message={err} /></div>}
+        <div className="flex gap-3 mt-5">
+          <Button variant="outline" className="flex-1" onClick={onClose} disabled={busy}>Cancel</Button>
+          <Button className="flex-1 text-white" style={{ background: RED }} onClick={remove} disabled={busy}>
+            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : "Delete"}
+          </Button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/* ─── Quote modal ────────────────────────────────────────────── */
+
+function QuoteModal({ opportunity, onClose, onSubmitted }: {
+  opportunity: SourcingOpportunity
+  onClose: () => void
+  onSubmitted: () => void
+}) {
+  const [unitPrice, setUnitPrice] = useState("")
+  const [quantity, setQuantity] = useState(String(opportunity.quantityNeeded || ""))
+  const [leadTimeDays, setLeadTimeDays] = useState("")
+  const [notes, setNotes] = useState("")
+  const [err, setErr] = useState("")
+  const [busy, setBusy] = useState(false)
+
+  const submit = async () => {
+    setErr("")
+    if (!unitPrice || Number(unitPrice) < 0) { setErr("Enter a valid unit price."); return }
+    if (!quantity || Number(quantity) <= 0) { setErr("Enter a valid quantity."); return }
+    setBusy(true)
+    try {
+      await submitSupplierQuote({
+        sourcingRequestId: opportunity.id,
+        unitPrice: Number(unitPrice),
+        quantity: Number(quantity),
+        leadTimeDays: leadTimeDays ? Number(leadTimeDays) : 0,
+        notes: notes.trim() || undefined,
+      })
+      onSubmitted()
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Could not submit the quote.")
+      setBusy(false)
+    }
+  }
+
+  const total = unitPrice && quantity ? Number(unitPrice) * Number(quantity) : 0
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+        <div className="flex items-start justify-between p-6 border-b">
+          <div>
+            <h2 className="font-bold text-gray-900 text-lg">Submit a quote</h2>
+            <p className="text-sm text-gray-500 mt-0.5">{opportunity.productName}{opportunity.sku ? ` · ${opportunity.sku}` : ""}</p>
+          </div>
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+        <div className="p-6 space-y-4">
+          {err && <ErrorBanner message={err} />}
+          <div className="p-3 rounded-lg text-sm" style={{ background: `${WINE}08`, color: WINE }}>
+            Shaniid RX needs <strong>{opportunity.quantityNeeded.toLocaleString()} units</strong> · Urgency: <strong className="capitalize">{opportunity.urgency}</strong>
+            {opportunity.notes && <p className="mt-1 text-xs opacity-70">{opportunity.notes}</p>}
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <Label className="text-sm font-semibold text-gray-700">Unit price (KES) <span className="text-red-500">*</span></Label>
+              <Input type="number" min={0} step="0.01" value={unitPrice} onChange={e => setUnitPrice(e.target.value)} placeholder="450" className="mt-1" />
+            </div>
+            <div>
+              <Label className="text-sm font-semibold text-gray-700">Quantity <span className="text-red-500">*</span></Label>
+              <Input type="number" min={1} value={quantity} onChange={e => setQuantity(e.target.value)} placeholder="1000" className="mt-1" />
+            </div>
+          </div>
+          <div>
+            <Label className="text-sm font-semibold text-gray-700">Lead time (days)</Label>
+            <Input type="number" min={0} value={leadTimeDays} onChange={e => setLeadTimeDays(e.target.value)} placeholder="3" className="mt-1" />
+          </div>
+          <div>
+            <Label className="text-sm font-semibold text-gray-700">Notes</Label>
+            <Textarea value={notes} onChange={e => setNotes(e.target.value)} placeholder="Packaging, terms…" className="mt-1" rows={2} />
+          </div>
+          {total > 0 && (
+            <div className="p-3 rounded-lg bg-gray-50 text-sm">
+              <div className="flex justify-between text-gray-600"><span>Total value</span><span className="font-bold" style={{ color: WINE }}>{fmtMoney(total)}</span></div>
+            </div>
+          )}
+        </div>
+        <div className="flex gap-3 p-6 pt-0">
+          <Button variant="outline" className="flex-1" onClick={onClose} disabled={busy}>Cancel</Button>
+          <Button className="flex-1 text-white" style={{ background: WINE }} disabled={busy} onClick={submit}>
+            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : "Send quote"}
+          </Button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/* ─── Dashboard shell ────────────────────────────────────────── */
+
+function SupplierDashboard({ partner, onLogout }: {
+  partner: PartnerAccount
   onLogout: () => void
 }) {
   const [tab, setTab] = useState<Tab>("overview")
@@ -211,63 +738,38 @@ function SupplierDashboard({ supplier, session, onLogout }: {
     try { return localStorage.getItem("shaniidrx.supplier.sidebar") === "collapsed" } catch { return false }
   })
   const [mobileOpen, setMobileOpen] = useState(false)
-  const [sourcingRequests] = useCmsDoc<SourcingRequest[]>("sourcing-requests", [])
-  const [quoteModal, setQuoteModal] = useState<SourcingRequest | null>(null)
-  const [quotePrice, setQuotePrice] = useState("")
-  const [quoteLeadDays, setQuoteLeadDays] = useState("")
-  const [quoteNotes, setQuoteNotes] = useState("")
-  const [quotingId, setQuotingId] = useState<string | null>(null)
-  const [quotedIds, setQuotedIds] = useState<string[]>([])
 
-  const openRequests = (sourcingRequests ?? []).filter(r => r.status === "open" || r.status === "quoting")
+  const catalog = useSupplierCatalog()
+  const opportunities = useSupplierOpportunities()
+  const quotes = useSupplierQuotes()
 
-  const submitQuote = async () => {
-    if (!quoteModal || !quotePrice) return
-    setQuotingId(quoteModal.id)
-    try {
-      await submitPartnerOrder("supplier", "order", {
-        sourcingRequestId: quoteModal.id,
-        productName: quoteModal.productName,
-        sku: quoteModal.sku,
-        requestedQty: quoteModal.qty,
-        unitPriceKsh: Number(quotePrice),
-        leadTimeDays: quoteLeadDays ? Number(quoteLeadDays) : undefined,
-        notes: quoteNotes,
-        supplierId: supplier.id,
-        supplierName: supplier.companyName,
-      })
-      setQuotedIds(p => [...p, quoteModal.id])
-      setQuoteModal(null)
-      setQuotePrice("")
-      setQuoteLeadDays("")
-      setQuoteNotes("")
-    } finally {
-      setQuotingId(null)
-    }
-  }
+  const [productModal, setProductModal] = useState<{ open: boolean; product: SupplierProduct | null }>({ open: false, product: null })
+  const [deleteTarget, setDeleteTarget] = useState<SupplierProduct | null>(null)
+  const [quoteTarget, setQuoteTarget] = useState<SourcingOpportunity | null>(null)
 
   const toggleSidebar = () => {
     setCollapsed(prev => {
       const next = !prev
-      try { localStorage.setItem("shaniidrx.supplier.sidebar", next ? "collapsed" : "expanded") } catch {}
+      try { localStorage.setItem("shaniidrx.supplier.sidebar", next ? "collapsed" : "expanded") } catch { /* ignore */ }
       return next
     })
   }
 
-  const kycDocs = [
-    { key: "hasLicense",  label: "Business License" },
-    { key: "hasFdaCert",  label: "FDA / KEBS Certificate" },
-    { key: "hasInsurance",label: "Liability Insurance" },
-  ]
-  const kycPct = kycDocs.filter(d => (supplier as unknown as Record<string, unknown>)[d.key]).length / kycDocs.length * 100
+  const si = PARTNER_STATUS[partner.status]
+  const initial = (partner.displayName || partner.email || "S").charAt(0).toUpperCase()
 
-  const statusInfo: Record<string, { label: string; color: string; bg: string }> = {
-    pending:    { label: "Pending Verification", color: "#92400E", bg: "#FEF3C7" },
-    verified:   { label: "Verified Supplier",    color: "#065F46", bg: "#D1FAE5" },
-    suspended:  { label: "Account Suspended",    color: "#991B1B", bg: "#FEE2E2" },
-    blacklisted:{ label: "Account Restricted",   color: "#374151", bg: "#F3F4F6" },
-  }
-  const si = statusInfo[supplier.status] ?? statusInfo.pending
+  const stats = useMemo(() => {
+    const products = catalog.data ?? []
+    const opps = opportunities.data ?? []
+    const qs = quotes.data ?? []
+    return {
+      activeProducts: products.filter(p => p.status === "active").length,
+      totalProducts: products.length,
+      openOpportunities: opps.length,
+      totalQuotes: qs.length,
+      acceptedQuotes: qs.filter(q => q.status.toLowerCase() === "accepted").length,
+    }
+  }, [catalog.data, opportunities.data, quotes.data])
 
   return (
     <div className="min-h-screen flex" style={{ background: "#f8f7f5" }}>
@@ -288,9 +790,9 @@ function SupplierDashboard({ supplier, session, onLogout }: {
               <button onClick={() => setMobileOpen(false)} className="p-1.5 rounded-lg hover:bg-white/10 transition-colors" style={{ color: S_MUTED }}><X className="h-5 w-5" /></button>
             </div>
             <div className="px-5 py-4" style={{ borderBottom: `1px solid ${S_BORDER}` }}>
-              <div className="h-10 w-10 rounded-xl flex items-center justify-center text-white font-bold text-lg mb-2" style={{ background: ORANGE }}>{supplier.companyName[0]}</div>
-              <p className="font-semibold text-sm leading-tight" style={{ color: S_TEXT }}>{supplier.companyName}</p>
-              <p className="text-xs mt-0.5" style={{ color: S_MUTED }}>{supplier.city}, {supplier.country}</p>
+              <div className="h-10 w-10 rounded-xl flex items-center justify-center text-white font-bold text-lg mb-2" style={{ background: ORANGE }}>{initial}</div>
+              <p className="font-semibold text-sm leading-tight" style={{ color: S_TEXT }}>{partner.displayName}</p>
+              <p className="text-xs mt-0.5 break-all" style={{ color: S_MUTED }}>{partner.email}</p>
               <span className="inline-block mt-1.5 text-[11px] font-semibold px-2 py-0.5 rounded-full" style={{ color: si.color, background: si.bg }}>{si.label}</span>
             </div>
             <nav className="flex-1 px-3 py-4 space-y-0.5">
@@ -303,15 +805,6 @@ function SupplierDashboard({ supplier, session, onLogout }: {
                 </button>
               ))}
             </nav>
-            <div className="px-5 py-4" style={{ borderTop: `1px solid ${S_BORDER}` }}>
-              <div className="flex items-center justify-between mb-1.5">
-                <span className="text-xs font-medium" style={{ color: S_MUTED }}>Trust Score</span>
-                <span className="text-xs font-bold" style={{ color: kycPct === 100 ? GREEN : ORANGE }}>{kycPct === 100 ? "Sealed ✓" : `${kycPct.toFixed(0)}%`}</span>
-              </div>
-              <div className="h-1.5 rounded-full overflow-hidden" style={{ background: S_BORDER }}>
-                <div className="h-full rounded-full" style={{ width: `${kycPct}%`, background: kycPct === 100 ? GREEN : ORANGE }} />
-              </div>
-            </div>
             <div className="px-5 py-4" style={{ borderTop: `1px solid ${S_BORDER}` }}>
               <button onClick={onLogout} className="flex items-center gap-2 text-sm transition-colors hover:text-orange-400" style={{ color: S_MUTED }}>
                 <LogOut className="h-4 w-4" />Sign out
@@ -344,13 +837,13 @@ function SupplierDashboard({ supplier, session, onLogout }: {
 
         {collapsed ? (
           <div className="flex items-center justify-center py-4" style={{ borderBottom: `1px solid ${S_BORDER}` }}>
-            <div className="h-9 w-9 rounded-xl flex items-center justify-center text-white font-bold" style={{ background: ORANGE }}>{supplier.companyName[0]}</div>
+            <div className="h-9 w-9 rounded-xl flex items-center justify-center text-white font-bold" style={{ background: ORANGE }}>{initial}</div>
           </div>
         ) : (
           <div className="px-5 py-4" style={{ borderBottom: `1px solid ${S_BORDER}` }}>
-            <div className="h-10 w-10 rounded-xl flex items-center justify-center text-white font-bold text-lg mb-2" style={{ background: ORANGE }}>{supplier.companyName[0]}</div>
-            <p className="font-semibold text-sm leading-tight" style={{ color: S_TEXT }}>{supplier.companyName}</p>
-            <p className="text-xs mt-0.5" style={{ color: S_MUTED }}>{supplier.city}, {supplier.country}</p>
+            <div className="h-10 w-10 rounded-xl flex items-center justify-center text-white font-bold text-lg mb-2" style={{ background: ORANGE }}>{initial}</div>
+            <p className="font-semibold text-sm leading-tight" style={{ color: S_TEXT }}>{partner.displayName}</p>
+            <p className="text-xs mt-0.5 break-all" style={{ color: S_MUTED }}>{partner.email}</p>
             <span className="inline-block mt-1.5 text-[11px] font-semibold px-2 py-0.5 rounded-full" style={{ color: si.color, background: si.bg }}>{si.label}</span>
           </div>
         )}
@@ -366,18 +859,6 @@ function SupplierDashboard({ supplier, session, onLogout }: {
             </button>
           ))}
         </nav>
-
-        {!collapsed && (
-          <div className="px-5 py-4" style={{ borderTop: `1px solid ${S_BORDER}` }}>
-            <div className="flex items-center justify-between mb-1.5">
-              <span className="text-xs font-medium" style={{ color: S_MUTED }}>Trust Score</span>
-              <span className="text-xs font-bold" style={{ color: kycPct === 100 ? GREEN : ORANGE }}>{kycPct === 100 ? "Sealed ✓" : `${kycPct.toFixed(0)}%`}</span>
-            </div>
-            <div className="h-1.5 rounded-full overflow-hidden" style={{ background: S_BORDER }}>
-              <div className="h-full rounded-full transition-all" style={{ width: `${kycPct}%`, background: kycPct === 100 ? GREEN : ORANGE }} />
-            </div>
-          </div>
-        )}
 
         <div style={{ borderTop: `1px solid ${S_BORDER}` }}>
           <div className={`py-3 flex items-center ${collapsed ? "flex-col gap-2 px-2" : "px-5 justify-between"}`}>
@@ -402,14 +883,13 @@ function SupplierDashboard({ supplier, session, onLogout }: {
             </button>
             <div>
               <h1 className="font-bold text-lg text-gray-800">{TABS.find(t => t.id === tab)?.label}</h1>
-              <p className="text-xs text-gray-400 mt-0.5">Welcome back, {supplier.contactPerson || supplier.companyName}</p>
+              <p className="text-xs text-gray-400 mt-0.5">Welcome back, {partner.displayName}</p>
             </div>
           </div>
           <div className="flex items-center gap-3">
-            <span className="hidden sm:block text-xs text-gray-400 font-mono">{supplier.portalCode}</span>
-            {supplier.status === "pending" && (
+            {partner.status === "invited" && (
               <span className="flex items-center gap-1 text-xs font-medium px-2.5 py-1 rounded-full" style={{ color: "#92400E", background: "#FEF3C7" }}>
-                <Clock className="h-3 w-3" /><span className="hidden sm:inline">KYC under review</span>
+                <Clock className="h-3 w-3" /><span className="hidden sm:inline">Invite pending</span>
               </span>
             )}
           </div>
@@ -420,55 +900,38 @@ function SupplierDashboard({ supplier, session, onLogout }: {
           {tab === "overview" && (
             <div className="space-y-6">
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                <KpiCard icon={ClipboardList} label="Active POs"       value={supplier.activePoCount}    sub="from Shaniid RX" />
-                <KpiCard icon={Truck}         label="Total PO Value"   value={`KSH ${(supplier.totalPoValue / 1000).toFixed(0)}K`} color={ORANGE} />
-                <KpiCard icon={TrendingUp}    label="On-Time Rate"     value={`${supplier.onTimeDeliveryRate}%`} color={GREEN} />
-                <KpiCard icon={Star}          label="Quality Score"    value={`${supplier.qualityScore}/5`}      color={WINE} />
+                <KpiCard icon={Boxes}         label="Active products"   value={stats.activeProducts} sub={`${stats.totalProducts} total`} />
+                <KpiCard icon={PackageSearch} label="Open opportunities" value={stats.openOpportunities} color={ORANGE} />
+                <KpiCard icon={ClipboardList} label="Quotes submitted"  value={stats.totalQuotes} color={WINE_2} />
+                <KpiCard icon={TrendingUp}    label="Quotes accepted"   value={stats.acceptedQuotes} color={GREEN} />
               </div>
 
-              {/* Status banners */}
-              {supplier.status === "pending" && (
-                <div className="flex items-start gap-3 p-4 rounded-xl border border-amber-200 bg-amber-50">
-                  <Clock className="h-5 w-5 text-amber-600 flex-shrink-0 mt-0.5" />
-                  <div>
-                    <p className="font-semibold text-amber-800">KYC review in progress</p>
-                    <p className="text-sm text-amber-700 mt-0.5">Our team is reviewing your submitted documents. You'll receive an email once verification is complete — typically within 2 business days.</p>
-                  </div>
-                </div>
-              )}
-              {supplier.status === "verified" && (
+              {partner.status === "active" ? (
                 <div className="flex items-start gap-3 p-4 rounded-xl border border-green-200 bg-green-50">
                   <ShieldCheck className="h-5 w-5 text-green-600 flex-shrink-0 mt-0.5" />
                   <div>
-                    <p className="font-semibold text-green-800">Verified Shaniid RX Supplier</p>
-                    <p className="text-sm text-green-700 mt-0.5">Your KYC is approved. Your products carry the Trust Seal and are eligible for all Shaniid RX channels.</p>
+                    <p className="font-semibold text-green-800">Active Shaniid RX Supplier</p>
+                    <p className="text-sm text-green-700 mt-0.5">Your account is active. Keep your catalog current and respond to opportunities to win orders.</p>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex items-start gap-3 p-4 rounded-xl border border-amber-200 bg-amber-50">
+                  <Clock className="h-5 w-5 text-amber-600 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <p className="font-semibold text-amber-800">Account {si.label.toLowerCase()}</p>
+                    <p className="text-sm text-amber-700 mt-0.5">Some features may be limited until your account is fully active. Contact your account manager if you need help.</p>
                   </div>
                 </div>
               )}
 
-              {/* Categories */}
-              {supplier.categories.length > 0 && (
-                <div className="bg-white rounded-xl border border-gray-100 p-5">
-                  <h3 className="font-bold text-gray-800 text-sm mb-3">Your supply categories</h3>
-                  <div className="flex flex-wrap gap-2">
-                    {supplier.categories.map(c => (
-                      <span key={c} className="px-3 py-1.5 rounded-full text-xs font-semibold capitalize border" style={{ background: `${WINE}10`, color: WINE, borderColor: `${WINE}25` }}>
-                        {c.replace("_", " ")}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Quick actions */}
               <div className="bg-white rounded-xl border border-gray-100 p-5">
                 <h3 className="font-bold text-gray-800 text-sm mb-4">Quick actions</h3>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                   {[
-                    { icon: ClipboardList, label: "View POs",         action: () => setTab("orders")  },
-                    { icon: Boxes,         label: "My Products",      action: () => setTab("products") },
-                    { icon: ShieldCheck,   label: "KYC Status",       action: () => setTab("kyc")      },
-                    { icon: User,          label: "Update Profile",   action: () => setTab("profile")  },
+                    { icon: Boxes,         label: "Manage catalog",   action: () => setTab("catalog")       },
+                    { icon: PackageSearch, label: "Opportunities",    action: () => setTab("opportunities") },
+                    { icon: ClipboardList, label: "My quotes",        action: () => setTab("quotes")        },
+                    { icon: ShieldCheck,   label: "KYC status",       action: () => setTab("kyc")           },
                   ].map(({ icon: Icon, label, action }) => (
                     <button key={label} onClick={action}
                       className="flex flex-col items-center gap-2 p-4 rounded-xl border border-gray-100 hover:border-gray-300 hover:shadow-sm transition-all text-center">
@@ -481,45 +944,94 @@ function SupplierDashboard({ supplier, session, onLogout }: {
             </div>
           )}
 
-          {/* ── PRODUCTS ── */}
-          {tab === "products" && (
+          {/* ── CATALOG ── */}
+          {tab === "catalog" && (
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <p className="text-sm text-gray-500">Products you supply through the Shaniid RX platform</p>
-                <Button size="sm" style={{ background: WINE }} className="text-white text-xs">+ Add Product</Button>
+                <Button size="sm" className="text-white text-xs gap-1" style={{ background: WINE }} onClick={() => setProductModal({ open: true, product: null })}>
+                  <Plus className="h-3.5 w-3.5" />Add product
+                </Button>
               </div>
-              <div className="bg-white rounded-xl border border-gray-100 p-10 text-center text-gray-400">
-                <Boxes className="h-10 w-10 mx-auto mb-3 opacity-20" />
-                <p className="font-medium">No products listed yet</p>
-                <p className="text-sm mt-1">Your verified catalogue will appear here. Contact your account manager to add products.</p>
-              </div>
+
+              {catalog.isLoading ? (
+                <LoadingState label="Loading your catalog…" />
+              ) : catalog.error ? (
+                <ErrorState label={catalog.error instanceof Error ? catalog.error.message : "Could not load catalog."} onRetry={() => catalog.mutate()} />
+              ) : (catalog.data ?? []).length === 0 ? (
+                <EmptyState icon={Boxes} title="No products yet" desc="Add your first product to start receiving sourcing opportunities." />
+              ) : (
+                <div className="bg-white rounded-xl border border-gray-100 overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="text-left text-xs text-gray-400 border-b">
+                        <th className="px-4 py-3 font-semibold">Product</th>
+                        <th className="px-4 py-3 font-semibold">SKU</th>
+                        <th className="px-4 py-3 font-semibold">Category</th>
+                        <th className="px-4 py-3 font-semibold text-right">Unit price</th>
+                        <th className="px-4 py-3 font-semibold text-right">MOQ</th>
+                        <th className="px-4 py-3 font-semibold text-right">Lead</th>
+                        <th className="px-4 py-3 font-semibold text-right">Stock</th>
+                        <th className="px-4 py-3 font-semibold">Status</th>
+                        <th className="px-4 py-3 font-semibold text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(catalog.data ?? []).map(p => (
+                        <tr key={p.id} className="border-b last:border-0 hover:bg-gray-50">
+                          <td className="px-4 py-3 font-medium text-gray-800">{p.productName}</td>
+                          <td className="px-4 py-3 text-gray-500 font-mono text-xs">{p.sku || "—"}</td>
+                          <td className="px-4 py-3 text-gray-500">{p.category || "—"}</td>
+                          <td className="px-4 py-3 text-right text-gray-700">{fmtMoney(p.unitPrice, p.currency)}</td>
+                          <td className="px-4 py-3 text-right text-gray-500">{p.moq.toLocaleString()}</td>
+                          <td className="px-4 py-3 text-right text-gray-500">{p.leadTimeDays}d</td>
+                          <td className="px-4 py-3 text-right text-gray-500">{p.stockQty.toLocaleString()}</td>
+                          <td className="px-4 py-3">
+                            <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full" style={p.status === "active" ? { color: "#065F46", background: "#D1FAE5" } : { color: "#6B7280", background: "#F3F4F6" }}>
+                              {p.status === "active" ? "Active" : "Inactive"}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3">
+                            <div className="flex items-center justify-end gap-1">
+                              <button onClick={() => setProductModal({ open: true, product: p })} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500" title="Edit">
+                                <Pencil className="h-4 w-4" />
+                              </button>
+                              <button onClick={() => setDeleteTarget(p)} className="p-1.5 rounded-lg hover:bg-red-50 text-red-500" title="Delete">
+                                <Trash2 className="h-4 w-4" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
           )}
 
-          {/* ── ORDERS / SOURCING REQUESTS ── */}
-          {tab === "orders" && (
+          {/* ── OPPORTUNITIES ── */}
+          {tab === "opportunities" && (
             <div className="space-y-4">
               <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-gray-500">Open sourcing requests from Shaniid RX — submit a quote to win the order</p>
-                </div>
-                <span className="text-[11px] font-semibold px-2.5 py-1 rounded-full" style={{ color: WINE, background: `${WINE}12` }}>
-                  {openRequests.length} open
-                </span>
+                <p className="text-sm text-gray-500">Open sourcing needs from Shaniid RX — submit a quote to win the order</p>
+                {opportunities.data && (
+                  <span className="text-[11px] font-semibold px-2.5 py-1 rounded-full" style={{ color: WINE, background: `${WINE}12` }}>
+                    {opportunities.data.length} open
+                  </span>
+                )}
               </div>
 
-              {openRequests.length === 0 ? (
-                <div className="bg-white rounded-xl border border-gray-100 p-10 text-center text-gray-400">
-                  <ClipboardList className="h-10 w-10 mx-auto mb-3 opacity-20" />
-                  <p className="font-medium">No open requests right now</p>
-                  <p className="text-sm mt-1">Shaniid RX posts sourcing requests here when stock needs replenishment. Check back soon.</p>
-                </div>
+              {opportunities.isLoading ? (
+                <LoadingState label="Loading opportunities…" />
+              ) : opportunities.error ? (
+                <ErrorState label={opportunities.error instanceof Error ? opportunities.error.message : "Could not load opportunities."} onRetry={() => opportunities.mutate()} />
+              ) : (opportunities.data ?? []).length === 0 ? (
+                <EmptyState icon={PackageSearch} title="No open requests right now" desc="Shaniid RX posts sourcing needs here when stock requires replenishment. Check back soon." />
               ) : (
                 <div className="space-y-3">
-                  {openRequests.map(req => {
-                    const pb = PRIORITY_BADGE[req.priority]
-                    const sb = STATUS_BADGE[req.status]
-                    const alreadyQuoted = quotedIds.includes(req.id)
+                  {(opportunities.data ?? []).map(req => {
+                    const ub = statusBadge(URGENCY_BADGE, req.urgency)
                     return (
                       <div key={req.id} className="bg-white rounded-xl border border-gray-100 p-5">
                         <div className="flex items-start gap-4">
@@ -529,30 +1041,23 @@ function SupplierDashboard({ supplier, session, onLogout }: {
                               {req.sku && <span className="text-xs text-gray-400 font-mono">SKU: {req.sku}</span>}
                             </div>
                             <div className="flex flex-wrap gap-1.5 mb-2">
-                              <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full" style={{ color: sb.color, background: sb.bg }}>{sb.label}</span>
-                              <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full" style={{ color: pb.color, background: pb.bg }}>{pb.label}</span>
+                              <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full capitalize" style={{ color: ub.color, background: ub.bg }}>{req.urgency}</span>
                             </div>
-                            <p className="text-sm text-gray-600">Qty requested: <strong>{req.qty.toLocaleString()} units</strong></p>
+                            <p className="text-sm text-gray-600">Quantity needed: <strong>{req.quantityNeeded.toLocaleString()} units</strong></p>
                             {req.notes && <p className="text-xs text-gray-400 mt-1">{req.notes}</p>}
                             <p className="text-xs text-gray-300 mt-1">{new Date(req.createdAt).toLocaleDateString()}</p>
                           </div>
                           <div className="flex-shrink-0">
-                            {alreadyQuoted ? (
-                              <span className="flex items-center gap-1 text-xs font-semibold px-3 py-1.5 rounded-lg" style={{ color: "#065F46", background: "#D1FAE5" }}>
-                                <CheckCircle2 className="h-3.5 w-3.5" />Quote sent
-                              </span>
-                            ) : (
-                              <Button
-                                size="sm"
-                                className="text-white text-xs gap-1"
-                                style={{ background: WINE }}
-                                disabled={supplier.status !== "verified"}
-                                title={supplier.status !== "verified" ? "Complete KYC to submit quotes" : undefined}
-                                onClick={() => { setQuoteModal(req); setQuotePrice(""); setQuoteLeadDays(""); setQuoteNotes("") }}
-                              >
-                                <FileText className="h-3.5 w-3.5" />Submit quote
-                              </Button>
-                            )}
+                            <Button
+                              size="sm"
+                              className="text-white text-xs gap-1"
+                              style={{ background: WINE }}
+                              disabled={partner.status !== "active"}
+                              title={partner.status !== "active" ? "Your account must be active to submit quotes" : undefined}
+                              onClick={() => setQuoteTarget(req)}
+                            >
+                              <FileText className="h-3.5 w-3.5" />Submit quote
+                            </Button>
                           </div>
                         </div>
                       </div>
@@ -563,46 +1068,84 @@ function SupplierDashboard({ supplier, session, onLogout }: {
             </div>
           )}
 
+          {/* ── QUOTES ── */}
+          {tab === "quotes" && (
+            <div className="space-y-4">
+              <p className="text-sm text-gray-500">Quotes you've submitted and their current status</p>
+
+              {quotes.isLoading ? (
+                <LoadingState label="Loading your quotes…" />
+              ) : quotes.error ? (
+                <ErrorState label={quotes.error instanceof Error ? quotes.error.message : "Could not load quotes."} onRetry={() => quotes.mutate()} />
+              ) : (quotes.data ?? []).length === 0 ? (
+                <EmptyState icon={ClipboardList} title="No quotes yet" desc="Submit quotes from the Opportunities tab to see them tracked here." />
+              ) : (
+                <div className="bg-white rounded-xl border border-gray-100 overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="text-left text-xs text-gray-400 border-b">
+                        <th className="px-4 py-3 font-semibold">Submitted</th>
+                        <th className="px-4 py-3 font-semibold text-right">Unit price</th>
+                        <th className="px-4 py-3 font-semibold text-right">Quantity</th>
+                        <th className="px-4 py-3 font-semibold text-right">Lead</th>
+                        <th className="px-4 py-3 font-semibold text-right">Total</th>
+                        <th className="px-4 py-3 font-semibold">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(quotes.data ?? []).map((q: PartnerQuote) => {
+                        const qb = statusBadge(QUOTE_STATUS_BADGE, q.status)
+                        return (
+                          <tr key={q.id} className="border-b last:border-0 hover:bg-gray-50">
+                            <td className="px-4 py-3 text-gray-500">{new Date(q.submittedAt).toLocaleDateString()}</td>
+                            <td className="px-4 py-3 text-right text-gray-700">{fmtMoney(q.unitPrice)}</td>
+                            <td className="px-4 py-3 text-right text-gray-500">{q.quantity.toLocaleString()}</td>
+                            <td className="px-4 py-3 text-right text-gray-500">{q.leadTimeDays}d</td>
+                            <td className="px-4 py-3 text-right font-medium" style={{ color: WINE }}>{fmtMoney(q.unitPrice * q.quantity)}</td>
+                            <td className="px-4 py-3">
+                              <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full capitalize" style={{ color: qb.color, background: qb.bg }}>{q.status}</span>
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* ── KYC ── */}
           {tab === "kyc" && (
             <div className="space-y-5 max-w-2xl">
               <div className="bg-white rounded-xl border border-gray-100 p-6">
                 <div className="flex items-center gap-4 mb-5">
-                  <div className="h-14 w-14 rounded-2xl flex items-center justify-center" style={{ background: kycPct === 100 ? `${GREEN}15` : `${ORANGE}15` }}>
-                    <Shield className="h-7 w-7" style={{ color: kycPct === 100 ? GREEN : ORANGE }} />
+                  <div className="h-14 w-14 rounded-2xl flex items-center justify-center" style={{ background: partner.status === "active" ? `${GREEN}15` : `${ORANGE}15` }}>
+                    <Shield className="h-7 w-7" style={{ color: partner.status === "active" ? GREEN : ORANGE }} />
                   </div>
                   <div>
-                    <h2 className="font-bold text-gray-800">Trust Seal — {kycPct === 100 ? "Achieved ✓" : `${kycPct.toFixed(0)}% Complete`}</h2>
-                    <p className="text-sm text-gray-500 mt-0.5">Complete all KYC documents to earn the Shaniid RX Trust Seal</p>
+                    <h2 className="font-bold text-gray-800">Trust Seal {partner.status === "active" ? "— Achieved" : "— In review"}</h2>
+                    <p className="text-sm text-gray-500 mt-0.5">Complete your KYC documents to earn the Shaniid RX Trust Seal</p>
                   </div>
-                </div>
-
-                <div className="h-2 bg-gray-100 rounded-full overflow-hidden mb-5">
-                  <div className="h-full rounded-full transition-all" style={{ width: `${kycPct}%`, background: kycPct === 100 ? GREEN : ORANGE }} />
                 </div>
 
                 <div className="space-y-3">
-                  {kycDocs.map(({ key, label }) => {
-                    const has = (supplier as unknown as Record<string, unknown>)[key] as boolean
-                    return (
-                      <div key={key} className={`flex items-center gap-3 p-4 rounded-xl border ${has ? "bg-green-50 border-green-200" : "bg-gray-50 border-gray-200"}`}>
-                        {has ? <CheckCircle2 className="h-5 w-5 text-green-600" /> : <XCircle className="h-5 w-5 text-gray-400" />}
-                        <span className={`font-medium text-sm ${has ? "text-green-800" : "text-gray-500"}`}>{label}</span>
-                        {!has && <span className="ml-auto text-xs text-gray-400">Pending submission</span>}
-                      </div>
-                    )
-                  })}
+                  {[
+                    { label: "Business License", done: partner.status === "active" },
+                    { label: "FDA / KEBS Certificate", done: partner.status === "active" },
+                    { label: "Liability Insurance", done: partner.status === "active" },
+                  ].map(({ label, done }) => (
+                    <div key={label} className={`flex items-center gap-3 p-4 rounded-xl border ${done ? "bg-green-50 border-green-200" : "bg-gray-50 border-gray-200"}`}>
+                      {done ? <CheckCircle2 className="h-5 w-5 text-green-600" /> : <XCircle className="h-5 w-5 text-gray-400" />}
+                      <span className={`font-medium text-sm ${done ? "text-green-800" : "text-gray-500"}`}>{label}</span>
+                      {!done && <span className="ml-auto text-xs text-gray-400">Pending review</span>}
+                    </div>
+                  ))}
                 </div>
 
-                {kycPct < 100 && (
+                {partner.status !== "active" && (
                   <div className="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800">
-                    To submit missing documents, email them to <strong>kyc@shaniidrx.com</strong> with your portal code <strong>{supplier.portalCode}</strong> in the subject line.
-                  </div>
-                )}
-
-                {supplier.kycNotes && (
-                  <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-800">
-                    <strong>Reviewer note:</strong> {supplier.kycNotes}
+                    To submit missing documents, email them to <strong>kyc@shaniidrx.com</strong> with your account email <strong>{partner.email}</strong> in the subject line.
                   </div>
                 )}
               </div>
@@ -613,23 +1156,19 @@ function SupplierDashboard({ supplier, session, onLogout }: {
           {tab === "profile" && (
             <div className="max-w-2xl space-y-4">
               <div className="bg-white rounded-xl border border-gray-100 p-6">
-                <h3 className="font-bold text-gray-800 mb-4">Company details</h3>
+                <h3 className="font-bold text-gray-800 mb-4">Account details</h3>
                 <div className="space-y-3 text-sm">
                   {[
-                    { icon: Building2, label: "Company", value: supplier.companyName },
-                    { icon: Hash,      label: "Reg. Number", value: supplier.registrationNumber || "—" },
-                    { icon: Hash,      label: "Tax ID / KRA PIN", value: supplier.taxId || "—" },
-                    { icon: Mail,      label: "Email", value: supplier.email },
-                    { icon: Phone,     label: "Phone", value: supplier.phone || "—" },
-                    { icon: MapPin,    label: "Address", value: `${supplier.address}, ${supplier.city}, ${supplier.country}` },
-                    { icon: User,      label: "Contact Person", value: supplier.contactPerson || "—" },
-                    { icon: CreditCard,label: "Payment Terms", value: `${supplier.paymentTerms} · Credit KSH ${supplier.creditLimit.toLocaleString()}` },
+                    { icon: Building2, label: "Display name", value: partner.displayName },
+                    { icon: Mail,      label: "Email", value: partner.email },
+                    { icon: Hash,      label: "Partner ID", value: partner.partnerId },
+                    { icon: Star,      label: "Status", value: si.label },
                   ].map(({ icon: Icon, label, value }) => (
                     <div key={label} className="flex items-start gap-3 py-2.5 border-b border-gray-50">
                       <Icon className="h-4 w-4 text-gray-400 mt-0.5 flex-shrink-0" />
                       <div>
                         <p className="text-xs text-gray-400">{label}</p>
-                        <p className="font-medium text-gray-700">{value}</p>
+                        <p className="font-medium text-gray-700 break-all">{value}</p>
                       </div>
                     </div>
                   ))}
@@ -641,74 +1180,27 @@ function SupplierDashboard({ supplier, session, onLogout }: {
         </div>
       </div>
 
-      {/* ── Quote submission modal ── */}
-      {quoteModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
-            <div className="flex items-start justify-between p-6 border-b">
-              <div>
-                <h2 className="font-bold text-gray-900 text-lg">Submit a Quote</h2>
-                <p className="text-sm text-gray-500 mt-0.5">{quoteModal.productName}{quoteModal.sku ? ` · ${quoteModal.sku}` : ""}</p>
-              </div>
-              <button onClick={() => setQuoteModal(null)} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400">
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-            <div className="p-6 space-y-4">
-              <div className="p-3 rounded-lg text-sm" style={{ background: `${WINE}08`, color: WINE }}>
-                Shaniid RX needs <strong>{quoteModal.qty.toLocaleString()} units</strong> · Priority: <strong>{quoteModal.priority}</strong>
-                {quoteModal.notes && <p className="mt-1 text-xs opacity-70">{quoteModal.notes}</p>}
-              </div>
-              <div>
-                <Label className="text-sm font-semibold text-gray-700">Unit price (KSH) <span className="text-red-500">*</span></Label>
-                <Input
-                  type="number"
-                  min={0}
-                  value={quotePrice}
-                  onChange={e => setQuotePrice(e.target.value)}
-                  placeholder="e.g. 450"
-                  className="mt-1"
-                />
-              </div>
-              <div>
-                <Label className="text-sm font-semibold text-gray-700">Lead time (days)</Label>
-                <Input
-                  type="number"
-                  min={1}
-                  value={quoteLeadDays}
-                  onChange={e => setQuoteLeadDays(e.target.value)}
-                  placeholder="e.g. 3"
-                  className="mt-1"
-                />
-              </div>
-              <div>
-                <Label className="text-sm font-semibold text-gray-700">Notes (optional)</Label>
-                <Input
-                  value={quoteNotes}
-                  onChange={e => setQuoteNotes(e.target.value)}
-                  placeholder="Minimum order quantity, packaging, delivery terms…"
-                  className="mt-1"
-                />
-              </div>
-              {quotePrice && (
-                <div className="p-3 rounded-lg bg-gray-50 text-sm">
-                  <div className="flex justify-between text-gray-600"><span>Total value</span><span className="font-bold" style={{ color: WINE }}>KSH {(quoteModal.qty * Number(quotePrice)).toLocaleString()}</span></div>
-                </div>
-              )}
-            </div>
-            <div className="flex gap-3 p-6 pt-0">
-              <Button variant="outline" className="flex-1" onClick={() => setQuoteModal(null)}>Cancel</Button>
-              <Button
-                className="flex-1 text-white"
-                style={{ background: WINE }}
-                disabled={!quotePrice || quotingId === quoteModal.id}
-                onClick={submitQuote}
-              >
-                {quotingId === quoteModal.id ? "Sending…" : "Send quote"}
-              </Button>
-            </div>
-          </div>
-        </div>
+      {/* ── Modals ── */}
+      {productModal.open && (
+        <ProductModal
+          initial={productModal.product}
+          onClose={() => setProductModal({ open: false, product: null })}
+          onSaved={() => setProductModal({ open: false, product: null })}
+        />
+      )}
+      {deleteTarget && (
+        <DeleteConfirm
+          product={deleteTarget}
+          onClose={() => setDeleteTarget(null)}
+          onDeleted={() => setDeleteTarget(null)}
+        />
+      )}
+      {quoteTarget && (
+        <QuoteModal
+          opportunity={quoteTarget}
+          onClose={() => setQuoteTarget(null)}
+          onSubmitted={() => setQuoteTarget(null)}
+        />
       )}
     </div>
   )
@@ -717,41 +1209,35 @@ function SupplierDashboard({ supplier, session, onLogout }: {
 /* ─── Main Export ─────────────────────────────────────────────── */
 
 export default function SupplierPortal() {
-  const [suppliers] = useCmsDoc<Supplier[]>("suppliers", [])
-  const [session, setSession] = useState<PortalSession | null>(() => getPortalSessionForType("supplier"))
-  const [loginError, setLoginError] = useState("")
+  const [location] = useLocation()
+  const isAcceptMode = location.endsWith("/accept")
+  const token = isAcceptMode
+    ? new URLSearchParams(window.location.search).get("token") ?? ""
+    : ""
 
-  const handleLogin = (email: string, code: string) => {
-    setLoginError("")
-    const localMatch = suppliers.find(
-      (s) => s.email.toLowerCase() === email.trim().toLowerCase() && s.portalCode.toUpperCase() === code.trim().toUpperCase(),
+  const me = usePartnerMe(!isAcceptMode)
+
+  const handleLogout = async () => {
+    try { await partnerSignout("supplier") } catch { /* ignore */ }
+    await refreshPartnerMe()
+  }
+
+  if (isAcceptMode && token) {
+    return <AcceptInviteScreen token={token} />
+  }
+
+  if (me.isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center" style={{ background: "#faf9f8" }}>
+        <Loader2 className="h-8 w-8 animate-spin" style={{ color: WINE }} />
+      </div>
     )
-    if (!localMatch) {
-      setLoginError("Invalid email or portal code. Please check and try again.")
-      return
-    }
-    if (localMatch.status === "suspended" || localMatch.status === "blacklisted") {
-      setLoginError("Your account has been suspended. Contact support@shaniidrx.com for assistance.")
-      return
-    }
-    const s = loginPartnerLocal("supplier", localMatch.id, localMatch.companyName || email, email, code)
-    setSession(s)
   }
 
-  const handleLogout = () => {
-    void signOutPartner("supplier")
-    setSession(null)
+  const partner = me.data?.ok ? me.data.partner : null
+  if (!partner || me.error) {
+    return <SupplierAuthScreen />
   }
 
-  if (!session) {
-    return <SupplierLoginPage onLogin={handleLogin} error={loginError} />
-  }
-
-  const supplier = suppliers.find(s => s.id === session.partnerId)
-  if (!supplier) {
-    handleLogout()
-    return null
-  }
-
-  return <SupplierDashboard supplier={supplier} session={session} onLogout={handleLogout} />
+  return <SupplierDashboard partner={partner} onLogout={handleLogout} />
 }

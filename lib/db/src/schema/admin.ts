@@ -198,6 +198,96 @@ export const deliveryJobs = pgTable("delivery_jobs", {
 })
 
 /**
+ * partner_accounts — real, per-partner login credentials. Replaces the legacy
+ * shared "portal code + email" auth. Each row is one login that is scoped to a
+ * single partner entity (partnerId) of a given partnerType. Tokens issued at
+ * login carry {pid, partnerType, partnerId} so all portal data reads are
+ * entity-scoped server-side.
+ */
+export const partnerAccounts = pgTable("partner_accounts", {
+  id: text("id").primaryKey(),
+  email: text("email").unique().notNull(),
+  passwordHash: text("password_hash"),
+  // null until an invited account accepts its invite and sets a password.
+  partnerType: text("partner_type").notNull(),
+  // partnerType values: supplier | clinic | logistics
+  partnerId: text("partner_id").notNull(),
+  // links to the cmsStore partner record id (suppliers/clinics/logistics-partners)
+  displayName: text("display_name").notNull(),
+  status: text("status").notNull().default("active"),
+  // status values: invited | active | suspended
+  inviteToken: text("invite_token"),
+  inviteExpiresAt: timestamp("invite_expires_at"),
+  lastLoginAt: timestamp("last_login_at"),
+  metadata: jsonb("metadata").$type<Record<string, unknown>>(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+})
+
+/**
+ * partner_applications — self-signup "become a partner" submissions awaiting
+ * admin review. On approval an admin provisions a partner entity + invite.
+ */
+export const partnerApplications = pgTable("partner_applications", {
+  id: text("id").primaryKey(),
+  partnerType: text("partner_type").notNull(),
+  orgName: text("org_name").notNull(),
+  contactName: text("contact_name").notNull(),
+  email: text("email").notNull(),
+  phone: text("phone"),
+  message: text("message"),
+  status: text("status").notNull().default("pending"),
+  // status values: pending | approved | rejected
+  reviewNotes: text("review_notes"),
+  reviewedAt: timestamp("reviewed_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+})
+
+/**
+ * supplier_products — a supplier partner's own catalogue: the SKUs, prices,
+ * MOQs and lead times they can fulfil. Drives quote pre-fill + procurement.
+ */
+export const supplierProducts = pgTable("supplier_products", {
+  id: text("id").primaryKey(),
+  partnerId: text("partner_id").notNull(),
+  // supplier partner id (matches partnerAccounts.partnerId)
+  productName: text("product_name").notNull(),
+  sku: text("sku"),
+  category: text("category"),
+  unitPrice: integer("unit_price").notNull(),
+  // smallest currency unit (KES integers)
+  currency: text("currency").notNull().default("KES"),
+  moq: integer("moq").notNull().default(1),
+  leadTimeDays: integer("lead_time_days").notNull().default(7),
+  stockQty: integer("stock_qty").notNull().default(0),
+  status: text("status").notNull().default("active"),
+  // status values: active | inactive
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+})
+
+/**
+ * clinic_transactions — append-only credit ledger for clinic partners. Every
+ * credit-line order writes a `charge`; repayments write a `payment`. The
+ * running `balanceAfter` is computed at write time under a row lock so the
+ * outstanding balance is always derivable without scanning the whole ledger.
+ */
+export const clinicTransactions = pgTable("clinic_transactions", {
+  id: text("id").primaryKey(),
+  clinicPartnerId: text("clinic_partner_id").notNull(),
+  orderRef: text("order_ref"),
+  type: text("type").notNull(),
+  // type values: charge | payment | adjustment
+  amount: integer("amount").notNull(),
+  // signed: charge is positive (increases outstanding), payment negative
+  balanceAfter: integer("balance_after").notNull(),
+  note: text("note"),
+  createdBy: text("created_by"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+})
+
+/**
  * email_outbox — log of every email send attempt for auditing and retry.
  * Populated by EmailService; the `payload` column stores template variables
  * but must not contain raw PII beyond what is already in `recipient`.
@@ -280,3 +370,33 @@ export const insertEmailOutboxSchema = createInsertSchema(emailOutbox).omit({
 export const selectEmailOutboxSchema = createSelectSchema(emailOutbox)
 export type InsertEmailOutbox = z.infer<typeof insertEmailOutboxSchema>
 export type EmailOutbox = typeof emailOutbox.$inferSelect
+
+export const insertPartnerAccountSchema = createInsertSchema(partnerAccounts).omit({
+  createdAt: true,
+  updatedAt: true,
+})
+export const selectPartnerAccountSchema = createSelectSchema(partnerAccounts)
+export type InsertPartnerAccount = z.infer<typeof insertPartnerAccountSchema>
+export type PartnerAccount = typeof partnerAccounts.$inferSelect
+
+export const insertPartnerApplicationSchema = createInsertSchema(partnerApplications).omit({
+  createdAt: true,
+})
+export const selectPartnerApplicationSchema = createSelectSchema(partnerApplications)
+export type InsertPartnerApplication = z.infer<typeof insertPartnerApplicationSchema>
+export type PartnerApplication = typeof partnerApplications.$inferSelect
+
+export const insertSupplierProductSchema = createInsertSchema(supplierProducts).omit({
+  createdAt: true,
+  updatedAt: true,
+})
+export const selectSupplierProductSchema = createSelectSchema(supplierProducts)
+export type InsertSupplierProduct = z.infer<typeof insertSupplierProductSchema>
+export type SupplierProduct = typeof supplierProducts.$inferSelect
+
+export const insertClinicTransactionSchema = createInsertSchema(clinicTransactions).omit({
+  createdAt: true,
+})
+export const selectClinicTransactionSchema = createSelectSchema(clinicTransactions)
+export type InsertClinicTransaction = z.infer<typeof insertClinicTransactionSchema>
+export type ClinicTransaction = typeof clinicTransactions.$inferSelect

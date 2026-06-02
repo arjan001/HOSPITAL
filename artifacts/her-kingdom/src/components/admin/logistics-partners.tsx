@@ -21,7 +21,9 @@ import {
   Shield, Gauge, Timer, Warehouse, Users, Car, Bike,
 } from "lucide-react"
 import { useCmsDoc, newId } from "@/lib/cms-store"
+import { adminAuthHeaders } from "@/lib/api-client"
 import { AdminShell } from "./admin-shell"
+import { PartnerPortalPanel } from "./partner-portal-panel"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -611,8 +613,8 @@ export function AdminLogisticsPartners() {
     if (isNew && p.email) {
       fetch("/api/v2/partners/welcome", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type: "logistics", name: p.companyName, email: p.email, portalCode: p.portalCode }),
+        headers: { "Content-Type": "application/json", ...adminAuthHeaders() },
+        body: JSON.stringify({ partnerType: "logistics", partnerId: p.id, email: p.email, displayName: p.companyName }),
       }).catch(() => undefined)
     }
   }
@@ -713,6 +715,11 @@ export function AdminLogisticsPartners() {
               </tbody>
             </table>
           )}
+        </div>
+
+        <div className="mt-8 pt-6 border-t border-gray-100">
+          <h2 className="text-lg font-bold text-gray-800 mb-4">Portal access</h2>
+          <PartnerPortalPanel type="logistics" />
         </div>
       </div>
 

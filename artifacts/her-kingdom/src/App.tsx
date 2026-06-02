@@ -499,8 +499,11 @@ function Router() {
       <Route path="/admin/logistics-partners" component={AdminLogisticsPartners} />
       {/* Partner portals — standalone, no Clerk requirement */}
       <Route path="/portal/supplier" component={SupplierPortal} />
+      <Route path="/portal/supplier/accept" component={SupplierPortal} />
       <Route path="/portal/clinic" component={ClinicPortal} />
+      <Route path="/portal/clinic/accept" component={ClinicPortal} />
       <Route path="/portal/logistics" component={LogisticsPortal} />
+      <Route path="/portal/logistics/accept" component={LogisticsPortal} />
       <Route component={NotFound} />
     </Switch>
   );

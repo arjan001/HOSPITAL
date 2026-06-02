@@ -23,7 +23,9 @@ import {
   ClipboardList, Package, ChevronRight,
 } from "lucide-react"
 import { useCmsDoc, newId } from "@/lib/cms-store"
+import { adminAuthHeaders } from "@/lib/api-client"
 import { AdminShell } from "./admin-shell"
+import { PartnerPortalPanel } from "./partner-portal-panel"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -668,8 +670,8 @@ export function AdminClinics() {
     if (isNew && c.email) {
       fetch("/api/v2/partners/welcome", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type: "clinic", name: c.clinicName, email: c.email, portalCode: c.portalCode }),
+        headers: { "Content-Type": "application/json", ...adminAuthHeaders() },
+        body: JSON.stringify({ partnerType: "clinic", partnerId: c.id, email: c.email, displayName: c.clinicName, metadata: { creditLimit: c.creditLimit } }),
       }).catch(() => undefined)
     }
   }
@@ -765,6 +767,11 @@ export function AdminClinics() {
               </tbody>
             </table>
           )}
+        </div>
+
+        <div className="mt-8 pt-6 border-t border-gray-100">
+          <h2 className="text-lg font-bold text-gray-800 mb-4">Portal access</h2>
+          <PartnerPortalPanel type="clinic" />
         </div>
       </div>
 

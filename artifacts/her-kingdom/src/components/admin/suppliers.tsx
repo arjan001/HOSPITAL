@@ -22,7 +22,9 @@ import {
   Award, Globe, Phone, Mail, MapPin, Hash, CreditCard,
 } from "lucide-react"
 import { useCmsDoc, newId } from "@/lib/cms-store"
+import { adminAuthHeaders } from "@/lib/api-client"
 import { AdminShell } from "./admin-shell"
+import { PartnerPortalPanel } from "./partner-portal-panel"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -604,8 +606,8 @@ export function AdminSuppliers() {
     if (isNew && sup.email) {
       fetch("/api/v2/partners/welcome", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type: "supplier", name: sup.companyName, email: sup.email, portalCode: sup.portalCode }),
+        headers: { "Content-Type": "application/json", ...adminAuthHeaders() },
+        body: JSON.stringify({ partnerType: "supplier", partnerId: sup.id, email: sup.email, displayName: sup.companyName }),
       }).catch(() => undefined)
     }
   }
@@ -739,6 +741,11 @@ export function AdminSuppliers() {
               </tbody>
             </table>
           )}
+        </div>
+
+        <div className="mt-8 pt-6 border-t border-gray-100">
+          <h2 className="text-lg font-bold text-gray-800 mb-4">Portal access</h2>
+          <PartnerPortalPanel type="supplier" />
         </div>
       </div>
 

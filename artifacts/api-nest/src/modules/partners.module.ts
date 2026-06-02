@@ -1,25 +1,27 @@
 /**
- * Partners module — server-side authentication and order submission for the
- * three partner portals (supplier, clinic, logistics).
+ * Partners module — real, entity-scoped partner accounts + portal business logic.
  *
- * Routes:
- *   POST   /api/v2/partners/:type/auth          — verify portal code + email
- *   POST   /api/v2/partners/:type/orders        — clinic submits an order
- *   GET    /api/v2/partners/:type/orders        — current session's submissions
+ * Replaces the legacy "portal code + email + in-memory session" model with:
+ *   - partner_accounts: real per-partner logins (scrypt password hashes).
+ *   - signed partner tokens (partner-token.ts) carrying {pid, partnerType,
+ *     partnerId}; survives restarts; every data read is entity-scoped server-side.
+ *   - invite flow (admin provisions an account → email accept link → partner sets
+ *     password) AND self-signup (public application → admin review → invite).
+ *   - structured Postgres tables (supplier_products, partner_quotes,
+ *     clinic_orders, clinic_transactions, delivery_jobs) instead of cms JSON blobs.
  *
- * Auth model:
- *   Clinics, suppliers, and logistics partners are still managed via the
- *   admin cmsStore (`clinics`, `suppliers`, `logistics-partners` keys).
- *   On a successful `POST /auth` the server stamps `req.session` (via the
- *   session cookie) with the matched partner id. Subsequent partner API
- *   calls read the stamp from an in-memory map keyed by `req.sessionId`.
- *
- *   This is intentionally lightweight — Phase 2 will move partner identity
- *   into Clerk-issued JWTs. The contract here will not change.
+ * Route groups:
+ *   PartnerAuthController       /api/v2/partners/{:type/auth,:type/signout,apply,accept,me}
+ *   PartnerSupplierController   /api/v2/partners/supplier/{catalog,opportunities,quotes}
+ *   PartnerClinicController     /api/v2/partners/clinic/{catalog,orders,ledger}
+ *   PartnerLogisticsController  /api/v2/partners/logistics/{jobs,earnings}
+ *   PartnerAdminController      /api/v2/partners/admin/{invite,accounts,applications}  (AdminGuard)
+ *   PartnerWelcomeController    /api/v2/partners/welcome
  */
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpException,
   HttpStatus,
@@ -27,107 +29,40 @@ import {
   Injectable,
   Module,
   Param,
+  Patch,
   Post,
+  Query,
   Req,
+  Res,
   UseGuards,
 } from "@nestjs/common"
-import type { Request } from "express"
+import type { Request, Response } from "express"
+import { randomBytes, scryptSync, timingSafeEqual } from "node:crypto"
+import { and, desc, eq, ilike, inArray, type SQL } from "drizzle-orm"
+import {
+  db,
+  partnerAccounts,
+  partnerApplications,
+  supplierProducts,
+  sourcingRequests,
+  partnerQuotes,
+  clinicOrders,
+  clinicTransactions,
+  deliveryJobs,
+  products,
+  type PartnerAccount,
+} from "@workspace/db"
 import { newId } from "../common/repository"
+import { signPartnerToken, verifyPartnerToken } from "../common/partner-token"
 import { EmailModule, EmailService } from "./email.module"
+import { AdminCmsModule, AdminCmsService } from "./admin-cms.module"
 import { AdminGuard } from "../common/admin-guard"
-
-const CMS_BASE = `http://127.0.0.1:${process.env.PORT || 8090}/api/v2/admin/cms`
-const CMS_TIMEOUT_MS = 4_000
-const INTERNAL_TOKEN = process.env.ADMIN_API_TOKEN?.trim()
-const INTERNAL_HEADERS: Record<string, string> = INTERNAL_TOKEN
-  ? { "x-admin-token": INTERNAL_TOKEN }
-  : {}
-
-async function cmsGet<T>(key: string, fallback: T): Promise<T> {
-  try {
-    const ctrl = new AbortController()
-    const timer = setTimeout(() => ctrl.abort(), CMS_TIMEOUT_MS)
-    try {
-      const res = await fetch(`${CMS_BASE}/${encodeURIComponent(key)}`, {
-        headers: INTERNAL_HEADERS,
-        signal: ctrl.signal,
-      })
-      if (res.status === 404) return fallback
-      if (!res.ok) return fallback
-      const body = (await res.json()) as { value: T }
-      return body.value ?? fallback
-    } finally {
-      clearTimeout(timer)
-    }
-  } catch {
-    return fallback
-  }
-}
-
-async function cmsPut<T>(key: string, value: T): Promise<void> {
-  // Fail-closed: the cmsStore mirror is now the ONLY durable home for partner
-  // submissions (the in-memory array is gone), so a dropped write would lose the
-  // submission permanently. Surface any network error / non-2xx to the caller so
-  // `submit()` returns a real failure instead of a false success.
-  const ctrl = new AbortController()
-  const timer = setTimeout(() => ctrl.abort(), CMS_TIMEOUT_MS)
-  let res: Awaited<ReturnType<typeof fetch>>
-  try {
-    res = await fetch(`${CMS_BASE}/${encodeURIComponent(key)}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json", ...INTERNAL_HEADERS },
-      body: JSON.stringify(value),
-      signal: ctrl.signal,
-    })
-  } catch (err) {
-    throw new HttpException(
-      `Could not save submission (${(err as Error)?.message || "network error"}). Please try again.`,
-      HttpStatus.BAD_GATEWAY,
-    )
-  } finally {
-    clearTimeout(timer)
-  }
-  if (!res.ok) {
-    throw new HttpException(
-      `Could not save submission (status ${res.status}). Please try again.`,
-      HttpStatus.BAD_GATEWAY,
-    )
-  }
-}
 
 export type PartnerType = "supplier" | "clinic" | "logistics"
 
-const CMS_KEY_FOR: Record<PartnerType, string> = {
-  supplier: "suppliers",
-  clinic: "clinics",
-  logistics: "logistics-partners",
-}
-
-type PartnerRecord = {
-  id: string
-  email?: string
-  portalCode?: string
-  // Free-form: each partner type adds its own fields. We only care about
-  // `email` and `portalCode` for authentication.
-  [key: string]: unknown
-}
-
-type PartnerStamp = {
-  partnerId: string
-  partnerType: PartnerType
-  loggedInAt: string
-}
-
-export type PartnerSubmission = {
-  id: string
-  partnerType: PartnerType
-  partnerId: string
-  partnerSessionId: string
-  kind: "order" | "kyc" | "product" | "delivery-confirmation" | "message"
-  payload: unknown
-  status: "submitted" | "received" | "processed"
-  createdAt: string
-}
+const PARTNER_TOKEN_COOKIE = "shaniidrx_partner_token"
+const TOKEN_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000 // 30 days
+const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000 // 7 days
 
 const PORTAL_PATHS: Record<PartnerType, string> = {
   supplier: "/portal/supplier",
@@ -135,256 +70,1015 @@ const PORTAL_PATHS: Record<PartnerType, string> = {
   logistics: "/portal/logistics",
 }
 
+// ─────────────────────── cms helper (profile + credit fallback) ───────────────────────
+// Reads go through the injected AdminCmsService (Postgres source of truth), never an
+// HTTP loopback to the AdminGuard-protected /admin/cms route — that route fails closed
+// in prod without ADMIN_API_TOKEN and would silently drop profile/credit lookups.
+const CMS_KEY_FOR: Record<PartnerType, string> = {
+  supplier: "suppliers",
+  clinic: "clinics",
+  logistics: "logistics-partners",
+}
+
+type CmsPartnerRecord = { id: string; email?: string; portalCode?: string; [k: string]: unknown }
+
+// ─────────────────────── password hashing (scrypt) ───────────────────────
+function hashPassword(password: string): string {
+  const salt = randomBytes(16).toString("hex")
+  const hash = scryptSync(password, salt, 64).toString("hex")
+  return `scrypt$${salt}$${hash}`
+}
+function verifyPasswordHash(password: string, stored: string | null): boolean {
+  if (!stored) return false
+  const parts = stored.split("$")
+  if (parts.length !== 3 || parts[0] !== "scrypt") return false
+  const salt = parts[1]
+  const expected = Buffer.from(parts[2], "hex")
+  const actual = scryptSync(password, salt, expected.length)
+  try {
+    return timingSafeEqual(actual, expected)
+  } catch {
+    return false
+  }
+}
+
+function assertType(t: string): PartnerType {
+  if (t === "supplier" || t === "clinic" || t === "logistics") return t
+  throw new HttpException(`Unknown partner type "${t}"`, HttpStatus.BAD_REQUEST)
+}
+
+function publicAccount(acc: PartnerAccount) {
+  return {
+    id: acc.id,
+    email: acc.email,
+    partnerType: acc.partnerType,
+    partnerId: acc.partnerId,
+    displayName: acc.displayName,
+    status: acc.status,
+    inviteExpiresAt: acc.inviteExpiresAt,
+    lastLoginAt: acc.lastLoginAt,
+    metadata: acc.metadata,
+    createdAt: acc.createdAt,
+    updatedAt: acc.updatedAt,
+    hasPassword: Boolean(acc.passwordHash),
+  }
+}
+
+function baseUrl(): string {
+  return process.env.PUBLIC_APP_URL?.trim() || "https://shaniidrx.com"
+}
+
+// ─────────────────────────────── auth service ───────────────────────────────
 @Injectable()
-class PartnersService {
-  constructor(@Inject(EmailService) private readonly email: EmailService) {}
+export class PartnerAuthService {
+  constructor(
+    @Inject(EmailService) private readonly email: EmailService,
+    @Inject(AdminCmsService) private readonly cms: AdminCmsService,
+  ) {}
 
-  /**
-   * In-memory map keyed by req.sessionId → partner stamp. Cleared on
-   * process restart; that's intentional today (matches the rest of the
-   * NestJS in-memory pattern).
-   */
-  private sessions = new Map<string, PartnerStamp>()
+  /** CMS read via Postgres source of truth (no guarded HTTP loopback). */
+  async cmsLookup<T>(key: string, fallback: T): Promise<T> {
+    try {
+      const entry = await this.cms.get(key)
+      return ((entry?.value as T) ?? fallback)
+    } catch {
+      return fallback
+    }
+  }
 
-  async sendWelcome(input: {
-    type: string
-    name: string
-    email: string
-    portalCode: string
-  }): Promise<{ ok: boolean; reason?: string; skipped?: boolean }> {
-    const t = input?.type === "supplier" ? "supplier" : input?.type === "clinic" ? "clinic" : "logistics"
-    const baseUrl = process.env.PUBLIC_APP_URL?.trim() || "https://shaniidrx.com"
-    return this.email.send({
-      to: input.email,
-      template: "partner.welcome",
-      subject: "Your Shaniid RX partner portal access",
-      data: {
-        name: input.name || input.email,
-        partnerType: t,
-        email: input.email,
-        portalCode: input.portalCode,
-        portalUrl: `${baseUrl}${PORTAL_PATHS[t]}`,
-      },
+  /** Resolve the signed token from header or cookie and return the live account. */
+  async requirePartner(req: Request, expectedType?: PartnerType): Promise<PartnerAccount> {
+    const raw =
+      (req.header("x-partner-token") || "").trim() ||
+      (req.header("authorization") || "").replace(/^Bearer\s+/i, "").trim() ||
+      (req as Request & { cookies?: Record<string, string> }).cookies?.[PARTNER_TOKEN_COOKIE] ||
+      ""
+    const claims = verifyPartnerToken(raw)
+    if (!claims) throw new HttpException("Not signed in", HttpStatus.UNAUTHORIZED)
+    if (expectedType && claims.partnerType !== expectedType) {
+      throw new HttpException("Wrong portal for this account", HttpStatus.FORBIDDEN)
+    }
+    const [acc] = await db
+      .select()
+      .from(partnerAccounts)
+      .where(eq(partnerAccounts.id, claims.pid))
+      .limit(1)
+    if (!acc || acc.status !== "active") {
+      throw new HttpException("Account is not active", HttpStatus.UNAUTHORIZED)
+    }
+    return acc
+  }
+
+  private issue(res: Response, acc: PartnerAccount) {
+    const token = signPartnerToken({
+      pid: acc.id,
+      partnerType: acc.partnerType as PartnerType,
+      partnerId: acc.partnerId,
     })
+    res.cookie(PARTNER_TOKEN_COOKIE, token, {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+      path: "/",
+      maxAge: TOKEN_MAX_AGE_MS,
+    })
+    return token
   }
 
-  private assertType(t: string): PartnerType {
-    if (t === "supplier" || t === "clinic" || t === "logistics") return t
-    throw new HttpException(`Unknown partner type "${t}"`, HttpStatus.BAD_REQUEST)
-  }
-
-  async authenticate(
-    sessionId: string,
+  async login(
+    res: Response,
     type: string,
     email: string,
-    portalCode: string,
-  ): Promise<{ ok: boolean; partner: { id: string; name: string } | null }> {
-    const partnerType = this.assertType(type)
+    password: string,
+  ): Promise<{ ok: true; token: string; partner: ReturnType<typeof publicAccount> }> {
+    const partnerType = assertType(type)
     const cleanedEmail = (email || "").trim().toLowerCase()
-    const cleanedCode = (portalCode || "").trim().toUpperCase()
-    if (!cleanedEmail || !cleanedCode) {
-      throw new HttpException("Email and portal code are required", HttpStatus.BAD_REQUEST)
+    const pwd = (password || "").trim()
+    if (!cleanedEmail || !pwd) {
+      throw new HttpException("Email and password are required", HttpStatus.BAD_REQUEST)
     }
 
-    const partners = await cmsGet<PartnerRecord[]>(CMS_KEY_FOR[partnerType], [])
-    const match = partners.find((p) => {
-      const pemail = String(p.email ?? "").trim().toLowerCase()
-      const pcode = String(p.portalCode ?? "").trim().toUpperCase()
-      return pemail === cleanedEmail && pcode === cleanedCode
+    let [acc] = await db
+      .select()
+      .from(partnerAccounts)
+      .where(and(eq(partnerAccounts.email, cleanedEmail), eq(partnerAccounts.partnerType, partnerType)))
+      .limit(1)
+
+    // Backward-compat bridge: legacy partners exist only as cms records with a
+    // shared `portalCode`. On first login (no account yet), if the supplied
+    // password matches the cms portalCode, auto-provision an active account so
+    // existing partners keep working without a manual migration.
+    if (!acc) {
+      const recs = await this.cmsLookup<CmsPartnerRecord[]>(CMS_KEY_FOR[partnerType], [])
+      const rec = recs.find(
+        (r) =>
+          String(r.email ?? "").trim().toLowerCase() === cleanedEmail &&
+          String(r.portalCode ?? "").trim().toUpperCase() === pwd.toUpperCase(),
+      )
+      if (rec) {
+        const displayName =
+          (rec["supplierName"] as string) ||
+          (rec["clinicName"] as string) ||
+          (rec["companyName"] as string) ||
+          (rec["name"] as string) ||
+          cleanedEmail
+        ;[acc] = await db
+          .insert(partnerAccounts)
+          .values({
+            id: newId("pacc"),
+            email: cleanedEmail,
+            passwordHash: hashPassword(pwd),
+            partnerType,
+            partnerId: rec.id,
+            displayName,
+            status: "active",
+          })
+          .returning()
+      }
+    }
+
+    if (!acc || !verifyPasswordHash(pwd, acc.passwordHash)) {
+      throw new HttpException("Invalid email or password", HttpStatus.UNAUTHORIZED)
+    }
+    if (acc.status !== "active") {
+      throw new HttpException(
+        acc.status === "invited"
+          ? "Please accept your invitation email to set a password first."
+          : "This account has been suspended.",
+        HttpStatus.FORBIDDEN,
+      )
+    }
+
+    await db
+      .update(partnerAccounts)
+      .set({ lastLoginAt: new Date(), updatedAt: new Date() })
+      .where(eq(partnerAccounts.id, acc.id))
+
+    const token = this.issue(res, acc)
+    return { ok: true, token, partner: publicAccount(acc) }
+  }
+
+  signOut(res: Response): { ok: true } {
+    res.clearCookie(PARTNER_TOKEN_COOKIE, {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+      path: "/",
     })
-    if (!match) {
-      throw new HttpException("Invalid email or portal code", HttpStatus.UNAUTHORIZED)
-    }
-
-    this.sessions.set(sessionId, {
-      partnerId: match.id,
-      partnerType,
-      loggedInAt: new Date().toISOString(),
-    })
-
-    const displayName =
-      (match["supplierName"] as string) ||
-      (match["clinicName"] as string) ||
-      (match["companyName"] as string) ||
-      (match["name"] as string) ||
-      cleanedEmail
-    return { ok: true, partner: { id: match.id, name: displayName } }
-  }
-
-  signOut(sessionId: string): void {
-    this.sessions.delete(sessionId)
-  }
-
-  getStamp(sessionId: string, type: PartnerType): PartnerStamp {
-    const stamp = this.sessions.get(sessionId)
-    if (!stamp || stamp.partnerType !== type) {
-      throw new HttpException("Not signed in", HttpStatus.UNAUTHORIZED)
-    }
-    return stamp
-  }
-
-  async submit(
-    sessionId: string,
-    type: string,
-    body: { kind?: PartnerSubmission["kind"]; payload?: unknown },
-  ): Promise<PartnerSubmission> {
-    const partnerType = this.assertType(type)
-    const stamp = this.getStamp(sessionId, partnerType)
-    const kind = body?.kind || "order"
-    if (!["order", "kyc", "product", "delivery-confirmation", "message"].includes(kind)) {
-      throw new HttpException(`Unsupported submission kind "${kind}"`, HttpStatus.BAD_REQUEST)
-    }
-    const rec: PartnerSubmission = {
-      id: newId("psub"),
-      partnerType,
-      partnerId: stamp.partnerId,
-      partnerSessionId: sessionId,
-      kind: kind as PartnerSubmission["kind"],
-      payload: body?.payload ?? null,
-      status: "submitted",
-      createdAt: new Date().toISOString(),
-    }
-    // Persist into the durable cmsStore mirror (Postgres-backed cms_docs) so
-    // submissions survive restarts and AdminClinics/AdminSuppliers — and the
-    // partner's own `GET /orders` — read a single durable source of truth.
-    await this.mirrorToCms(rec)
-
-    // Send confirmation emails after order/quote submissions
-    void this.sendSubmissionEmail(rec, stamp, body?.payload).catch(() => undefined)
-
-    return rec
-  }
-
-  private async sendSubmissionEmail(
-    rec: PartnerSubmission,
-    stamp: PartnerStamp,
-    payload: unknown,
-  ): Promise<void> {
-    const partners = await cmsGet<PartnerRecord[]>(CMS_KEY_FOR[stamp.partnerType], [])
-    const partner = partners.find((p) => p.id === stamp.partnerId)
-    if (!partner?.email) return
-
-    const baseUrl = process.env.PUBLIC_APP_URL?.trim() || "https://shaniidrx.com"
-    const name =
-      (partner["clinicName"] as string) ||
-      (partner["companyName"] as string) ||
-      (partner["supplierName"] as string) ||
-      (partner.email as string)
-
-    if (rec.kind === "order" && rec.partnerType === "clinic") {
-      const p = payload as Record<string, unknown> | null
-      const total = (p?.["total"] as number) ?? 0
-      const lines = (p?.["lines"] as Array<{ name: string; qty: number }> | undefined) ?? []
-      await this.email.send({
-        to: partner.email as string,
-        template: "order.receipt",
-        subject: `[Shaniid RX] Order received — KSH ${total.toLocaleString()}`,
-        data: {
-          name,
-          orderId: rec.id,
-          total,
-          items: lines.map((l) => `${l.name} × ${l.qty}`).join(", "),
-          portalUrl: `${baseUrl}${PORTAL_PATHS.clinic}`,
-        },
-      })
-    } else if (rec.kind === "order" && rec.partnerType === "supplier") {
-      const p = payload as Record<string, unknown> | null
-      await this.email.send({
-        to: partner.email as string,
-        template: "generic",
-        subject: `[Shaniid RX] Your quote has been received`,
-        data: {
-          name,
-          heading: "Quote received",
-          body: `Thank you for submitting your quote (ref: ${rec.id}). Our sourcing team will review it and get back to you within 2 business days.`,
-          cta_url: `${baseUrl}${PORTAL_PATHS.supplier}`,
-          cta_label: "View your portal",
-          p: p ? JSON.stringify(p).slice(0, 200) : "",
-        },
-      })
-    }
-  }
-
-  private async mirrorToCms(rec: PartnerSubmission) {
-    const key = `${CMS_KEY_FOR[rec.partnerType]}-submissions`
-    const existing = await cmsGet<PartnerSubmission[]>(key, [])
-    await cmsPut(key, [rec, ...existing].slice(0, 500))
-  }
-
-  async listForSession(sessionId: string, type: string): Promise<PartnerSubmission[]> {
-    const partnerType = this.assertType(type)
-    const stamp = this.getStamp(sessionId, partnerType)
-    const key = `${CMS_KEY_FOR[partnerType]}-submissions`
-    const all = await cmsGet<PartnerSubmission[]>(key, [])
-    return all.filter(
-      (s) => s.partnerType === partnerType && s.partnerId === stamp.partnerId,
-    )
-  }
-}
-
-@Controller("partners/welcome")
-class PartnerWelcomeController {
-  constructor(@Inject(PartnersService) private readonly svc: PartnersService) {}
-
-  @Post()
-  async send(@Body() body: { type?: string; name?: string; email?: string; portalCode?: string }) {
-    if (!body?.email) throw new HttpException("email is required", HttpStatus.BAD_REQUEST)
-    if (!body?.portalCode) throw new HttpException("portalCode is required", HttpStatus.BAD_REQUEST)
-    const r = await this.svc.sendWelcome({
-      type: body.type ?? "supplier",
-      name: body.name ?? body.email,
-      email: body.email,
-      portalCode: body.portalCode,
-    })
-    if (!r.ok && r.skipped) {
-      throw new HttpException({ ok: false, hint: r.reason }, HttpStatus.SERVICE_UNAVAILABLE)
-    }
-    return r
-  }
-}
-
-@Controller("partners/:type")
-class PartnersController {
-  constructor(@Inject(PartnersService) private readonly svc: PartnersService) {}
-
-  @Post("auth")
-  async auth(
-    @Req() req: Request,
-    @Param("type") type: string,
-    @Body() body: { email?: string; portalCode?: string },
-  ) {
-    return this.svc.authenticate(
-      req.sessionId,
-      type,
-      body?.email ?? "",
-      body?.portalCode ?? "",
-    )
-  }
-
-  @Post("signout")
-  signOut(@Req() req: Request) {
-    this.svc.signOut(req.sessionId)
     return { ok: true }
   }
 
-  @Post("orders")
-  submit(
-    @Req() req: Request,
-    @Param("type") type: string,
-    @Body() body: { kind?: PartnerSubmission["kind"]; payload?: unknown },
-  ) {
-    return this.svc.submit(req.sessionId, type, body ?? {})
+  /** Public self-signup: queue a partner application for admin review. */
+  async apply(body: {
+    partnerType?: string
+    orgName?: string
+    contactName?: string
+    email?: string
+    phone?: string
+    message?: string
+  }): Promise<{ ok: true; id: string }> {
+    const partnerType = assertType(body?.partnerType ?? "")
+    const orgName = (body?.orgName || "").trim()
+    const contactName = (body?.contactName || "").trim()
+    const email = (body?.email || "").trim().toLowerCase()
+    if (!orgName || !contactName || !email) {
+      throw new HttpException(
+        "Organisation, contact name and email are required",
+        HttpStatus.BAD_REQUEST,
+      )
+    }
+    const [row] = await db
+      .insert(partnerApplications)
+      .values({
+        id: newId("papp"),
+        partnerType,
+        orgName,
+        contactName,
+        email,
+        phone: (body?.phone || "").trim() || null,
+        message: (body?.message || "").trim() || null,
+        status: "pending",
+      })
+      .returning()
+
+    void this.email
+      .send({
+        to: email,
+        template: "generic",
+        subject: "We've received your Shaniid RX partner application",
+        data: {
+          name: contactName,
+          heading: "Application received",
+          body: `Thank you for applying to join Shaniid RX as a ${partnerType} partner. Our team will review your application and get back to you shortly.`,
+          cta_url: baseUrl(),
+          cta_label: "Visit Shaniid RX",
+        },
+      })
+      .catch(() => undefined)
+
+    return { ok: true, id: row.id }
   }
 
+  /** Accept an invite: set a password and activate the account. */
+  async accept(
+    res: Response,
+    token: string,
+    password: string,
+  ): Promise<{ ok: true; token: string; partner: ReturnType<typeof publicAccount> }> {
+    const t = (token || "").trim()
+    const pwd = (password || "").trim()
+    if (!t || pwd.length < 8) {
+      throw new HttpException(
+        "A valid invite token and a password of at least 8 characters are required",
+        HttpStatus.BAD_REQUEST,
+      )
+    }
+    const [acc] = await db
+      .select()
+      .from(partnerAccounts)
+      .where(eq(partnerAccounts.inviteToken, t))
+      .limit(1)
+    if (!acc) throw new HttpException("Invalid or used invitation link", HttpStatus.BAD_REQUEST)
+    if (acc.inviteExpiresAt && acc.inviteExpiresAt.getTime() < Date.now()) {
+      throw new HttpException("This invitation has expired. Ask your admin to re-send it.", HttpStatus.BAD_REQUEST)
+    }
+    const [updated] = await db
+      .update(partnerAccounts)
+      .set({
+        passwordHash: hashPassword(pwd),
+        status: "active",
+        inviteToken: null,
+        inviteExpiresAt: null,
+        lastLoginAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(eq(partnerAccounts.id, acc.id))
+      .returning()
+    const newToken = this.issue(res, updated)
+    return { ok: true, token: newToken, partner: publicAccount(updated) }
+  }
+
+  async me(req: Request): Promise<{ ok: true; partner: ReturnType<typeof publicAccount>; profile: unknown }> {
+    const acc = await this.requirePartner(req)
+    const recs = await this.cmsLookup<CmsPartnerRecord[]>(CMS_KEY_FOR[acc.partnerType as PartnerType], [])
+    const profile = recs.find((r) => r.id === acc.partnerId) ?? null
+    return { ok: true, partner: publicAccount(acc), profile }
+  }
+
+  // ── admin: invites + accounts + applications ──
+  async invite(body: Record<string, unknown>): Promise<ReturnType<typeof publicAccount>> {
+    const partnerType = assertType(String(body?.partnerType ?? ""))
+    const partnerId = String(body?.partnerId ?? "").trim()
+    const email = String(body?.email ?? "").trim().toLowerCase()
+    const displayName = String(body?.displayName ?? "").trim() || email
+    const metadata = (body?.metadata ?? null) as Record<string, unknown> | null
+    if (!partnerId || !email) {
+      throw new HttpException("partnerId and email are required", HttpStatus.BAD_REQUEST)
+    }
+    const existing = await db
+      .select()
+      .from(partnerAccounts)
+      .where(eq(partnerAccounts.email, email))
+      .limit(1)
+    if (existing.length) {
+      throw new HttpException("An account with that email already exists", HttpStatus.CONFLICT)
+    }
+    const inviteToken = randomBytes(24).toString("hex")
+    const [acc] = await db
+      .insert(partnerAccounts)
+      .values({
+        id: newId("pacc"),
+        email,
+        passwordHash: null,
+        partnerType,
+        partnerId,
+        displayName,
+        status: "invited",
+        inviteToken,
+        inviteExpiresAt: new Date(Date.now() + INVITE_TTL_MS),
+        metadata,
+      })
+      .returning()
+
+    const acceptUrl = `${baseUrl()}${PORTAL_PATHS[partnerType]}/accept?token=${inviteToken}`
+    void this.email
+      .send({
+        to: email,
+        template: "generic",
+        subject: "You're invited to the Shaniid RX partner portal",
+        data: {
+          name: displayName,
+          heading: "Partner portal invitation",
+          body: `You've been invited to join Shaniid RX as a ${partnerType} partner. Click below to set your password and access your portal.`,
+          cta_url: acceptUrl,
+          cta_label: "Set your password",
+        },
+      })
+      .catch(() => undefined)
+
+    return publicAccount(acc)
+  }
+
+  async listAccounts(type?: string): Promise<ReturnType<typeof publicAccount>[]> {
+    const where: SQL | undefined = type ? eq(partnerAccounts.partnerType, assertType(type)) : undefined
+    const rows = await db
+      .select()
+      .from(partnerAccounts)
+      .where(where)
+      .orderBy(desc(partnerAccounts.createdAt))
+    return rows.map(publicAccount)
+  }
+
+  async updateAccount(
+    id: string,
+    body: Record<string, unknown>,
+  ): Promise<ReturnType<typeof publicAccount>> {
+    const set: Partial<typeof partnerAccounts.$inferInsert> = { updatedAt: new Date() }
+    if (body?.status !== undefined) {
+      const status = String(body.status)
+      if (!["invited", "active", "suspended"].includes(status)) {
+        throw new HttpException("Invalid status", HttpStatus.BAD_REQUEST)
+      }
+      set.status = status
+    }
+    if (body?.metadata !== undefined) set.metadata = body.metadata as Record<string, unknown>
+    if (body?.displayName) set.displayName = String(body.displayName)
+    const [acc] = await db
+      .update(partnerAccounts)
+      .set(set)
+      .where(eq(partnerAccounts.id, id))
+      .returning()
+    if (!acc) throw new HttpException("Account not found", HttpStatus.NOT_FOUND)
+    return publicAccount(acc)
+  }
+
+  async resendInvite(id: string): Promise<ReturnType<typeof publicAccount>> {
+    const [acc] = await db.select().from(partnerAccounts).where(eq(partnerAccounts.id, id)).limit(1)
+    if (!acc) throw new HttpException("Account not found", HttpStatus.NOT_FOUND)
+    const inviteToken = randomBytes(24).toString("hex")
+    const [updated] = await db
+      .update(partnerAccounts)
+      .set({
+        status: "invited",
+        inviteToken,
+        inviteExpiresAt: new Date(Date.now() + INVITE_TTL_MS),
+        updatedAt: new Date(),
+      })
+      .where(eq(partnerAccounts.id, id))
+      .returning()
+    const acceptUrl = `${baseUrl()}${PORTAL_PATHS[acc.partnerType as PartnerType]}/accept?token=${inviteToken}`
+    void this.email
+      .send({
+        to: acc.email,
+        template: "generic",
+        subject: "Your Shaniid RX partner portal invitation",
+        data: {
+          name: acc.displayName,
+          heading: "Partner portal invitation",
+          body: "Click below to set your password and access your portal.",
+          cta_url: acceptUrl,
+          cta_label: "Set your password",
+        },
+      })
+      .catch(() => undefined)
+    return publicAccount(updated)
+  }
+
+  async listApplications(status?: string) {
+    const where = status ? eq(partnerApplications.status, status) : undefined
+    return db
+      .select()
+      .from(partnerApplications)
+      .where(where)
+      .orderBy(desc(partnerApplications.createdAt))
+  }
+
+  async reviewApplication(
+    id: string,
+    decision: "approved" | "rejected",
+    reviewNotes?: string,
+  ) {
+    const [row] = await db
+      .update(partnerApplications)
+      .set({ status: decision, reviewNotes: reviewNotes ?? null, reviewedAt: new Date() })
+      .where(eq(partnerApplications.id, id))
+      .returning()
+    if (!row) throw new HttpException("Application not found", HttpStatus.NOT_FOUND)
+    // On approval, auto-provision an invited account so the partner receives an
+    // accept link and can set a password. Fail soft — the review still stands.
+    let invited: ReturnType<typeof publicAccount> | null = null
+    if (decision === "approved") {
+      try {
+        const existing = await db
+          .select()
+          .from(partnerAccounts)
+          .where(eq(partnerAccounts.email, row.email.toLowerCase()))
+          .limit(1)
+        if (!existing.length) {
+          invited = await this.invite({
+            partnerType: row.partnerType,
+            partnerId: row.id,
+            email: row.email,
+            displayName: row.orgName || row.contactName || row.email,
+            metadata: {
+              orgName: row.orgName,
+              contactName: row.contactName,
+              phone: row.phone,
+              fromApplication: row.id,
+            },
+          })
+        }
+      } catch {
+        /* account provisioning failed — application remains approved */
+      }
+    }
+    return { ...row, invited }
+  }
+}
+
+// ─────────────────────────────── portal service ───────────────────────────────
+@Injectable()
+export class PartnerPortalService {
+  constructor(@Inject(PartnerAuthService) public readonly auth: PartnerAuthService) {}
+
+  // ---- supplier ----
+  async listCatalog(partnerId: string) {
+    return db
+      .select()
+      .from(supplierProducts)
+      .where(eq(supplierProducts.partnerId, partnerId))
+      .orderBy(desc(supplierProducts.updatedAt))
+  }
+
+  async addCatalogItem(partnerId: string, b: Record<string, unknown>) {
+    const name = String(b?.productName ?? "").trim()
+    const unitPrice = Math.round(Number(b?.unitPrice ?? 0))
+    if (!name || !Number.isFinite(unitPrice) || unitPrice < 0) {
+      throw new HttpException("productName and a valid unitPrice are required", HttpStatus.BAD_REQUEST)
+    }
+    const [row] = await db
+      .insert(supplierProducts)
+      .values({
+        id: newId("sprd"),
+        partnerId,
+        productName: name,
+        sku: (b?.sku as string) || null,
+        category: (b?.category as string) || null,
+        unitPrice,
+        currency: (b?.currency as string) || "KES",
+        moq: Math.max(1, Math.round(Number(b?.moq ?? 1)) || 1),
+        leadTimeDays: Math.max(0, Math.round(Number(b?.leadTimeDays ?? 7)) || 7),
+        stockQty: Math.max(0, Math.round(Number(b?.stockQty ?? 0)) || 0),
+        status: (b?.status as string) === "inactive" ? "inactive" : "active",
+        notes: (b?.notes as string) || null,
+      })
+      .returning()
+    return row
+  }
+
+  async updateCatalogItem(partnerId: string, id: string, b: Record<string, unknown>) {
+    const set: Partial<typeof supplierProducts.$inferInsert> = { updatedAt: new Date() }
+    if (b?.productName !== undefined) set.productName = String(b.productName).trim()
+    if (b?.sku !== undefined) set.sku = (b.sku as string) || null
+    if (b?.category !== undefined) set.category = (b.category as string) || null
+    if (b?.unitPrice !== undefined) set.unitPrice = Math.round(Number(b.unitPrice))
+    if (b?.moq !== undefined) set.moq = Math.max(1, Math.round(Number(b.moq)) || 1)
+    if (b?.leadTimeDays !== undefined) set.leadTimeDays = Math.max(0, Math.round(Number(b.leadTimeDays)) || 0)
+    if (b?.stockQty !== undefined) set.stockQty = Math.max(0, Math.round(Number(b.stockQty)) || 0)
+    if (b?.status !== undefined) set.status = b.status === "inactive" ? "inactive" : "active"
+    if (b?.notes !== undefined) set.notes = (b.notes as string) || null
+    const [row] = await db
+      .update(supplierProducts)
+      .set(set)
+      .where(and(eq(supplierProducts.id, id), eq(supplierProducts.partnerId, partnerId)))
+      .returning()
+    if (!row) throw new HttpException("Catalogue item not found", HttpStatus.NOT_FOUND)
+    return row
+  }
+
+  async deleteCatalogItem(partnerId: string, id: string) {
+    const [row] = await db
+      .delete(supplierProducts)
+      .where(and(eq(supplierProducts.id, id), eq(supplierProducts.partnerId, partnerId)))
+      .returning()
+    if (!row) throw new HttpException("Catalogue item not found", HttpStatus.NOT_FOUND)
+    return { ok: true }
+  }
+
+  async opportunities() {
+    return db
+      .select()
+      .from(sourcingRequests)
+      .where(inArray(sourcingRequests.status, ["open", "quoting"]))
+      .orderBy(desc(sourcingRequests.createdAt))
+  }
+
+  async submitQuote(acc: PartnerAccount, b: Record<string, unknown>) {
+    const unitPrice = Math.round(Number(b?.unitPrice ?? 0))
+    const quantity = Math.round(Number(b?.quantity ?? 0))
+    const leadTimeDays = Math.round(Number(b?.leadTimeDays ?? 0))
+    if (!Number.isFinite(unitPrice) || unitPrice <= 0 || quantity <= 0) {
+      throw new HttpException("A valid unitPrice and quantity are required", HttpStatus.BAD_REQUEST)
+    }
+    const sourcingRequestId = (b?.sourcingRequestId as string) || null
+    if (sourcingRequestId) {
+      const [sr] = await db
+        .select()
+        .from(sourcingRequests)
+        .where(eq(sourcingRequests.id, sourcingRequestId))
+        .limit(1)
+      if (!sr) throw new HttpException("Sourcing request not found", HttpStatus.NOT_FOUND)
+    }
+    const [row] = await db
+      .insert(partnerQuotes)
+      .values({
+        id: newId("pq"),
+        sourcingRequestId,
+        supplierId: acc.partnerId,
+        supplierName: acc.displayName,
+        supplierEmail: acc.email,
+        unitPrice,
+        quantity,
+        leadTimeDays: Math.max(0, leadTimeDays),
+        notes: (b?.notes as string) || null,
+        status: "pending",
+      })
+      .returning()
+    // Move the request into "quoting" so admin sees activity.
+    if (sourcingRequestId) {
+      await db
+        .update(sourcingRequests)
+        .set({ status: "quoting", updatedAt: new Date() })
+        .where(and(eq(sourcingRequests.id, sourcingRequestId), eq(sourcingRequests.status, "open")))
+    }
+    return row
+  }
+
+  async listQuotes(partnerId: string) {
+    return db
+      .select()
+      .from(partnerQuotes)
+      .where(eq(partnerQuotes.supplierId, partnerId))
+      .orderBy(desc(partnerQuotes.submittedAt))
+  }
+
+  // ---- clinic ----
+  async productLookup(q: string) {
+    const term = (q || "").trim()
+    const rows = await db
+      .select({
+        id: products.id,
+        name: products.name,
+        price: products.price,
+        stock: products.stock,
+        requiresPrescription: products.requiresPrescription,
+      })
+      .from(products)
+      .where(
+        term
+          ? and(eq(products.isPublished, true), ilike(products.name, `%${term}%`))
+          : eq(products.isPublished, true),
+      )
+      .orderBy(products.name)
+      .limit(50)
+    return rows
+  }
+
+  private async clinicCreditLimit(acc: PartnerAccount): Promise<number> {
+    const meta = (acc.metadata ?? {}) as Record<string, unknown>
+    const fromMeta = Number(meta.creditLimit)
+    if (Number.isFinite(fromMeta)) return fromMeta
+    const recs = await this.auth.cmsLookup<CmsPartnerRecord[]>("clinics", [])
+    const rec = recs.find((r) => r.id === acc.partnerId)
+    return Number(rec?.creditLimit ?? 0) || 0
+  }
+
+  private async clinicOutstanding(partnerId: string): Promise<number> {
+    const [last] = await db
+      .select()
+      .from(clinicTransactions)
+      .where(eq(clinicTransactions.clinicPartnerId, partnerId))
+      .orderBy(desc(clinicTransactions.createdAt))
+      .limit(1)
+    return last?.balanceAfter ?? 0
+  }
+
+  async placeClinicOrder(acc: PartnerAccount, b: Record<string, unknown>) {
+    const rawItems = Array.isArray(b?.items) ? (b.items as Record<string, unknown>[]) : []
+    const items = rawItems
+      .map((it) => ({
+        name: String(it?.name ?? "").trim(),
+        qty: Math.max(1, Math.round(Number(it?.qty ?? 0)) || 0),
+        unitPrice: Math.max(0, Math.round(Number(it?.unitPrice ?? 0)) || 0),
+        patient: (it?.patient as string) || undefined,
+      }))
+      .filter((it) => it.name && it.qty > 0)
+    if (!items.length) {
+      throw new HttpException("At least one valid order line is required", HttpStatus.BAD_REQUEST)
+    }
+    const subtotal = items.reduce((s, it) => s + it.qty * it.unitPrice, 0)
+    const deliveryFee = Math.max(0, Math.round(Number(b?.deliveryFee ?? 0)) || 0)
+    const total = subtotal + deliveryFee
+    const creditLine = Boolean(b?.creditLine)
+    const orderRef = `CLN-${Date.now().toString(36).toUpperCase()}-${Math.floor(Math.random() * 900 + 100)}`
+
+    const order = await db.transaction(async (tx) => {
+      // Serialize concurrent credit operations for this clinic by locking its
+      // account row, so two simultaneous credit orders can't both pass the check.
+      await tx.select().from(partnerAccounts).where(eq(partnerAccounts.id, acc.id)).for("update")
+
+      let balanceAfter = 0
+      if (creditLine) {
+        const limit = await this.clinicCreditLimit(acc)
+        const [last] = await tx
+          .select()
+          .from(clinicTransactions)
+          .where(eq(clinicTransactions.clinicPartnerId, acc.partnerId))
+          .orderBy(desc(clinicTransactions.createdAt))
+          .limit(1)
+        const outstanding = last?.balanceAfter ?? 0
+        balanceAfter = outstanding + total
+        if (balanceAfter > limit) {
+          throw new HttpException(
+            `Credit limit exceeded. Outstanding KSH ${outstanding.toLocaleString()} + KSH ${total.toLocaleString()} exceeds your limit of KSH ${limit.toLocaleString()}.`,
+            HttpStatus.BAD_REQUEST,
+          )
+        }
+      }
+
+      const [created] = await tx
+        .insert(clinicOrders)
+        .values({
+          id: newId("cord"),
+          orderRef,
+          clinicId: acc.partnerId,
+          clinicName: acc.displayName,
+          clinicEmail: acc.email,
+          items,
+          subtotal,
+          deliveryFee,
+          total,
+          status: "pending",
+          notes: (b?.notes as string) || null,
+          deliveryAddress: (b?.deliveryAddress as string) || null,
+          creditLine,
+        })
+        .returning()
+
+      if (creditLine) {
+        await tx.insert(clinicTransactions).values({
+          id: newId("ctx"),
+          clinicPartnerId: acc.partnerId,
+          orderRef,
+          type: "charge",
+          amount: total,
+          balanceAfter,
+          note: `Credit order ${orderRef}`,
+          createdBy: acc.id,
+        })
+      }
+      return created
+    })
+
+    return order
+  }
+
+  async listClinicOrders(partnerId: string) {
+    return db
+      .select()
+      .from(clinicOrders)
+      .where(eq(clinicOrders.clinicId, partnerId))
+      .orderBy(desc(clinicOrders.placedAt))
+  }
+
+  async clinicLedger(acc: PartnerAccount) {
+    const [limit, outstanding, txns] = await Promise.all([
+      this.clinicCreditLimit(acc),
+      this.clinicOutstanding(acc.partnerId),
+      db
+        .select()
+        .from(clinicTransactions)
+        .where(eq(clinicTransactions.clinicPartnerId, acc.partnerId))
+        .orderBy(desc(clinicTransactions.createdAt))
+        .limit(100),
+    ])
+    return {
+      creditLimit: limit,
+      outstanding,
+      available: Math.max(0, limit - outstanding),
+      transactions: txns,
+    }
+  }
+
+  // ---- logistics ----
+  async listJobs(partnerId: string) {
+    return db
+      .select()
+      .from(deliveryJobs)
+      .where(eq(deliveryJobs.logisticsPartnerId, partnerId))
+      .orderBy(desc(deliveryJobs.createdAt))
+  }
+
+  async updateJobStatus(partnerId: string, id: string, status: string) {
+    const allowed = ["assigned", "picked_up", "in_transit", "delivered", "failed"]
+    if (!allowed.includes(status)) {
+      throw new HttpException(`Invalid status "${status}"`, HttpStatus.BAD_REQUEST)
+    }
+    const set: Partial<typeof deliveryJobs.$inferInsert> = { status, updatedAt: new Date() }
+    if (status === "assigned") set.assignedAt = new Date()
+    if (status === "picked_up") set.pickedUpAt = new Date()
+    if (status === "delivered") set.deliveredAt = new Date()
+    const [row] = await db
+      .update(deliveryJobs)
+      .set(set)
+      .where(and(eq(deliveryJobs.id, id), eq(deliveryJobs.logisticsPartnerId, partnerId)))
+      .returning()
+    if (!row) throw new HttpException("Delivery job not found", HttpStatus.NOT_FOUND)
+    return row
+  }
+
+  async submitPod(partnerId: string, id: string, proofOfDeliveryUrl: string, notes?: string) {
+    if (!proofOfDeliveryUrl) {
+      throw new HttpException("proofOfDeliveryUrl is required", HttpStatus.BAD_REQUEST)
+    }
+    const [row] = await db
+      .update(deliveryJobs)
+      .set({
+        proofOfDeliveryUrl,
+        status: "delivered",
+        deliveredAt: new Date(),
+        notes: notes ?? undefined,
+        updatedAt: new Date(),
+      })
+      .where(and(eq(deliveryJobs.id, id), eq(deliveryJobs.logisticsPartnerId, partnerId)))
+      .returning()
+    if (!row) throw new HttpException("Delivery job not found", HttpStatus.NOT_FOUND)
+    return row
+  }
+
+  async earnings(acc: PartnerAccount) {
+    const meta = (acc.metadata ?? {}) as Record<string, unknown>
+    const ratePerDelivery = Math.max(0, Number(meta.ratePerDelivery) || 0)
+    const jobs = await db
+      .select()
+      .from(deliveryJobs)
+      .where(eq(deliveryJobs.logisticsPartnerId, acc.partnerId))
+      .orderBy(desc(deliveryJobs.createdAt))
+    const delivered = jobs.filter((j) => j.status === "delivered")
+    const inProgress = jobs.filter((j) => ["assigned", "in_transit"].includes(j.status))
+    return {
+      ratePerDelivery,
+      totals: {
+        deliveredCount: delivered.length,
+        inProgressCount: inProgress.length,
+        totalEarned: delivered.length * ratePerDelivery,
+        projected: inProgress.length * ratePerDelivery,
+      },
+      recent: delivered.slice(0, 50).map((j) => ({
+        jobRef: j.jobRef,
+        deliveredAt: j.deliveredAt,
+        amount: ratePerDelivery,
+        deliveryAddress: j.deliveryAddress,
+      })),
+    }
+  }
+}
+
+// ─────────────────────────────── controllers ───────────────────────────────
+@Controller("partners")
+class PartnerAuthController {
+  constructor(@Inject(PartnerAuthService) private readonly svc: PartnerAuthService) {}
+
+  @Post(":type/auth")
+  login(
+    @Req() _req: Request,
+    @Res({ passthrough: true }) res: Response,
+    @Param("type") type: string,
+    @Body() body: { email?: string; password?: string; portalCode?: string },
+  ) {
+    // Accept `password` (new) or `portalCode` (legacy field name) for compat.
+    return this.svc.login(res, type, body?.email ?? "", body?.password ?? body?.portalCode ?? "")
+  }
+
+  @Post(":type/signout")
+  signOut(@Res({ passthrough: true }) res: Response) {
+    return this.svc.signOut(res)
+  }
+
+  @Post("apply")
+  apply(@Body() body: Record<string, string>) {
+    return this.svc.apply(body)
+  }
+
+  @Post("accept")
+  accept(
+    @Res({ passthrough: true }) res: Response,
+    @Body() body: { token?: string; password?: string },
+  ) {
+    return this.svc.accept(res, body?.token ?? "", body?.password ?? "")
+  }
+
+  @Get("me")
+  me(@Req() req: Request) {
+    return this.svc.me(req)
+  }
+}
+
+@Controller("partners/supplier")
+class PartnerSupplierController {
+  constructor(@Inject(PartnerPortalService) private readonly svc: PartnerPortalService) {}
+
+  @Get("catalog")
+  async catalog(@Req() req: Request) {
+    const acc = await this.svc.auth.requirePartner(req, "supplier")
+    return this.svc.listCatalog(acc.partnerId)
+  }
+  @Post("catalog")
+  async addCatalog(@Req() req: Request, @Body() body: Record<string, unknown>) {
+    const acc = await this.svc.auth.requirePartner(req, "supplier")
+    return this.svc.addCatalogItem(acc.partnerId, body)
+  }
+  @Patch("catalog/:id")
+  async updateCatalog(@Req() req: Request, @Param("id") id: string, @Body() body: Record<string, unknown>) {
+    const acc = await this.svc.auth.requirePartner(req, "supplier")
+    return this.svc.updateCatalogItem(acc.partnerId, id, body)
+  }
+  @Delete("catalog/:id")
+  async deleteCatalog(@Req() req: Request, @Param("id") id: string) {
+    const acc = await this.svc.auth.requirePartner(req, "supplier")
+    return this.svc.deleteCatalogItem(acc.partnerId, id)
+  }
+  @Get("opportunities")
+  async opportunities(@Req() req: Request) {
+    await this.svc.auth.requirePartner(req, "supplier")
+    return this.svc.opportunities()
+  }
+  @Post("quotes")
+  async submitQuote(@Req() req: Request, @Body() body: Record<string, unknown>) {
+    const acc = await this.svc.auth.requirePartner(req, "supplier")
+    return this.svc.submitQuote(acc, body)
+  }
+  @Get("quotes")
+  async quotes(@Req() req: Request) {
+    const acc = await this.svc.auth.requirePartner(req, "supplier")
+    return this.svc.listQuotes(acc.partnerId)
+  }
+}
+
+@Controller("partners/clinic")
+class PartnerClinicController {
+  constructor(@Inject(PartnerPortalService) private readonly svc: PartnerPortalService) {}
+
+  @Get("catalog")
+  async catalog(@Req() req: Request, @Query("q") q: string) {
+    await this.svc.auth.requirePartner(req, "clinic")
+    return this.svc.productLookup(q ?? "")
+  }
+  @Post("orders")
+  async placeOrder(@Req() req: Request, @Body() body: Record<string, unknown>) {
+    const acc = await this.svc.auth.requirePartner(req, "clinic")
+    return this.svc.placeClinicOrder(acc, body)
+  }
   @Get("orders")
-  list(@Req() req: Request, @Param("type") type: string) {
-    return this.svc.listForSession(req.sessionId, type)
+  async orders(@Req() req: Request) {
+    const acc = await this.svc.auth.requirePartner(req, "clinic")
+    return this.svc.listClinicOrders(acc.partnerId)
+  }
+  @Get("ledger")
+  async ledger(@Req() req: Request) {
+    const acc = await this.svc.auth.requirePartner(req, "clinic")
+    return this.svc.clinicLedger(acc)
+  }
+}
+
+@Controller("partners/logistics")
+class PartnerLogisticsController {
+  constructor(@Inject(PartnerPortalService) private readonly svc: PartnerPortalService) {}
+
+  @Get("jobs")
+  async jobs(@Req() req: Request) {
+    const acc = await this.svc.auth.requirePartner(req, "logistics")
+    return this.svc.listJobs(acc.partnerId)
+  }
+  @Patch("jobs/:id/status")
+  async status(@Req() req: Request, @Param("id") id: string, @Body() body: { status?: string }) {
+    const acc = await this.svc.auth.requirePartner(req, "logistics")
+    return this.svc.updateJobStatus(acc.partnerId, id, body?.status ?? "")
+  }
+  @Post("jobs/:id/pod")
+  async pod(
+    @Req() req: Request,
+    @Param("id") id: string,
+    @Body() body: { proofOfDeliveryUrl?: string; notes?: string },
+  ) {
+    const acc = await this.svc.auth.requirePartner(req, "logistics")
+    return this.svc.submitPod(acc.partnerId, id, body?.proofOfDeliveryUrl ?? "", body?.notes)
+  }
+  @Get("earnings")
+  async earnings(@Req() req: Request) {
+    const acc = await this.svc.auth.requirePartner(req, "logistics")
+    return this.svc.earnings(acc)
+  }
+}
+
+@UseGuards(AdminGuard)
+@Controller("partners/admin")
+class PartnerAdminController {
+  constructor(@Inject(PartnerAuthService) private readonly svc: PartnerAuthService) {}
+
+  @Post("invite")
+  invite(@Body() body: Record<string, unknown>) {
+    return this.svc.invite(body)
+  }
+  @Get("accounts")
+  accounts(@Query("type") type?: string) {
+    return this.svc.listAccounts(type)
+  }
+  @Patch("accounts/:id")
+  updateAccount(@Param("id") id: string, @Body() body: Record<string, unknown>) {
+    return this.svc.updateAccount(id, body)
+  }
+  @Post("accounts/:id/resend-invite")
+  resend(@Param("id") id: string) {
+    return this.svc.resendInvite(id)
+  }
+  @Get("applications")
+  applications(@Query("status") status?: string) {
+    return this.svc.listApplications(status)
+  }
+  @Post("applications/:id/approve")
+  approve(@Param("id") id: string, @Body() body: { reviewNotes?: string }) {
+    return this.svc.reviewApplication(id, "approved", body?.reviewNotes)
+  }
+  @Post("applications/:id/reject")
+  reject(@Param("id") id: string, @Body() body: { reviewNotes?: string }) {
+    return this.svc.reviewApplication(id, "rejected", body?.reviewNotes)
+  }
+}
+
+@UseGuards(AdminGuard)
+@Controller("partners/welcome")
+class PartnerWelcomeController {
+  constructor(@Inject(PartnerAuthService) private readonly svc: PartnerAuthService) {}
+
+  @Post()
+  async send(@Body() body: { partnerType?: string; partnerId?: string; email?: string; displayName?: string }) {
+    if (!body?.email) throw new HttpException("email is required", HttpStatus.BAD_REQUEST)
+    if (!body?.partnerId) throw new HttpException("partnerId is required", HttpStatus.BAD_REQUEST)
+    return this.svc.invite(body)
   }
 }
 
 @Module({
-  imports: [EmailModule],
-  controllers: [PartnerWelcomeController, PartnersController],
-  providers: [PartnersService],
+  imports: [EmailModule, AdminCmsModule],
+  controllers: [
+    PartnerAuthController,
+    PartnerSupplierController,
+    PartnerClinicController,
+    PartnerLogisticsController,
+    PartnerAdminController,
+    PartnerWelcomeController,
+  ],
+  providers: [PartnerAuthService, PartnerPortalService],
 })
 export class PartnersModule {}

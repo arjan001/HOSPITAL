@@ -3,80 +3,172 @@
 /**
  * Logistics Partner Portal — /portal/logistics
  *
- * Delivery companies log in with their email + portal code.
- * Features: active delivery dashboard, fleet status grid,
- * delivery confirmation, KYC status, and performance metrics.
+ * Backed by the real partner API via @/lib/partners-client (HttpOnly cookie
+ * auth, credentials: "include"). No portal codes, no localStorage auth.
+ *
+ * Tabs: Overview · Jobs · Proof of Delivery · Earnings · Profile
+ * Also mounted at /portal/logistics/accept for invite acceptance.
  */
 
-import { useState, useMemo } from "react"
-import { Link } from "wouter"
-import { useCmsDoc } from "@/lib/cms-store"
+import { useState } from "react"
+import { Link, useLocation } from "wouter"
 import {
-  getPortalSessionForType, loginPartnerLocal, signOutPartner, type PortalSession,
-} from "@/lib/portal-auth"
-import type { LogisticsPartner, LogisticsVehicle } from "@/components/admin/logistics-partners"
+  partnerLogin, partnerApply, partnerAcceptInvite, partnerSignout,
+  usePartnerMe, refreshPartnerMe,
+  useLogisticsJobs, useLogisticsEarnings, updateDeliveryStatus, submitDeliveryPod,
+  type PartnerAccount, type DeliveryJob,
+} from "@/lib/partners-client"
 import {
-  Truck, LogOut, Package, MapPin, BarChart3, Shield, Building2,
-  AlertTriangle, CheckCircle2, XCircle, Eye, EyeOff, ArrowRight,
-  Clock, Activity, Star, Phone, Mail, Hash, Car, Bike,
-  TrendingUp, Users, Gauge, Zap, Navigation, CheckSquare,
-  ChevronLeft, ChevronRight, Menu, X,
+  Truck, LogOut, Package, MapPin, BarChart3, User,
+  AlertTriangle, CheckCircle2, ArrowRight, Eye, EyeOff,
+  Clock, Navigation, Snowflake, Phone, Mail, Hash,
+  TrendingUp, Wallet, CheckSquare, ExternalLink,
+  ChevronLeft, ChevronRight, Menu, X, Loader2,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
 
-const WINE    = "#3D0814"
-const ORANGE  = "#F97316"
-const GREEN   = "#15803D"
-const PURPLE  = "#7C3AED"
-const S_TEXT  = "rgba(255,255,255,0.88)"
-const S_MUTED = "rgba(255,255,255,0.45)"
-const S_BORDER= "rgba(255,255,255,0.10)"
+const WINE     = "#3D0814"
+const WINE_2   = "#6B0F1A"
+const ORANGE   = "#F97316"
+const RED       = "#B91C1C"
+const GREEN    = "#15803D"
+const BLUE     = "#1D4ED8"
+const S_TEXT   = "rgba(255,255,255,0.88)"
+const S_MUTED  = "rgba(255,255,255,0.45)"
+const S_BORDER = "rgba(255,255,255,0.10)"
 
-/* ─── Login Page ─────────────────────────────────────────────── */
+const PARTNER_TYPE = "logistics" as const
 
-function LogisticsLoginPage({ onLogin, error }: {
-  onLogin: (email: string, code: string) => void; error: string
-}) {
+function ksh(n: number): string {
+  return `KSh ${Math.round(n).toLocaleString()}`
+}
+
+/* ─── Status helpers ─────────────────────────────────────────── */
+
+type StatusMeta = { label: string; color: string; bg: string }
+
+const STATUS_CONFIG: Record<string, StatusMeta> = {
+  assigned:   { label: "Assigned",   color: BLUE,     bg: "#EFF6FF" },
+  picked_up:  { label: "Picked Up",  color: ORANGE,   bg: "#FFF7ED" },
+  in_transit: { label: "In Transit", color: "#7C3AED",bg: "#F5F3FF" },
+  delivered:  { label: "Delivered",  color: GREEN,    bg: "#F0FDF4" },
+  failed:     { label: "Failed",     color: RED,      bg: "#FEF2F2" },
+  cancelled:  { label: "Cancelled",  color: "#6B7280",bg: "#F3F4F6" },
+}
+
+function statusMeta(status: string): StatusMeta {
+  return STATUS_CONFIG[status] ?? { label: status, color: "#6B7280", bg: "#F3F4F6" }
+}
+
+const STATUS_FLOW: Record<string, { next: string; label: string }> = {
+  assigned:   { next: "picked_up",  label: "Mark Picked Up" },
+  picked_up:  { next: "in_transit", label: "Mark In Transit" },
+  in_transit: { next: "delivered",  label: "Mark Delivered" },
+}
+
+const ACTIVE_STATUSES = ["assigned", "picked_up", "in_transit"]
+
+/* ─── Brand panel (shared by auth + accept) ──────────────────── */
+
+function BrandPanel({ subtitle }: { subtitle: string }) {
+  return (
+    <div
+      className="hidden lg:flex w-1/2 flex-col justify-between p-12"
+      style={{ background: `linear-gradient(160deg, ${WINE} 0%, ${WINE_2} 100%)` }}
+    >
+      <div>
+        <div className="flex items-center gap-2.5">
+          <img src="/logo-rx.png" alt="Shaniid RX" className="h-12 w-auto object-contain" onError={e => { (e.target as HTMLImageElement).style.display = "none" }} />
+          <span className="text-white font-bold text-xl tracking-tight">Shaniid RX</span>
+        </div>
+        <p className="text-white/60 text-sm mt-1">{subtitle}</p>
+      </div>
+      <div className="space-y-8">
+        {[
+          { icon: Navigation, title: "Live delivery jobs", desc: "Every job assigned to you in real time — pickup, drop-off, recipient and cold-chain requirements." },
+          { icon: CheckSquare, title: "Proof of delivery", desc: "Capture a proof-of-delivery link and notes to confirm each completed drop." },
+          { icon: Wallet, title: "Transparent earnings", desc: "A clear rate per delivery, running totals and a record of every paid job." },
+          { icon: Truck, title: "Built for fleets", desc: "Move jobs through their lifecycle with a single tap — assigned to delivered." },
+        ].map(({ icon: Icon, title, desc }) => (
+          <div key={title} className="flex gap-4">
+            <div className="h-10 w-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: "rgba(255,255,255,0.12)" }}>
+              <Icon className="h-5 w-5 text-white" />
+            </div>
+            <div>
+              <p className="text-white font-semibold text-sm">{title}</p>
+              <p className="text-white/60 text-xs mt-0.5 leading-relaxed">{desc}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+      <p className="text-white/40 text-xs">"Real Medicine, Right to Your Door." — Shaniid RX Logistics</p>
+    </div>
+  )
+}
+
+/* ─── Auth screen (sign in / apply) ──────────────────────────── */
+
+function AuthScreen() {
+  const [mode, setMode] = useState<"signin" | "apply">("signin")
+
+  // sign in
   const [email, setEmail] = useState("")
-  const [code, setCode] = useState("")
-  const [showCode, setShowCode] = useState(false)
+  const [password, setPassword] = useState("")
+  const [showPw, setShowPw] = useState(false)
+  const [signinErr, setSigninErr] = useState("")
+  const [signingIn, setSigningIn] = useState(false)
 
-  const submit = (e: React.FormEvent) => {
-    e.preventDefault(); onLogin(email.trim().toLowerCase(), code.trim().toUpperCase())
+  // apply
+  const [orgName, setOrgName] = useState("")
+  const [contactName, setContactName] = useState("")
+  const [applyEmail, setApplyEmail] = useState("")
+  const [phone, setPhone] = useState("")
+  const [message, setMessage] = useState("")
+  const [applyErr, setApplyErr] = useState("")
+  const [applying, setApplying] = useState(false)
+  const [applied, setApplied] = useState(false)
+
+  const doSignin = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setSigninErr("")
+    setSigningIn(true)
+    try {
+      await partnerLogin(PARTNER_TYPE, email.trim().toLowerCase(), password)
+      await refreshPartnerMe()
+    } catch (err) {
+      setSigninErr(err instanceof Error ? err.message : "Sign in failed. Please try again.")
+    } finally {
+      setSigningIn(false)
+    }
+  }
+
+  const doApply = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setApplyErr("")
+    setApplying(true)
+    try {
+      await partnerApply({
+        partnerType: PARTNER_TYPE,
+        orgName: orgName.trim(),
+        contactName: contactName.trim(),
+        email: applyEmail.trim().toLowerCase(),
+        phone: phone.trim() || undefined,
+        message: message.trim() || undefined,
+      })
+      setApplied(true)
+    } catch (err) {
+      setApplyErr(err instanceof Error ? err.message : "We couldn't submit your application. Please try again.")
+    } finally {
+      setApplying(false)
+    }
   }
 
   return (
     <div className="min-h-screen flex" style={{ background: "#faf9f8" }}>
-      <div className="hidden lg:flex w-1/2 flex-col justify-between p-12" style={{ background: WINE }}>
-        <div>
-          <div className="flex items-center gap-2.5">
-            <img src="/logo-rx.png" alt="Shaniid RX" className="h-12 w-auto object-contain" onError={e => { (e.target as HTMLImageElement).style.display = "none" }} />
-            <span className="text-white font-bold text-xl tracking-tight">Shaniid RX</span>
-          </div>
-          <p className="text-white/60 text-sm mt-1">Logistics Partner Portal</p>
-        </div>
-        <div className="space-y-8">
-          {[
-            { icon: Navigation,  title: "Live delivery assignments", desc: "See every delivery assigned to your fleet in real time — route details, recipient info and SLA countdown." },
-            { icon: Truck,       title: "Fleet management",          desc: "Track vehicle availability, driver assignments and maintenance status across your entire fleet." },
-            { icon: Gauge,       title: "Performance dashboard",     desc: "On-time rate, delivery success rate and SLA score updated after every completed drop." },
-            { icon: Shield,      title: "KYC & compliance",          desc: "Manage your insurance, registration and safety certification status from a single panel." },
-          ].map(({ icon: Icon, title, desc }) => (
-            <div key={title} className="flex gap-4">
-              <div className="h-10 w-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: "rgba(255,255,255,0.12)" }}>
-                <Icon className="h-5 w-5 text-white" />
-              </div>
-              <div>
-                <p className="text-white font-semibold text-sm">{title}</p>
-                <p className="text-white/60 text-xs mt-0.5 leading-relaxed">{desc}</p>
-              </div>
-            </div>
-          ))}
-        </div>
-        <p className="text-white/40 text-xs">"Real Medicine, Right to Your Door." — Shaniid RX Logistics</p>
-      </div>
+      <BrandPanel subtitle="Logistics Partner Portal" />
 
       <div className="flex-1 flex items-center justify-center p-6">
         <div className="w-full max-w-md">
@@ -84,41 +176,116 @@ function LogisticsLoginPage({ onLogin, error }: {
             <img src="/logo-rx.png" alt="Shaniid RX" className="h-14 w-auto object-contain" />
           </div>
 
-          <h1 className="text-2xl font-bold text-gray-800 mb-1">Logistics sign in</h1>
-          <p className="text-gray-500 text-sm mb-8">Enter the email and portal code issued to your company on onboarding.</p>
+          {/* Mode toggle */}
+          <div className="flex p-1 rounded-xl bg-gray-100 mb-7">
+            {([
+              { id: "signin", label: "Sign in" },
+              { id: "apply", label: "Apply to join" },
+            ] as const).map(({ id, label }) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => setMode(id)}
+                className="flex-1 text-sm font-semibold py-2 rounded-lg transition-all"
+                style={mode === id ? { background: "#fff", color: WINE, boxShadow: "0 1px 2px rgba(0,0,0,0.08)" } : { color: "#6B7280" }}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
 
-          {error && (
-            <div className="mb-5 flex items-center gap-2.5 p-3.5 rounded-xl bg-red-50 border border-red-200 text-sm text-red-700">
-              <AlertTriangle className="h-4 w-4 flex-shrink-0" />{error}
+          {mode === "signin" ? (
+            <>
+              <h1 className="text-2xl font-bold text-gray-800 mb-1">Logistics sign in</h1>
+              <p className="text-gray-500 text-sm mb-8">Use the email and password for your logistics account.</p>
+
+              {signinErr && (
+                <div className="mb-5 flex items-center gap-2.5 p-3.5 rounded-xl bg-red-50 border border-red-200 text-sm text-red-700">
+                  <AlertTriangle className="h-4 w-4 flex-shrink-0" />{signinErr}
+                </div>
+              )}
+
+              <form onSubmit={doSignin} className="space-y-4">
+                <div>
+                  <Label className="text-sm font-medium text-gray-700">Email address</Label>
+                  <Input type="email" required value={email} onChange={e => setEmail(e.target.value)} placeholder="ops@yourcompany.co.ke" className="mt-1 h-11" />
+                </div>
+                <div>
+                  <Label className="text-sm font-medium text-gray-700">Password</Label>
+                  <div className="relative mt-1">
+                    <Input type={showPw ? "text" : "password"} required value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" className="h-11 pr-10" />
+                    <button type="button" onClick={() => setShowPw(s => !s)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                      {showPw ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                  </div>
+                </div>
+                <Button type="submit" disabled={signingIn} className="w-full h-11 text-white font-semibold gap-2" style={{ background: ORANGE }}>
+                  {signingIn ? <Loader2 className="h-4 w-4 animate-spin" /> : <>Sign in <ArrowRight className="h-4 w-4" /></>}
+                </Button>
+              </form>
+
+              <p className="text-xs text-gray-400 text-center mt-6">
+                New partner? <button type="button" onClick={() => setMode("apply")} className="underline font-medium" style={{ color: WINE }}>Apply to join</button>
+              </p>
+            </>
+          ) : applied ? (
+            <div className="text-center py-6">
+              <div className="h-14 w-14 rounded-2xl flex items-center justify-center mx-auto mb-4" style={{ background: `${GREEN}15` }}>
+                <CheckCircle2 className="h-7 w-7" style={{ color: GREEN }} />
+              </div>
+              <h1 className="text-2xl font-bold text-gray-800 mb-2">Application received</h1>
+              <p className="text-gray-500 text-sm max-w-sm mx-auto">
+                Thanks for your interest in becoming a Shaniid RX logistics partner. Our team will review your
+                application and reach out by email. You'll receive an invite to set up your account once approved.
+              </p>
+              <Button onClick={() => { setApplied(false); setMode("signin") }} className="mt-6 h-11 px-6 text-white font-semibold" style={{ background: WINE }}>
+                Back to sign in
+              </Button>
             </div>
+          ) : (
+            <>
+              <h1 className="text-2xl font-bold text-gray-800 mb-1">Apply to join</h1>
+              <p className="text-gray-500 text-sm mb-8">Tell us about your delivery operation. We review every application before issuing an invite.</p>
+
+              {applyErr && (
+                <div className="mb-5 flex items-center gap-2.5 p-3.5 rounded-xl bg-red-50 border border-red-200 text-sm text-red-700">
+                  <AlertTriangle className="h-4 w-4 flex-shrink-0" />{applyErr}
+                </div>
+              )}
+
+              <form onSubmit={doApply} className="space-y-4">
+                <div>
+                  <Label className="text-sm font-medium text-gray-700">Company name</Label>
+                  <Input required value={orgName} onChange={e => setOrgName(e.target.value)} placeholder="Your delivery company" className="mt-1 h-11" />
+                </div>
+                <div>
+                  <Label className="text-sm font-medium text-gray-700">Contact name</Label>
+                  <Input required value={contactName} onChange={e => setContactName(e.target.value)} placeholder="Full name" className="mt-1 h-11" />
+                </div>
+                <div>
+                  <Label className="text-sm font-medium text-gray-700">Email address</Label>
+                  <Input type="email" required value={applyEmail} onChange={e => setApplyEmail(e.target.value)} placeholder="ops@yourcompany.co.ke" className="mt-1 h-11" />
+                </div>
+                <div>
+                  <Label className="text-sm font-medium text-gray-700">Phone <span className="text-gray-400 font-normal">(optional)</span></Label>
+                  <Input value={phone} onChange={e => setPhone(e.target.value)} placeholder="+254 7XX XXX XXX" className="mt-1 h-11" />
+                </div>
+                <div>
+                  <Label className="text-sm font-medium text-gray-700">Message <span className="text-gray-400 font-normal">(optional)</span></Label>
+                  <Textarea value={message} onChange={e => setMessage(e.target.value)} placeholder="Fleet size, coverage areas, cold-chain capability…" className="mt-1 min-h-[88px]" />
+                </div>
+                <Button type="submit" disabled={applying} className="w-full h-11 text-white font-semibold gap-2" style={{ background: ORANGE }}>
+                  {applying ? <Loader2 className="h-4 w-4 animate-spin" /> : <>Submit application <ArrowRight className="h-4 w-4" /></>}
+                </Button>
+              </form>
+
+              <p className="text-xs text-gray-400 text-center mt-6">
+                Already a partner? <button type="button" onClick={() => setMode("signin")} className="underline font-medium" style={{ color: WINE }}>Sign in</button>
+              </p>
+            </>
           )}
 
-          <form onSubmit={submit} className="space-y-4">
-            <div>
-              <Label className="text-sm font-medium text-gray-700">Company email</Label>
-              <Input type="email" required value={email} onChange={e => setEmail(e.target.value)} placeholder="ops@yourcompany.co.ke" className="mt-1 h-11" />
-            </div>
-            <div>
-              <Label className="text-sm font-medium text-gray-700">Portal code</Label>
-              <div className="relative mt-1">
-                <Input type={showCode ? "text" : "password"} required value={code}
-                  onChange={e => setCode(e.target.value)} placeholder="LOG-XXXX-XXXX"
-                  className="h-11 pr-10 font-mono uppercase" />
-                <button type="button" onClick={() => setShowCode(s => !s)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
-                  {showCode ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                </button>
-              </div>
-            </div>
-            <Button type="submit" className="w-full h-11 text-white font-semibold gap-2" style={{ background: WINE }}>
-              Sign in to your portal <ArrowRight className="h-4 w-4" />
-            </Button>
-          </form>
-
-          <p className="text-xs text-gray-400 text-center mt-6">
-            Need a portal code? Email <a href="mailto:logistics@shaniidrx.com" className="underline" style={{ color: WINE }}>logistics@shaniidrx.com</a>
-          </p>
-          <p className="text-xs text-gray-300 text-center mt-1">
+          <p className="text-xs text-gray-300 text-center mt-2">
             <Link href="/admin" className="hover:text-gray-500 transition-colors">Admin portal →</Link>
           </p>
         </div>
@@ -127,68 +294,281 @@ function LogisticsLoginPage({ onLogin, error }: {
   )
 }
 
-/* ─── Delivery Job Types ─────────────────────────────────────── */
+/* ─── Accept invite (set password) ───────────────────────────── */
 
-export type { DeliveryJobStatus, DeliveryJob } from "@/lib/types"
-import type { DeliveryJobStatus, DeliveryJob } from "@/lib/types"
+function AcceptInviteScreen({ token }: { token: string }) {
+  const [, setLocation] = useLocation()
+  const [password, setPassword] = useState("")
+  const [confirm, setConfirm] = useState("")
+  const [showPw, setShowPw] = useState(false)
+  const [err, setErr] = useState("")
+  const [busy, setBusy] = useState(false)
 
-const JOB_STATUS_CONFIG: Record<DeliveryJobStatus, { label: string; color: string; bg: string; icon: typeof CheckCircle2 }> = {
-  assigned:   { label: "Assigned",   color: "#1D4ED8", bg: "#EFF6FF", icon: Clock       },
-  picked_up:  { label: "Picked Up",  color: ORANGE,   bg: "#FFF7ED", icon: Navigation   },
-  delivered:  { label: "Delivered",  color: GREEN,    bg: "#F0FDF4", icon: CheckCircle2 },
-  failed:     { label: "Failed",     color: "#DC2626", bg: "#FEF2F2", icon: XCircle      },
-}
-
-/* ─── Vehicle Card ───────────────────────────────────────────── */
-
-function VehicleCard({ vehicle }: { vehicle: LogisticsVehicle }) {
-  const statusConfig = {
-    available:    { label: "Available",    color: GREEN,   bg: `${GREEN}15`   },
-    on_delivery:  { label: "On Delivery",  color: ORANGE,  bg: `${ORANGE}15`  },
-    maintenance:  { label: "Maintenance",  color: "#F59E0B",bg: "#FEF3C7"      },
-    offline:      { label: "Offline",      color: "#9CA3AF",bg: "#F3F4F6"      },
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setErr("")
+    if (password.length < 8) { setErr("Password must be at least 8 characters."); return }
+    if (password !== confirm) { setErr("Passwords do not match."); return }
+    setBusy(true)
+    try {
+      await partnerAcceptInvite(token, password)
+      await refreshPartnerMe()
+      setLocation(`/portal/${PARTNER_TYPE}`)
+    } catch (e2) {
+      setErr(e2 instanceof Error ? e2.message : "We couldn't accept this invite. The link may have expired.")
+    } finally {
+      setBusy(false)
+    }
   }
-  const { label, color, bg } = statusConfig[vehicle.status]
-  const icons: Record<string, typeof Truck> = { motorcycle: Bike, bicycle: Bike, tuktuk: Car, van: Truck, cold_van: Truck, truck: Truck }
-  const Icon = icons[vehicle.type] ?? Truck
 
   return (
-    <div className="bg-white rounded-xl border border-gray-100 p-4 flex items-start gap-3 shadow-sm">
-      <div className="h-10 w-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: `${PURPLE}15` }}>
-        <Icon className="h-5 w-5" style={{ color: PURPLE }} />
+    <div className="min-h-screen flex" style={{ background: "#faf9f8" }}>
+      <BrandPanel subtitle="Accept your invitation" />
+      <div className="flex-1 flex items-center justify-center p-6">
+        <div className="w-full max-w-md">
+          <div className="lg:hidden flex items-center gap-2 mb-8">
+            <img src="/logo-rx.png" alt="Shaniid RX" className="h-14 w-auto object-contain" />
+          </div>
+
+          <h1 className="text-2xl font-bold text-gray-800 mb-1">Set your password</h1>
+          <p className="text-gray-500 text-sm mb-8">Create a password to activate your logistics partner account.</p>
+
+          {err && (
+            <div className="mb-5 flex items-center gap-2.5 p-3.5 rounded-xl bg-red-50 border border-red-200 text-sm text-red-700">
+              <AlertTriangle className="h-4 w-4 flex-shrink-0" />{err}
+            </div>
+          )}
+
+          <form onSubmit={submit} className="space-y-4">
+            <div>
+              <Label className="text-sm font-medium text-gray-700">New password</Label>
+              <div className="relative mt-1">
+                <Input type={showPw ? "text" : "password"} required value={password} onChange={e => setPassword(e.target.value)} placeholder="At least 8 characters" className="h-11 pr-10" />
+                <button type="button" onClick={() => setShowPw(s => !s)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                  {showPw ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
+            </div>
+            <div>
+              <Label className="text-sm font-medium text-gray-700">Confirm password</Label>
+              <Input type={showPw ? "text" : "password"} required value={confirm} onChange={e => setConfirm(e.target.value)} placeholder="Re-enter password" className="mt-1 h-11" />
+            </div>
+            <Button type="submit" disabled={busy} className="w-full h-11 text-white font-semibold gap-2" style={{ background: ORANGE }}>
+              {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <>Activate account <ArrowRight className="h-4 w-4" /></>}
+            </Button>
+          </form>
+        </div>
       </div>
-      <div className="flex-1 min-w-0">
-        <p className="font-mono font-bold text-sm text-gray-800">{vehicle.plateNumber}</p>
-        <p className="text-xs text-gray-500 capitalize mt-0.5">{vehicle.type.replace("_", " ")}</p>
-        {vehicle.driver && <p className="text-xs text-gray-400 mt-0.5">Driver: {vehicle.driver}</p>}
-      </div>
-      <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full capitalize flex-shrink-0" style={{ color, background: bg }}>
-        {label}
-      </span>
     </div>
   )
 }
 
-/* ─── Dashboard ─────────────────────────────────────────────── */
+/* ─── Shared small UI ────────────────────────────────────────── */
 
-type LogTab = "overview" | "deliveries" | "fleet" | "performance" | "kyc"
+function StatCard({ icon: Icon, label, value, color = WINE }: {
+  icon: typeof Package; label: string; value: string | number; color?: string
+}) {
+  return (
+    <div className="bg-white rounded-xl border border-gray-100 p-4 flex items-start gap-3 shadow-sm">
+      <div className="h-10 w-10 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: `${color}15` }}>
+        <Icon className="h-5 w-5" style={{ color }} />
+      </div>
+      <div className="min-w-0">
+        <p className="text-xs text-gray-500 font-medium">{label}</p>
+        <p className="text-xl font-bold mt-0.5" style={{ color: WINE }}>{value}</p>
+      </div>
+    </div>
+  )
+}
+
+function StatusBadge({ status }: { status: string }) {
+  const m = statusMeta(status)
+  return (
+    <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full inline-flex items-center" style={{ color: m.color, background: m.bg }}>
+      {m.label}
+    </span>
+  )
+}
+
+function LoadingBlock({ label }: { label: string }) {
+  return (
+    <div className="bg-white rounded-xl border border-gray-100 p-10 text-center text-gray-400">
+      <Loader2 className="h-7 w-7 mx-auto mb-3 animate-spin opacity-50" />
+      <p className="text-sm">{label}</p>
+    </div>
+  )
+}
+
+function ErrorBlock({ message, onRetry }: { message: string; onRetry: () => void }) {
+  return (
+    <div className="bg-white rounded-xl border border-red-100 p-8 text-center">
+      <AlertTriangle className="h-8 w-8 mx-auto mb-3" style={{ color: RED }} />
+      <p className="font-medium text-gray-700">Something went wrong</p>
+      <p className="text-sm text-gray-500 mt-1 max-w-sm mx-auto">{message}</p>
+      <Button onClick={onRetry} className="mt-4 h-10 px-5 text-white font-semibold" style={{ background: WINE }}>Try again</Button>
+    </div>
+  )
+}
+
+function EmptyBlock({ icon: Icon, title, desc }: { icon: typeof Package; title: string; desc: string }) {
+  return (
+    <div className="bg-white rounded-xl border border-gray-100 p-10 text-center text-gray-400">
+      <Icon className="h-10 w-10 mx-auto mb-3 opacity-20" />
+      <p className="font-medium text-gray-600">{title}</p>
+      <p className="text-sm mt-1 max-w-xs mx-auto">{desc}</p>
+    </div>
+  )
+}
+
+/* ─── Job card ───────────────────────────────────────────────── */
+
+function JobCard({ job, onAdvance, busy }: {
+  job: DeliveryJob; onAdvance: (id: string, status: string) => void; busy: boolean
+}) {
+  const flow = STATUS_FLOW[job.status]
+  return (
+    <div className="bg-white rounded-xl border border-gray-100 p-4 shadow-sm">
+      <div className="flex items-start justify-between gap-3 mb-3">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="font-mono font-bold text-sm text-gray-800">{job.jobRef}</span>
+            <StatusBadge status={job.status} />
+            {job.coldChain && (
+              <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full inline-flex items-center gap-1" style={{ color: BLUE, background: "#EFF6FF" }}>
+                <Snowflake className="h-3 w-3" /> Cold chain
+              </span>
+            )}
+          </div>
+          {job.recipientName && <p className="text-sm font-medium text-gray-700 mt-1">{job.recipientName}</p>}
+        </div>
+        <span className="text-xs text-gray-400 flex-shrink-0">
+          {new Date(job.createdAt).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}
+        </span>
+      </div>
+
+      <div className="space-y-2 mb-3">
+        <div className="flex items-start gap-1.5">
+          <Navigation className="h-3.5 w-3.5 text-gray-400 mt-0.5 flex-shrink-0" />
+          <div>
+            <p className="text-[11px] uppercase tracking-wide text-gray-400 font-semibold">Pickup</p>
+            <p className="text-xs text-gray-600">{job.pickupAddress}</p>
+          </div>
+        </div>
+        <div className="flex items-start gap-1.5">
+          <MapPin className="h-3.5 w-3.5 text-gray-400 mt-0.5 flex-shrink-0" />
+          <div>
+            <p className="text-[11px] uppercase tracking-wide text-gray-400 font-semibold">Delivery</p>
+            <p className="text-xs text-gray-600">{job.deliveryAddress}</p>
+          </div>
+        </div>
+      </div>
+
+      {job.recipientPhone && (
+        <div className="flex items-center gap-1.5 text-xs text-gray-500 mb-3">
+          <Phone className="h-3.5 w-3.5" />{job.recipientPhone}
+        </div>
+      )}
+
+      {job.proofOfDeliveryUrl && (
+        <a href={job.proofOfDeliveryUrl} target="_blank" rel="noopener noreferrer"
+          className="inline-flex items-center gap-1 text-xs font-medium mb-3" style={{ color: WINE }}>
+          <ExternalLink className="h-3.5 w-3.5" /> View proof of delivery
+        </a>
+      )}
+
+      {flow && (
+        <div className="flex gap-2">
+          <button
+            disabled={busy}
+            onClick={() => onAdvance(job.id, flow.next)}
+            className="flex-1 text-xs font-semibold py-2 rounded-lg text-white transition-opacity disabled:opacity-60"
+            style={{ background: ORANGE }}
+          >
+            {busy ? "Updating…" : flow.label}
+          </button>
+          <button
+            disabled={busy}
+            onClick={() => onAdvance(job.id, "failed")}
+            className="px-3 text-xs font-semibold py-2 rounded-lg border transition-colors disabled:opacity-60"
+            style={{ borderColor: "#FCA5A5", color: RED }}
+          >
+            Report Failed
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+/* ─── POD card ───────────────────────────────────────────────── */
+
+function PodCard({ job, onSubmit, busy }: {
+  job: DeliveryJob; onSubmit: (id: string, url: string, notes: string) => Promise<void>; busy: boolean
+}) {
+  const [url, setUrl] = useState(job.proofOfDeliveryUrl ?? "")
+  const [notes, setNotes] = useState(job.notes ?? "")
+
+  return (
+    <div className="bg-white rounded-xl border border-gray-100 p-4 shadow-sm">
+      <div className="flex items-center justify-between gap-3 mb-3">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="font-mono font-bold text-sm text-gray-800">{job.jobRef}</span>
+          <StatusBadge status={job.status} />
+        </div>
+        <span className="text-xs text-gray-400">{job.recipientName ?? "—"}</span>
+      </div>
+      <div className="flex items-start gap-1.5 mb-3">
+        <MapPin className="h-3.5 w-3.5 text-gray-400 mt-0.5 flex-shrink-0" />
+        <p className="text-xs text-gray-600">{job.deliveryAddress}</p>
+      </div>
+
+      <div className="space-y-3">
+        <div>
+          <Label className="text-xs font-medium text-gray-700">Proof of delivery URL</Label>
+          <Input value={url} onChange={e => setUrl(e.target.value)} placeholder="https://…/photo-or-signature" className="mt-1 h-10 text-sm" />
+        </div>
+        <div>
+          <Label className="text-xs font-medium text-gray-700">Notes <span className="text-gray-400 font-normal">(optional)</span></Label>
+          <Textarea value={notes} onChange={e => setNotes(e.target.value)} placeholder="Delivered to recipient, signed at gate…" className="mt-1 min-h-[64px] text-sm" />
+        </div>
+        <Button
+          disabled={busy || !url.trim()}
+          onClick={() => onSubmit(job.id, url.trim(), notes.trim())}
+          className="w-full h-10 text-white font-semibold gap-2 text-sm"
+          style={{ background: GREEN }}
+        >
+          {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <><CheckSquare className="h-4 w-4" /> Submit & mark delivered</>}
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+/* ─── Dashboard ──────────────────────────────────────────────── */
+
+type LogTab = "overview" | "jobs" | "pod" | "earnings" | "profile"
 
 const LOG_TABS: { id: LogTab; label: string; icon: typeof Truck }[] = [
-  { id: "overview",   label: "Overview",         icon: BarChart3  },
-  { id: "deliveries", label: "My Deliveries",    icon: Package    },
-  { id: "fleet",      label: "Fleet",            icon: Truck      },
-  { id: "performance",label: "Performance",      icon: Gauge      },
-  { id: "kyc",        label: "KYC & Compliance", icon: Shield     },
+  { id: "overview", label: "Overview",          icon: BarChart3   },
+  { id: "jobs",     label: "Jobs",              icon: Package      },
+  { id: "pod",      label: "Proof of Delivery", icon: CheckSquare  },
+  { id: "earnings", label: "Earnings",          icon: Wallet       },
+  { id: "profile",  label: "Profile",           icon: User         },
 ]
 
-function LogisticsDashboard({ partner, session, onLogout }: {
-  partner: LogisticsPartner; session: PortalSession; onLogout: () => void
+function LogisticsDashboard({ partner, onLogout }: {
+  partner: PartnerAccount; onLogout: () => void
 }) {
   const [tab, setTab] = useState<LogTab>("overview")
   const [collapsed, setCollapsed] = useState(() => {
     try { return localStorage.getItem("shaniidrx.logistics.sidebar") === "collapsed" } catch { return false }
   })
   const [mobileOpen, setMobileOpen] = useState(false)
+  const [actionBusyId, setActionBusyId] = useState<string | null>(null)
+  const [actionErr, setActionErr] = useState("")
+
+  const jobsQ = useLogisticsJobs()
+  const earningsQ = useLogisticsEarnings()
 
   const toggleSidebar = () => {
     setCollapsed(prev => {
@@ -198,24 +578,54 @@ function LogisticsDashboard({ partner, session, onLogout }: {
     })
   }
 
-  const [deliveryJobs, setDeliveryJobs] = useCmsDoc<DeliveryJob[]>("delivery-jobs", [])
-  const myJobs = useMemo(() => deliveryJobs.filter(j => j.partnerId === partner.id)
-    .sort((a, b) => b.createdAt.localeCompare(a.createdAt)), [deliveryJobs, partner.id])
-  const activeJobs    = myJobs.filter(j => j.status === "assigned" || j.status === "picked_up")
-  const completedJobs = myJobs.filter(j => j.status === "delivered" || j.status === "failed")
-
-  const updateJobStatus = (jobId: string, status: DeliveryJobStatus) => {
-    setDeliveryJobs(prev => prev.map(j =>
-      j.id === jobId ? { ...j, status, updatedAt: new Date().toISOString() } : j
-    ))
+  const advanceJob = async (id: string, status: string) => {
+    setActionErr("")
+    setActionBusyId(id)
+    try {
+      await updateDeliveryStatus(id, status)
+    } catch (err) {
+      setActionErr(err instanceof Error ? err.message : "Could not update the job status.")
+    } finally {
+      setActionBusyId(null)
+    }
   }
 
-  const kycDocs = ["hasInsurance", "hasRegistration", "hasDriverLicenses", "hasSafetyTraining"]
-  const kycPct  = kycDocs.filter(k => (partner as unknown as Record<string, unknown>)[k]).length / kycDocs.length * 100
+  const submitPod = async (id: string, url: string, notes: string) => {
+    setActionErr("")
+    setActionBusyId(id)
+    try {
+      await submitDeliveryPod(id, url, notes || undefined)
+    } catch (err) {
+      setActionErr(err instanceof Error ? err.message : "Could not submit proof of delivery.")
+    } finally {
+      setActionBusyId(null)
+    }
+  }
 
-  const available  = partner.vehicles.filter(v => v.status === "available").length
-  const onDelivery = partner.vehicles.filter(v => v.status === "on_delivery").length
-  const maintenance= partner.vehicles.filter(v => v.status === "maintenance").length
+  const jobs = jobsQ.data ?? []
+  const activeJobs = jobs.filter(j => ACTIVE_STATUSES.includes(j.status))
+  const completedJobs = jobs.filter(j => !ACTIVE_STATUSES.includes(j.status))
+  const podJobs = jobs.filter(j => ACTIVE_STATUSES.includes(j.status))
+  const podDone = jobs.filter(j => j.proofOfDeliveryUrl)
+
+  const totals = earningsQ.data?.totals
+
+  const statusBadge = partner.status === "active"
+    ? { label: "Active", cls: "text-green-300 bg-green-900/40" }
+    : partner.status === "suspended"
+      ? { label: "Suspended", cls: "text-red-300 bg-red-900/40" }
+      : { label: "Invited", cls: "text-amber-300 bg-amber-900/40" }
+
+  const sidebarHead = (
+    <>
+      <div className="h-10 w-10 rounded-xl flex items-center justify-center mb-2" style={{ background: "rgba(255,255,255,0.15)" }}>
+        <Truck className="h-5 w-5" style={{ color: ORANGE }} />
+      </div>
+      <p className="font-semibold text-sm leading-tight" style={{ color: S_TEXT }}>{partner.displayName}</p>
+      <p className="text-xs mt-0.5 truncate" style={{ color: S_MUTED }}>{partner.email}</p>
+      <span className={`inline-block mt-1.5 text-[11px] font-semibold px-2 py-0.5 rounded-full ${statusBadge.cls}`}>{statusBadge.label}</span>
+    </>
+  )
 
   return (
     <div className="min-h-screen flex" style={{ background: "#f8f7f5" }}>
@@ -235,27 +645,7 @@ function LogisticsDashboard({ partner, session, onLogout }: {
               </div>
               <button onClick={() => setMobileOpen(false)} className="p-1.5 rounded-lg hover:bg-white/10 transition-colors" style={{ color: S_MUTED }}><X className="h-5 w-5" /></button>
             </div>
-            <div className="px-5 py-4" style={{ borderBottom: `1px solid ${S_BORDER}` }}>
-              <div className="h-10 w-10 rounded-xl flex items-center justify-center mb-2" style={{ background: "rgba(255,255,255,0.15)" }}>
-                <Truck className="h-5 w-5" style={{ color: ORANGE }} />
-              </div>
-              <p className="font-semibold text-sm leading-tight" style={{ color: S_TEXT }}>{partner.companyName}</p>
-              <p className="text-xs mt-0.5" style={{ color: S_MUTED }}>{partner.county}</p>
-              <span className={`inline-block mt-1.5 text-[11px] font-semibold px-2 py-0.5 rounded-full capitalize ${partner.status === "active" ? "text-green-300 bg-green-900/40" : "text-amber-300 bg-amber-900/40"}`}>{partner.status}</span>
-            </div>
-            <div className="px-5 py-3 space-y-1.5" style={{ borderBottom: `1px solid ${S_BORDER}`, background: "rgba(0,0,0,0.15)" }}>
-              <p className="text-xs font-semibold mb-1" style={{ color: S_MUTED }}>Fleet ({partner.vehicles.length})</p>
-              {[
-                { label: "Available", count: available, color: "#4ADE80" },
-                { label: "On delivery", count: onDelivery, color: ORANGE },
-                { label: "Maintenance", count: maintenance, color: "#FCD34D" },
-              ].map(({ label, count, color }) => (
-                <div key={label} className="flex items-center justify-between text-xs">
-                  <span style={{ color: S_MUTED }}>{label}</span>
-                  <span className="font-bold" style={{ color }}>{count}</span>
-                </div>
-              ))}
-            </div>
+            <div className="px-5 py-4" style={{ borderBottom: `1px solid ${S_BORDER}` }}>{sidebarHead}</div>
             <nav className="flex-1 px-3 py-4 space-y-0.5">
               {LOG_TABS.map(({ id, label, icon: Icon }) => (
                 <button key={id} onClick={() => { setTab(id); setMobileOpen(false) }}
@@ -303,30 +693,7 @@ function LogisticsDashboard({ partner, session, onLogout }: {
             </div>
           </div>
         ) : (
-          <div className="px-5 py-4" style={{ borderBottom: `1px solid ${S_BORDER}` }}>
-            <div className="h-10 w-10 rounded-xl flex items-center justify-center mb-2" style={{ background: "rgba(255,255,255,0.15)" }}>
-              <Truck className="h-5 w-5" style={{ color: ORANGE }} />
-            </div>
-            <p className="font-semibold text-sm leading-tight" style={{ color: S_TEXT }}>{partner.companyName}</p>
-            <p className="text-xs mt-0.5" style={{ color: S_MUTED }}>{partner.county}</p>
-            <span className={`inline-block mt-1.5 text-[11px] font-semibold px-2 py-0.5 rounded-full capitalize ${partner.status === "active" ? "text-green-300 bg-green-900/40" : "text-amber-300 bg-amber-900/40"}`}>{partner.status}</span>
-          </div>
-        )}
-
-        {!collapsed && (
-          <div className="px-5 py-3 space-y-1.5" style={{ borderBottom: `1px solid ${S_BORDER}`, background: "rgba(0,0,0,0.15)" }}>
-            <p className="text-xs font-semibold mb-1" style={{ color: S_MUTED }}>Fleet ({partner.vehicles.length})</p>
-            {[
-              { label: "Available", count: available, color: "#4ADE80" },
-              { label: "On delivery", count: onDelivery, color: ORANGE },
-              { label: "Maintenance", count: maintenance, color: "#FCD34D" },
-            ].map(({ label, count, color }) => (
-              <div key={label} className="flex items-center justify-between text-xs">
-                <span style={{ color: S_MUTED }}>{label}</span>
-                <span className="font-bold" style={{ color }}>{count}</span>
-              </div>
-            ))}
-          </div>
+          <div className="px-5 py-4" style={{ borderBottom: `1px solid ${S_BORDER}` }}>{sidebarHead}</div>
         )}
 
         <nav className="flex-1 px-2 py-4 space-y-0.5">
@@ -363,10 +730,10 @@ function LogisticsDashboard({ partner, session, onLogout }: {
             </button>
             <div>
               <h1 className="font-bold text-lg text-gray-800">{LOG_TABS.find(t => t.id === tab)?.label}</h1>
-              <p className="text-xs text-gray-400 mt-0.5">{partner.companyName} · {partner.portalCode}</p>
+              <p className="text-xs text-gray-400 mt-0.5">{partner.displayName}</p>
             </div>
           </div>
-          {partner.status === "pending" && (
+          {partner.status === "invited" && (
             <span className="flex items-center gap-1 text-xs font-medium px-2.5 py-1 rounded-full text-amber-700 bg-amber-50">
               <Clock className="h-3 w-3" /><span className="hidden sm:inline">Pending activation</span>
             </span>
@@ -374,334 +741,255 @@ function LogisticsDashboard({ partner, session, onLogout }: {
         </div>
 
         <div className="p-4 md:p-8">
+          {actionErr && (
+            <div className="mb-5 flex items-center gap-2.5 p-3.5 rounded-xl bg-red-50 border border-red-200 text-sm text-red-700">
+              <AlertTriangle className="h-4 w-4 flex-shrink-0" />{actionErr}
+            </div>
+          )}
+
           {/* OVERVIEW */}
           {tab === "overview" && (
             <div className="space-y-6">
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                {[
-                  { icon: Package,    label: "Active Deliveries",  value: activeJobs.length || partner.activeDeliveries, color: WINE   },
-                  { icon: Truck,      label: "Total Fleet",         value: partner.vehicles.length,                      color: PURPLE },
-                  { icon: TrendingUp, label: "On-Time Rate",        value: `${partner.onTimeRate}%`,                     color: GREEN  },
-                  { icon: Activity,   label: "Total Deliveries",    value: myJobs.filter(j => j.status === "delivered").length || partner.totalDeliveries, color: ORANGE },
-                ].map(({ icon: Icon, label, value, color }) => (
-                  <div key={label} className="bg-white rounded-xl border border-gray-100 p-4 flex items-start gap-3 shadow-sm">
-                    <div className="h-10 w-10 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: `${color}15` }}>
-                      <Icon className="h-5 w-5" style={{ color }} />
+              {earningsQ.isLoading ? (
+                <LoadingBlock label="Loading your overview…" />
+              ) : earningsQ.error ? (
+                <ErrorBlock message={earningsQ.error instanceof Error ? earningsQ.error.message : "Failed to load overview."} onRetry={() => earningsQ.mutate()} />
+              ) : totals ? (
+                <>
+                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                    <StatCard icon={Package}     label="Delivered"   value={totals.deliveredCount}    color={GREEN}  />
+                    <StatCard icon={Navigation}  label="In Progress" value={totals.inProgressCount}   color={ORANGE} />
+                    <StatCard icon={Wallet}      label="Total Earned" value={ksh(totals.totalEarned)} color={WINE}   />
+                    <StatCard icon={TrendingUp}  label="Projected"   value={ksh(totals.projected)}    color={BLUE}   />
+                  </div>
+
+                  {partner.status === "active" && (
+                    <div className="flex items-start gap-3 p-4 rounded-xl border border-green-200 bg-green-50">
+                      <CheckCircle2 className="h-5 w-5 text-green-600 flex-shrink-0 mt-0.5" />
+                      <div>
+                        <p className="font-semibold text-green-800">Your account is active</p>
+                        <p className="text-sm text-green-700 mt-0.5">
+                          You're receiving delivery jobs. Rate: {ksh(earningsQ.data?.ratePerDelivery ?? 0)} per delivery.
+                        </p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="text-xs text-gray-500 font-medium">{label}</p>
-                      <p className="text-xl font-bold mt-0.5" style={{ color: WINE }}>{value}</p>
+                  )}
+                  {partner.status === "invited" && (
+                    <div className="flex items-start gap-3 p-4 rounded-xl border border-amber-200 bg-amber-50">
+                      <Clock className="h-5 w-5 text-amber-600 flex-shrink-0 mt-0.5" />
+                      <div>
+                        <p className="font-semibold text-amber-800">Activation pending</p>
+                        <p className="text-sm text-amber-700 mt-0.5">Our team is finalising your onboarding. You'll begin receiving jobs once activated.</p>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="bg-white rounded-xl border border-gray-100 p-5">
+                    <h3 className="font-bold text-gray-800 text-sm mb-4">Quick actions</h3>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                      {([
+                        { icon: Package,    label: "View jobs",         action: () => setTab("jobs") },
+                        { icon: CheckSquare,label: "Proof of delivery", action: () => setTab("pod") },
+                        { icon: Wallet,     label: "Earnings",          action: () => setTab("earnings") },
+                      ] as const).map(({ icon: Icon, label, action }) => (
+                        <button key={label} onClick={action}
+                          className="flex flex-col items-center gap-2 p-4 rounded-xl border border-gray-100 hover:border-gray-300 hover:shadow-sm transition-all">
+                          <Icon className="h-6 w-6" style={{ color: WINE }} />
+                          <span className="text-xs font-medium text-gray-700">{label}</span>
+                        </button>
+                      ))}
                     </div>
                   </div>
-                ))}
-              </div>
-
-              {partner.status === "active" && (
-                <div className="flex items-start gap-3 p-4 rounded-xl border border-green-200 bg-green-50">
-                  <CheckCircle2 className="h-5 w-5 text-green-600 flex-shrink-0 mt-0.5" />
-                  <div>
-                    <p className="font-semibold text-green-800">Your account is active</p>
-                    <p className="text-sm text-green-700 mt-0.5">
-                      You're receiving delivery assignments across {partner.coverageCounties.length} {partner.coverageCounties.length === 1 ? "county" : "counties"}.
-                      Rate: KSH {partner.ratePerKm}/km · KSH {partner.ratePerDelivery}/delivery.
-                    </p>
-                  </div>
-                </div>
-              )}
-              {partner.status === "pending" && (
-                <div className="flex items-start gap-3 p-4 rounded-xl border border-amber-200 bg-amber-50">
-                  <Clock className="h-5 w-5 text-amber-600 flex-shrink-0 mt-0.5" />
-                  <div>
-                    <p className="font-semibold text-amber-800">Activation pending</p>
-                    <p className="text-sm text-amber-700 mt-0.5">Our team is reviewing your KYC documents. You'll begin receiving deliveries once activated.</p>
-                  </div>
-                </div>
-              )}
-
-              {/* Coverage */}
-              {partner.coverageCounties.length > 0 && (
-                <div className="bg-white rounded-xl border border-gray-100 p-5">
-                  <h3 className="font-bold text-gray-800 text-sm mb-3">Coverage counties ({partner.coverageCounties.length})</h3>
-                  <div className="flex flex-wrap gap-1.5">
-                    {partner.coverageCounties.map(c => (
-                      <span key={c} className="px-2.5 py-1 rounded-full text-xs font-semibold border capitalize" style={{ background: `${PURPLE}10`, color: PURPLE, borderColor: `${PURPLE}25` }}>
-                        <MapPin className="inline h-3 w-3 mr-0.5" />{c}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Quick actions */}
-              <div className="bg-white rounded-xl border border-gray-100 p-5">
-                <h3 className="font-bold text-gray-800 text-sm mb-4">Quick actions</h3>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                  {[
-                    { icon: Package,    label: "Deliveries",   action: () => setTab("deliveries")  },
-                    { icon: Truck,      label: "My Fleet",     action: () => setTab("fleet")        },
-                    { icon: Gauge,      label: "Performance",  action: () => setTab("performance")  },
-                    { icon: Shield,     label: "KYC Status",   action: () => setTab("kyc")          },
-                  ].map(({ icon: Icon, label, action }) => (
-                    <button key={label} onClick={action}
-                      className="flex flex-col items-center gap-2 p-4 rounded-xl border border-gray-100 hover:border-gray-300 hover:shadow-sm transition-all">
-                      <Icon className="h-6 w-6" style={{ color: WINE }} />
-                      <span className="text-xs font-medium text-gray-700">{label}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* DELIVERIES */}
-          {tab === "deliveries" && (
-            <div className="space-y-5">
-              {/* Summary row */}
-              <div className="grid grid-cols-3 gap-3">
-                {[
-                  { label: "Active", value: activeJobs.length, color: "#1D4ED8" },
-                  { label: "Delivered today", value: completedJobs.filter(j => j.status === "delivered" && j.updatedAt?.slice(0,10) === new Date().toISOString().slice(0,10)).length, color: GREEN },
-                  { label: "Failed", value: completedJobs.filter(j => j.status === "failed").length, color: "#DC2626" },
-                ].map(({ label, value, color }) => (
-                  <div key={label} className="bg-white rounded-xl border border-gray-100 p-4 text-center shadow-sm">
-                    <p className="text-2xl font-bold" style={{ color }}>{value}</p>
-                    <p className="text-xs text-gray-500 mt-0.5">{label}</p>
-                  </div>
-                ))}
-              </div>
-
-              {/* Active jobs */}
-              {activeJobs.length > 0 && (
-                <div>
-                  <h3 className="text-sm font-semibold text-gray-700 mb-3">Active Deliveries ({activeJobs.length})</h3>
-                  <div className="space-y-3">
-                    {activeJobs.map(job => {
-                      const cfg = JOB_STATUS_CONFIG[job.status]
-                      const StatusIcon = cfg.icon
-                      return (
-                        <div key={job.id} className="bg-white rounded-xl border border-gray-100 p-4 shadow-sm">
-                          <div className="flex items-start justify-between gap-3 mb-3">
-                            <div>
-                              <div className="flex items-center gap-2">
-                                <span className="font-mono font-bold text-sm text-gray-800">#{job.orderNumber}</span>
-                                <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full flex items-center gap-1"
-                                  style={{ color: cfg.color, background: cfg.bg }}>
-                                  <StatusIcon className="h-3 w-3" />{cfg.label}
-                                </span>
-                              </div>
-                              <p className="text-sm font-medium text-gray-700 mt-0.5">{job.customerName}</p>
-                            </div>
-                            <div className="text-xs text-gray-400 text-right flex-shrink-0">
-                              {new Date(job.createdAt).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}
-                            </div>
-                          </div>
-                          <div className="flex items-start gap-1.5 mb-3">
-                            <MapPin className="h-3.5 w-3.5 text-gray-400 mt-0.5 flex-shrink-0" />
-                            <p className="text-xs text-gray-600">{job.address}{job.county ? `, ${job.county}` : ""}</p>
-                          </div>
-                          {job.items.length > 0 && (
-                            <div className="mb-3 flex flex-wrap gap-1.5">
-                              {job.items.map((item, i) => (
-                                <span key={i} className="text-[11px] bg-gray-50 border border-gray-100 rounded-full px-2 py-0.5 text-gray-600">
-                                  {item.qty}× {item.name}
-                                </span>
-                              ))}
-                            </div>
-                          )}
-                          {job.phone && (
-                            <div className="flex items-center gap-1.5 text-xs text-gray-500 mb-3">
-                              <Phone className="h-3.5 w-3.5" />{job.phone}
-                            </div>
-                          )}
-                          <div className="flex gap-2">
-                            {job.status === "assigned" && (
-                              <button onClick={() => updateJobStatus(job.id, "picked_up")}
-                                className="flex-1 text-xs font-semibold py-2 rounded-lg border transition-colors hover:opacity-90 text-white"
-                                style={{ background: ORANGE }}>
-                                Mark Picked Up
-                              </button>
-                            )}
-                            {job.status === "picked_up" && (
-                              <button onClick={() => updateJobStatus(job.id, "delivered")}
-                                className="flex-1 text-xs font-semibold py-2 rounded-lg border transition-colors text-white"
-                                style={{ background: GREEN }}>
-                                Mark Delivered
-                              </button>
-                            )}
-                            <button onClick={() => updateJobStatus(job.id, "failed")}
-                              className="flex-1 text-xs font-semibold py-2 rounded-lg border border-red-200 text-red-600 hover:bg-red-50 transition-colors">
-                              Report Failed
-                            </button>
-                          </div>
-                        </div>
-                      )
-                    })}
-                  </div>
-                </div>
-              )}
-
-              {/* Completed jobs */}
-              {completedJobs.length > 0 && (
-                <div>
-                  <h3 className="text-sm font-semibold text-gray-700 mb-3">Recent History</h3>
-                  <div className="space-y-2">
-                    {completedJobs.slice(0, 10).map(job => {
-                      const cfg = JOB_STATUS_CONFIG[job.status]
-                      const StatusIcon = cfg.icon
-                      return (
-                        <div key={job.id} className="bg-white rounded-xl border border-gray-100 p-3 flex items-center gap-3">
-                          <div className="h-8 w-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: cfg.bg }}>
-                            <StatusIcon className="h-4 w-4" style={{ color: cfg.color }} />
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="font-mono text-xs font-bold text-gray-700">#{job.orderNumber}</p>
-                            <p className="text-xs text-gray-500 truncate">{job.customerName} · {job.county}</p>
-                          </div>
-                          <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full flex-shrink-0"
-                            style={{ color: cfg.color, background: cfg.bg }}>{cfg.label}</span>
-                        </div>
-                      )
-                    })}
-                  </div>
-                </div>
-              )}
-
-              {/* Empty state */}
-              {myJobs.length === 0 && (
-                <div className="bg-white rounded-xl border border-gray-100 p-10 text-center text-gray-400">
-                  <Package className="h-10 w-10 mx-auto mb-3 opacity-20" />
-                  <p className="font-medium text-gray-600">No deliveries yet</p>
-                  <p className="text-sm mt-1 max-w-xs mx-auto">Delivery assignments will appear here once orders are confirmed and routed to your fleet.</p>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* FLEET */}
-          {tab === "fleet" && (
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <p className="text-sm text-gray-500">{partner.vehicles.length} vehicles registered</p>
-                <div className="flex gap-3 text-xs text-gray-500">
-                  <span><span className="font-bold" style={{ color: GREEN }}>{available}</span> available</span>
-                  <span><span className="font-bold" style={{ color: ORANGE }}>{onDelivery}</span> on delivery</span>
-                  <span><span className="font-bold text-amber-500">{maintenance}</span> maintenance</span>
-                </div>
-              </div>
-              {partner.vehicles.length === 0 ? (
-                <div className="bg-white rounded-xl border border-gray-100 p-10 text-center text-gray-400">
-                  <Truck className="h-10 w-10 mx-auto mb-3 opacity-20" />
-                  <p className="font-medium">No vehicles registered</p>
-                  <p className="text-sm mt-1">Contact your account manager to add vehicles to your fleet.</p>
-                </div>
+                </>
               ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                  {partner.vehicles.map(v => <VehicleCard key={v.id} vehicle={v} />)}
-                </div>
+                <EmptyBlock icon={BarChart3} title="No data yet" desc="Your delivery stats will appear here once you start receiving jobs." />
               )}
             </div>
           )}
 
-          {/* PERFORMANCE */}
-          {tab === "performance" && (
-            <div className="max-w-2xl space-y-5">
-              <div className="bg-white rounded-xl border border-gray-100 p-6">
-                <h3 className="font-bold text-gray-800 mb-5">Performance metrics</h3>
-                {[
-                  { label: "On-Time Delivery Rate",    value: partner.onTimeRate,     color: GREEN  },
-                  { label: "Delivery Success Rate",    value: partner.successRate,    color: ORANGE },
-                  { label: "SLA Compliance Score",     value: partner.slaScore * 20,  color: WINE   },
-                  { label: "KYC Completeness",         value: kycPct,                 color: PURPLE },
-                ].map(({ label, value, color }) => (
-                  <div key={label} className="mb-4">
-                    <div className="flex justify-between text-sm mb-1.5">
-                      <span className="text-gray-600 font-medium">{label}</span>
-                      <span className="font-bold" style={{ color }}>{value}%</span>
+          {/* JOBS */}
+          {tab === "jobs" && (
+            <div className="space-y-5">
+              {jobsQ.isLoading ? (
+                <LoadingBlock label="Loading your jobs…" />
+              ) : jobsQ.error ? (
+                <ErrorBlock message={jobsQ.error instanceof Error ? jobsQ.error.message : "Failed to load jobs."} onRetry={() => jobsQ.mutate()} />
+              ) : jobs.length === 0 ? (
+                <EmptyBlock icon={Package} title="No jobs yet" desc="Delivery jobs will appear here once orders are routed to you." />
+              ) : (
+                <>
+                  {activeJobs.length > 0 && (
+                    <div>
+                      <h3 className="text-sm font-semibold text-gray-700 mb-3">Active jobs ({activeJobs.length})</h3>
+                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                        {activeJobs.map(job => (
+                          <JobCard key={job.id} job={job} onAdvance={advanceJob} busy={actionBusyId === job.id} />
+                        ))}
+                      </div>
                     </div>
-                    <div className="h-2.5 bg-gray-100 rounded-full overflow-hidden">
-                      <div className="h-full rounded-full transition-all" style={{ width: `${value}%`, background: color }} />
-                    </div>
-                  </div>
-                ))}
+                  )}
 
-                <div className="grid grid-cols-3 gap-3 mt-6 pt-6 border-t">
-                  {[
-                    { label: "Total Deliveries",  value: partner.totalDeliveries },
-                    { label: "Avg Time (min)",    value: partner.avgDeliveryTime },
-                    { label: "Rate / Delivery",   value: `KSH ${partner.ratePerDelivery}` },
-                  ].map(({ label, value }) => (
-                    <div key={label} className="text-center bg-gray-50 rounded-xl p-3">
-                      <p className="text-base font-bold" style={{ color: WINE }}>{value}</p>
-                      <p className="text-xs text-gray-500 mt-0.5">{label}</p>
+                  {completedJobs.length > 0 && (
+                    <div>
+                      <h3 className="text-sm font-semibold text-gray-700 mb-3">History ({completedJobs.length})</h3>
+                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                        {completedJobs.map(job => (
+                          <JobCard key={job.id} job={job} onAdvance={advanceJob} busy={actionBusyId === job.id} />
+                        ))}
+                      </div>
                     </div>
-                  ))}
-                </div>
-              </div>
+                  )}
+                </>
+              )}
             </div>
           )}
 
-          {/* KYC */}
-          {tab === "kyc" && (
+          {/* PROOF OF DELIVERY */}
+          {tab === "pod" && (
+            <div className="space-y-6">
+              {jobsQ.isLoading ? (
+                <LoadingBlock label="Loading deliveries…" />
+              ) : jobsQ.error ? (
+                <ErrorBlock message={jobsQ.error instanceof Error ? jobsQ.error.message : "Failed to load deliveries."} onRetry={() => jobsQ.mutate()} />
+              ) : (
+                <>
+                  <div>
+                    <h3 className="text-sm font-semibold text-gray-700 mb-3">Awaiting proof ({podJobs.length})</h3>
+                    {podJobs.length === 0 ? (
+                      <EmptyBlock icon={CheckSquare} title="Nothing awaiting proof" desc="Jobs in progress will appear here so you can submit proof of delivery." />
+                    ) : (
+                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                        {podJobs.map(job => (
+                          <PodCard key={job.id} job={job} onSubmit={submitPod} busy={actionBusyId === job.id} />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {podDone.length > 0 && (
+                    <div>
+                      <h3 className="text-sm font-semibold text-gray-700 mb-3">Submitted ({podDone.length})</h3>
+                      <div className="space-y-2">
+                        {podDone.map(job => (
+                          <div key={job.id} className="bg-white rounded-xl border border-gray-100 p-3 flex items-center gap-3">
+                            <div className="h-8 w-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: `${GREEN}15` }}>
+                              <CheckSquare className="h-4 w-4" style={{ color: GREEN }} />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="font-mono text-xs font-bold text-gray-700">{job.jobRef}</p>
+                              <p className="text-xs text-gray-500 truncate">{job.deliveryAddress}</p>
+                            </div>
+                            {job.proofOfDeliveryUrl && (
+                              <a href={job.proofOfDeliveryUrl} target="_blank" rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1 text-xs font-medium flex-shrink-0" style={{ color: WINE }}>
+                                <ExternalLink className="h-3.5 w-3.5" /> Proof
+                              </a>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+
+          {/* EARNINGS */}
+          {tab === "earnings" && (
+            <div className="space-y-5">
+              {earningsQ.isLoading ? (
+                <LoadingBlock label="Loading earnings…" />
+              ) : earningsQ.error ? (
+                <ErrorBlock message={earningsQ.error instanceof Error ? earningsQ.error.message : "Failed to load earnings."} onRetry={() => earningsQ.mutate()} />
+              ) : earningsQ.data ? (
+                <>
+                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                    <StatCard icon={Wallet}     label="Rate / Delivery" value={ksh(earningsQ.data.ratePerDelivery)} color={WINE}  />
+                    <StatCard icon={Package}    label="Delivered"       value={earningsQ.data.totals.deliveredCount} color={GREEN} />
+                    <StatCard icon={TrendingUp} label="Total Earned"    value={ksh(earningsQ.data.totals.totalEarned)} color={ORANGE} />
+                    <StatCard icon={Navigation} label="Projected"       value={ksh(earningsQ.data.totals.projected)} color={BLUE} />
+                  </div>
+
+                  <div className="bg-white rounded-xl border border-gray-100 p-5">
+                    <h3 className="font-bold text-gray-800 text-sm mb-4">Recent deliveries</h3>
+                    {earningsQ.data.recent.length === 0 ? (
+                      <p className="text-sm text-gray-400 py-6 text-center">No completed deliveries yet.</p>
+                    ) : (
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="text-left text-xs text-gray-400 border-b">
+                              <th className="py-2 pr-3 font-semibold">Job</th>
+                              <th className="py-2 pr-3 font-semibold">Delivered</th>
+                              <th className="py-2 pr-3 font-semibold">Address</th>
+                              <th className="py-2 pl-3 font-semibold text-right">Amount</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {earningsQ.data.recent.map((r, i) => (
+                              <tr key={`${r.jobRef}-${i}`} className="border-b border-gray-50 last:border-0">
+                                <td className="py-2.5 pr-3 font-mono font-semibold text-gray-700">{r.jobRef}</td>
+                                <td className="py-2.5 pr-3 text-gray-500">
+                                  {r.deliveredAt ? new Date(r.deliveredAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "—"}
+                                </td>
+                                <td className="py-2.5 pr-3 text-gray-600 max-w-[220px] truncate">{r.deliveryAddress}</td>
+                                <td className="py-2.5 pl-3 font-bold text-right" style={{ color: GREEN }}>{ksh(r.amount)}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                </>
+              ) : (
+                <EmptyBlock icon={Wallet} title="No earnings yet" desc="Your earnings will appear here once you complete deliveries." />
+              )}
+            </div>
+          )}
+
+          {/* PROFILE */}
+          {tab === "profile" && (
             <div className="max-w-2xl space-y-5">
               <div className="bg-white rounded-xl border border-gray-100 p-6">
                 <div className="flex items-center gap-4 mb-5">
-                  <div className="h-14 w-14 rounded-2xl flex items-center justify-center" style={{ background: kycPct === 100 ? `${GREEN}15` : `${ORANGE}15` }}>
-                    <Shield className="h-7 w-7" style={{ color: kycPct === 100 ? GREEN : ORANGE }} />
+                  <div className="h-14 w-14 rounded-2xl flex items-center justify-center" style={{ background: `${WINE}10` }}>
+                    <Truck className="h-7 w-7" style={{ color: WINE }} />
                   </div>
                   <div>
-                    <h2 className="font-bold text-gray-800">KYC — {kycPct === 100 ? "Compliant ✓" : `${kycPct.toFixed(0)}% Complete`}</h2>
-                    <p className="text-sm text-gray-500 mt-0.5">All documents required for activation</p>
+                    <h2 className="font-bold text-gray-800">{partner.displayName}</h2>
+                    <p className="text-sm text-gray-500 mt-0.5 capitalize">{partner.partnerType} partner · {partner.status}</p>
                   </div>
                 </div>
-                <div className="h-2 bg-gray-100 rounded-full overflow-hidden mb-5">
-                  <div className="h-full rounded-full" style={{ width: `${kycPct}%`, background: kycPct === 100 ? GREEN : ORANGE }} />
-                </div>
-                {[
-                  { key: "hasInsurance",      label: "Public Liability Insurance" },
-                  { key: "hasRegistration",   label: "Company Registration Documents" },
-                  { key: "hasDriverLicenses", label: "Driver Licenses (all drivers)" },
-                  { key: "hasSafetyTraining", label: "Safety / Cold Chain Training Certs" },
-                ].map(({ key, label }) => {
-                  const has = (partner as unknown as Record<string, unknown>)[key] as boolean
-                  return (
-                    <div key={key} className={`flex items-center gap-3 p-4 rounded-xl border mb-2 ${has ? "bg-green-50 border-green-200" : "bg-gray-50 border-gray-200"}`}>
-                      {has ? <CheckCircle2 className="h-5 w-5 text-green-600" /> : <XCircle className="h-5 w-5 text-gray-400" />}
-                      <span className={`font-medium text-sm ${has ? "text-green-800" : "text-gray-500"}`}>{label}</span>
-                    </div>
-                  )
-                })}
-                {kycPct < 100 && (
-                  <div className="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800">
-                    Email missing documents to <strong>logistics@shaniidrx.com</strong> with code <strong>{partner.portalCode}</strong>.
-                  </div>
-                )}
-                {partner.kycNotes && (
-                  <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-800">
-                    <strong>Admin note:</strong> {partner.kycNotes}
-                  </div>
-                )}
-              </div>
 
-              <div className="bg-white rounded-xl border border-gray-100 p-5">
-                <h3 className="font-bold text-gray-800 text-sm mb-3">Company details</h3>
                 <div className="space-y-2 text-sm">
-                  {[
-                    { icon: Building2, label: "Company",    value: partner.companyName },
-                    { icon: Hash,      label: "Reg. Number",value: partner.registrationNumber || "—" },
-                    { icon: Hash,      label: "Insurance",  value: partner.insuranceNumber || "—" },
-                    { icon: Mail,      label: "Email",      value: partner.email },
-                    { icon: Phone,     label: "Phone",      value: partner.phone || "—" },
-                    { icon: MapPin,    label: "HQ",         value: `${partner.address}, ${partner.county}` },
-                  ].map(({ icon: Icon, label, value }) => (
-                    <div key={label} className="flex items-start gap-3 py-2 border-b border-gray-50">
+                  {([
+                    { icon: Mail,  label: "Email",        value: partner.email },
+                    { icon: Hash,  label: "Account ID",   value: partner.partnerId },
+                    { icon: User,  label: "Display name", value: partner.displayName },
+                    { icon: Clock, label: "Last login",   value: partner.lastLoginAt ? new Date(partner.lastLoginAt).toLocaleString("en-GB") : "—" },
+                    { icon: Clock, label: "Member since",  value: new Date(partner.createdAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) },
+                  ]).map(({ icon: Icon, label, value }) => (
+                    <div key={label} className="flex items-start gap-3 py-2.5 border-b border-gray-50 last:border-0">
                       <Icon className="h-4 w-4 text-gray-400 mt-0.5 flex-shrink-0" />
-                      <div>
+                      <div className="min-w-0">
                         <p className="text-xs text-gray-400">{label}</p>
-                        <p className="font-medium text-gray-700">{value}</p>
+                        <p className="font-medium text-gray-700 break-words">{value}</p>
                       </div>
                     </div>
                   ))}
                 </div>
+              </div>
+
+              <div className="bg-white rounded-xl border border-gray-100 p-5 flex items-center justify-between">
+                <div>
+                  <p className="font-semibold text-gray-800 text-sm">Sign out</p>
+                  <p className="text-xs text-gray-500 mt-0.5">End your session on this device.</p>
+                </div>
+                <Button onClick={onLogout} className="h-10 px-5 text-white font-semibold gap-2" style={{ background: RED }}>
+                  <LogOut className="h-4 w-4" /> Sign out
+                </Button>
               </div>
             </div>
           )}
@@ -711,39 +999,37 @@ function LogisticsDashboard({ partner, session, onLogout }: {
   )
 }
 
-/* ─── Main Export ─────────────────────────────────────────────── */
+/* ─── Main export ────────────────────────────────────────────── */
 
 export default function LogisticsPortal() {
-  const [partners] = useCmsDoc<LogisticsPartner[]>("logistics-partners", [])
-  const [session, setSession] = useState<PortalSession | null>(() => getPortalSessionForType("logistics"))
-  const [loginError, setLoginError] = useState("")
+  const [location] = useLocation()
+  const isAcceptRoute = location.endsWith("/accept")
+  const inviteToken = isAcceptRoute
+    ? new URLSearchParams(typeof window !== "undefined" ? window.location.search : "").get("token")
+    : null
 
-  const handleLogin = (email: string, code: string) => {
-    setLoginError("")
-    const localMatch = partners.find(
-      (p) => p.email.toLowerCase() === email.trim().toLowerCase() && p.portalCode.toUpperCase() === code.trim().toUpperCase(),
+  const me = usePartnerMe(!(isAcceptRoute && inviteToken))
+
+  const handleLogout = async () => {
+    try { await partnerSignout(PARTNER_TYPE) } catch { /* ignore */ }
+    await refreshPartnerMe()
+  }
+
+  if (isAcceptRoute && inviteToken) {
+    return <AcceptInviteScreen token={inviteToken} />
+  }
+
+  if (me.isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center" style={{ background: "#faf9f8" }}>
+        <Loader2 className="h-8 w-8 animate-spin" style={{ color: WINE }} />
+      </div>
     )
-    if (!localMatch) {
-      setLoginError("Invalid email or portal code. Please check and try again.")
-      return
-    }
-    if (localMatch.status === "suspended" || localMatch.status === "inactive") {
-      setLoginError("Your account is not active. Contact logistics@shaniidrx.com.")
-      return
-    }
-    const s = loginPartnerLocal("logistics", localMatch.id, localMatch.companyName || email, email, code)
-    setSession(s)
   }
 
-  const handleLogout = () => {
-    void signOutPartner("logistics")
-    setSession(null)
+  if (me.error || !me.data?.ok || !me.data.partner) {
+    return <AuthScreen />
   }
 
-  if (!session) return <LogisticsLoginPage onLogin={handleLogin} error={loginError} />
-
-  const partner = partners.find(p => p.id === session.partnerId)
-  if (!partner) { handleLogout(); return null }
-
-  return <LogisticsDashboard partner={partner} session={session} onLogout={handleLogout} />
+  return <LogisticsDashboard partner={me.data.partner} onLogout={handleLogout} />
 }

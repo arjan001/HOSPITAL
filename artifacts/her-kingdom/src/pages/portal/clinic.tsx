@@ -1,98 +1,293 @@
 "use client"
 
 /**
- * Clinic Partner Portal — /portal/clinic
+ * Clinic Partner Portal — /portal/clinic (and /portal/clinic/accept)
  *
- * Clinics log in with their email + portal code (issued by admin on onboarding).
- * Features: credit dashboard, bulk order placement on behalf of patients,
- * KYC status, order history, and profile management.
+ * Backed by the real partner API via partners-client.ts. Auth is a server-side
+ * signed token in an HttpOnly cookie — there is no client-held token and no
+ * localStorage auth. Clinics either sign in, apply to join, or accept an invite
+ * (set password) when arriving from an invite link.
  */
 
-import { useState } from "react"
-import { Link } from "wouter"
-import { useCmsDoc } from "@/lib/cms-store"
+import { useMemo, useState } from "react"
+import { Link, useLocation } from "wouter"
 import {
-  getPortalSessionForType, loginPartnerLocal, signOutPartner,
-  submitPartnerOrder, type PortalSession,
-} from "@/lib/portal-auth"
-import type { Clinic } from "@/components/admin/clinics"
+  usePartnerMe, refreshPartnerMe,
+  partnerLogin, partnerApply, partnerAcceptInvite, partnerSignout,
+  useClinicProductLookup, useClinicOrders, useClinicLedger, placeClinicOrder,
+  type PartnerAccount, type ClinicProduct, type ClinicOrderLine,
+} from "@/lib/partners-client"
 import {
   Stethoscope, LogOut, ShoppingCart, ClipboardList, CreditCard,
-  AlertTriangle, CheckCircle2, XCircle, Eye, EyeOff, ArrowRight,
-  Clock, Shield, User, Plus, Trash2, Package, BarChart3,
-  Star, Building2, Hash, Mail, Phone, MapPin, Users, FileText,
-  ChevronLeft, ChevronRight, Menu, X,
+  AlertTriangle, CheckCircle2, Eye, EyeOff, ArrowRight,
+  Clock, Shield, Search, Plus, Minus, Trash2, Package, BarChart3,
+  Building2, Mail, Phone, User, ChevronLeft, ChevronRight, Menu, X,
+  Loader2, Receipt, Wallet, TrendingDown, TrendingUp,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
+import { Switch } from "@/components/ui/switch"
 
 const WINE    = "#3D0814"
+const WINE2   = "#6B0F1A"
 const ORANGE  = "#F97316"
+const RED      = "#B91C1C"
 const GREEN   = "#15803D"
 const S_TEXT  = "rgba(255,255,255,0.88)"
 const S_MUTED = "rgba(255,255,255,0.45)"
 const S_BORDER= "rgba(255,255,255,0.10)"
 
-/* ─── Login Page ─────────────────────────────────────────────── */
+const ksh = (n: number) => `KSH ${Math.round(n || 0).toLocaleString()}`
 
-function ClinicLoginPage({ onLogin, error }: {
-  onLogin: (email: string, code: string) => void
-  error: string
-}) {
+/* ─── Brand panel (shared between auth + accept screens) ──────── */
+
+function BrandPanel() {
+  return (
+    <div className="hidden lg:flex w-1/2 flex-col justify-between p-12" style={{ background: WINE }}>
+      <div>
+        <div className="flex items-center gap-2.5">
+          <img src="/logo-rx.png" alt="Shaniid RX" className="h-12 w-auto object-contain" onError={e => { (e.target as HTMLImageElement).style.display = "none" }} />
+          <span className="text-white font-bold text-xl tracking-tight">Shaniid RX</span>
+        </div>
+        <p className="text-white/60 text-sm mt-1">Healthcare Facility Portal</p>
+      </div>
+      <div className="space-y-8">
+        {[
+          { icon: ShoppingCart, title: "Order on behalf of patients", desc: "Source medicines, devices and consumables from verified suppliers directly through your facility account." },
+          { icon: CreditCard,   title: "Flexible credit terms",       desc: "Access a credit line tailored to your facility size — place orders now, settle on your agreed terms." },
+          { icon: ClipboardList,title: "Full order history",          desc: "Every order, delivery and invoice in one place, searchable for your records." },
+          { icon: Shield,       title: "Guaranteed genuine medicine", desc: "All products carry the Trust Seal — verified at source and at dispatch." },
+        ].map(({ icon: Icon, title, desc }) => (
+          <div key={title} className="flex gap-4">
+            <div className="h-10 w-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: "rgba(255,255,255,0.12)" }}>
+              <Icon className="h-5 w-5 text-white" />
+            </div>
+            <div>
+              <p className="text-white font-semibold text-sm">{title}</p>
+              <p className="text-white/60 text-xs mt-0.5 leading-relaxed">{desc}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+      <p className="text-white/40 text-xs">"Health in Every Home." — Shaniid RX</p>
+    </div>
+  )
+}
+
+/* ─── Auth screen (sign in / apply) ──────────────────────────── */
+
+type AuthMode = "signin" | "apply"
+
+function ClinicAuthScreen() {
+  const [mode, setMode] = useState<AuthMode>("signin")
+
+  // sign in
   const [email, setEmail] = useState("")
-  const [code, setCode] = useState("")
-  const [showCode, setShowCode] = useState(false)
+  const [password, setPassword] = useState("")
+  const [showPw, setShowPw] = useState(false)
 
-  const submit = (e: React.FormEvent) => {
+  // apply
+  const [orgName, setOrgName] = useState("")
+  const [contactName, setContactName] = useState("")
+  const [applyEmail, setApplyEmail] = useState("")
+  const [phone, setPhone] = useState("")
+  const [message, setMessage] = useState("")
+  const [applied, setApplied] = useState(false)
+
+  const [error, setError] = useState("")
+  const [busy, setBusy] = useState(false)
+
+  const doSignIn = async (e: React.FormEvent) => {
     e.preventDefault()
-    onLogin(email.trim().toLowerCase(), code.trim().toUpperCase())
+    setError(""); setBusy(true)
+    try {
+      await partnerLogin("clinic", email.trim().toLowerCase(), password)
+      await refreshPartnerMe()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Sign in failed. Check your details and try again.")
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const doApply = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setError(""); setBusy(true)
+    try {
+      await partnerApply({
+        partnerType: "clinic",
+        orgName: orgName.trim(),
+        contactName: contactName.trim(),
+        email: applyEmail.trim().toLowerCase(),
+        phone: phone.trim() || undefined,
+        message: message.trim() || undefined,
+      })
+      setApplied(true)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not submit your application. Try again.")
+    } finally {
+      setBusy(false)
+    }
   }
 
   return (
     <div className="min-h-screen flex" style={{ background: "#faf9f8" }}>
-      {/* Left brand panel */}
-      <div className="hidden lg:flex w-1/2 flex-col justify-between p-12" style={{ background: WINE }}>
-        <div>
-          <div className="flex items-center gap-2.5">
-            <img src="/logo-rx.png" alt="Shaniid RX" className="h-12 w-auto object-contain" onError={e => { (e.target as HTMLImageElement).style.display = "none" }} />
-            <span className="text-white font-bold text-xl tracking-tight">Shaniid RX</span>
-          </div>
-          <p className="text-white/60 text-sm mt-1">Healthcare Facility Portal</p>
-        </div>
-        <div className="space-y-8">
-          {[
-            { icon: ShoppingCart, title: "Order on behalf of patients", desc: "Source medicines, devices and consumables from verified suppliers directly through your facility account." },
-            { icon: CreditCard,   title: "Flexible credit terms",       desc: "Access a credit line tailored to your facility size — place orders now, pay on your agreed terms." },
-            { icon: ClipboardList,title: "Full order history",          desc: "Every order, delivery and invoice in one place. Searchable and exportable for your records." },
-            { icon: Shield,       title: "Guaranteed genuine medicine", desc: "All products sourced through Shaniid RX carry the Trust Seal — verified at source and at dispatch." },
-          ].map(({ icon: Icon, title, desc }) => (
-            <div key={title} className="flex gap-4">
-              <div className="h-10 w-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: "rgba(255,255,255,0.12)" }}>
-                <Icon className="h-5 w-5 text-white" />
-              </div>
-              <div>
-                <p className="text-white font-semibold text-sm">{title}</p>
-                <p className="text-white/60 text-xs mt-0.5 leading-relaxed">{desc}</p>
-              </div>
-            </div>
-          ))}
-        </div>
-        <p className="text-white/40 text-xs">"Health in Every Home." — Shaniid RX</p>
-      </div>
+      <BrandPanel />
 
-      {/* Right login form */}
       <div className="flex-1 flex items-center justify-center p-6">
         <div className="w-full max-w-md">
           <div className="lg:hidden flex items-center gap-2 mb-8">
             <img src="/logo-rx.png" alt="Shaniid RX" className="h-14 w-auto object-contain" />
           </div>
 
-          <h1 className="text-2xl font-bold text-gray-800 mb-1">Clinic sign in</h1>
-          <p className="text-gray-500 text-sm mb-8">
-            Enter the email and portal code issued to your facility during onboarding.
+          {/* Mode tabs */}
+          <div className="inline-flex p-1 rounded-xl bg-gray-100 mb-6">
+            <button
+              onClick={() => { setMode("signin"); setError("") }}
+              className="px-4 py-1.5 rounded-lg text-sm font-semibold transition-all"
+              style={mode === "signin" ? { background: "#fff", color: WINE, boxShadow: "0 1px 2px rgba(0,0,0,0.06)" } : { color: "#6b7280" }}
+            >
+              Sign in
+            </button>
+            <button
+              onClick={() => { setMode("apply"); setError("") }}
+              className="px-4 py-1.5 rounded-lg text-sm font-semibold transition-all"
+              style={mode === "apply" ? { background: "#fff", color: WINE, boxShadow: "0 1px 2px rgba(0,0,0,0.06)" } : { color: "#6b7280" }}
+            >
+              Apply to join
+            </button>
+          </div>
+
+          {error && (
+            <div className="mb-5 flex items-center gap-2.5 p-3.5 rounded-xl bg-red-50 border border-red-200 text-sm text-red-700">
+              <AlertTriangle className="h-4 w-4 flex-shrink-0" />{error}
+            </div>
+          )}
+
+          {mode === "signin" && (
+            <>
+              <h1 className="text-2xl font-bold text-gray-800 mb-1">Clinic sign in</h1>
+              <p className="text-gray-500 text-sm mb-8">Use the email and password for your facility account.</p>
+              <form onSubmit={doSignIn} className="space-y-4">
+                <div>
+                  <Label className="text-sm font-medium text-gray-700">Facility email</Label>
+                  <Input type="email" required value={email} onChange={e => setEmail(e.target.value)} placeholder="procurement@yourclinic.co.ke" className="mt-1 h-11" />
+                </div>
+                <div>
+                  <Label className="text-sm font-medium text-gray-700">Password</Label>
+                  <div className="relative mt-1">
+                    <Input type={showPw ? "text" : "password"} required value={password}
+                      onChange={e => setPassword(e.target.value)} placeholder="••••••••" className="h-11 pr-10" />
+                    <button type="button" onClick={() => setShowPw(s => !s)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                      {showPw ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                  </div>
+                </div>
+                <Button type="submit" disabled={busy} className="w-full h-11 text-white font-semibold gap-2" style={{ background: WINE }}>
+                  {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <>Sign in to your portal <ArrowRight className="h-4 w-4" /></>}
+                </Button>
+              </form>
+              <p className="text-xs text-gray-400 text-center mt-6">
+                New facility? <button onClick={() => { setMode("apply"); setError("") }} className="underline" style={{ color: WINE }}>Apply to join</button>
+              </p>
+            </>
+          )}
+
+          {mode === "apply" && (
+            applied ? (
+              <div className="text-center py-10">
+                <div className="h-16 w-16 rounded-full flex items-center justify-center mx-auto mb-4" style={{ background: `${GREEN}15` }}>
+                  <CheckCircle2 className="h-8 w-8" style={{ color: GREEN }} />
+                </div>
+                <h2 className="text-xl font-bold text-gray-800">Thanks — we'll review your application</h2>
+                <p className="text-gray-500 text-sm mt-2">
+                  Our partnerships team will review your facility and email you next steps. This usually takes 1–2 business days.
+                </p>
+                <Button className="mt-6 text-white" style={{ background: WINE }} onClick={() => { setApplied(false); setMode("signin") }}>
+                  Back to sign in
+                </Button>
+              </div>
+            ) : (
+              <>
+                <h1 className="text-2xl font-bold text-gray-800 mb-1">Apply to join</h1>
+                <p className="text-gray-500 text-sm mb-8">Tell us about your facility and we'll get you set up.</p>
+                <form onSubmit={doApply} className="space-y-4">
+                  <div>
+                    <Label className="text-sm font-medium text-gray-700">Facility / organisation name</Label>
+                    <Input required value={orgName} onChange={e => setOrgName(e.target.value)} placeholder="Westlands Medical Centre" className="mt-1 h-11" />
+                  </div>
+                  <div>
+                    <Label className="text-sm font-medium text-gray-700">Contact name</Label>
+                    <Input required value={contactName} onChange={e => setContactName(e.target.value)} placeholder="Dr. Jane Doe" className="mt-1 h-11" />
+                  </div>
+                  <div>
+                    <Label className="text-sm font-medium text-gray-700">Email</Label>
+                    <Input type="email" required value={applyEmail} onChange={e => setApplyEmail(e.target.value)} placeholder="procurement@yourclinic.co.ke" className="mt-1 h-11" />
+                  </div>
+                  <div>
+                    <Label className="text-sm font-medium text-gray-700">Phone <span className="text-gray-400 font-normal">(optional)</span></Label>
+                    <Input value={phone} onChange={e => setPhone(e.target.value)} placeholder="+254 7XX XXX XXX" className="mt-1 h-11" />
+                  </div>
+                  <div>
+                    <Label className="text-sm font-medium text-gray-700">Message <span className="text-gray-400 font-normal">(optional)</span></Label>
+                    <Textarea value={message} onChange={e => setMessage(e.target.value)} rows={3} className="mt-1" placeholder="Tell us about your facility, monthly volumes, specialties…" />
+                  </div>
+                  <Button type="submit" disabled={busy} className="w-full h-11 text-white font-semibold gap-2" style={{ background: ORANGE }}>
+                    {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <>Submit application <ArrowRight className="h-4 w-4" /></>}
+                  </Button>
+                </form>
+              </>
+            )
+          )}
+
+          <p className="text-xs text-gray-300 text-center mt-6">
+            <Link href="/admin" className="hover:text-gray-500 transition-colors">Admin portal →</Link>
           </p>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/* ─── Accept invite screen ───────────────────────────────────── */
+
+function AcceptInviteScreen({ token, onDone }: { token: string; onDone: () => void }) {
+  const [password, setPassword] = useState("")
+  const [confirm, setConfirm] = useState("")
+  const [showPw, setShowPw] = useState(false)
+  const [error, setError] = useState("")
+  const [busy, setBusy] = useState(false)
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setError("")
+    if (password.length < 8) { setError("Password must be at least 8 characters."); return }
+    if (password !== confirm) { setError("Passwords do not match."); return }
+    setBusy(true)
+    try {
+      await partnerAcceptInvite(token, password)
+      await refreshPartnerMe()
+      onDone()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not accept the invite. The link may have expired.")
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="min-h-screen flex" style={{ background: "#faf9f8" }}>
+      <BrandPanel />
+      <div className="flex-1 flex items-center justify-center p-6">
+        <div className="w-full max-w-md">
+          <div className="lg:hidden flex items-center gap-2 mb-8">
+            <img src="/logo-rx.png" alt="Shaniid RX" className="h-14 w-auto object-contain" />
+          </div>
+          <h1 className="text-2xl font-bold text-gray-800 mb-1">Set your password</h1>
+          <p className="text-gray-500 text-sm mb-8">Create a password to activate your facility account.</p>
 
           {error && (
             <div className="mb-5 flex items-center gap-2.5 p-3.5 rounded-xl bg-red-50 border border-red-200 text-sm text-red-700">
@@ -102,88 +297,132 @@ function ClinicLoginPage({ onLogin, error }: {
 
           <form onSubmit={submit} className="space-y-4">
             <div>
-              <Label className="text-sm font-medium text-gray-700">Facility email</Label>
-              <Input type="email" required value={email} onChange={e => setEmail(e.target.value)} placeholder="procurement@yourclinic.co.ke" className="mt-1 h-11" />
-            </div>
-            <div>
-              <Label className="text-sm font-medium text-gray-700">Portal code</Label>
+              <Label className="text-sm font-medium text-gray-700">New password</Label>
               <div className="relative mt-1">
-                <Input type={showCode ? "text" : "password"} required value={code}
-                  onChange={e => setCode(e.target.value)} placeholder="CLN-XXXX-XXXX"
-                  className="h-11 pr-10 font-mono uppercase" />
-                <button type="button" onClick={() => setShowCode(s => !s)}
+                <Input type={showPw ? "text" : "password"} required value={password}
+                  onChange={e => setPassword(e.target.value)} placeholder="At least 8 characters" className="h-11 pr-10" />
+                <button type="button" onClick={() => setShowPw(s => !s)}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
-                  {showCode ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  {showPw ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>
               </div>
             </div>
-            <Button type="submit" className="w-full h-11 text-white font-semibold gap-2" style={{ background: WINE }}>
-              Sign in to your portal <ArrowRight className="h-4 w-4" />
+            <div>
+              <Label className="text-sm font-medium text-gray-700">Confirm password</Label>
+              <Input type={showPw ? "text" : "password"} required value={confirm}
+                onChange={e => setConfirm(e.target.value)} placeholder="Re-enter password" className="mt-1 h-11" />
+            </div>
+            <Button type="submit" disabled={busy} className="w-full h-11 text-white font-semibold gap-2" style={{ background: WINE }}>
+              {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <>Activate account <ArrowRight className="h-4 w-4" /></>}
             </Button>
           </form>
-
-          <p className="text-xs text-gray-400 text-center mt-6">
-            Need a portal code? Email <a href="mailto:clinics@shaniidrx.com" className="underline" style={{ color: WINE }}>clinics@shaniidrx.com</a>
-          </p>
-          <p className="text-xs text-gray-300 text-center mt-1">
-            <Link href="/admin" className="hover:text-gray-500 transition-colors">Admin portal →</Link>
-          </p>
         </div>
       </div>
     </div>
   )
 }
 
-/* ─── Order Form ─────────────────────────────────────────────── */
+/* ─── Shared small UI ────────────────────────────────────────── */
 
-interface OrderLine { name: string; qty: number; unitPrice: number; patientName: string }
-
-export interface PlacedOrder {
-  id: string
-  total: number
-  lines: OrderLine[]
-  notes: string
-  createdAt: string
+function LoadingBlock({ label = "Loading…" }: { label?: string }) {
+  return (
+    <div className="bg-white rounded-xl border border-gray-100 p-10 text-center text-gray-400 flex flex-col items-center gap-3">
+      <Loader2 className="h-6 w-6 animate-spin" style={{ color: WINE }} />
+      <p className="text-sm">{label}</p>
+    </div>
+  )
 }
 
-function PlaceOrderTab({ clinic, onOrderPlaced }: {
-  clinic: Clinic
-  onOrderPlaced?: (order: PlacedOrder) => void
+function ErrorBlock({ message, onRetry }: { message: string; onRetry?: () => void }) {
+  return (
+    <div className="bg-white rounded-xl border border-red-200 p-6 text-center">
+      <AlertTriangle className="h-8 w-8 mx-auto mb-2 text-red-500" />
+      <p className="text-sm font-medium text-red-700">{message}</p>
+      {onRetry && (
+        <Button size="sm" variant="outline" className="mt-3" onClick={onRetry}>Try again</Button>
+      )}
+    </div>
+  )
+}
+
+function EmptyBlock({ icon: Icon, title, desc, action }: {
+  icon: typeof Package; title: string; desc: string; action?: React.ReactNode
 }) {
-  const [lines, setLines] = useState<OrderLine[]>([{ name: "", qty: 1, unitPrice: 0, patientName: "" }])
+  return (
+    <div className="bg-white rounded-xl border border-gray-100 p-10 text-center text-gray-400">
+      <Icon className="h-10 w-10 mx-auto mb-3 opacity-20" />
+      <p className="font-medium text-gray-600">{title}</p>
+      <p className="text-sm mt-1">{desc}</p>
+      {action && <div className="mt-4">{action}</div>}
+    </div>
+  )
+}
+
+/* ─── Order medicines tab ────────────────────────────────────── */
+
+function OrderTab({ creditAvailable }: { creditAvailable: number | null }) {
+  const [q, setQ] = useState("")
+  const lookup = useClinicProductLookup(q.trim(), q.trim().length >= 2)
+
+  const [cart, setCart] = useState<ClinicOrderLine[]>([])
+  const [creditLine, setCreditLine] = useState(true)
+  const [deliveryAddress, setDeliveryAddress] = useState("")
+  const [deliveryFee, setDeliveryFee] = useState(0)
   const [notes, setNotes] = useState("")
-  const [submitted, setSubmitted] = useState(false)
+
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState("")
+  const [placedRef, setPlacedRef] = useState<string | null>(null)
 
-  const total = lines.reduce((s, l) => s + l.qty * l.unitPrice, 0)
-  const creditAvailable = clinic.creditLimit - clinic.creditUsed
-  const canPlace = total > 0 && total <= creditAvailable && lines.every(l => l.name)
+  const subtotal = useMemo(() => cart.reduce((s, l) => s + l.qty * l.unitPrice, 0), [cart])
+  const total = subtotal + (deliveryFee || 0)
 
-  const updateLine = (idx: number, k: keyof OrderLine, v: string | number) =>
-    setLines(p => p.map((l, i) => i === idx ? { ...l, [k]: v } : l))
+  const addToCart = (p: ClinicProduct) => {
+    setCart(prev => {
+      const existing = prev.find(l => l.name === p.name)
+      if (existing) return prev.map(l => l.name === p.name ? { ...l, qty: l.qty + 1 } : l)
+      return [...prev, { name: p.name, qty: 1, unitPrice: p.price }]
+    })
+  }
 
-  const addLine = () => setLines(p => [...p, { name: "", qty: 1, unitPrice: 0, patientName: "" }])
-  const removeLine = (idx: number) => setLines(p => p.filter((_, i) => i !== idx))
+  const setQty = (idx: number, qty: number) =>
+    setCart(prev => prev.map((l, i) => i === idx ? { ...l, qty: Math.max(1, qty) } : l))
+  const setPatient = (idx: number, patient: string) =>
+    setCart(prev => prev.map((l, i) => i === idx ? { ...l, patient: patient || undefined } : l))
+  const removeLine = (idx: number) => setCart(prev => prev.filter((_, i) => i !== idx))
 
-  if (submitted) {
+  const overCredit = creditLine && creditAvailable !== null && total > creditAvailable
+
+  const place = async () => {
+    setSubmitError("")
+    setSubmitting(true)
+    try {
+      const order = await placeClinicOrder({
+        items: cart,
+        deliveryAddress: deliveryAddress.trim() || undefined,
+        deliveryFee: deliveryFee || undefined,
+        creditLine,
+        notes: notes.trim() || undefined,
+      })
+      setPlacedRef(order.orderRef)
+      setCart([])
+      setDeliveryAddress(""); setDeliveryFee(0); setNotes("")
+    } catch (err) {
+      setSubmitError(err instanceof Error ? err.message : "Failed to place order. Try again.")
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  if (placedRef) {
     return (
-      <div className="text-center py-16">
+      <div className="max-w-2xl text-center py-16">
         <div className="h-16 w-16 rounded-full flex items-center justify-center mx-auto mb-4" style={{ background: `${GREEN}15` }}>
           <CheckCircle2 className="h-8 w-8" style={{ color: GREEN }} />
         </div>
-        <h3 className="font-bold text-gray-800 text-lg">Order submitted!</h3>
-        <p className="text-gray-500 mt-2 text-sm">Your order of KSH {total.toLocaleString()} has been sent to Shaniid RX. You'll receive a confirmation email shortly.</p>
-        <Button
-          className="mt-6 text-white"
-          style={{ background: WINE }}
-          onClick={() => {
-            setSubmitted(false)
-            setSubmitError("")
-            setLines([{ name: "", qty: 1, unitPrice: 0, patientName: "" }])
-            setNotes("")
-          }}
-        >
+        <h3 className="font-bold text-gray-800 text-lg">Order placed</h3>
+        <p className="text-gray-500 mt-2 text-sm">Reference <span className="font-mono font-semibold">{placedRef}</span>. You'll receive a confirmation shortly.</p>
+        <Button className="mt-6 text-white" style={{ background: WINE }} onClick={() => setPlacedRef(null)}>
           Place another order
         </Button>
       </div>
@@ -191,151 +430,353 @@ function PlaceOrderTab({ clinic, onOrderPlaced }: {
   }
 
   return (
-    <div className="max-w-2xl space-y-5">
-      {/* Credit status */}
+    <div className="max-w-3xl space-y-5">
+      {/* Product lookup */}
       <div className="bg-white rounded-xl border border-gray-100 p-5">
-        <div className="flex items-center justify-between mb-2">
-          <p className="font-semibold text-gray-700 text-sm">Credit Line</p>
-          <p className="text-sm font-bold" style={{ color: WINE }}>KSH {creditAvailable.toLocaleString()} available</p>
+        <h3 className="font-bold text-gray-800 text-sm mb-3">Find medicines &amp; products</h3>
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+          <Input value={q} onChange={e => setQ(e.target.value)} placeholder="Search by product name…" className="pl-9 h-11" />
         </div>
-        <div className="h-2 bg-gray-100 rounded-full overflow-hidden mb-2">
-          <div className="h-full rounded-full" style={{ width: `${(clinic.creditUsed / clinic.creditLimit) * 100}%`, background: creditAvailable < clinic.creditLimit * 0.2 ? "#B91C1C" : WINE }} />
+
+        <div className="mt-3">
+          {q.trim().length < 2 ? (
+            <p className="text-sm text-gray-400 py-4 text-center">Type at least 2 characters to search the catalogue.</p>
+          ) : lookup.isLoading ? (
+            <div className="py-6 text-center text-gray-400 flex items-center justify-center gap-2 text-sm">
+              <Loader2 className="h-4 w-4 animate-spin" /> Searching…
+            </div>
+          ) : lookup.error ? (
+            <p className="text-sm text-red-600 py-4 text-center">{lookup.error instanceof Error ? lookup.error.message : "Search failed."}</p>
+          ) : !lookup.data || lookup.data.length === 0 ? (
+            <p className="text-sm text-gray-400 py-4 text-center">No products match "{q.trim()}".</p>
+          ) : (
+            <div className="divide-y divide-gray-50 border border-gray-100 rounded-lg max-h-72 overflow-y-auto">
+              {lookup.data.map(p => (
+                <div key={p.id} className="flex items-center justify-between gap-3 px-3 py-2.5">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-gray-800 truncate">{p.name}</p>
+                    <p className="text-xs text-gray-400">
+                      {ksh(p.price)} · {p.stock > 0 ? `${p.stock} in stock` : "Out of stock"}
+                      {p.requiresPrescription && <span className="ml-1.5 text-amber-600 font-medium">· Rx required</span>}
+                    </p>
+                  </div>
+                  <Button size="sm" variant="outline" className="gap-1 text-xs flex-shrink-0" disabled={p.stock <= 0} onClick={() => addToCart(p)}>
+                    <Plus className="h-3 w-3" /> Add
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
-        <p className="text-xs text-gray-400">KSH {clinic.creditUsed.toLocaleString()} used of KSH {clinic.creditLimit.toLocaleString()} total · {clinic.paymentTerms}</p>
       </div>
 
-      {/* Order lines */}
+      {/* Cart */}
       <div className="bg-white rounded-xl border border-gray-100 p-5">
-        <h3 className="font-bold text-gray-800 text-sm mb-4">Order lines</h3>
-        <div className="space-y-2">
-          {/* Header */}
-          <div className="hidden sm:grid grid-cols-[1fr_80px_100px_1fr_32px] gap-2 text-xs font-semibold uppercase tracking-wider text-gray-400 px-0.5">
-            <span>Medicine / Product</span><span className="text-center">Qty</span>
-            <span>Unit Price</span><span>Patient Name (optional)</span><span />
-          </div>
-          {lines.map((line, idx) => (
-            <div key={idx} className="grid grid-cols-1 sm:grid-cols-[1fr_80px_100px_1fr_32px] gap-2 items-center">
-              <Input value={line.name} onChange={e => updateLine(idx, "name", e.target.value)} placeholder="e.g. Amoxicillin 500mg" className="text-sm" />
-              <Input type="number" min={1} value={line.qty} onChange={e => updateLine(idx, "qty", Number(e.target.value))} className="text-sm text-center" />
-              <Input type="number" min={0} value={line.unitPrice} onChange={e => updateLine(idx, "unitPrice", Number(e.target.value))} placeholder="KSH" className="text-sm" />
-              <Input value={line.patientName} onChange={e => updateLine(idx, "patientName", e.target.value)} placeholder="Patient (optional)" className="text-sm" />
-              <button onClick={() => removeLine(idx)} className="text-red-400 hover:text-red-600 flex items-center justify-center">
-                <Trash2 className="h-4 w-4" />
-              </button>
+        <h3 className="font-bold text-gray-800 text-sm mb-4">Order cart</h3>
+        {cart.length === 0 ? (
+          <p className="text-sm text-gray-400 py-6 text-center">Your cart is empty. Search above and add products.</p>
+        ) : (
+          <div className="space-y-2">
+            <div className="hidden sm:grid grid-cols-[1fr_120px_110px_1fr_32px] gap-2 text-xs font-semibold uppercase tracking-wider text-gray-400 px-0.5">
+              <span>Product</span><span className="text-center">Qty</span><span>Line total</span><span>Patient (optional)</span><span />
             </div>
-          ))}
-          <Button variant="outline" size="sm" onClick={addLine} className="text-xs gap-1 mt-1">
-            <Plus className="h-3 w-3" />Add line
-          </Button>
-        </div>
-
-        <div className="flex justify-between items-center pt-4 border-t mt-4 font-bold" style={{ color: WINE }}>
-          <span>Order Total</span>
-          <span>KSH {total.toLocaleString()}</span>
-        </div>
-        {total > creditAvailable && (
-          <p className="text-sm text-red-600 flex items-center gap-1 mt-2">
-            <AlertTriangle className="h-4 w-4" />Exceeds available credit (KSH {creditAvailable.toLocaleString()})
-          </p>
+            {cart.map((line, idx) => (
+              <div key={idx} className="grid grid-cols-1 sm:grid-cols-[1fr_120px_110px_1fr_32px] gap-2 items-center">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-gray-800 truncate">{line.name}</p>
+                  <p className="text-xs text-gray-400">{ksh(line.unitPrice)} each</p>
+                </div>
+                <div className="flex items-center justify-center gap-1">
+                  <button onClick={() => setQty(idx, line.qty - 1)} className="h-7 w-7 rounded-md border border-gray-200 flex items-center justify-center hover:bg-gray-50"><Minus className="h-3 w-3" /></button>
+                  <Input type="number" min={1} value={line.qty} onChange={e => setQty(idx, Number(e.target.value))} className="h-7 w-12 text-center text-sm px-1" />
+                  <button onClick={() => setQty(idx, line.qty + 1)} className="h-7 w-7 rounded-md border border-gray-200 flex items-center justify-center hover:bg-gray-50"><Plus className="h-3 w-3" /></button>
+                </div>
+                <span className="text-sm font-medium" style={{ color: WINE }}>{ksh(line.qty * line.unitPrice)}</span>
+                <Input value={line.patient ?? ""} onChange={e => setPatient(idx, e.target.value)} placeholder="Patient" className="text-sm h-9" />
+                <button onClick={() => removeLine(idx)} className="text-red-400 hover:text-red-600 flex items-center justify-center"><Trash2 className="h-4 w-4" /></button>
+              </div>
+            ))}
+          </div>
         )}
       </div>
 
-      {/* Notes */}
-      <div className="bg-white rounded-xl border border-gray-100 p-5">
-        <Label className="text-sm font-semibold text-gray-700">Delivery / special instructions</Label>
-        <Textarea value={notes} onChange={e => setNotes(e.target.value)}
-          placeholder="Urgency level, delivery instructions, cold chain requirements…" rows={3} className="mt-2" />
+      {/* Delivery + payment */}
+      <div className="bg-white rounded-xl border border-gray-100 p-5 space-y-4">
+        <div>
+          <Label className="text-sm font-semibold text-gray-700">Delivery address <span className="text-gray-400 font-normal">(optional)</span></Label>
+          <Textarea value={deliveryAddress} onChange={e => setDeliveryAddress(e.target.value)} rows={2} className="mt-1.5" placeholder="Where should this order be delivered?" />
+        </div>
+        <div>
+          <Label className="text-sm font-semibold text-gray-700">Delivery fee <span className="text-gray-400 font-normal">(optional)</span></Label>
+          <Input type="number" min={0} value={deliveryFee} onChange={e => setDeliveryFee(Number(e.target.value) || 0)} className="mt-1.5 h-10 max-w-[180px]" placeholder="0" />
+        </div>
+        <div>
+          <Label className="text-sm font-semibold text-gray-700">Notes <span className="text-gray-400 font-normal">(optional)</span></Label>
+          <Textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2} className="mt-1.5" placeholder="Urgency, cold chain, special instructions…" />
+        </div>
+
+        <div className="flex items-center justify-between p-3.5 rounded-xl border border-gray-100 bg-gray-50">
+          <div>
+            <p className="text-sm font-semibold text-gray-700">Pay on credit line</p>
+            <p className="text-xs text-gray-500 mt-0.5">{creditLine ? "Charged to your facility credit line." : "Settle this order in cash on delivery."}</p>
+          </div>
+          <Switch checked={creditLine} onCheckedChange={setCreditLine} />
+        </div>
+
+        {creditLine && creditAvailable !== null && (
+          <p className="text-xs text-gray-500">Credit available: <span className="font-semibold" style={{ color: WINE }}>{ksh(creditAvailable)}</span></p>
+        )}
       </div>
 
-      {submitError && (
-        <div className="flex items-center gap-2 p-3 rounded-lg bg-red-50 border border-red-200 text-sm text-red-700">
-          <AlertTriangle className="h-4 w-4 flex-shrink-0" />
-          {submitError}
+      {/* Summary + submit */}
+      <div className="bg-white rounded-xl border border-gray-100 p-5">
+        <div className="flex justify-between text-sm text-gray-600 mb-1">
+          <span>Subtotal</span><span>{ksh(subtotal)}</span>
         </div>
-      )}
+        {deliveryFee > 0 && (
+          <div className="flex justify-between text-sm text-gray-600 mb-1">
+            <span>Delivery fee</span><span>{ksh(deliveryFee)}</span>
+          </div>
+        )}
+        <div className="flex justify-between items-center pt-3 border-t mt-2 font-bold" style={{ color: WINE }}>
+          <span>Total</span><span>{ksh(total)}</span>
+        </div>
 
-      <Button
-        disabled={!canPlace || submitting}
-        onClick={async () => {
-          setSubmitError("")
-          setSubmitting(true)
-          try {
-            const sub = await submitPartnerOrder("clinic", "order", {
-              clinicId: clinic.id,
-              clinicName: clinic.clinicName,
-              lines,
-              notes,
-              total,
-              creditAvailable,
-            })
-            setSubmitted(true)
-            onOrderPlaced?.({
-              id: (sub as { id?: string }).id ?? `ord_${Date.now()}`,
-              total,
-              lines,
-              notes,
-              createdAt: new Date().toISOString(),
-            })
-          } catch (err) {
-            setSubmitError(err instanceof Error ? err.message : "Failed to submit order. Try again.")
-          } finally {
-            setSubmitting(false)
-          }
-        }}
-        className="w-full h-11 text-white font-semibold gap-2"
-        style={{ background: canPlace ? WINE : undefined }}
-      >
-        <ShoppingCart className="h-4 w-4" />
-        {submitting ? "Submitting…" : "Submit order to Shaniid RX"}
-      </Button>
+        {overCredit && (
+          <p className="text-sm text-red-600 flex items-center gap-1 mt-3">
+            <AlertTriangle className="h-4 w-4" />This exceeds your available credit. It may be rejected — switch off credit to pay cash.
+          </p>
+        )}
+        {submitError && (
+          <div className="flex items-center gap-2 p-3 rounded-lg bg-red-50 border border-red-200 text-sm text-red-700 mt-3">
+            <AlertTriangle className="h-4 w-4 flex-shrink-0" />{submitError}
+          </div>
+        )}
+
+        <Button
+          disabled={cart.length === 0 || subtotal <= 0 || submitting}
+          onClick={place}
+          className="w-full h-11 text-white font-semibold gap-2 mt-4"
+          style={{ background: cart.length === 0 ? undefined : ORANGE }}
+        >
+          {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShoppingCart className="h-4 w-4" />}
+          {submitting ? "Placing order…" : "Place order"}
+        </Button>
+      </div>
     </div>
   )
 }
 
-/* ─── Dashboard ─────────────────────────────────────────────── */
+/* ─── Orders tab ─────────────────────────────────────────────── */
 
-type ClinicTab = "overview" | "order" | "orders" | "kyc" | "profile"
+function statusStyle(status: string): { color: string; bg: string } {
+  const s = status.toLowerCase()
+  if (s.includes("deliver") || s.includes("complete") || s.includes("paid")) return { color: "#065F46", bg: "#D1FAE5" }
+  if (s.includes("reject") || s.includes("cancel") || s.includes("fail")) return { color: "#991B1B", bg: "#FEE2E2" }
+  if (s.includes("pending") || s.includes("review") || s.includes("process")) return { color: "#92400E", bg: "#FEF3C7" }
+  return { color: "#374151", bg: "#F3F4F6" }
+}
+
+function OrdersTab({ onPlace }: { onPlace: () => void }) {
+  const orders = useClinicOrders()
+
+  if (orders.isLoading) return <LoadingBlock label="Loading your orders…" />
+  if (orders.error) return <ErrorBlock message={orders.error instanceof Error ? orders.error.message : "Could not load orders."} onRetry={() => orders.mutate()} />
+  if (!orders.data || orders.data.length === 0) {
+    return (
+      <EmptyBlock
+        icon={ClipboardList}
+        title="No orders yet"
+        desc="Orders you place will appear here with their status and totals."
+        action={<Button className="text-white" style={{ background: WINE }} onClick={onPlace}><ShoppingCart className="h-4 w-4 mr-2" />Place your first order</Button>}
+      />
+    )
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <p className="text-sm text-gray-500">{orders.data.length} order{orders.data.length === 1 ? "" : "s"}</p>
+        <Button size="sm" className="text-white text-xs" style={{ background: WINE }} onClick={onPlace}>
+          <ShoppingCart className="h-3 w-3 mr-1" />Place order
+        </Button>
+      </div>
+
+      <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left text-xs font-semibold uppercase tracking-wider text-gray-400 border-b border-gray-100">
+                <th className="px-4 py-3">Reference</th>
+                <th className="px-4 py-3">Placed</th>
+                <th className="px-4 py-3">Items</th>
+                <th className="px-4 py-3">Payment</th>
+                <th className="px-4 py-3">Status</th>
+                <th className="px-4 py-3 text-right">Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              {orders.data.map(o => {
+                const st = statusStyle(o.status)
+                return (
+                  <tr key={o.id} className="border-b border-gray-50 last:border-0">
+                    <td className="px-4 py-3 font-mono text-xs font-medium text-gray-700">{o.orderRef}</td>
+                    <td className="px-4 py-3 text-gray-500">{new Date(o.placedAt).toLocaleDateString()}</td>
+                    <td className="px-4 py-3 text-gray-500">{o.items.length}</td>
+                    <td className="px-4 py-3">
+                      <span className="inline-block text-[11px] font-semibold px-2 py-0.5 rounded-full" style={o.creditLine ? { color: "#1D4ED8", background: "#EFF6FF" } : { color: "#374151", background: "#F3F4F6" }}>
+                        {o.creditLine ? "Credit" : "Cash"}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className="inline-block text-[11px] font-semibold px-2 py-0.5 rounded-full capitalize" style={{ color: st.color, background: st.bg }}>{o.status}</span>
+                    </td>
+                    <td className="px-4 py-3 text-right font-semibold" style={{ color: WINE }}>{ksh(o.total)}</td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/* ─── Ledger tab ─────────────────────────────────────────────── */
+
+function txnIcon(type: string) {
+  if (type === "payment") return { Icon: TrendingDown, color: GREEN }
+  if (type === "charge") return { Icon: TrendingUp, color: RED }
+  return { Icon: Receipt, color: "#6b7280" }
+}
+
+function LedgerTab() {
+  const ledger = useClinicLedger()
+
+  if (ledger.isLoading) return <LoadingBlock label="Loading credit ledger…" />
+  if (ledger.error) return <ErrorBlock message={ledger.error instanceof Error ? ledger.error.message : "Could not load ledger."} onRetry={() => ledger.mutate()} />
+  if (!ledger.data) return <ErrorBlock message="No ledger data available." onRetry={() => ledger.mutate()} />
+
+  const { creditLimit, outstanding, available, transactions } = ledger.data
+  const usedPct = creditLimit > 0 ? Math.min(100, (outstanding / creditLimit) * 100) : 0
+
+  return (
+    <div className="space-y-6 max-w-3xl">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        {[
+          { icon: Wallet,     label: "Credit limit",  value: ksh(creditLimit), color: WINE },
+          { icon: TrendingUp, label: "Outstanding",   value: ksh(outstanding), color: RED },
+          { icon: CreditCard, label: "Available",     value: ksh(available),   color: GREEN },
+        ].map(({ icon: Icon, label, value, color }) => (
+          <div key={label} className="bg-white rounded-xl border border-gray-100 p-4 flex items-start gap-3 shadow-sm">
+            <div className="h-10 w-10 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: `${color}15` }}>
+              <Icon className="h-5 w-5" style={{ color }} />
+            </div>
+            <div>
+              <p className="text-xs text-gray-500 font-medium">{label}</p>
+              <p className="text-lg font-bold mt-0.5" style={{ color: WINE }}>{value}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="bg-white rounded-xl border border-gray-100 p-5">
+        <div className="flex items-center justify-between mb-2">
+          <p className="font-semibold text-gray-700 text-sm">Credit utilisation</p>
+          <p className="text-sm font-bold" style={{ color: usedPct > 80 ? RED : WINE }}>{usedPct.toFixed(0)}% used</p>
+        </div>
+        <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+          <div className="h-full rounded-full" style={{ width: `${usedPct}%`, background: usedPct > 80 ? RED : WINE }} />
+        </div>
+        <p className="text-xs text-gray-400 mt-2">{ksh(outstanding)} outstanding of {ksh(creditLimit)} total</p>
+      </div>
+
+      <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+        <div className="px-5 py-4 border-b border-gray-100">
+          <h3 className="font-bold text-gray-800 text-sm">Transactions</h3>
+        </div>
+        {transactions.length === 0 ? (
+          <div className="p-10 text-center text-gray-400">
+            <Receipt className="h-10 w-10 mx-auto mb-3 opacity-20" />
+            <p className="text-sm">No transactions yet.</p>
+          </div>
+        ) : (
+          <div className="divide-y divide-gray-50">
+            {transactions.map(t => {
+              const { Icon, color } = txnIcon(t.type)
+              return (
+                <div key={t.id} className="flex items-center gap-3 px-5 py-3">
+                  <div className="h-9 w-9 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: `${color}15` }}>
+                    <Icon className="h-4 w-4" style={{ color }} />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium text-gray-800 capitalize">{t.type}{t.orderRef ? <span className="text-gray-400 font-normal"> · {t.orderRef}</span> : null}</p>
+                    <p className="text-xs text-gray-400">{new Date(t.createdAt).toLocaleString()}{t.note ? ` · ${t.note}` : ""}</p>
+                  </div>
+                  <div className="text-right flex-shrink-0">
+                    <p className="text-sm font-semibold" style={{ color: t.type === "payment" ? GREEN : t.type === "charge" ? RED : "#374151" }}>
+                      {t.type === "payment" ? "−" : t.type === "charge" ? "+" : ""}{ksh(Math.abs(t.amount))}
+                    </p>
+                    <p className="text-xs text-gray-400">Bal {ksh(t.balanceAfter)}</p>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+/* ─── Dashboard ──────────────────────────────────────────────── */
+
+type ClinicTab = "overview" | "order" | "orders" | "ledger" | "profile"
 
 const CLINIC_TABS: { id: ClinicTab; label: string; icon: typeof Stethoscope }[] = [
-  { id: "overview", label: "Overview",         icon: BarChart3     },
-  { id: "order",    label: "Place Order",      icon: ShoppingCart  },
-  { id: "orders",   label: "My Orders",        icon: ClipboardList },
-  { id: "kyc",      label: "KYC Status",       icon: Shield        },
-  { id: "profile",  label: "Facility Profile", icon: Building2     },
+  { id: "overview", label: "Overview",        icon: BarChart3     },
+  { id: "order",    label: "Order Medicines", icon: ShoppingCart  },
+  { id: "orders",   label: "My Orders",       icon: ClipboardList },
+  { id: "ledger",   label: "Credit Ledger",   icon: CreditCard    },
+  { id: "profile",  label: "Facility Profile",icon: Building2     },
 ]
 
-function ClinicDashboard({ clinic, session, onLogout }: {
-  clinic: Clinic; session: PortalSession; onLogout: () => void
-}) {
+function statusBadge(status: PartnerAccount["status"]): { color: string; bg: string; label: string } {
+  if (status === "active") return { color: "#065F46", bg: "#D1FAE5", label: "Active" }
+  if (status === "invited") return { color: "#92400E", bg: "#FEF3C7", label: "Invited" }
+  return { color: "#991B1B", bg: "#FEE2E2", label: "Suspended" }
+}
+
+function ClinicDashboard({ partner, onLogout }: { partner: PartnerAccount; onLogout: () => void }) {
   const [tab, setTab] = useState<ClinicTab>("overview")
   const [mobileOpen, setMobileOpen] = useState(false)
-  const [localOrders, setLocalOrders] = useState<PlacedOrder[]>([])
   const [collapsed, setCollapsed] = useState(() => {
     try { return localStorage.getItem("shaniidrx.clinic.sidebar") === "collapsed" } catch { return false }
   })
 
+  const ledger = useClinicLedger()
+  const orders = useClinicOrders()
+
+  const creditLimit = ledger.data?.creditLimit ?? null
+  const outstanding = ledger.data?.outstanding ?? null
+  const available = ledger.data?.available ?? null
+  const usedPct = creditLimit && creditLimit > 0 && outstanding !== null ? Math.min(100, (outstanding / creditLimit) * 100) : 0
+
   const toggleSidebar = () => {
     setCollapsed(prev => {
       const next = !prev
-      try { localStorage.setItem("shaniidrx.clinic.sidebar", next ? "collapsed" : "expanded") } catch {}
+      try { localStorage.setItem("shaniidrx.clinic.sidebar", next ? "collapsed" : "expanded") } catch { /* ignore */ }
       return next
     })
   }
 
-  const kycDocs = ["hasLicense", "hasNhifCert", "hasPinCert", "hasDirectorId"]
-  const kycPct  = kycDocs.filter(k => (clinic as unknown as Record<string, unknown>)[k]).length / kycDocs.length * 100
-  const creditUsedPct = Math.min(100, (clinic.creditUsed / clinic.creditLimit) * 100)
-
-  const tierColors = {
-    standard:  { bg: "#F3F4F6", color: "#374151" },
-    partner:   { bg: "#EFF6FF", color: "#1D4ED8" },
-    preferred: { bg: "#FFFBEB", color: "#92400E" },
-  }
-  const tc = tierColors[clinic.tier]
+  const badge = statusBadge(partner.status)
 
   return (
     <div className="min-h-screen flex" style={{ background: "#f8f7f5" }}>
-      {/* ── Mobile overlay sidebar ─────────────────────────────── */}
+      {/* Mobile overlay sidebar */}
       {mobileOpen && (
         <div className="fixed inset-0 z-50 md:hidden">
           <div className="absolute inset-0 bg-black/60" onClick={() => setMobileOpen(false)} />
@@ -354,20 +795,21 @@ function ClinicDashboard({ clinic, session, onLogout }: {
               <div className="h-10 w-10 rounded-xl flex items-center justify-center mb-2" style={{ background: "rgba(255,255,255,0.15)" }}>
                 <Stethoscope className="h-5 w-5" style={{ color: ORANGE }} />
               </div>
-              <p className="font-semibold text-sm leading-tight" style={{ color: S_TEXT }}>{clinic.clinicName}</p>
-              <p className="text-xs mt-0.5 capitalize" style={{ color: S_MUTED }}>{clinic.clinicType.replace("_", " ")} · {clinic.county}</p>
-              <span className="inline-block mt-1.5 text-[11px] font-semibold px-2 py-0.5 rounded-full capitalize" style={{ color: tc.color, background: tc.bg }}>{clinic.tier} partner</span>
+              <p className="font-semibold text-sm leading-tight" style={{ color: S_TEXT }}>{partner.displayName}</p>
+              <span className="inline-block mt-1.5 text-[11px] font-semibold px-2 py-0.5 rounded-full" style={{ color: badge.color, background: badge.bg }}>{badge.label}</span>
             </div>
-            <div className="px-5 py-3" style={{ borderBottom: `1px solid ${S_BORDER}`, background: "rgba(0,0,0,0.15)" }}>
-              <div className="flex justify-between text-xs mb-1.5">
-                <span style={{ color: S_MUTED }}>Credit available</span>
-                <span className="font-bold" style={{ color: creditUsedPct > 80 ? "#FCA5A5" : "#4ADE80" }}>{(100 - creditUsedPct).toFixed(0)}%</span>
+            {available !== null && creditLimit !== null && (
+              <div className="px-5 py-3" style={{ borderBottom: `1px solid ${S_BORDER}`, background: "rgba(0,0,0,0.15)" }}>
+                <div className="flex justify-between text-xs mb-1.5">
+                  <span style={{ color: S_MUTED }}>Credit available</span>
+                  <span className="font-bold" style={{ color: usedPct > 80 ? "#FCA5A5" : "#4ADE80" }}>{(100 - usedPct).toFixed(0)}%</span>
+                </div>
+                <div className="h-1.5 rounded-full overflow-hidden" style={{ background: S_BORDER }}>
+                  <div className="h-full rounded-full" style={{ width: `${usedPct}%`, background: usedPct > 80 ? "#EF4444" : "#4ADE80" }} />
+                </div>
+                <p className="text-[10px] mt-1" style={{ color: S_MUTED }}>{ksh(available)} of {ksh(creditLimit)}</p>
               </div>
-              <div className="h-1.5 rounded-full overflow-hidden" style={{ background: S_BORDER }}>
-                <div className="h-full rounded-full" style={{ width: `${creditUsedPct}%`, background: creditUsedPct > 80 ? "#EF4444" : "#4ADE80" }} />
-              </div>
-              <p className="text-[10px] mt-1" style={{ color: S_MUTED }}>KSH {(clinic.creditLimit - clinic.creditUsed).toLocaleString()} of {clinic.creditLimit.toLocaleString()}</p>
-            </div>
+            )}
             <nav className="flex-1 px-3 py-4 space-y-0.5">
               {CLINIC_TABS.map(({ id, label, icon: Icon }) => (
                 <button key={id} onClick={() => { setTab(id); setMobileOpen(false) }}
@@ -387,7 +829,7 @@ function ClinicDashboard({ clinic, session, onLogout }: {
         </div>
       )}
 
-      {/* ── Desktop collapsible sidebar ────────────────────────── */}
+      {/* Desktop collapsible sidebar */}
       <aside
         className="hidden md:flex flex-shrink-0 flex-col transition-all duration-200"
         style={{ width: collapsed ? 64 : 256, background: WINE, borderRight: `1px solid ${S_BORDER}` }}
@@ -413,9 +855,8 @@ function ClinicDashboard({ clinic, session, onLogout }: {
             <div className="h-10 w-10 rounded-xl flex items-center justify-center mb-2" style={{ background: "rgba(255,255,255,0.15)" }}>
               <Stethoscope className="h-5 w-5" style={{ color: ORANGE }} />
             </div>
-            <p className="font-semibold text-sm leading-tight" style={{ color: S_TEXT }}>{clinic.clinicName}</p>
-            <p className="text-xs mt-0.5 capitalize" style={{ color: S_MUTED }}>{clinic.clinicType.replace("_", " ")} · {clinic.county}</p>
-            <span className="inline-block mt-1.5 text-[11px] font-semibold px-2 py-0.5 rounded-full capitalize" style={{ color: tc.color, background: tc.bg }}>{clinic.tier} partner</span>
+            <p className="font-semibold text-sm leading-tight" style={{ color: S_TEXT }}>{partner.displayName}</p>
+            <span className="inline-block mt-1.5 text-[11px] font-semibold px-2 py-0.5 rounded-full" style={{ color: badge.color, background: badge.bg }}>{badge.label}</span>
           </div>
         ) : (
           <div className="flex items-center justify-center py-4" style={{ borderBottom: `1px solid ${S_BORDER}` }}>
@@ -425,16 +866,16 @@ function ClinicDashboard({ clinic, session, onLogout }: {
           </div>
         )}
 
-        {!collapsed && (
+        {!collapsed && available !== null && creditLimit !== null && (
           <div className="px-5 py-3" style={{ borderBottom: `1px solid ${S_BORDER}`, background: "rgba(0,0,0,0.15)" }}>
             <div className="flex justify-between text-xs mb-1.5">
               <span style={{ color: S_MUTED }}>Credit available</span>
-              <span className="font-bold" style={{ color: creditUsedPct > 80 ? "#FCA5A5" : "#4ADE80" }}>{(100 - creditUsedPct).toFixed(0)}%</span>
+              <span className="font-bold" style={{ color: usedPct > 80 ? "#FCA5A5" : "#4ADE80" }}>{(100 - usedPct).toFixed(0)}%</span>
             </div>
             <div className="h-1.5 rounded-full overflow-hidden" style={{ background: S_BORDER }}>
-              <div className="h-full rounded-full" style={{ width: `${creditUsedPct}%`, background: creditUsedPct > 80 ? "#EF4444" : "#4ADE80" }} />
+              <div className="h-full rounded-full" style={{ width: `${usedPct}%`, background: usedPct > 80 ? "#EF4444" : "#4ADE80" }} />
             </div>
-            <p className="text-[10px] mt-1" style={{ color: S_MUTED }}>KSH {(clinic.creditLimit - clinic.creditUsed).toLocaleString()} of {clinic.creditLimit.toLocaleString()}</p>
+            <p className="text-[10px] mt-1" style={{ color: S_MUTED }}>{ksh(available)} of {ksh(creditLimit)}</p>
           </div>
         )}
 
@@ -472,12 +913,12 @@ function ClinicDashboard({ clinic, session, onLogout }: {
             </button>
             <div>
               <h1 className="font-bold text-lg text-gray-800">{CLINIC_TABS.find(t => t.id === tab)?.label}</h1>
-              <p className="text-xs text-gray-400 mt-0.5">{clinic.clinicName} · {clinic.portalCode}</p>
+              <p className="text-xs text-gray-400 mt-0.5">{partner.displayName} · {partner.email}</p>
             </div>
           </div>
-          {clinic.status !== "approved" && (
-            <span className="flex items-center gap-1 text-xs font-medium px-2.5 py-1 rounded-full" style={{ color: "#92400E", background: "#FEF3C7" }}>
-              <Clock className="h-3 w-3" /><span className="hidden sm:inline">KYC under review</span>
+          {partner.status !== "active" && (
+            <span className="flex items-center gap-1 text-xs font-medium px-2.5 py-1 rounded-full" style={{ color: badge.color, background: badge.bg }}>
+              <Clock className="h-3 w-3" /><span className="hidden sm:inline">{badge.label}</span>
             </span>
           )}
         </div>
@@ -488,52 +929,56 @@ function ClinicDashboard({ clinic, session, onLogout }: {
             <div className="space-y-6">
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                 {[
-                  { icon: ShoppingCart, label: "Total Orders",    value: clinic.orderCount,    color: WINE  },
-                  { icon: CreditCard,   label: "Total Spend",     value: `KSH ${(clinic.totalOrderValue/1000).toFixed(0)}K`, color: ORANGE },
-                  { icon: Shield,       label: "KYC Score",       value: `${kycPct.toFixed(0)}%`, color: kycPct === 100 ? GREEN : ORANGE },
-                  { icon: Users,        label: "Specialties",     value: clinic.specialties.length, color: WINE },
+                  { icon: CreditCard, label: "Credit limit", value: creditLimit !== null ? ksh(creditLimit) : "—", color: WINE },
+                  { icon: TrendingUp, label: "Outstanding",  value: outstanding !== null ? ksh(outstanding) : "—", color: RED },
+                  { icon: Wallet,     label: "Available",    value: available !== null ? ksh(available) : "—", color: GREEN },
+                  { icon: ShoppingCart, label: "Recent orders", value: orders.data ? orders.data.length : "—", color: ORANGE },
                 ].map(({ icon: Icon, label, value, color }) => (
                   <div key={label} className="bg-white rounded-xl border border-gray-100 p-4 flex items-start gap-3 shadow-sm">
                     <div className="h-10 w-10 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: `${color}15` }}>
                       <Icon className="h-5 w-5" style={{ color }} />
                     </div>
-                    <div>
+                    <div className="min-w-0">
                       <p className="text-xs text-gray-500 font-medium">{label}</p>
-                      <p className="text-xl font-bold mt-0.5" style={{ color: WINE }}>{value}</p>
+                      <p className="text-xl font-bold mt-0.5 truncate" style={{ color: WINE }}>
+                        {ledger.isLoading && (label !== "Recent orders") ? <Loader2 className="h-4 w-4 animate-spin inline" /> : value}
+                      </p>
                     </div>
                   </div>
                 ))}
               </div>
 
-              {/* Status banner */}
-              {clinic.status === "approved" && (
+              {ledger.error && (
+                <ErrorBlock message={ledger.error instanceof Error ? ledger.error.message : "Could not load credit data."} onRetry={() => ledger.mutate()} />
+              )}
+
+              {partner.status === "active" && available !== null && creditLimit !== null && (
                 <div className="flex items-start gap-3 p-4 rounded-xl border border-green-200 bg-green-50">
                   <CheckCircle2 className="h-5 w-5 text-green-600 flex-shrink-0 mt-0.5" />
                   <div>
-                    <p className="font-semibold text-green-800">Your facility is approved</p>
-                    <p className="text-sm text-green-700 mt-0.5">You can place orders immediately using your credit line of KSH {clinic.creditLimit.toLocaleString()} ({clinic.paymentTerms}).</p>
+                    <p className="font-semibold text-green-800">Your facility is active</p>
+                    <p className="text-sm text-green-700 mt-0.5">You can place orders immediately. Credit available: {ksh(available)} of {ksh(creditLimit)}.</p>
                   </div>
                 </div>
               )}
-              {clinic.status === "pending_kyc" && (
+              {partner.status === "invited" && (
                 <div className="flex items-start gap-3 p-4 rounded-xl border border-amber-200 bg-amber-50">
                   <Clock className="h-5 w-5 text-amber-600 flex-shrink-0 mt-0.5" />
                   <div>
-                    <p className="font-semibold text-amber-800">KYC review in progress</p>
-                    <p className="text-sm text-amber-700 mt-0.5">Our team is reviewing your facility documents. You'll be able to place orders once your KYC is approved.</p>
+                    <p className="font-semibold text-amber-800">Account setup pending</p>
+                    <p className="text-sm text-amber-700 mt-0.5">Your account is being finalised. Some features may be limited until activation.</p>
                   </div>
                 </div>
               )}
 
-              {/* Quick actions */}
               <div className="bg-white rounded-xl border border-gray-100 p-5">
                 <h3 className="font-bold text-gray-800 text-sm mb-4">Quick actions</h3>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                   {[
-                    { icon: ShoppingCart, label: "Place Order",  action: () => setTab("order")   },
-                    { icon: ClipboardList,label: "My Orders",    action: () => setTab("orders")  },
-                    { icon: Shield,       label: "KYC Status",   action: () => setTab("kyc")     },
-                    { icon: Building2,    label: "My Profile",   action: () => setTab("profile") },
+                    { icon: ShoppingCart, label: "Order Medicines", action: () => setTab("order")   },
+                    { icon: ClipboardList,label: "My Orders",       action: () => setTab("orders")  },
+                    { icon: CreditCard,   label: "Credit Ledger",   action: () => setTab("ledger")  },
+                    { icon: Building2,    label: "My Profile",      action: () => setTab("profile") },
                   ].map(({ icon: Icon, label, action }) => (
                     <button key={label} onClick={action}
                       className="flex flex-col items-center gap-2 p-4 rounded-xl border border-gray-100 hover:border-gray-300 hover:shadow-sm transition-all">
@@ -547,101 +992,13 @@ function ClinicDashboard({ clinic, session, onLogout }: {
           )}
 
           {/* ORDER */}
-          {tab === "order" && (
-            <PlaceOrderTab
-              clinic={clinic}
-              onOrderPlaced={order => setLocalOrders(prev => [order, ...prev])}
-            />
-          )}
+          {tab === "order" && <OrderTab creditAvailable={available} />}
 
           {/* ORDERS */}
-          {tab === "orders" && (
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <p className="text-sm text-gray-500">Order history for {clinic.clinicName}</p>
-                <Button size="sm" className="text-white text-xs" style={{ background: WINE }} onClick={() => setTab("order")}>
-                  <ShoppingCart className="h-3 w-3 mr-1" />Place order
-                </Button>
-              </div>
-              {localOrders.length === 0 ? (
-                <div className="bg-white rounded-xl border border-gray-100 p-10 text-center text-gray-400">
-                  <ClipboardList className="h-10 w-10 mx-auto mb-3 opacity-20" />
-                  <p className="font-medium">No orders this session</p>
-                  <p className="text-sm mt-1 text-gray-400">Orders you place will appear here. Full history is available in your admin account.</p>
-                  <Button className="mt-4 text-white" style={{ background: WINE }} onClick={() => setTab("order")}>
-                    <ShoppingCart className="h-4 w-4 mr-2" />Place your first order
-                  </Button>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {localOrders.map((order) => (
-                    <div key={order.id} className="bg-white rounded-xl border border-gray-100 p-5">
-                      <div className="flex items-start justify-between mb-3">
-                        <div>
-                          <p className="font-semibold text-gray-800 text-sm">Order {order.id.slice(0, 14)}…</p>
-                          <p className="text-xs text-gray-400 mt-0.5">{new Date(order.createdAt).toLocaleString()}</p>
-                        </div>
-                        <div className="text-right">
-                          <span className="inline-block text-[11px] font-semibold px-2 py-0.5 rounded-full" style={{ color: "#065F46", background: "#D1FAE5" }}>Submitted</span>
-                          <p className="font-bold mt-1" style={{ color: WINE }}>KSH {order.total.toLocaleString()}</p>
-                        </div>
-                      </div>
-                      <div className="space-y-1">
-                        {order.lines.filter(l => l.name).map((line, i) => (
-                          <div key={i} className="flex items-center justify-between text-xs text-gray-600 py-1 border-b border-gray-50 last:border-0">
-                            <span>{line.name} {line.patientName && <span className="text-gray-400">· {line.patientName}</span>}</span>
-                            <span className="font-medium">× {line.qty} · KSH {(line.qty * line.unitPrice).toLocaleString()}</span>
-                          </div>
-                        ))}
-                      </div>
-                      {order.notes && (
-                        <p className="mt-2 text-xs text-gray-500 italic">{order.notes}</p>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
+          {tab === "orders" && <OrdersTab onPlace={() => setTab("order")} />}
 
-          {/* KYC */}
-          {tab === "kyc" && (
-            <div className="max-w-2xl space-y-5">
-              <div className="bg-white rounded-xl border border-gray-100 p-6">
-                <div className="flex items-center gap-4 mb-5">
-                  <div className="h-14 w-14 rounded-2xl flex items-center justify-center" style={{ background: kycPct === 100 ? `${GREEN}15` : `${ORANGE}15` }}>
-                    <Shield className="h-7 w-7" style={{ color: kycPct === 100 ? GREEN : ORANGE }} />
-                  </div>
-                  <div>
-                    <h2 className="font-bold text-gray-800">KYC — {kycPct === 100 ? "Approved ✓" : `${kycPct.toFixed(0)}% Complete`}</h2>
-                    <p className="text-sm text-gray-500 mt-0.5">Submit all documents to activate your credit line</p>
-                  </div>
-                </div>
-                <div className="h-2 bg-gray-100 rounded-full overflow-hidden mb-5">
-                  <div className="h-full rounded-full" style={{ width: `${kycPct}%`, background: kycPct === 100 ? GREEN : ORANGE }} />
-                </div>
-                {[
-                  { key: "hasLicense",   label: "Facility License / Registration" },
-                  { key: "hasNhifCert",  label: "NHIF / SHIF Certificate" },
-                  { key: "hasPinCert",   label: "KRA PIN Certificate" },
-                  { key: "hasDirectorId",label: "Medical Director National ID" },
-                ].map(({ key, label }) => {
-                  const has = (clinic as unknown as Record<string, unknown>)[key] as boolean
-                  return (
-                    <div key={key} className={`flex items-center gap-3 p-4 rounded-xl border mb-2 ${has ? "bg-green-50 border-green-200" : "bg-gray-50 border-gray-200"}`}>
-                      {has ? <CheckCircle2 className="h-5 w-5 text-green-600" /> : <XCircle className="h-5 w-5 text-gray-400" />}
-                      <span className={`font-medium text-sm ${has ? "text-green-800" : "text-gray-500"}`}>{label}</span>
-                    </div>
-                  )
-                })}
-                {kycPct < 100 && (
-                  <div className="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800">
-                    Submit missing documents to <strong>clinics@shaniidrx.com</strong> with code <strong>{clinic.portalCode}</strong> in the subject.
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
+          {/* LEDGER */}
+          {tab === "ledger" && <LedgerTab />}
 
           {/* PROFILE */}
           {tab === "profile" && (
@@ -650,20 +1007,18 @@ function ClinicDashboard({ clinic, session, onLogout }: {
                 <h3 className="font-bold text-gray-800 mb-4">Facility profile</h3>
                 <div className="space-y-3 text-sm">
                   {[
-                    { icon: Stethoscope, label: "Facility",        value: `${clinic.clinicName} (${clinic.clinicType.replace("_", " ")})` },
-                    { icon: Hash,        label: "License",          value: clinic.licenseNumber || "—" },
-                    { icon: Hash,        label: "NHIF Number",      value: clinic.nhifNumber || "—" },
-                    { icon: Mail,        label: "Email",            value: clinic.email },
-                    { icon: Phone,       label: "Phone",            value: clinic.phone || "—" },
-                    { icon: MapPin,      label: "Address",          value: `${clinic.address}, ${clinic.town}, ${clinic.county}` },
-                    { icon: Users,       label: "Medical Director", value: clinic.medicalDirector || "—" },
-                    { icon: CreditCard,  label: "Credit",           value: `KSH ${clinic.creditLimit.toLocaleString()} · ${clinic.paymentTerms}` },
+                    { icon: Building2,   label: "Facility",    value: partner.displayName },
+                    { icon: Mail,        label: "Email",       value: partner.email },
+                    { icon: Shield,      label: "Status",      value: badge.label },
+                    { icon: User,        label: "Account ID",  value: partner.id },
+                    { icon: Phone,       label: "Last sign in", value: partner.lastLoginAt ? new Date(partner.lastLoginAt).toLocaleString() : "—" },
+                    { icon: Clock,       label: "Member since", value: new Date(partner.createdAt).toLocaleDateString() },
                   ].map(({ icon: Icon, label, value }) => (
                     <div key={label} className="flex items-start gap-3 py-2.5 border-b border-gray-50">
                       <Icon className="h-4 w-4 text-gray-400 mt-0.5 flex-shrink-0" />
-                      <div>
+                      <div className="min-w-0">
                         <p className="text-xs text-gray-400">{label}</p>
-                        <p className="font-medium text-gray-700">{value}</p>
+                        <p className="font-medium text-gray-700 break-words">{value}</p>
                       </div>
                     </div>
                   ))}
@@ -678,39 +1033,40 @@ function ClinicDashboard({ clinic, session, onLogout }: {
   )
 }
 
-/* ─── Main Export ─────────────────────────────────────────────── */
+/* ─── Main export ────────────────────────────────────────────── */
 
 export default function ClinicPortal() {
-  const [clinics] = useCmsDoc<Clinic[]>("clinics", [])
-  const [session, setSession] = useState<PortalSession | null>(() => getPortalSessionForType("clinic"))
-  const [loginError, setLoginError] = useState("")
+  const [location, setLocation] = useLocation()
+  const isAccept = location.endsWith("/accept")
+  const token = typeof window !== "undefined"
+    ? new URLSearchParams(window.location.search).get("token")
+    : null
 
-  const handleLogin = (email: string, code: string) => {
-    setLoginError("")
-    const localMatch = clinics.find(
-      (c) => c.email.toLowerCase() === email.trim().toLowerCase() && c.portalCode.toUpperCase() === code.trim().toUpperCase(),
+  const me = usePartnerMe(!isAccept)
+
+  const handleLogout = async () => {
+    try { await partnerSignout("clinic") } catch { /* ignore */ }
+    await refreshPartnerMe()
+  }
+
+  if (isAccept && token) {
+    return <AcceptInviteScreen token={token} onDone={() => setLocation("/portal/clinic")} />
+  }
+
+  if (me.isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center" style={{ background: WINE }}>
+        <div className="flex flex-col items-center gap-3 text-white/80">
+          <Loader2 className="h-7 w-7 animate-spin" />
+          <p className="text-sm">Loading your portal…</p>
+        </div>
+      </div>
     )
-    if (!localMatch) {
-      setLoginError("Invalid email or portal code. Please check and try again.")
-      return
-    }
-    if (localMatch.status === "rejected") {
-      setLoginError("Your facility onboarding was not approved. Contact clinics@shaniidrx.com.")
-      return
-    }
-    const s = loginPartnerLocal("clinic", localMatch.id, localMatch.clinicName || email, email, code)
-    setSession(s)
   }
 
-  const handleLogout = () => {
-    void signOutPartner("clinic")
-    setSession(null)
+  if (me.error || !me.data?.ok || me.data.partner.partnerType !== "clinic") {
+    return <ClinicAuthScreen />
   }
 
-  if (!session) return <ClinicLoginPage onLogin={handleLogin} error={loginError} />
-
-  const clinic = clinics.find(c => c.id === session.partnerId)
-  if (!clinic) { handleLogout(); return null }
-
-  return <ClinicDashboard clinic={clinic} session={session} onLogout={handleLogout} />
+  return <ClinicDashboard partner={me.data.partner} onLogout={handleLogout} />
 }
