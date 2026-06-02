@@ -202,13 +202,13 @@ const NAVBAR_OFFERS = [
 ]
 
 const SITE_SETTINGS = {
-  store_name: "Her Kingdom Pharmacy",
-  store_email: "care@herkingdom.shop",
+  store_name: "Shaniid RX",
+  store_email: "care@shaniidrx.com",
   store_phone: "+254 700 000 000",
   whatsapp_number: "254700000000",
   footer_whatsapp: "254700000000",
   currency_symbol: "KSh",
-  site_title: "Her Kingdom Pharmacy",
+  site_title: "Shaniid RX — Medicine You Can Trust",
   site_description: "Your trusted online pharmacy in Kenya — medications, vitamins, baby care and medical devices delivered to your door.",
   meta_keywords: "online pharmacy kenya, medications nairobi, vitamins, medical devices",
   free_shipping_threshold: 5000,
