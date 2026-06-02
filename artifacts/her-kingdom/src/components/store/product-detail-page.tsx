@@ -38,6 +38,14 @@ import useSWR from "swr"
 import { rememberProduct, useRecentlyViewed } from "@/lib/recently-viewed"
 import { QuickViewProvider } from "@/lib/quick-view-context"
 import { QuickViewModal } from "./quick-view-modal"
+import { useUser } from "@clerk/react"
+import {
+  useProductReviews,
+  createReview,
+  updateReview,
+  deleteReview,
+  type ClientReview,
+} from "@/lib/reviews-client"
 
 const WINE = "#3D0814"
 const WINE_SOFT = "#6B0F1A"
@@ -46,6 +54,7 @@ const PEACH_BORDER = "#F2DCC8"
 const ACCENT_ORANGE = "#F97316"
 const ACCENT_AMBER = "#F59E0B"
 const SUCCESS = "#0F8A65"
+const REVIEW_AVATAR_COLORS = ["#F97316", "#8B5CF6", "#0EA5E9", "#10B981", "#F43F5E", "#6B0F1A"]
 
 // ─── Image Lightbox ───────────────────────────────────────────────────────────
 function ImageLightbox({
@@ -246,8 +255,24 @@ function ProductDetailPageInner({ slug }: { slug: string }) {
   const [imgHovered, setImgHovered] = useState(false)
   const [zoomOrigin, setZoomOrigin] = useState({ x: 50, y: 50 })
   const [reviewModalOpen, setReviewModalOpen] = useState(false)
+  const [editingReview, setEditingReview] = useState<ClientReview | null>(null)
   const mainImgRef = useRef<HTMLDivElement>(null)
   const recentlyViewed = useRecentlyViewed(product?.id)
+  const { user } = useUser()
+  const {
+    items: reviewItems,
+    aggregate: reviewAggregate,
+    refresh: refreshReviews,
+  } = useProductReviews(product?.id)
+
+  const handleDeleteReview = useCallback(
+    async (id: string) => {
+      if (typeof window !== "undefined" && !window.confirm("Delete your review? This cannot be undone.")) return
+      await deleteReview(id)
+      void refreshReviews()
+    },
+    [refreshReviews],
+  )
 
   // Persist this product to recently-viewed
   useEffect(() => {
@@ -320,12 +345,12 @@ function ProductDetailPageInner({ slug }: { slug: string }) {
   const productUrl =
     typeof window !== "undefined" ? `${window.location.origin}/product/${product.slug}` : ""
 
-  // Pseudo-stable rating + sold count derived from id so it's consistent.
+  // Real, dynamic ratings sourced from Postgres (api-nest /reviews).
+  const rating = reviewAggregate.average
+  const ratingsCount = reviewAggregate.count
+  const reviewsCount = reviewAggregate.count
+  // Sold-count is still a pseudo-stable display figure derived from the id.
   const seed = Array.from(product.id).reduce((s, c) => s + c.charCodeAt(0), 0)
-  const ratingValue = Number((((seed % 30) + 35) / 10).toFixed(1)) // 3.5–6.4 → clamp
-  const rating = Math.min(5, Math.max(3.5, ratingValue))
-  const ratingsCount = (seed % 87) + 4
-  const reviewsCount = Math.max(1, Math.floor(ratingsCount / 6))
   const soldLast7 = (seed % 22) + 5
 
   return (
@@ -534,7 +559,7 @@ function ProductDetailPageInner({ slug }: { slug: string }) {
                 </span>
                 <button
                   type="button"
-                  onClick={() => setReviewModalOpen(true)}
+                  onClick={() => { setEditingReview(null); setReviewModalOpen(true) }}
                   className="ml-auto text-[13px] font-medium underline underline-offset-2 hover:opacity-80"
                   style={{ color: "#0EA5E9" }}
                 >
@@ -774,40 +799,17 @@ function ProductDetailPageInner({ slug }: { slug: string }) {
 
           {/* ── Product Content Tabs ── */}
           {(() => {
-            const REVIEWERS = [
-              { name: "Shiru Ndung'u", initials: "SN", color: "#F97316" },
-              { name: "James Mwangi",  initials: "JM", color: "#8B5CF6" },
-              { name: "Amina Hassan",  initials: "AH", color: "#0EA5E9" },
-              { name: "Peter Kamau",   initials: "PK", color: "#10B981" },
-              { name: "Grace Wanjiku", initials: "GW", color: "#F43F5E" },
-            ]
-            const REVIEW_TEXTS = [
-              `the best ${product.category.toLowerCase()} product I have used ?? Highly recommended!`,
-              "Very effective. I noticed results within a few days and delivery was super fast.",
-              "Good quality for the price. Shaniid RX packaging is always neat and discreet.",
-              "Exactly what I needed. The pharmacist guidance was also really helpful.",
-              "Will definitely reorder. Works as described and arrived ahead of schedule.",
-            ]
-            const DATES = ["15-03-2026", "02-04-2026", "18-02-2026", "07-01-2026", "28-03-2026"]
-            const HELPFUL = [100, 48, 67, 23, 89]
-
-            const reviewsData = Array.from({ length: Math.min(reviewsCount, 3) }, (_, i) => {
-              const ri = (seed + i * 7) % REVIEWERS.length
-              const ti = (seed + i * 3) % REVIEW_TEXTS.length
-              const di = (seed + i * 5) % DATES.length
-              const hi = (seed + i * 11) % HELPFUL.length
-              return {
-                ...REVIEWERS[ri],
-                text: REVIEW_TEXTS[ti],
-                date: DATES[di],
-                helpful: HELPFUL[hi],
-                stars: i === 0 ? Math.ceil(rating) : (((seed + i) % 3 === 0) ? 4 : 5),
-                badge: i === 0 ? "Most Helpful" : null,
-              }
+            // Sort the real reviews per the active control.
+            const reviewsData = [...reviewItems].sort((a, b) => {
+              if (reviewSort === "highest") return b.rating - a.rating
+              if (reviewSort === "lowest") return a.rating - b.rating
+              if (reviewSort === "helpful") return b.helpfulCount - a.helpfulCount
+              return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
             })
 
             const starBreakdown = [5, 4, 3, 2, 1].map((s) => {
-              const pct = s === 5 ? 65 : s === 4 ? 25 : s === 3 ? 7 : s === 2 ? 2 : 1
+              const n = reviewAggregate.distribution[String(s) as "1" | "2" | "3" | "4" | "5"] || 0
+              const pct = reviewAggregate.count ? Math.round((n / reviewAggregate.count) * 100) : 0
               return { star: s, pct }
             })
 
@@ -1031,7 +1033,7 @@ function ProductDetailPageInner({ slug }: { slug: string }) {
                           </button>
                           <button
                             type="button"
-                            onClick={() => setReviewModalOpen(true)}
+                            onClick={() => { setEditingReview(null); setReviewModalOpen(true) }}
                             className="ml-auto text-sm font-semibold underline underline-offset-2 hover:opacity-80"
                             style={{ color: "#0EA5E9" }}
                           >
@@ -1042,29 +1044,63 @@ function ProductDetailPageInner({ slug }: { slug: string }) {
 
                       {/* Review cards */}
                       <div className="mt-5 space-y-5">
-                        {reviewsData.map((rev, i) => (
-                          <div key={i} className="pb-5 border-b last:border-b-0 last:pb-0" style={{ borderColor: PEACH_BORDER }}>
+                        {reviewsData.length === 0 && (
+                          <div className="py-10 text-center">
+                            <p className="text-sm font-semibold text-neutral-700">No reviews yet</p>
+                            <p className="text-xs text-neutral-500 mt-1">
+                              Be the first to review {product.name}.
+                            </p>
+                            <button
+                              type="button"
+                              onClick={() => { setEditingReview(null); setReviewModalOpen(true) }}
+                              className="mt-4 text-sm px-5 h-10 rounded-lg font-semibold text-white inline-flex items-center"
+                              style={{ background: ACCENT_ORANGE }}
+                            >
+                              Write a Review
+                            </button>
+                          </div>
+                        )}
+                        {reviewsData.map((rev) => {
+                          const initials = rev.authorName
+                            .split(/\s+/)
+                            .map((w) => w[0])
+                            .filter(Boolean)
+                            .slice(0, 2)
+                            .join("")
+                            .toUpperCase() || "?"
+                          const avatarColor =
+                            REVIEW_AVATAR_COLORS[
+                              Array.from(rev.authorName).reduce((s, c) => s + c.charCodeAt(0), 0) %
+                                REVIEW_AVATAR_COLORS.length
+                            ]
+                          const dateLabel = new Date(rev.createdAt).toLocaleDateString("en-GB", {
+                            day: "2-digit",
+                            month: "short",
+                            year: "numeric",
+                          })
+                          return (
+                          <div key={rev.id} className="pb-5 border-b last:border-b-0 last:pb-0" style={{ borderColor: PEACH_BORDER }}>
                             <div className="flex items-start gap-3">
                               {/* Avatar */}
                               <div
                                 className="w-10 h-10 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0"
-                                style={{ background: rev.color }}
+                                style={{ background: avatarColor }}
                               >
-                                {rev.initials}
+                                {initials}
                               </div>
                               <div className="flex-1 min-w-0">
                                 <div className="flex items-center gap-2 flex-wrap">
-                                  <span className="text-sm font-semibold" style={{ color: WINE }}>{rev.name}</span>
-                                  {rev.badge && (
+                                  <span className="text-sm font-semibold" style={{ color: WINE }}>{rev.authorName}</span>
+                                  {rev.mine && (
                                     <span
                                       className="text-[11px] px-2 py-0.5 rounded-full font-semibold"
-                                      style={{ background: "#EDE9FE", color: "#6D28D9" }}
+                                      style={{ background: "#FFF1E2", color: ACCENT_ORANGE }}
                                     >
-                                      {rev.badge}
+                                      Your review
                                     </span>
                                   )}
                                 </div>
-                                <p className="text-[11px] text-neutral-400 mt-0.5">{rev.date}</p>
+                                <p className="text-[11px] text-neutral-400 mt-0.5">{dateLabel}</p>
 
                                 {/* Stars */}
                                 <div className="flex items-center gap-1 mt-2">
@@ -1072,37 +1108,46 @@ function ProductDetailPageInner({ slug }: { slug: string }) {
                                     <Star
                                       key={si}
                                       className="h-3.5 w-3.5"
-                                      fill={si < rev.stars ? "#F59E0B" : "none"}
+                                      fill={si < rev.rating ? "#F59E0B" : "none"}
                                       style={{ color: "#F59E0B" }}
                                     />
                                   ))}
-                                  <span className="text-xs text-neutral-500 ml-1">({rev.stars}.0)</span>
+                                  <span className="text-xs text-neutral-500 ml-1">({rev.rating}.0)</span>
                                 </div>
 
-                                {/* Text */}
-                                <p className="text-sm text-neutral-700 mt-2 leading-relaxed">{rev.text}</p>
+                                {/* Title + Text */}
+                                {rev.title && (
+                                  <p className="text-sm font-semibold text-neutral-800 mt-2">{rev.title}</p>
+                                )}
+                                <p className="text-sm text-neutral-700 mt-1 leading-relaxed">{rev.body}</p>
 
-                                {/* Actions */}
-                                <div className="flex items-center gap-3 mt-3">
-                                  <button
-                                    type="button"
-                                    className="text-xs font-medium hover:underline"
-                                    style={{ color: SUCCESS }}
-                                  >
-                                    Helpful ({rev.helpful})
-                                  </button>
-                                  <span className="text-neutral-300 text-xs">|</span>
-                                  <button
-                                    type="button"
-                                    className="text-xs text-neutral-400 hover:underline"
-                                  >
-                                    Report
-                                  </button>
-                                </div>
+                                {/* Owner actions */}
+                                {rev.mine && (
+                                  <div className="flex items-center gap-3 mt-3">
+                                    <button
+                                      type="button"
+                                      onClick={() => { setEditingReview(rev); setReviewModalOpen(true) }}
+                                      className="text-xs font-medium hover:underline"
+                                      style={{ color: WINE }}
+                                    >
+                                      Edit
+                                    </button>
+                                    <span className="text-neutral-300 text-xs">|</span>
+                                    <button
+                                      type="button"
+                                      onClick={() => { void handleDeleteReview(rev.id) }}
+                                      className="text-xs font-medium hover:underline"
+                                      style={{ color: "#B91C1C" }}
+                                    >
+                                      Delete
+                                    </button>
+                                  </div>
+                                )}
                               </div>
                             </div>
                           </div>
-                        ))}
+                          )
+                        })}
                       </div>
                     </div>
                   )}
@@ -1171,8 +1216,12 @@ function ProductDetailPageInner({ slug }: { slug: string }) {
       {/* Write Review modal */}
       {reviewModalOpen && (
         <WriteReviewModal
+          productId={product.id}
           productName={product.name}
-          onClose={() => setReviewModalOpen(false)}
+          existing={editingReview}
+          defaultAuthorName={user?.fullName || user?.firstName || ""}
+          onClose={() => { setReviewModalOpen(false); setEditingReview(null) }}
+          onSaved={() => { void refreshReviews() }}
         />
       )}
     </div>
@@ -1181,18 +1230,29 @@ function ProductDetailPageInner({ slug }: { slug: string }) {
 
 // ─── Write Review Modal ──────────────────────────────────────────────────────
 function WriteReviewModal({
+  productId,
   productName,
+  existing,
+  defaultAuthorName,
   onClose,
+  onSaved,
 }: {
+  productId: string
   productName: string
+  existing: ClientReview | null
+  defaultAuthorName: string
   onClose: () => void
+  onSaved: () => void
 }) {
-  const [rating, setRating] = useState(0)
+  const isEdit = !!existing
+  const [rating, setRating] = useState(existing?.rating ?? 0)
   const [hover, setHover] = useState(0)
-  const [description, setDescription] = useState("")
+  const [authorName, setAuthorName] = useState(existing?.authorName || defaultAuthorName || "")
+  const [description, setDescription] = useState(existing?.body ?? "")
   const [file, setFile] = useState<File | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [submitted, setSubmitted] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose() }
@@ -1207,9 +1267,21 @@ function WriteReviewModal({
     e.preventDefault()
     if (!rating || !description.trim()) return
     setSubmitting(true)
-    // Stub: simulate submit. Wire to API later.
-    await new Promise((r) => setTimeout(r, 600))
+    setError(null)
+    const result = isEdit
+      ? await updateReview(existing!.id, { rating, body: description.trim() })
+      : await createReview({
+          productId,
+          rating,
+          body: description.trim(),
+          authorName: authorName.trim() || undefined,
+        })
     setSubmitting(false)
+    if (!result) {
+      setError("We couldn't save your review. Please try again.")
+      return
+    }
+    onSaved()
     setSubmitted(true)
     setTimeout(onClose, 1200)
   }
@@ -1227,7 +1299,7 @@ function WriteReviewModal({
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-5 border-b" style={{ borderColor: "#F3F4F6" }}>
           <h3 className="text-lg font-bold" style={{ color: "#111827" }}>
-            Product Review
+            {isEdit ? "Edit Your Review" : "Product Review"}
           </h3>
           <button
             type="button"
@@ -1244,11 +1316,40 @@ function WriteReviewModal({
             <div className="w-12 h-12 rounded-full mx-auto flex items-center justify-center" style={{ background: "#E6F4EE" }}>
               <Check className="h-6 w-6" style={{ color: SUCCESS }} />
             </div>
-            <p className="mt-4 text-sm font-semibold text-neutral-800">Thank you for your review!</p>
-            <p className="text-xs text-neutral-500 mt-1">It will appear after moderation.</p>
+            <p className="mt-4 text-sm font-semibold text-neutral-800">
+              {isEdit ? "Your review has been updated!" : "Thank you for your review!"}
+            </p>
+            <p className="text-xs text-neutral-500 mt-1">It is now live on this product.</p>
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="px-6 py-5 space-y-5">
+            {error && (
+              <div
+                className="text-sm rounded-md px-3 py-2"
+                style={{ background: "#FEF2F2", color: "#B91C1C" }}
+              >
+                {error}
+              </div>
+            )}
+
+            {/* Your name (new reviews only) */}
+            {!isEdit && (
+              <div>
+                <label htmlFor="review-name" className="block text-[13px] font-medium text-neutral-700 mb-2">
+                  Your Name
+                </label>
+                <input
+                  id="review-name"
+                  type="text"
+                  value={authorName}
+                  onChange={(e) => setAuthorName(e.target.value)}
+                  placeholder="e.g. Amina H."
+                  className="w-full px-3 py-2 text-sm rounded-md border outline-none focus:border-neutral-400 transition-colors"
+                  style={{ borderColor: "#E5E7EB" }}
+                />
+              </div>
+            )}
+
             {/* Rate this product */}
             <div>
               <label className="block text-[13px] font-medium text-neutral-700 mb-2">
@@ -1338,7 +1439,7 @@ function WriteReviewModal({
                 className="px-7 h-10 rounded-md text-sm font-semibold text-white transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
                 style={{ background: "#111827" }}
               >
-                {submitting ? "Submitting..." : "Submit"}
+                {submitting ? "Submitting..." : isEdit ? "Save Changes" : "Submit"}
               </button>
             </div>
 

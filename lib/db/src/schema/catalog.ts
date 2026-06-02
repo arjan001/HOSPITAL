@@ -1,6 +1,8 @@
-import { boolean, integer, jsonb, pgTable, text, timestamp, type AnyPgColumn } from "drizzle-orm/pg-core"
+import { sql } from "drizzle-orm"
+import { boolean, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex, type AnyPgColumn } from "drizzle-orm/pg-core"
 import { createInsertSchema, createSelectSchema } from "drizzle-zod"
 import { z } from "zod/v4"
+import { users } from "./users"
 
 export const categories = pgTable("categories", {
   id: text("id").primaryKey(),
@@ -64,6 +66,35 @@ export const productVariations = pgTable("product_variations", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 })
 
+export const productReviews = pgTable("product_reviews", {
+  id: text("id").primaryKey(),
+  // Plain product identifier — NOT a FK. The storefront catalog is served from
+  // a fixture/legacy source, not the Drizzle `products` table, so reviews must
+  // attach to any catalog id by string. Indexed for per-product lookups.
+  productId: text("product_id").notNull(),
+  // Durable owner FK — survives but detaches if the user row is removed.
+  userId: text("user_id").references(() => users.id, { onDelete: "set null" }),
+  // The signed session cookie that owns the review — used for the per-session
+  // ownership check on the customer-facing edit/delete routes.
+  sessionId: text("session_id"),
+  authorName: text("author_name").notNull(),
+  rating: integer("rating").notNull(),
+  title: text("title"),
+  body: text("body").notNull(),
+  status: text("status").notNull().default("published"),
+  helpfulCount: integer("helpful_count").notNull().default(0),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (t) => [
+  index("product_reviews_product_id_idx").on(t.productId),
+  // Enforce one review per session per product at the DB level so concurrent
+  // submits converge to a single row (the service upserts ON CONFLICT). Partial
+  // so legacy/anonymous rows without a session id are not constrained.
+  uniqueIndex("product_reviews_product_session_uq")
+    .on(t.productId, t.sessionId)
+    .where(sql`${t.sessionId} is not null`),
+])
+
 export const insertCategorySchema = createInsertSchema(categories).omit({ createdAt: true, updatedAt: true })
 export const selectCategorySchema = createSelectSchema(categories)
 export type InsertCategory = z.infer<typeof insertCategorySchema>
@@ -81,3 +112,8 @@ export type ProductImage = typeof productImages.$inferSelect
 export const insertProductVariationSchema = createInsertSchema(productVariations).omit({ createdAt: true })
 export type InsertProductVariation = z.infer<typeof insertProductVariationSchema>
 export type ProductVariation = typeof productVariations.$inferSelect
+
+export const insertProductReviewSchema = createInsertSchema(productReviews).omit({ createdAt: true, updatedAt: true })
+export const selectProductReviewSchema = createSelectSchema(productReviews)
+export type InsertProductReview = z.infer<typeof insertProductReviewSchema>
+export type ProductReview = typeof productReviews.$inferSelect

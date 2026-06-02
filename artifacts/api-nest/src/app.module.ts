@@ -31,6 +31,7 @@ import { AddressesModule } from "./modules/addresses.module"
 import { WishlistModule } from "./modules/wishlist.module"
 import { OrdersModule } from "./modules/orders.module"
 import { PaystackModule } from "./modules/paystack.module"
+import { ReviewsModule } from "./modules/reviews.module"
 
 // Admin modules
 import { AdminAuthModule } from "./modules/admin-auth.module"
@@ -65,6 +66,7 @@ import { ContactInquiriesModule } from "./modules/contact-inquiries.module"
     WishlistModule,
     OrdersModule,
     PaystackModule,
+    ReviewsModule,
 
     // Admin
     AdminAuthModule,
