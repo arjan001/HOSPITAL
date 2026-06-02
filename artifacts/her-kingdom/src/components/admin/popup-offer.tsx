@@ -7,9 +7,11 @@ import { Sparkles, Save, Eye, EyeOff } from "lucide-react"
 
 export type PopupOfferSettings = {
   enabled: boolean
+  eyebrow: string
   headline: string
   subhead: string
   ctaLabel: string
+  /** @deprecated kept for stored-doc backward compat; the redesigned popup captures email instead of linking. */
   ctaHref: string
   imageUrl: string
   bgColor: string
@@ -21,11 +23,13 @@ export type PopupOfferSettings = {
 
 export const POPUP_DEFAULTS: PopupOfferSettings = {
   enabled: false,
-  headline: "Get 10% off your first order",
-  subhead: "Sign up for SMS or email and we'll send you a one-time code, plus health tips from our pharmacists.",
-  ctaLabel: "Claim my discount",
-  ctaHref: "/account/register",
-  imageUrl: "",
+  eyebrow: "Newsletter",
+  headline: "Subscribe Now",
+  subhead:
+    "Join the list and unlock 10% off your first order — plus first-look access to new arrivals, restocks, and pharmacist health tips.",
+  ctaLabel: "Subscribe",
+  ctaHref: "",
+  imageUrl: "/newsletter-pills.png",
   bgColor: "#FFFFFF",
   textColor: "#111827",
   delaySec: 6,
@@ -81,22 +85,20 @@ export function AdminPopupOffer() {
               <input type="checkbox" checked={draft.enabled} onChange={(e) => update("enabled", e.target.checked)} className="h-5 w-5 accent-foreground" />
             </label>
 
+            <Field label="Eyebrow" hint="Small label above the headline.">
+              <input className="input" value={draft.eyebrow ?? ""} onChange={(e) => update("eyebrow", e.target.value)} placeholder="Newsletter" />
+            </Field>
             <Field label="Headline">
               <input className="input" value={draft.headline} onChange={(e) => update("headline", e.target.value)} />
             </Field>
             <Field label="Subhead">
               <textarea className="input" rows={3} value={draft.subhead} onChange={(e) => update("subhead", e.target.value)} />
             </Field>
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="CTA label">
-                <input className="input" value={draft.ctaLabel} onChange={(e) => update("ctaLabel", e.target.value)} />
-              </Field>
-              <Field label="CTA link">
-                <input className="input" value={draft.ctaHref} onChange={(e) => update("ctaHref", e.target.value)} />
-              </Field>
-            </div>
-            <Field label="Image URL (optional)">
-              <input className="input" value={draft.imageUrl} onChange={(e) => update("imageUrl", e.target.value)} placeholder="https://… or /image.jpg" />
+            <Field label="Subscribe button label">
+              <input className="input" value={draft.ctaLabel} onChange={(e) => update("ctaLabel", e.target.value)} placeholder="Subscribe" />
+            </Field>
+            <Field label="Image URL" hint="Shown on the left. A pharmacy image works best.">
+              <input className="input" value={draft.imageUrl} onChange={(e) => update("imageUrl", e.target.value)} placeholder="/newsletter-pills.png or https://…" />
             </Field>
             <div className="grid grid-cols-2 gap-3">
               <Field label="Background color">
@@ -125,21 +127,28 @@ export function AdminPopupOffer() {
               {draft.enabled ? <Eye className="h-3 w-3" /> : <EyeOff className="h-3 w-3" />}
               Preview
             </p>
-            <div className="rounded-2xl shadow-2xl overflow-hidden border border-border max-w-md mx-auto" style={{ background: draft.bgColor, color: draft.textColor }}>
+            <div className="shadow-2xl overflow-hidden border border-border max-w-md mx-auto flex flex-col sm:flex-row" style={{ background: draft.bgColor, color: draft.textColor }}>
               {draft.imageUrl && (
-                <img src={draft.imageUrl} alt="" className="w-full h-40 object-cover" onError={(e) => ((e.currentTarget.style.display = "none"))} />
+                <div className="w-full sm:w-[44%] h-32 sm:h-auto sm:min-h-[260px] flex-shrink-0 bg-neutral-100 relative">
+                  <img src={draft.imageUrl} alt="" className="absolute inset-0 w-full h-full object-cover" onError={(e) => { const p = e.currentTarget.parentElement; if (p) p.style.display = "none" }} />
+                </div>
               )}
-              <div className="p-6 space-y-3">
-                <h3 className="text-xl font-bold">{draft.headline || "Headline"}</h3>
-                <p className="text-sm opacity-80">{draft.subhead || "Subhead"}</p>
-                <button
-                  type="button"
-                  className="w-full h-11 rounded-full text-sm font-bold text-white"
-                  style={{ background: "linear-gradient(135deg, #F97316 0%, #B91C1C 100%)" }}
-                >
-                  {draft.ctaLabel || "CTA"}
-                </button>
-                <p className="text-[11px] opacity-50 text-center">No thanks</p>
+              <div className="flex-1 p-5 space-y-2.5">
+                {draft.eyebrow && <p className="text-[10px] font-semibold uppercase tracking-[0.18em] opacity-60">{draft.eyebrow}</p>}
+                <h3 className="text-lg font-bold leading-tight">{draft.headline || "Headline"}</h3>
+                <p className="text-xs opacity-75 leading-relaxed">{draft.subhead || "Subhead"}</p>
+                <div className="pt-1">
+                  <p className="text-[11px] font-medium mb-1">Email Address <span style={{ color: "#B91C1C" }}>*</span></p>
+                  <div className="w-full h-9 border border-neutral-300 bg-white text-[11px] text-neutral-400 px-3 flex items-center">Enter your email</div>
+                  <button
+                    type="button"
+                    className="w-full h-9 mt-2 text-xs font-bold text-white"
+                    style={{ background: "#B91C1C" }}
+                  >
+                    {draft.ctaLabel || "Subscribe"}
+                  </button>
+                </div>
+                <p className="text-[10px] opacity-50">Don't show this popup again</p>
               </div>
             </div>
           </div>
