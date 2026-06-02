@@ -437,7 +437,7 @@ export function AdminChat() {
           </div>
         )}
 
-        <div className="grid grid-cols-1 lg:grid-cols-[260px_1fr] gap-0 rounded-xl border border-border overflow-hidden bg-background h-[72vh] min-h-[520px]">
+        <div className="grid grid-cols-1 lg:grid-cols-[240px_1fr] gap-0 rounded-xl border border-border overflow-hidden bg-background h-[80vh] min-h-[560px]">
           {/* Thread list */}
           <aside className="border-r border-border flex flex-col bg-background">
             <div className="p-3 border-b border-border">
@@ -516,16 +516,16 @@ export function AdminChat() {
           <section className="flex flex-col min-w-0">
             {active ? (
               <>
-                <div className="px-4 py-3 border-b border-border flex items-center gap-3 bg-background">
+                <div className="px-4 py-2.5 border-b border-border flex items-center gap-2.5 bg-background">
                   <div
-                    className="w-9 h-9 rounded-full flex items-center justify-center text-white text-xs font-bold"
+                    className="w-8 h-8 rounded-full flex items-center justify-center text-white text-[11px] font-bold flex-shrink-0"
                     style={{ background: "#3D0814" }}
                   >
                     {avatarInitials(active.patientName)}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="font-semibold text-sm leading-tight">{active.patientName}</p>
-                    <p className="text-[11px] text-muted-foreground flex items-center gap-2">
+                    <p className="font-semibold text-[13px] leading-tight truncate">{active.patientName}</p>
+                    <p className="text-[10px] text-muted-foreground flex items-center gap-1.5">
                       {activeTyping ? (
                         <span className="italic text-emerald-600">typing…</span>
                       ) : activePresence?.online ? (
@@ -544,6 +544,7 @@ export function AdminChat() {
                       )}
                     </p>
                   </div>
+                  <div className="flex items-center gap-1.5 flex-shrink-0">
                   <button
                     onClick={sendTest}
                     className="text-xs font-semibold inline-flex items-center gap-1 px-2 h-8 rounded-md hover:bg-secondary"
@@ -577,7 +578,7 @@ export function AdminChat() {
                   )}
                   {active.consultationType !== "call" && active.consultationType !== "video" && (
                     <span
-                      className="text-[11px] font-semibold inline-flex items-center gap-1 px-2.5 h-7 rounded-full"
+                      className="text-[11px] font-semibold inline-flex items-center gap-1 px-2.5 h-8 rounded-full"
                       style={{ background: "#F3E8EB", color: "#6B0F1A" }}
                       title="The patient paid for a chat consultation. Voice and video calls are not available for this session."
                     >
@@ -586,7 +587,7 @@ export function AdminChat() {
                   )}
                   {timer && (
                     <span
-                      className="text-[11px] font-semibold tabular-nums inline-flex items-center gap-1 px-2.5 h-7 rounded-full"
+                      className="text-[11px] font-semibold tabular-nums inline-flex items-center gap-1 px-2.5 h-8 rounded-full"
                       style={
                         timer.over
                           ? { background: "#FEF2F2", color: "#B91C1C" }
@@ -622,7 +623,7 @@ export function AdminChat() {
                   )}
                   {active.status === "archived" && (
                     <span
-                      className="text-[11px] font-semibold inline-flex items-center gap-1 px-2.5 h-7 rounded-full"
+                      className="text-[11px] font-semibold inline-flex items-center gap-1 px-2.5 h-8 rounded-full"
                       style={{ background: "#F3E8EB", color: "#6B0F1A" }}
                       title={active.closedAt ? `Ended ${fmtLastSeen(active.closedAt)}` : "Consultation ended"}
                     >
@@ -636,6 +637,7 @@ export function AdminChat() {
                   >
                     <Trash2 className="h-3.5 w-3.5" />
                   </button>
+                  </div>
                 </div>
                 <div className="flex-1 min-h-0">
                   <ChatWindow
