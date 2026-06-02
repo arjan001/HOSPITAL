@@ -10,6 +10,7 @@ import {
   Pencil,
 } from "lucide-react"
 import { adminAuthHeaders } from "@/lib/api-client"
+import { AdminShell } from "./admin-shell"
 
 /**
  * Admin Accounts — manages the *real* login accounts in Postgres (`admin_users`)
@@ -111,7 +112,8 @@ export function AdminAccounts() {
   }
 
   return (
-    <div className="space-y-6">
+    <AdminShell title="Admin Accounts">
+      <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="flex items-center gap-2 text-2xl font-semibold" style={{ color: WINE }}>
@@ -235,7 +237,8 @@ export function AdminAccounts() {
           }}
         />
       )}
-    </div>
+      </div>
+    </AdminShell>
   )
 }
 
