@@ -350,6 +350,28 @@ export class NotificationsService {
     await db.update(ticketsTable).set({ status, updatedAt: new Date() }).where(eq(ticketsTable.id, ticket.id))
     return this.getTicket(ticket.id)
   }
+
+  async updateTicket(id: string, input: { subject?: string; category?: string }): Promise<SupportTicket> {
+    const ticket = await this.getTicket(id)
+    const patch: { subject?: string; category?: string; updatedAt: Date } = { updatedAt: new Date() }
+    if (typeof input.subject === "string") {
+      const s = input.subject.trim()
+      if (!s) throw new HttpException("Subject cannot be empty", HttpStatus.BAD_REQUEST)
+      patch.subject = s
+    }
+    if (typeof input.category === "string" && input.category.trim()) {
+      patch.category = input.category.trim()
+    }
+    await db.update(ticketsTable).set(patch).where(eq(ticketsTable.id, ticket.id))
+    return this.getTicket(ticket.id)
+  }
+
+  async deleteTicket(id: string): Promise<{ ok: true; id: string }> {
+    const ticket = await this.getTicket(id)
+    // support_messages cascade-delete via the ticketId FK (onDelete: "cascade").
+    await db.delete(ticketsTable).where(eq(ticketsTable.id, ticket.id))
+    return { ok: true, id: ticket.id }
+  }
 }
 
 /* -------------------------------------------------------------------------- */
@@ -466,6 +488,24 @@ class MyTicketsController {
       authorName: body?.authorName || t.customer.name || "Customer",
       body: body?.body || "",
     })
+  }
+
+  @Patch(":id")
+  async edit(@Req() req: Request, @Param("id") id: string, @Body() body: { subject?: string; category?: string }) {
+    const t = await this.svc.getTicket(id)
+    if (t.customer.sessionId !== req.sessionId) {
+      throw new HttpException("Not found", HttpStatus.NOT_FOUND)
+    }
+    return this.svc.updateTicket(t.id, { subject: body?.subject, category: body?.category })
+  }
+
+  @Delete(":id")
+  async remove(@Req() req: Request, @Param("id") id: string) {
+    const t = await this.svc.getTicket(id)
+    if (t.customer.sessionId !== req.sessionId) {
+      throw new HttpException("Not found", HttpStatus.NOT_FOUND)
+    }
+    return this.svc.deleteTicket(t.id)
   }
 }
 

@@ -6,12 +6,14 @@ import { Navbar } from "@/components/store/navbar"
 import { Footer } from "@/components/store/footer"
 import { Seo } from "@/components/seo"
 import {
-  ArrowLeft, MessageCircle, Plus, Send, CheckCircle2, Clock, ShieldCheck, X,
+  ArrowLeft, MessageCircle, Plus, Send, ShieldCheck, X, Pencil, Trash2,
 } from "lucide-react"
 import {
   useMyTickets,
   createMyTicket,
   replyMyTicket,
+  updateMyTicket,
+  deleteMyTicket,
   type ClientTicket,
 } from "@/lib/notifications-client"
 
@@ -44,6 +46,8 @@ export default function AccountSupportPage() {
   const { items, refresh, loading } = useMyTickets()
   const [openId, setOpenId] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
+  const [editTicket, setEditTicket] = useState<ClientTicket | null>(null)
+  const [deleteTicket, setDeleteTicket] = useState<ClientTicket | null>(null)
   const active = useMemo(() => items.find((t) => t.id === openId) ?? null, [items, openId])
 
   return (
@@ -99,28 +103,46 @@ export default function AccountSupportPage() {
             ) : (
               <ul className="divide-y divide-border">
                 {items.map((t) => (
-                  <li key={t.id}>
+                  <li key={t.id} className="flex items-center gap-2 px-5 py-4 hover:bg-muted/40 transition-colors">
                     <button
                       type="button"
                       onClick={() => setOpenId(t.id)}
-                      className="w-full text-left px-5 py-4 hover:bg-muted/40 transition-colors flex items-center gap-3"
+                      className="min-w-0 flex-1 text-left"
                     >
-                      <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="text-xs font-bold" style={{ color: WINE }}>{t.shortId}</span>
-                          <span
-                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase"
-                            style={{ background: STATUS_META[t.status].bg, color: STATUS_META[t.status].color }}
-                          >
-                            {STATUS_META[t.status].label}
-                          </span>
-                        </div>
-                        <p className="mt-1 text-sm font-semibold truncate" style={{ color: WINE }}>{t.subject}</p>
-                        <p className="mt-0.5 text-[11px] text-muted-foreground">
-                          Last update {timeAgo(t.updatedAt)} · {t.messages.length} message{t.messages.length === 1 ? "" : "s"}
-                        </p>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-xs font-bold" style={{ color: WINE }}>{t.shortId}</span>
+                        <span
+                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase"
+                          style={{ background: STATUS_META[t.status].bg, color: STATUS_META[t.status].color }}
+                        >
+                          {STATUS_META[t.status].label}
+                        </span>
                       </div>
+                      <p className="mt-1 text-sm font-semibold truncate" style={{ color: WINE }}>{t.subject}</p>
+                      <p className="mt-0.5 text-[11px] text-muted-foreground">
+                        Last update {timeAgo(t.updatedAt)} · {t.messages.length} message{t.messages.length === 1 ? "" : "s"}
+                      </p>
                     </button>
+                    <div className="flex flex-shrink-0 items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => setEditTicket(t)}
+                        aria-label={`Edit ticket ${t.shortId}`}
+                        title="Edit ticket"
+                        className="grid h-9 w-9 place-items-center rounded-full border border-border text-muted-foreground hover:text-foreground hover:bg-muted"
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setDeleteTicket(t)}
+                        aria-label={`Delete ticket ${t.shortId}`}
+                        title="Delete ticket"
+                        className="grid h-9 w-9 place-items-center rounded-full border border-border text-muted-foreground hover:text-red-600 hover:border-red-200 hover:bg-red-50"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
                   </li>
                 ))}
               </ul>
@@ -144,6 +166,27 @@ export default function AccountSupportPage() {
           ticket={active}
           onClose={() => setOpenId(null)}
           onRefresh={refresh}
+        />
+      )}
+
+      {editTicket && (
+        <EditTicketModal
+          ticket={editTicket}
+          onClose={() => setEditTicket(null)}
+          onSaved={async () => { setEditTicket(null); await refresh() }}
+        />
+      )}
+
+      {deleteTicket && (
+        <DeleteTicketDialog
+          ticket={deleteTicket}
+          onClose={() => setDeleteTicket(null)}
+          onDeleted={async () => {
+            const removedId = deleteTicket.id
+            setDeleteTicket(null)
+            if (openId === removedId) setOpenId(null)
+            await refresh()
+          }}
         />
       )}
 
@@ -296,6 +339,107 @@ function TicketThread({ ticket, onClose, onRefresh }: { ticket: ClientTicket; on
           )}
         </div>
       </aside>
+    </div>
+  )
+}
+
+function EditTicketModal({ ticket, onClose, onSaved }: {
+  ticket: ClientTicket; onClose: () => void; onSaved: () => void
+}) {
+  const startCategory = (CATEGORIES as readonly string[]).includes(ticket.category)
+    ? (ticket.category as typeof CATEGORIES[number])
+    : "general"
+  const [subject, setSubject] = useState(ticket.subject)
+  const [category, setCategory] = useState<typeof CATEGORIES[number]>(startCategory)
+  const [err, setErr] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault()
+    setErr(null)
+    if (!subject.trim()) return setErr("Please add a short subject.")
+    setBusy(true)
+    const res = await updateMyTicket(ticket.id, { subject: subject.trim(), category })
+    setBusy(false)
+    if ("error" in res) return setErr(res.error)
+    onSaved()
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex">
+      <div className="flex-1 bg-black/40" onClick={onClose} />
+      <aside className="w-full max-w-lg bg-white border-l border-border flex flex-col shadow-xl">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-border">
+          <h2 className="text-lg font-bold" style={{ color: WINE }}>Edit ticket {ticket.shortId}</h2>
+          <button onClick={onClose} className="p-1 hover:bg-muted rounded"><X className="h-4 w-4" /></button>
+        </div>
+        <form onSubmit={submit} className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
+          {err && <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{err}</div>}
+          <Field label="Subject">
+            <input value={subject} onChange={(e) => setSubject(e.target.value)} className={inputCls} required />
+          </Field>
+          <Field label="Category">
+            <select value={category} onChange={(e) => setCategory(e.target.value as typeof CATEGORIES[number])} className={inputCls}>
+              {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </Field>
+        </form>
+        <div className="border-t border-border px-6 py-4 flex justify-end gap-2 bg-muted/30">
+          <button type="button" onClick={onClose} className="h-10 px-4 rounded-full text-sm font-semibold border border-border bg-white">Cancel</button>
+          <button
+            type="submit" onClick={submit} disabled={busy}
+            className="h-10 px-5 rounded-full text-sm font-semibold text-white disabled:opacity-50"
+            style={{ background: `linear-gradient(135deg, ${ACCENT}, ${ACCENT_RED})` }}
+          >
+            {busy ? "Saving…" : "Save changes"}
+          </button>
+        </div>
+      </aside>
+    </div>
+  )
+}
+
+function DeleteTicketDialog({ ticket, onClose, onDeleted }: {
+  ticket: ClientTicket; onClose: () => void; onDeleted: () => void
+}) {
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+
+  async function confirm() {
+    setErr(null)
+    setBusy(true)
+    const ok = await deleteMyTicket(ticket.id)
+    setBusy(false)
+    if (!ok) return setErr("Could not delete this ticket. Please try again.")
+    onDeleted()
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+      <div className="relative w-full max-w-md rounded-2xl bg-white shadow-xl">
+        <div className="px-6 py-5 space-y-3">
+          <div className="flex items-center gap-3">
+            <div className="grid h-10 w-10 place-items-center rounded-full bg-red-50 text-red-600">
+              <Trash2 className="h-5 w-5" />
+            </div>
+            <h2 className="text-lg font-bold" style={{ color: WINE }}>Delete ticket {ticket.shortId}?</h2>
+          </div>
+          <p className="text-sm text-muted-foreground">
+            This permanently removes “{ticket.subject}” and its entire conversation. This cannot be undone.
+          </p>
+          {err && <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{err}</div>}
+        </div>
+        <div className="border-t border-border px-6 py-4 flex justify-end gap-2">
+          <button type="button" onClick={onClose} className="h-10 px-4 rounded-full text-sm font-semibold border border-border bg-white">Cancel</button>
+          <button
+            type="button" onClick={confirm} disabled={busy}
+            className="h-10 px-5 rounded-full text-sm font-semibold text-white bg-red-600 hover:bg-red-700 disabled:opacity-50"
+          >
+            {busy ? "Deleting…" : "Delete ticket"}
+          </button>
+        </div>
+      </div>
     </div>
   )
 }

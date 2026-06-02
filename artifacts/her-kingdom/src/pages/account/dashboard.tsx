@@ -1,6 +1,6 @@
 import { useState } from "react"
 import { Link } from "wouter"
-import { Heart, MapPin, Package, User as UserIcon, Mail, Phone, Settings, ShieldCheck, ClipboardList, Pill, Clock, CheckCheck, ChevronRight, Upload, FileText, Eye } from "lucide-react"
+import { Heart, MapPin, Package, User as UserIcon, Mail, Phone, Settings, ShieldCheck, ClipboardList, Pill, Clock, CheckCheck, ChevronRight, Upload, FileText, Eye, LifeBuoy } from "lucide-react"
 import { useMe, useAddresses, useOrders, useWishlistRemote, useMyPrescriptions } from "@/lib/api-nest"
 import { RxDetailModal } from "@/components/account/rx-detail-modal"
 import { Seo } from "@/components/seo"
@@ -119,6 +119,7 @@ export default function AccountDashboard() {
           <StatCard icon={MapPin} label="Addresses" value={addresses?.length ?? 0} href="/account/addresses" />
           <StatCard icon={Heart} label="Wishlist" value={wishlist?.length ?? 0} href="/account/wishlist" />
           <StatCard icon={UserIcon} label="Profile" value={me?.email ? "Set" : "Incomplete"} href="/account/settings" />
+          <StatCard icon={LifeBuoy} label="Support" value="Get help" href="/account/support" />
         </div>
 
         {/* Always-visible prescriptions panel — the click target the user expects

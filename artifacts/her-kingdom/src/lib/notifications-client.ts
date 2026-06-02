@@ -177,6 +177,31 @@ export async function replyMyTicket(ticketId: string, body: string, authorName?:
   } catch { return null }
 }
 
+export async function updateMyTicket(
+  ticketId: string,
+  input: { subject?: string; category?: string },
+): Promise<ClientTicket | { error: string }> {
+  try {
+    const r = await fetch(`${BASE}/me/support/tickets/${ticketId}`, {
+      method: "PATCH", credentials: "include",
+      headers: { "Content-Type": "application/json" }, body: JSON.stringify(input),
+    })
+    if (!r.ok) return { error: `Server ${r.status}` }
+    return (await r.json()) as ClientTicket
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Network error" }
+  }
+}
+
+export async function deleteMyTicket(ticketId: string): Promise<boolean> {
+  try {
+    const r = await fetch(`${BASE}/me/support/tickets/${ticketId}`, {
+      method: "DELETE", credentials: "include",
+    })
+    return r.ok
+  } catch { return false }
+}
+
 export function useAdminTickets() {
   const [items, setItems] = useState<ClientTicket[]>([])
   const [loading, setLoading] = useState(true)
