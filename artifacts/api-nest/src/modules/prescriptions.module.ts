@@ -346,6 +346,8 @@ export class PrescriptionsService {
       all: 0,
       pending: 0,
       verified: 0,
+      accepted: 0,
+      declined: 0,
       dispensed: 0,
       rejected: 0,
     }
