@@ -58,7 +58,13 @@ import { PatientNotificationsModule, PatientNotificationsService, type PatientNo
 import { NotificationsModule, NotificationsService } from "./notifications.module"
 import { AuditService } from "./audit.module"
 
-export type PrescriptionStatus = "pending" | "verified" | "dispensed" | "rejected"
+export type PrescriptionStatus =
+  | "pending"
+  | "verified"
+  | "accepted"
+  | "declined"
+  | "dispensed"
+  | "rejected"
 export type PaymentMethod = "cash" | "insurance" | "unknown"
 
 export type ApprovedDrug = {
@@ -80,7 +86,7 @@ export const DEFAULT_DRUG_PRICE = 750
 
 export type TimelineEvent = {
   at: string
-  kind: "uploaded" | "received" | "in_review" | "verified" | "dispensed" | "rejected" | "note" | "payment"
+  kind: "uploaded" | "received" | "in_review" | "verified" | "accepted" | "declined" | "dispensed" | "rejected" | "note" | "payment"
   label: string
   by?: "system" | "pharmacist" | "patient"
 }
@@ -608,13 +614,17 @@ export class PrescriptionsService {
     if (patch.status && patch.status !== current.status) {
       const labelMap: Record<PrescriptionStatus, string> = {
         pending:   "Marked as awaiting review",
-        verified:  "Verified by pharmacist — approved medication added",
+        verified:  "Verified by pharmacist — quotation ready for your approval",
+        accepted:  "Quotation accepted — ready to pay",
+        declined:  "Quotation declined",
         dispensed: "Medication dispensed and on its way",
         rejected:  `Prescription rejected${(patch.rejectedReason ?? current.rejectedReason) ? ` — ${patch.rejectedReason ?? current.rejectedReason}` : ""}`,
       }
       const kindMap: Record<PrescriptionStatus, TimelineEvent["kind"]> = {
         pending:   "in_review",
         verified:  "verified",
+        accepted:  "accepted",
+        declined:  "declined",
         dispensed: "dispensed",
         rejected:  "rejected",
       }

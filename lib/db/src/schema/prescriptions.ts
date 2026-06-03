@@ -4,7 +4,20 @@ import { z } from "zod/v4"
 import { users } from "./users"
 import { uploads } from "./uploads"
 
-export type PrescriptionStatus = "pending" | "verified" | "dispensed" | "rejected"
+// Lifecycle:
+//   pending   — patient uploaded, awaiting pharmacist review
+//   verified  — pharmacist priced the medication list (quotation sent to patient)
+//   accepted  — patient accepted the quotation (ready to checkout & pay)
+//   declined  — patient declined the quotation
+//   dispensed — paid and being dispensed
+//   rejected  — pharmacist could not approve the prescription
+export type PrescriptionStatus =
+  | "pending"
+  | "verified"
+  | "accepted"
+  | "declined"
+  | "dispensed"
+  | "rejected"
 export type PrescriptionPaymentMethod = "cash" | "insurance" | "unknown"
 
 export type PrescriptionFile = {
@@ -102,3 +115,68 @@ export type PrescriptionDrug = typeof prescriptionDrugs.$inferSelect
 export const insertPrescriptionTimelineSchema = createInsertSchema(prescriptionTimeline).omit({ createdAt: true })
 export type InsertPrescriptionTimeline = z.infer<typeof insertPrescriptionTimelineSchema>
 export type PrescriptionTimeline = typeof prescriptionTimeline.$inferSelect
+
+// ─────────────────────────────────────────────────────────────────────────
+// Prescription refill subscriptions (reminder-based).
+//
+// A patient can subscribe to recurring refills of a priced prescription. Each
+// cycle we create a `prescription_refills` row that is due, remind the patient,
+// and let them confirm & pay it (no stored card). Paying a refill advances the
+// schedule by `intervalDays`. There is no cron in this app, so due refills are
+// generated lazily when the patient's subscription list is read.
+// ─────────────────────────────────────────────────────────────────────────
+export type SubscriptionStatus = "active" | "paused" | "cancelled"
+export type SubscriptionFrequency = "weekly" | "biweekly" | "monthly" | "quarterly"
+export type RefillStatus = "scheduled" | "paid" | "skipped" | "cancelled"
+
+export const prescriptionSubscriptions = pgTable("prescription_subscriptions", {
+  id: text("id").primaryKey(),
+  userId: text("user_id").references(() => users.id, { onDelete: "cascade" }),
+  prescriptionId: text("prescription_id")
+    .notNull()
+    .references(() => prescriptions.id, { onDelete: "cascade" }),
+  status: text("status").notNull().default("active"),
+  // Human-readable cadence; intervalDays is the source of truth for scheduling.
+  frequency: text("frequency").notNull().default("monthly"),
+  intervalDays: integer("interval_days").notNull().default(30),
+  // Snapshot of the itemized prescription total (whole KSh) at subscribe time —
+  // the price the patient pays each cycle unless the pharmacist re-prices.
+  amount: integer("amount").notNull().default(0),
+  nextRefillAt: timestamp("next_refill_at").notNull(),
+  lastRefillAt: timestamp("last_refill_at"),
+  refillCount: integer("refill_count").notNull().default(0),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+})
+
+export const prescriptionRefills = pgTable("prescription_refills", {
+  id: text("id").primaryKey(),
+  subscriptionId: text("subscription_id")
+    .notNull()
+    .references(() => prescriptionSubscriptions.id, { onDelete: "cascade" }),
+  prescriptionId: text("prescription_id")
+    .notNull()
+    .references(() => prescriptions.id, { onDelete: "cascade" }),
+  dueAt: timestamp("due_at").notNull(),
+  status: text("status").notNull().default("scheduled"),
+  amount: integer("amount").notNull().default(0),
+  // Unique so a single charge can't be redeemed against two refills (idempotency).
+  paymentReference: text("payment_reference").unique(),
+  paymentReceipt: text("payment_receipt"),
+  paidAt: timestamp("paid_at"),
+  remindedAt: timestamp("reminded_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+})
+
+export const insertPrescriptionSubscriptionSchema = createInsertSchema(prescriptionSubscriptions).omit({
+  createdAt: true,
+  updatedAt: true,
+})
+export const selectPrescriptionSubscriptionSchema = createSelectSchema(prescriptionSubscriptions)
+export type InsertPrescriptionSubscription = z.infer<typeof insertPrescriptionSubscriptionSchema>
+export type PrescriptionSubscription = typeof prescriptionSubscriptions.$inferSelect
+
+export const insertPrescriptionRefillSchema = createInsertSchema(prescriptionRefills).omit({ createdAt: true })
+export const selectPrescriptionRefillSchema = createSelectSchema(prescriptionRefills)
+export type InsertPrescriptionRefill = z.infer<typeof insertPrescriptionRefillSchema>
+export type PrescriptionRefill = typeof prescriptionRefills.$inferSelect
