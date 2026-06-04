@@ -57,6 +57,13 @@ import { UploadsModule, UploadsService } from "./uploads.module"
 import { PatientNotificationsModule, PatientNotificationsService, type PatientNotificationEvent } from "./patient-notifications.module"
 import { NotificationsModule, NotificationsService } from "./notifications.module"
 import { AuditService } from "./audit.module"
+import { CrmModule, CrmService } from "./crm.module"
+import { parseWhatsAppIntakeText } from "../common/whatsapp-intake"
+import {
+  extractMedicationsFromBuffer,
+  isRxExtractionEnabled,
+} from "../common/rx-extraction"
+import type { ExtractedDrug, RxExtractionStatus } from "@workspace/db"
 
 export type PrescriptionStatus =
   | "pending"
@@ -86,7 +93,18 @@ export const DEFAULT_DRUG_PRICE = 750
 
 export type TimelineEvent = {
   at: string
-  kind: "uploaded" | "received" | "in_review" | "verified" | "accepted" | "declined" | "dispensed" | "rejected" | "note" | "payment"
+  kind:
+    | "uploaded"
+    | "received"
+    | "in_review"
+    | "extracted"
+    | "verified"
+    | "accepted"
+    | "declined"
+    | "dispensed"
+    | "rejected"
+    | "note"
+    | "payment"
   label: string
   by?: "system" | "pharmacist" | "patient"
 }
@@ -107,6 +125,9 @@ export type Prescription = {
   /** Doctor's clinical note — surfaced when the Rx came from a consultation. */
   doctorNote: string
   approvedDrugs: ApprovedDrug[]
+  extractionStatus: RxExtractionStatus
+  extractedDrugs: ExtractedDrug[]
+  extractionSummary?: string
   rejectedReason?: string
   /** Payment of the itemized approved-drug cart (set when the customer buys). */
   payment?: { amount: number; reference: string; receipt?: string; at: string }
@@ -186,6 +207,9 @@ function buildPrescription(row: RxRow, drugs: DrugRow[], timeline: TlRow[]): Pre
         price: d.price ?? null,
         quantity: d.quantity,
       })),
+    extractionStatus: (row.extractionStatus ?? "pending") as RxExtractionStatus,
+    extractedDrugs: (row.extractedDrugs ?? []) as ExtractedDrug[],
+    extractionSummary: row.extractionSummary ?? undefined,
     rejectedReason: row.rejectedReason ?? undefined,
     payment: row.paidAt
       ? {
@@ -219,6 +243,7 @@ export class PrescriptionsService {
     // which is the SMS/WhatsApp transport.
     @Inject(NotificationsService) private readonly inApp: NotificationsService,
     @Inject(AuditService) private readonly audit: AuditService,
+    @Inject(CrmService) private readonly crm: CrmService,
   ) {}
 
   private async rowById(id: string): Promise<RxRow | undefined> {
@@ -346,6 +371,8 @@ export class PrescriptionsService {
       all: 0,
       pending: 0,
       verified: 0,
+      accepted: 0,
+      declined: 0,
       dispensed: 0,
       rejected: 0,
     }
@@ -411,6 +438,9 @@ export class PrescriptionsService {
     const rxNumber = nextRxNumber()
     const paymentMethod: PaymentMethod =
       data.paymentMethod === "insurance" ? "insurance" : data.paymentMethod === "cash" ? "cash" : "unknown"
+    const hasScans = files.some((f) => Boolean(f.key))
+    const extractionStatus: RxExtractionStatus =
+      !isRxExtractionEnabled() || !hasScans ? "skipped" : "pending"
 
     await db.insert(rxTable).values({
       id,
@@ -428,6 +458,9 @@ export class PrescriptionsService {
       pharmacistNotes: "",
       doctorNotes: "",
       files,
+      extractionStatus,
+      extractedDrugs: [],
+      extractionSummary: null,
       submittedAt: now,
       updatedAt: now,
     })
@@ -479,7 +512,164 @@ export class PrescriptionsService {
       summary: `Rx RX-${saved.rxNumber} uploaded by ${saved.recipient || saved.patientName}`,
       after: { status: saved.status },
     })
+    void this.crm.recordSessionEvent(sid, "prescription_uploaded", {
+      name: saved.patientName,
+      phone: saved.phone,
+      email: saved.email,
+      source: "web_upload",
+      metadata: { prescriptionId: id, rxNumber: saved.rxNumber },
+    })
+    if (extractionStatus === "pending") {
+      void this.runExtraction(id)
+    }
     return saved
+  }
+
+  /**
+   * Order capture automation: read uploaded scan(s), extract medication lines
+   * for pharmacist confirmation (does not approve or price automatically).
+   */
+  async runExtraction(rxId: string): Promise<void> {
+    const row = await this.rowById(rxId)
+    if (!row) return
+
+    const files = (row.files ?? []) as Prescription["files"]
+    const target = files.find((f) => f.key)
+    if (!target?.key) {
+      await db
+        .update(rxTable)
+        .set({ extractionStatus: "skipped", updatedAt: new Date() })
+        .where(eq(rxTable.id, rxId))
+      return
+    }
+
+    const now = new Date()
+    await db
+      .update(rxTable)
+      .set({ extractionStatus: "processing", updatedAt: now })
+      .where(eq(rxTable.id, rxId))
+
+    try {
+      const stored = await getStorage().read(target.key)
+      if (!stored?.body?.byteLength) {
+        throw new Error("Prescription file could not be read from storage")
+      }
+      const result = await extractMedicationsFromBuffer(stored.body, stored.contentType)
+      const status: RxExtractionStatus =
+        result.drugs.length > 0 ? "completed" : "failed"
+      const summary =
+        result.summary ??
+        (result.drugs.length > 0
+          ? `${result.drugs.length} medication(s) extracted`
+          : "No medications detected on scan")
+
+      await db
+        .update(rxTable)
+        .set({
+          extractionStatus: status,
+          extractedDrugs: result.drugs,
+          extractionSummary: summary,
+          updatedAt: new Date(),
+        })
+        .where(eq(rxTable.id, rxId))
+
+      await db.insert(tlTable).values({
+        id: newId("tl"),
+        prescriptionId: rxId,
+        event: "extracted",
+        note:
+          result.drugs.length > 0
+            ? `System read Rx — ${result.drugs.length} medication line(s) extracted for pharmacist review`
+            : "System read Rx — no medication lines detected; pharmacist to enter manually",
+        actor: "system",
+        createdAt: new Date(),
+      })
+
+      if (result.drugs.length > 0) {
+        this.inApp.push("admin", {
+          module: "prescriptions",
+          level: "info",
+          title: "Rx scan processed",
+          body: `Rx ${row.rxNumber}: ${result.drugs.length} medication(s) extracted — review and confirm`,
+          href: "/admin/prescriptions",
+        })
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Extraction failed"
+      await db
+        .update(rxTable)
+        .set({
+          extractionStatus: "failed",
+          extractionSummary: msg.slice(0, 500),
+          updatedAt: new Date(),
+        })
+        .where(eq(rxTable.id, rxId))
+      console.warn(`[rx-extraction] ${rxId}:`, msg)
+    }
+  }
+
+  /** Copy extracted lines into the pharmacist medication list (unpriced). */
+  async applyExtractedDrugs(sid: string, rxId: string): Promise<Prescription> {
+    const current = await this.get(sid, rxId)
+    const extracted = current.extractedDrugs ?? []
+    if (extracted.length === 0) {
+      throw new HttpException("No extracted medications to apply", HttpStatus.BAD_REQUEST)
+    }
+    const existing = new Set(current.approvedDrugs.map((d) => d.name.toLowerCase()))
+    const merged = [...current.approvedDrugs]
+    for (const d of extracted) {
+      const name = d.name.trim()
+      if (!name || existing.has(name.toLowerCase())) continue
+      existing.add(name.toLowerCase())
+      merged.push(
+        normalizeDrug({
+          name,
+          dosage: d.dosage ?? "",
+          instructions: d.instructions ?? "",
+          price: null,
+          quantity: d.quantity ?? 1,
+        }),
+      )
+    }
+    return this.update(sid, rxId, { approvedDrugs: merged })
+  }
+
+  /** WhatsApp bot / offline intake — keys user by `wa:<msisdn>`. */
+  async createFromWhatsApp(input: {
+    phone: string
+    text?: string
+    name?: string
+    email?: string
+  }): Promise<Prescription> {
+    const digits = (input.phone || "").replace(/\D/g, "")
+    if (digits.length < 9) {
+      throw new HttpException("Valid phone number required", HttpStatus.BAD_REQUEST)
+    }
+    const sid = `wa:${digits}`
+    const parsed = parseWhatsAppIntakeText(input.text ?? "")
+    const recipient = (parsed.name || input.name || "WhatsApp patient").trim()
+    const notes =
+      `WhatsApp intake.\n${input.text ?? ""}`.trim() +
+      (parsed.ailment ? `\nIssue: ${parsed.ailment}` : "") +
+      (parsed.service ? `\nService: ${parsed.service}` : "")
+
+    void this.crm.recordEvent(sid, "prescription_uploaded", {
+      userId: (await ensureUserId(sid)),
+      name: recipient,
+      phone: digits,
+      email: parsed.email ?? input.email,
+      source: "whatsapp",
+    })
+
+    return this.create(sid, {
+      patientName: recipient,
+      recipient,
+      phone: digits,
+      email: parsed.email ?? input.email ?? "",
+      notes,
+      paymentMethod: "unknown",
+      files: [],
+    })
   }
 
   /**
@@ -526,6 +716,9 @@ export class PrescriptionsService {
       reviewedBy: input.reviewedBy ?? "Doctor",
       reviewedAt: now,
       files: [],
+      extractionStatus: "skipped",
+      extractedDrugs: [],
+      extractionSummary: null,
       submittedAt: now,
       updatedAt: now,
     })
@@ -589,6 +782,14 @@ export class PrescriptionsService {
     if (patch.doctorNote !== undefined) set.doctorNotes = String(patch.doctorNote)
     if (patch.rejectedReason !== undefined) set.rejectedReason = String(patch.rejectedReason)
     if (patch.status) set.status = patch.status
+    if (
+      patch.status &&
+      patch.status !== current.status &&
+      (patch.status === "verified" || patch.status === "rejected")
+    ) {
+      set.reviewedAt = now
+      set.reviewedBy = set.reviewedBy ?? "Pharmacist"
+    }
     await db.update(rxTable).set(set).where(eq(rxTable.id, id))
 
     // Approved drugs are a full replace (mirrors the previous in-memory shape).
@@ -612,6 +813,25 @@ export class PrescriptionsService {
     }
 
     if (patch.status && patch.status !== current.status) {
+      if (patch.status === "verified") {
+        void this.crm.recordSessionEvent(sid, "qualified", {
+          phone: current.phone,
+          name: current.patientName,
+          metadata: { prescriptionId: id },
+        })
+        void this.crm.recordSessionEvent(sid, "quoted", {
+          phone: current.phone,
+          name: current.patientName,
+          metadata: { prescriptionId: id },
+        })
+      }
+      if (patch.status === "dispensed") {
+        void this.crm.recordSessionEvent(sid, "delivered", {
+          phone: current.phone,
+          name: current.patientName,
+          metadata: { prescriptionId: id },
+        })
+      }
       const labelMap: Record<PrescriptionStatus, string> = {
         pending:   "Marked as awaiting review",
         verified:  "Verified by pharmacist — quotation ready for your approval",
@@ -674,8 +894,18 @@ export class PrescriptionsService {
       const inAppForStatus: Partial<Record<PrescriptionStatus, { level: "success" | "warning"; title: string; body: string }>> = {
         verified: {
           level: "success",
-          title: "Prescription verified",
-          body: `Rx ${saved.rxNumber} was approved — review the recommended medication.`,
+          title: "Quotation ready",
+          body: `Rx ${saved.rxNumber} — your medication list and pricing are ready. Review and accept the quotation to pay.`,
+        },
+        accepted: {
+          level: "success",
+          title: "Quotation accepted",
+          body: `Rx ${saved.rxNumber} — complete payment when you're ready.`,
+        },
+        declined: {
+          level: "warning",
+          title: "Quotation declined",
+          body: `Rx ${saved.rxNumber} — contact us if you'd like a revised quotation.`,
         },
         dispensed: {
           level: "success",
@@ -740,11 +970,62 @@ export class PrescriptionsService {
    * The amount is validated server-side against the itemized total so a client
    * can't underpay.
    */
-  async pay(sid: string, id: string, input: PayInput): Promise<Prescription> {
+  /** Patient accepts the pharmacist quotation (order capture: customer accepts). */
+  async acceptQuotation(sid: string, id: string): Promise<Prescription> {
     const current = await this.get(sid, id)
     if (current.status !== "verified") {
       throw new HttpException(
-        "Only a verified prescription can be paid for.",
+        "Only a verified prescription with a quotation can be accepted.",
+        HttpStatus.CONFLICT,
+      )
+    }
+    if (current.approvedDrugs.length === 0) {
+      throw new HttpException("No medication list to accept yet.", HttpStatus.BAD_REQUEST)
+    }
+    const now = new Date()
+    await db.update(rxTable).set({ status: "accepted", updatedAt: now }).where(eq(rxTable.id, id))
+    await db.insert(tlTable).values({
+      id: newId("tl"),
+      prescriptionId: id,
+      event: "accepted",
+      note: "Quotation accepted — ready to pay",
+      actor: "patient",
+      createdAt: now,
+    })
+    return this.loadById(id)
+  }
+
+  /** Patient declines the quotation. */
+  async declineQuotation(sid: string, id: string, reason?: string): Promise<Prescription> {
+    const current = await this.get(sid, id)
+    if (current.status !== "verified") {
+      throw new HttpException(
+        "Only a verified prescription quotation can be declined.",
+        HttpStatus.CONFLICT,
+      )
+    }
+    const now = new Date()
+    const note = reason?.trim() || "Quotation declined by patient"
+    await db
+      .update(rxTable)
+      .set({ status: "declined", updatedAt: now })
+      .where(eq(rxTable.id, id))
+    await db.insert(tlTable).values({
+      id: newId("tl"),
+      prescriptionId: id,
+      event: "declined",
+      note,
+      actor: "patient",
+      createdAt: now,
+    })
+    return this.loadById(id)
+  }
+
+  async pay(sid: string, id: string, input: PayInput): Promise<Prescription> {
+    const current = await this.get(sid, id)
+    if (current.status !== "accepted" && current.status !== "verified") {
+      throw new HttpException(
+        "Accept your quotation before paying, or wait for pharmacist review.",
         HttpStatus.CONFLICT,
       )
     }
@@ -856,6 +1137,11 @@ export class PrescriptionsService {
       summary: `Rx RX-${saved.rxNumber} paid — KSh ${amount.toLocaleString()}`,
       after: { status: "dispensed", amount, reference },
     })
+    void this.crm.recordSessionEvent(sid, "purchased", {
+      phone: saved.phone,
+      name: saved.patientName,
+      metadata: { prescriptionId: id, reference },
+    })
     // Auto-text the patient: "payment received".
     this.patientNotify.notify("payment_received", {
       phone: saved.phone,
@@ -955,6 +1241,18 @@ class MyPrescriptionsController {
     return this.svc.update(req.sessionId, id, safe)
   }
 
+  /** Accept the pharmacist quotation before payment. */
+  @Post(":id/accept")
+  accept(@Req() req: Request, @Param("id") id: string) {
+    return this.svc.acceptQuotation(req.sessionId, id)
+  }
+
+  /** Decline the pharmacist quotation. */
+  @Post(":id/decline")
+  decline(@Req() req: Request, @Param("id") id: string, @Body() body: { reason?: string }) {
+    return this.svc.declineQuotation(req.sessionId, id, body?.reason)
+  }
+
   /** Pay for the approved drugs and advance the Rx to dispensed. */
   @Post(":id/pay")
   pay(@Req() req: Request, @Param("id") id: string, @Body() body: PayInput) {
@@ -1046,6 +1344,23 @@ class AdminPrescriptionsController {
     return this.svc.update(sid, id, patch)
   }
 
+  /** Merge OCR-extracted medication lines into the approved drug list. */
+  @Post(":id/apply-extraction")
+  @RequirePerm("rx.verify")
+  async applyExtraction(@Param("id") id: string) {
+    const { sid } = await this.svc.findAnywhere(id)
+    return this.svc.applyExtractedDrugs(sid, id)
+  }
+
+  /** Re-run automated Rx read on the uploaded scan. */
+  @Post(":id/reextract")
+  @RequirePerm("rx.verify")
+  async reextract(@Param("id") id: string) {
+    await this.svc.findAnywhere(id)
+    void this.svc.runExtraction(id)
+    return { ok: true, message: "Extraction started" }
+  }
+
   /** Stream a patient's prescription file to staff (cross-session, admin-only). */
   @Get(":id/files/:index")
   async file(
@@ -1070,7 +1385,7 @@ class AdminPrescriptionsController {
 }
 
 @Module({
-  imports: [PaystackModule, UploadsModule, PatientNotificationsModule, NotificationsModule],
+  imports: [PaystackModule, UploadsModule, PatientNotificationsModule, NotificationsModule, CrmModule],
   controllers: [MyPrescriptionsController, AdminPrescriptionsController],
   providers: [PrescriptionsService],
   exports: [PrescriptionsService],

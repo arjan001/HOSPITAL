@@ -200,10 +200,42 @@ export type ApprovedDrug = {
 }
 /** Fallback per-unit price (KSh) when a drug has no explicit price set. Mirrors api-nest. */
 export const DEFAULT_DRUG_PRICE = 750
-export type RxStatus = "pending" | "verified" | "dispensed" | "rejected"
+export type RxStatus =
+  | "pending"
+  | "verified"
+  | "accepted"
+  | "declined"
+  | "dispensed"
+  | "rejected"
+export type RxExtractionStatus =
+  | "pending"
+  | "processing"
+  | "completed"
+  | "failed"
+  | "skipped"
+
+export type ExtractedDrug = {
+  name: string
+  dosage?: string
+  instructions?: string
+  quantity?: number
+  confidence?: number
+}
+
 export type RxTimelineEvent = {
   at: string
-  kind: "uploaded" | "received" | "in_review" | "verified" | "dispensed" | "rejected" | "note" | "payment"
+  kind:
+    | "uploaded"
+    | "received"
+    | "in_review"
+    | "extracted"
+    | "verified"
+    | "accepted"
+    | "declined"
+    | "dispensed"
+    | "rejected"
+    | "note"
+    | "payment"
   label: string
   by?: "system" | "pharmacist" | "patient"
 }
@@ -222,11 +254,47 @@ export type AccountPrescription = {
   pharmacistNote: string
   doctorNote: string
   approvedDrugs: ApprovedDrug[]
+  /** Automated Rx scan read (order capture). Omitted on older API responses. */
+  extractionStatus?: RxExtractionStatus
+  extractedDrugs?: ExtractedDrug[]
+  extractionSummary?: string
   rejectedReason?: string
   payment?: { amount: number; reference: string; receipt?: string; at: string }
   timeline: RxTimelineEvent[]
   createdAt: string
   updatedAt: string
+}
+
+export type SubscriptionFrequency = "weekly" | "biweekly" | "monthly" | "quarterly"
+
+export type RefillRemindersPayload = {
+  subscriptions: Array<{
+    id: string
+    prescriptionId: string
+    status: "active" | "paused" | "cancelled"
+    frequency: SubscriptionFrequency
+    intervalDays: number
+    amount: number
+    nextRefillAt: string
+    lastRefillAt?: string | null
+    refillCount: number
+  }>
+  dueRefills: Array<{
+    id: string
+    subscriptionId: string
+    prescriptionId: string
+    dueAt: string
+    status: string
+    amount: number
+    subscription?: RefillRemindersPayload["subscriptions"][number]
+  }>
+  upcoming: Array<{
+    subscriptionId: string
+    prescriptionId: string
+    dueAt: string
+    amount: number
+    frequency: SubscriptionFrequency
+  }>
 }
 
 export const apiPrescriptions = {
@@ -246,12 +314,111 @@ export const apiPrescriptions = {
       method: "POST",
       body: JSON.stringify(input),
     }),
+  acceptQuotation: (id: string) =>
+    nestFetch<AccountPrescription>(`/me/prescriptions/${id}/accept`, { method: "POST" }),
+  declineQuotation: (id: string, reason?: string) =>
+    nestFetch<AccountPrescription>(`/me/prescriptions/${id}/decline`, {
+      method: "POST",
+      body: JSON.stringify(reason ? { reason } : {}),
+    }),
   /** Pay for the approved drugs; advances the Rx to dispensed. */
   pay: (id: string, input: { amount?: number; reference: string; receipt?: string }) =>
     nestFetch<AccountPrescription>(`/me/prescriptions/${id}/pay`, {
       method: "POST",
       body: JSON.stringify(input),
     }),
+  subscribe: (id: string, frequency: SubscriptionFrequency = "monthly") =>
+    nestFetch<{ subscription: RefillRemindersPayload["subscriptions"][number]; created: boolean }>(
+      `/me/prescriptions/${id}/subscribe`,
+      { method: "POST", body: JSON.stringify({ frequency }) },
+    ),
+}
+
+export const apiRefillReminders = {
+  list: () => nestFetch<RefillRemindersPayload>("/me/refill-reminders"),
+  payRefill: (refillId: string, input: { reference: string; receipt?: string }) =>
+    nestFetch<{ ok: boolean; nextRefillAt: string; amount: number }>(`/me/refills/${refillId}/pay`, {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+  updateSubscription: (id: string, status: "active" | "paused" | "cancelled") =>
+    nestFetch<{ ok: boolean; status: string }>(`/me/subscriptions/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ status }),
+    }),
+}
+
+export const apiCrm = {
+  recordEvent: (event: "assessment_completed" | "prescription_uploaded") =>
+    nestFetch<{ ok: boolean }>("/crm/events", {
+      method: "POST",
+      body: JSON.stringify({ event, source: "web" }),
+    }),
+}
+
+export type CarePackMappingRow = {
+  id: string
+  conditionKey: string
+  packSlug: string
+  packName: string
+  productSkus: string[]
+  priority: number
+  active: boolean
+  notes?: string | null
+  updatedAt: string
+}
+
+export const apiCarePacks = {
+  mappings: () =>
+    nestFetch<{ mappings: Array<Pick<CarePackMappingRow, "conditionKey" | "packSlug" | "packName" | "productSkus" | "priority">> }>(
+      "/care-packs/mappings",
+    ),
+  submitAssessment: (input: {
+    conditionKeys: string[]
+    recommendedPacks?: Array<{ packSlug: string; packName: string; productSkus: string[] }>
+    riskLevel?: string
+  }) =>
+    nestFetch<{ ok: boolean; id: string; recommendedPacks: Array<{ packSlug: string; packName: string; productSkus: string[] }> }>(
+      "/care-packs/assessments",
+      { method: "POST", body: JSON.stringify({ ...input, source: "web_assessment" }) },
+    ),
+}
+
+export const apiAdminCarePacks = {
+  listMappings: () => nestFetch<CarePackMappingRow[]>("/admin/care-pack-mappings"),
+  createMapping: (body: Omit<CarePackMappingRow, "id" | "updatedAt">) =>
+    nestFetch<CarePackMappingRow>("/admin/care-pack-mappings", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  updateMapping: (id: string, body: Partial<Omit<CarePackMappingRow, "id" | "updatedAt">>) =>
+    nestFetch<CarePackMappingRow>(`/admin/care-pack-mappings/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
+  deleteMapping: (id: string) =>
+    nestFetch<{ ok: boolean }>(`/admin/care-pack-mappings/${id}`, { method: "DELETE" }),
+}
+
+export type DemandAggregationPayload = {
+  windowDays: number
+  generatedAt: string
+  summary: {
+    prescriptionCount: number
+    assessmentCount: number
+    uniqueDrugs: number
+    uniqueSkus: number
+    carePackSlugs: number
+  }
+  byDrug: Array<{ name: string; quantity: number; rxCount: number }>
+  bySku: Array<{ sku: string; quantity: number; sources: string[] }>
+  byPackSlug: Array<{ packSlug: string; packName: string; assessments: number; skus: Record<string, number> }>
+  procurementHints: Array<{ sku: string; suggestedQty: number; reason: string }>
+}
+
+export const apiAdminDemand = {
+  aggregation: (windowDays = 30) =>
+    nestFetch<DemandAggregationPayload>(`/admin/demand/aggregation?windowDays=${windowDays}`),
 }
 
 /** Itemized total (price × qty, defaulting unpriced drugs) in whole KSh. */
@@ -298,6 +465,14 @@ export const apiAdminPrescriptions = {
     nestFetch<AccountPrescription>(`/admin/prescriptions/${id}/status`, {
       method: "PATCH",
       body: JSON.stringify(reason ? { status, reason } : { status }),
+    }),
+  applyExtraction: (id: string) =>
+    nestFetch<AccountPrescription>(`/admin/prescriptions/${id}/apply-extraction`, {
+      method: "POST",
+    }),
+  reextract: (id: string) =>
+    nestFetch<{ ok: boolean; message: string }>(`/admin/prescriptions/${id}/reextract`, {
+      method: "POST",
     }),
 }
 
@@ -423,6 +598,14 @@ export function useMyPrescriptions() {
   return useSWR<AccountPrescription[]>("/me/prescriptions", swrFetcher, {
     refreshInterval: 20_000, // pick up pharmacist updates without manual refresh
   })
+}
+
+export function useRefillReminders(enabled = true) {
+  return useSWR<RefillRemindersPayload>(
+    enabled ? "/me/refill-reminders" : null,
+    swrFetcher,
+    { refreshInterval: 60_000 },
+  )
 }
 export function refreshMyPrescriptions() {
   return globalMutate("/me/prescriptions")

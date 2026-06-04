@@ -112,10 +112,12 @@ const VERIFICATION_ITEMS: Array<{ key: keyof VerificationCheck; label: string; h
 ]
 
 const STATUS_META: Record<RxStatus, { label: string; color: string; bg: string; icon: typeof Clock }> = {
-  pending:   { label: "Awaiting review",  color: "#92400E", bg: "#FEF3C7", icon: Clock },
-  verified:  { label: "Verified",          color: "#166534", bg: "#DCFCE7", icon: ShieldCheck },
-  dispensed: { label: "Dispensed",         color: "#1E40AF", bg: "#DBEAFE", icon: CheckCircle2 },
-  rejected:  { label: "Rejected",          color: "#991B1B", bg: "#FEE2E2", icon: XCircle },
+  pending:   { label: "Validation pending", color: "#92400E", bg: "#FEF3C7", icon: Clock },
+  verified:  { label: "Quotation sent",     color: "#166534", bg: "#DCFCE7", icon: ShieldCheck },
+  accepted:  { label: "Customer accepted",  color: "#1D4ED8", bg: "#DBEAFE", icon: CheckCircle2 },
+  declined:  { label: "Customer declined",  color: "#6B7280", bg: "#F3F4F6", icon: XCircle },
+  dispensed: { label: "Order validated",    color: "#1E40AF", bg: "#DBEAFE", icon: CheckCircle2 },
+  rejected:  { label: "Rejected",           color: "#991B1B", bg: "#FEE2E2", icon: XCircle },
 }
 
 const isImageFile = (f: AccountPrescription["files"][number]) =>
@@ -160,6 +162,7 @@ export function AdminPrescriptions() {
   const [zoomUrl, setZoomUrl] = useState<string | null>(null)
   const [imageBroken, setImageBroken] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [extracting, setExtracting] = useState(false)
 
   const canVerify = usePermission("rx.verify")
   const canConsult = usePermission("consult.handle")
@@ -169,6 +172,26 @@ export function AdminPrescriptions() {
     setVerification(EMPTY_VERIFICATION)
     setImageBroken(false)
   }
+
+  useEffect(() => {
+    if (!active) return
+    const fresh = items.find((x) => x.id === active.id)
+    if (!fresh) return
+    if (
+      fresh.extractionStatus !== active.extractionStatus ||
+      fresh.extractedDrugs.length !== active.extractedDrugs.length ||
+      fresh.extractionSummary !== active.extractionSummary
+    ) {
+      setActive({ ...fresh, approvedDrugs: active.approvedDrugs })
+    }
+  }, [items, active?.id, active?.extractionStatus, active?.extractedDrugs.length, active?.extractionSummary, active?.approvedDrugs])
+
+  useEffect(() => {
+    if (!active) return
+    if (active.extractionStatus !== "pending" && active.extractionStatus !== "processing") return
+    const t = setInterval(() => { void mutate() }, 4000)
+    return () => clearInterval(t)
+  }, [active?.id, active?.extractionStatus, mutate])
 
   const closeModal = () => {
     setZoomUrl(null)
@@ -182,7 +205,7 @@ export function AdminPrescriptions() {
   const counts = useMemo<Record<RxStatus | "all", number>>(
     () =>
       data?.counts ?? {
-        all: 0, pending: 0, verified: 0, dispensed: 0, rejected: 0,
+        all: 0, pending: 0, verified: 0, accepted: 0, declined: 0, dispensed: 0, rejected: 0,
       },
     [data],
   )
@@ -253,12 +276,41 @@ export function AdminPrescriptions() {
       notify.warning("Add at least one approved drug before verifying.")
       return
     }
-    void persist({ status: "verified" }, { close: true, successMessage: "Prescription verified" })
+    void persist({ status: "verified" }, { close: true, successMessage: "Quotation sent to patient" })
   }
   const dispense = () => {
     if (!canVerify) { notify.warning("You don't have permission to change this status."); return }
     void persist({ status: "dispensed" }, { close: true, successMessage: "Marked dispensed" })
   }
+  const applyExtraction = async () => {
+    if (!active || !canVerify) return
+    setSaving(true)
+    try {
+      const updated = await apiAdminPrescriptions.applyExtraction(active.id)
+      await mutate()
+      setActive({ ...updated, approvedDrugs: updated.approvedDrugs.map((d) => ({ ...d })) })
+      notify.saved("Extracted medications added to the request list")
+    } catch (e) {
+      notify.error(e instanceof Error ? e.message : "Could not apply extraction")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const reextract = async () => {
+    if (!active || !canVerify) return
+    setExtracting(true)
+    try {
+      await apiAdminPrescriptions.reextract(active.id)
+      notify.saved("Re-reading prescription scan…")
+      await mutate()
+    } catch (e) {
+      notify.error(e instanceof Error ? e.message : "Could not start extraction")
+    } finally {
+      setExtracting(false)
+    }
+  }
+
   const reject = () => {
     if (!canVerify) { notify.warning("You don't have permission to reject."); return }
     const reason = (active?.rejectedReason || active?.pharmacistNote || "").trim()
@@ -334,8 +386,14 @@ export function AdminPrescriptions() {
 
         {/* Filter chips */}
         <div className="flex items-center gap-2 flex-wrap">
-          {(["all", "pending", "verified", "dispensed", "rejected"] as const).map((k) => {
+          {(["all", "pending", "verified", "accepted", "declined", "dispensed", "rejected"] as const).map((k) => {
             const isActive = filter === k
+            const label =
+              k === "pending" ? "Pending"
+              : k === "verified" ? "Quoted"
+              : k === "accepted" ? "Accepted"
+              : k === "declined" ? "Declined"
+              : k.charAt(0).toUpperCase() + k.slice(1)
             return (
               <button
                 key={k}
@@ -344,7 +402,7 @@ export function AdminPrescriptions() {
                   isActive ? "bg-foreground text-background border-foreground" : "bg-background hover:bg-secondary border-border"
                 }`}
               >
-                {k === "pending" ? "Awaiting" : k.charAt(0).toUpperCase() + k.slice(1)}
+                {label}
                 <span className="opacity-60 ml-1">({counts[k]})</span>
               </button>
             )
@@ -742,11 +800,66 @@ export function AdminPrescriptions() {
                   />
                 </div>
 
+                {/* Automated Rx read — order capture: system reads → extraction */}
+                {active.files.some((f) => f.key) && (active.extractionStatus ?? "pending") !== "skipped" && (
+                  <div
+                    className="rounded-md border p-3 space-y-2"
+                    style={{ borderColor: "rgba(59,130,246,0.35)", background: "rgba(59,130,246,0.06)" }}
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <h3 className="text-[11px] uppercase tracking-wider font-semibold inline-flex items-center gap-1.5 text-blue-900">
+                        <Sparkles className="h-3.5 w-3.5" /> Rx scan extraction
+                      </h3>
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          disabled={saving || extracting || active.extractionStatus === "processing"}
+                          onClick={() => void reextract()}
+                          className="text-[11px] font-semibold h-7 px-2 rounded-md border border-border bg-white"
+                        >
+                          {extracting || active.extractionStatus === "processing" ? "Reading…" : "Re-read scan"}
+                        </button>
+                        {(active.extractedDrugs ?? []).length > 0 && (
+                          <button
+                            type="button"
+                            disabled={saving}
+                            onClick={() => void applyExtraction()}
+                            className="text-[11px] font-semibold h-7 px-2 rounded-md text-white"
+                            style={{ background: WINE }}
+                          >
+                            Apply {(active.extractedDrugs ?? []).length} to list
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                    <p className="text-xs text-blue-900/80">
+                      {active.extractionStatus === "pending" || active.extractionStatus === "processing"
+                        ? "System is reading the uploaded prescription…"
+                        : active.extractionSummary || "No extraction summary"}
+                    </p>
+                    {(active.extractedDrugs ?? []).length > 0 ? (
+                      <ul className="space-y-1.5 text-xs">
+                        {(active.extractedDrugs ?? []).map((d, i) => (
+                          <li key={i} className="rounded border bg-white px-2 py-1.5" style={{ borderColor: "rgba(0,0,0,0.08)" }}>
+                            <span className="font-semibold" style={{ color: WINE }}>{d.name}</span>
+                            {d.dosage ? <span className="text-muted-foreground"> · {d.dosage}</span> : null}
+                            {d.instructions ? (
+                              <p className="text-[10px] text-muted-foreground mt-0.5 truncate">{d.instructions}</p>
+                            ) : null}
+                          </li>
+                        ))}
+                      </ul>
+                    ) : active.extractionStatus === "completed" || active.extractionStatus === "failed" ? (
+                      <p className="text-xs text-muted-foreground">No lines extracted — add drugs manually or re-read the scan.</p>
+                    ) : null}
+                  </div>
+                )}
+
                 {/* Approved drugs — price auto from catalogue (read-only) */}
                 <div>
                   <div className="flex items-center justify-between mb-2 gap-2">
                     <h3 className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold inline-flex items-center gap-1.5">
-                      <Pill className="h-3.5 w-3.5" /> Approved drugs
+                      <Pill className="h-3.5 w-3.5" /> Medication request list
                     </h3>
                     <div className="flex items-center gap-1.5">
                       <SuggestFromNotesButton
@@ -863,7 +976,7 @@ export function AdminPrescriptions() {
                   className="h-10 px-5 rounded-lg text-sm font-bold text-white inline-flex items-center gap-1.5 shadow-sm hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed"
                   style={{ background: WINE }}
                 >
-                  {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />} Approve
+                  {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />} Send quotation
                 </button>
               </div>
             </div>

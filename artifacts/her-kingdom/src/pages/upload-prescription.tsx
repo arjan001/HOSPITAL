@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react"
+import { useState, useRef, useEffect, useMemo } from "react"
 import { useUser } from "@clerk/react"
 import { Link, useLocation } from "wouter"
 import { TopBar } from "@/components/store/top-bar"
@@ -11,6 +11,8 @@ import { cmsStore, newId } from "@/lib/cms-store"
 import type { Prescription } from "@/components/admin/prescriptions"
 import { apiPrescriptions, apiUploads, refreshMyPrescriptions, useMe } from "@/lib/api-nest"
 import { pushAdminNotification } from "@/lib/notifications-client"
+import { useCmsDoc } from "@/lib/cms-store"
+import { INTEGRATIONS_DEFAULTS, type IntegrationsConfig } from "@/components/admin/integrations"
 
 type UserPrescriptionRow = {
   id: string
@@ -154,6 +156,34 @@ export default function UploadPrescriptionPage() {
   const [lastName,  setLastName]  = useState("")
   const [gender,    setGender]    = useState("")
   const [dob,       setDob]       = useState("")
+  const [phone, setPhone] = useState("")
+  const [email, setEmail] = useState("")
+  const [ailment, setAilment] = useState("")
+  const [serviceWanted, setServiceWanted] = useState("prescription_upload")
+
+  const [integrationsRaw] = useCmsDoc("integrations", INTEGRATIONS_DEFAULTS)
+  const waIntake = (integrationsRaw as IntegrationsConfig).whatsapp?.prescriptionIntake
+    ?? INTEGRATIONS_DEFAULTS.whatsapp.prescriptionIntake
+  const waIntakeActive =
+    (integrationsRaw as IntegrationsConfig).whatsapp?.enabled && waIntake.enabled
+
+  const whatsappIntakeHref = useMemo(() => {
+    const lines = [
+      `Hi ${waIntake.botDisplayName || "Shaniid RX"},`,
+      waIntake.welcomeMessage,
+      "",
+      waIntake.captureName ? "Name: " : "",
+      waIntake.captureAge ? "Age/DOB: " : "",
+      waIntake.captureEmail ? "Email: " : "",
+      waIntake.capturePhone ? "Phone: " : "",
+      waIntake.captureAilment ? "Health issue: " : "",
+      waIntake.captureService ? "Service needed: prescription / care pack / refill" : "",
+      waIntake.capturePrescriptionUpload ? "(Attach prescription photo or PDF next)" : "",
+    ].filter(Boolean)
+    const text = lines.join("\n")
+    const base = whatsappHref.split("?")[0]
+    return `${base}?text=${encodeURIComponent(text)}`
+  }, [whatsappHref, waIntake])
 
   /* Prefill the recipient from the signed-in customer's saved profile (and Clerk
      identity), so name/DOB they already entered in Settings are reused here.
@@ -206,7 +236,9 @@ export default function UploadPrescriptionPage() {
       imageUrl: "",
       notes:
         `Submitted via storefront. Files: ${fileNames}. ` +
-        `Payment: ${paymentMethod === "insurance" ? "Insurance" : "Cash"}.`,
+        `Payment: ${paymentMethod === "insurance" ? "Insurance" : "Cash"}. ` +
+        (ailment ? `Issue: ${ailment}. ` : "") +
+        (serviceWanted ? `Service: ${serviceWanted}. ` : ""),
       status: "pending",
       pharmacistNote: "",
       recommendedDrugs: [],
@@ -255,10 +287,13 @@ export default function UploadPrescriptionPage() {
         patientName: fullName,
         recipient: fullName,
         dob: dob || undefined,
-        phone: "",
-        email: "",
+        phone: phone.trim(),
+        email: email.trim(),
         files: uploaded,
-        notes: `Submitted via storefront. Payment: ${paymentMethod === "insurance" ? "Insurance" : "Cash"}.`,
+        notes:
+          `Submitted via storefront. Payment: ${paymentMethod === "insurance" ? "Insurance" : "Cash"}.` +
+          (ailment ? ` Issue: ${ailment}.` : "") +
+          (serviceWanted ? ` Service: ${serviceWanted}.` : ""),
         paymentMethod: paymentMethod === "insurance" ? "insurance" : "cash",
       })
       void refreshMyPrescriptions()
@@ -327,9 +362,36 @@ export default function UploadPrescriptionPage() {
       <div>
         <h2 className="text-base font-semibold" style={{ color: WINE }}>Upload Your Prescription</h2>
         <p className="text-sm mt-1" style={{ color: "#6b7280" }}>
-          Your prescription is required for us to verify and proceed to the next step.
+          Your prescription is required for us to verify and proceed to the next step — or use WhatsApp for the offline market.
         </p>
       </div>
+
+      {waIntakeActive && (
+        <div
+          className="rounded-xl p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4"
+          style={{ background: "#ECFDF5", border: "1px solid #A7F3D0" }}
+        >
+          <div className="flex items-start gap-3 min-w-0">
+            <MessageCircle className="h-5 w-5 shrink-0" style={{ color: "#059669" }} />
+            <div>
+              <p className="text-sm font-bold" style={{ color: WINE }}>Prefer WhatsApp?</p>
+              <p className="text-xs mt-1" style={{ color: "#047857" }}>
+                Our bot captures name, age, email, phone, your health issue, and the service you need — then your prescription upload.
+              </p>
+            </div>
+          </div>
+          <a
+            href={whatsappIntakeHref}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="h-10 px-5 rounded-full text-sm font-bold text-white inline-flex items-center justify-center gap-2 shrink-0"
+            style={{ background: "#25D366" }}
+          >
+            <MessageCircle className="h-4 w-4" />
+            Start on WhatsApp
+          </a>
+        </div>
+      )}
 
       {/* Drop / click zone */}
       <div
@@ -391,15 +453,13 @@ export default function UploadPrescriptionPage() {
 
       {/* Actions */}
       <div className="flex justify-end gap-3 pt-2">
-        <a
-          href={whatsappHref}
-          target="_blank"
-          rel="noopener noreferrer"
+        <Link
+          href="/speak-to-a-doctor"
           className="h-11 px-6 rounded-full text-sm font-semibold flex items-center gap-2 transition-colors hover:bg-gray-50"
           style={btnOutline}
         >
           Speak to a Doctor
-        </a>
+        </Link>
         <button
           type="button"
           disabled={files.length === 0}
@@ -462,6 +522,52 @@ export default function UploadPrescriptionPage() {
             className="w-full h-11 px-3 rounded-lg text-sm outline-none"
             style={{ border: `1px solid ${BORDER}`, color: WINE }}
           />
+        </div>
+        <div>
+          <label className="text-xs font-semibold uppercase tracking-wide block mb-1.5" style={{ color: "#6b7280" }}>Phone / WhatsApp</label>
+          <input
+            type="tel"
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
+            placeholder="e.g. 07xx xxx xxx"
+            className="w-full h-11 px-3 rounded-lg text-sm outline-none"
+            style={{ border: `1px solid ${BORDER}`, color: WINE }}
+          />
+        </div>
+        <div>
+          <label className="text-xs font-semibold uppercase tracking-wide block mb-1.5" style={{ color: "#6b7280" }}>Email</label>
+          <input
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="you@email.com"
+            className="w-full h-11 px-3 rounded-lg text-sm outline-none"
+            style={{ border: `1px solid ${BORDER}`, color: WINE }}
+          />
+        </div>
+        <div className="col-span-2">
+          <label className="text-xs font-semibold uppercase tracking-wide block mb-1.5" style={{ color: "#6b7280" }}>Health issue / ailment</label>
+          <input
+            value={ailment}
+            onChange={(e) => setAilment(e.target.value)}
+            placeholder="e.g. diabetes refill, hypertension"
+            className="w-full h-11 px-3 rounded-lg text-sm outline-none"
+            style={{ border: `1px solid ${BORDER}`, color: WINE }}
+          />
+        </div>
+        <div className="col-span-2">
+          <label className="text-xs font-semibold uppercase tracking-wide block mb-1.5" style={{ color: "#6b7280" }}>Service you need</label>
+          <select
+            value={serviceWanted}
+            onChange={(e) => setServiceWanted(e.target.value)}
+            className="w-full h-11 px-3 rounded-lg text-sm outline-none bg-white"
+            style={{ border: `1px solid ${BORDER}`, color: WINE }}
+          >
+            <option value="prescription_upload">Prescription upload &amp; quote</option>
+            <option value="care_pack">Care pack recommendation</option>
+            <option value="refill">Medication refill</option>
+            <option value="consultation">Speak to a doctor / consult</option>
+          </select>
         </div>
       </div>
 

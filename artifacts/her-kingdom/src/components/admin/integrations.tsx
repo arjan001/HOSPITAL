@@ -59,6 +59,20 @@ export type IntegrationsConfig = {
     defaultTemplate: string  // e.g. order_confirmation
     sandboxMode: boolean
     notes: string
+    /** Offline prescription intake via WhatsApp bot (workflow: name, age, email, phone, ailment, service, Rx upload). */
+    prescriptionIntake: {
+      enabled: boolean
+      botDisplayName: string
+      welcomeMessage: string
+      captureName: boolean
+      captureAge: boolean
+      captureEmail: boolean
+      capturePhone: boolean
+      captureAilment: boolean
+      captureService: boolean
+      capturePrescriptionUpload: boolean
+      flowNotes: string
+    }
   }
   video: {
     provider: "daily"
@@ -153,6 +167,21 @@ export const INTEGRATIONS_DEFAULTS: IntegrationsConfig = {
     defaultTemplate: "order_confirmation",
     sandboxMode: true,
     notes: "",
+    prescriptionIntake: {
+      enabled: false,
+      botDisplayName: "Shaniid RX Prescription Desk",
+      welcomeMessage:
+        "Welcome to Shaniid RX. Please share your details so our pharmacist can help — then attach your prescription photo or PDF.",
+      captureName: true,
+      captureAge: true,
+      captureEmail: true,
+      capturePhone: true,
+      captureAilment: true,
+      captureService: true,
+      capturePrescriptionUpload: true,
+      flowNotes:
+        "Wire your Meta/Twilio bot to collect these fields in order. Submissions should create a prescription row in admin (api-nest) when the bot webhook lands.",
+    },
   },
   video: {
     provider: "daily",
@@ -177,7 +206,14 @@ function withDefaults(s: Partial<IntegrationsConfig> | undefined): IntegrationsC
   return {
     email:    { ...INTEGRATIONS_DEFAULTS.email,    ...(src.email    ?? {}) },
     sms:      { ...INTEGRATIONS_DEFAULTS.sms,      ...(src.sms      ?? {}) },
-    whatsapp: { ...INTEGRATIONS_DEFAULTS.whatsapp, ...(src.whatsapp ?? {}) },
+    whatsapp: {
+      ...INTEGRATIONS_DEFAULTS.whatsapp,
+      ...(src.whatsapp ?? {}),
+      prescriptionIntake: {
+        ...INTEGRATIONS_DEFAULTS.whatsapp.prescriptionIntake,
+        ...((src.whatsapp ?? {}) as Partial<IntegrationsConfig["whatsapp"]>).prescriptionIntake,
+      },
+    },
     video:    { ...INTEGRATIONS_DEFAULTS.video,    ...(src.video    ?? {}) },
     delivery: {
       ...INTEGRATIONS_DEFAULTS.delivery,
@@ -606,17 +642,21 @@ export function AdminIntegrations() {
 
             {tab === "whatsapp" && (
               <Section
-                title="WhatsApp Business"
-                subtitle="Order updates, prescription reminders, two-way support over WhatsApp."
+                title="WhatsApp — dual channel"
+                subtitle="Twilio for confirmations · Meta Cloud for prescription intake bot."
                 icon={MessageSquare}
               >
                 <Notice>
-                  Patients in Kenya overwhelmingly use WhatsApp. Wire either Meta's Cloud API directly, or a BSP like 360dialog or Twilio. We'll send only approved templates outside the 24h support window.
+                  <strong>Confirmations (Twilio)</strong> — order confirmed, Rx verified, quotation accepted, payment received, refill reminders. Free-form transactional text; set{" "}
+                  <code className="text-[11px]">WHATSAPP_CONFIRMATIONS_PROVIDER=twilio</code> and <code className="text-[11px]">TWILIO_*</code> in the API environment.
+                  <br className="mt-2" />
+                  <strong className="mt-2 inline-block">Prescription bot (Meta)</strong> — inbound patient messages on your business number; webhook{" "}
+                  <code className="text-[11px]">POST /api/v2/notifications/whatsapp/webhook</code>. Set <code className="text-[11px]">WHATSAPP_ACCESS_TOKEN</code> + <code className="text-[11px]">WHATSAPP_PHONE_NUMBER_ID</code>.
                 </Notice>
 
                 <Toggle
                   label="Enable WhatsApp messaging"
-                  hint="Master switch for outbound + inbound WhatsApp"
+                  hint="Master switch for outbound confirmations (CMS templates still drive copy)"
                   checked={draft.whatsapp.enabled}
                   onChange={(v) => updateWhatsapp({ enabled: v })}
                 />
@@ -679,6 +719,86 @@ export function AdminIntegrations() {
                   checked={draft.whatsapp.sandboxMode}
                   onChange={(v) => updateWhatsapp({ sandboxMode: v })}
                 />
+
+                <div className="rounded-lg border border-dashed border-amber-200 bg-amber-50/50 p-4 space-y-4">
+                  <div>
+                    <p className="text-sm font-bold" style={{ color: WINE }}>Prescription intake bot (offline market)</p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Aligns with customer demand workflow: WhatsApp submission → Rx review → care pack quote → payment.
+                      Configure what your bot should capture before the prescription upload step.
+                    </p>
+                  </div>
+                  <Toggle
+                    label="Enable prescription intake via WhatsApp"
+                    hint="Shows offline WhatsApp CTA on the upload-prescription page"
+                    checked={draft.whatsapp.prescriptionIntake.enabled}
+                    onChange={(v) =>
+                      updateWhatsapp({
+                        prescriptionIntake: { ...draft.whatsapp.prescriptionIntake, enabled: v },
+                      })
+                    }
+                  />
+                  <Grid cols={2}>
+                    <Input
+                      label="Bot display name"
+                      value={draft.whatsapp.prescriptionIntake.botDisplayName}
+                      onChange={(v) =>
+                        updateWhatsapp({
+                          prescriptionIntake: { ...draft.whatsapp.prescriptionIntake, botDisplayName: v },
+                        })
+                      }
+                      placeholder="Shaniid RX Prescription Desk"
+                      className="md:col-span-2"
+                    />
+                    <Textarea
+                      label="Welcome message"
+                      rows={3}
+                      value={draft.whatsapp.prescriptionIntake.welcomeMessage}
+                      onChange={(v) =>
+                        updateWhatsapp({
+                          prescriptionIntake: { ...draft.whatsapp.prescriptionIntake, welcomeMessage: v },
+                        })
+                      }
+                      className="md:col-span-2"
+                    />
+                  </Grid>
+                  <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Fields to capture</p>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                    {(
+                      [
+                        ["captureName", "Full name"],
+                        ["captureAge", "Age / DOB"],
+                        ["captureEmail", "Email"],
+                        ["capturePhone", "Phone / WhatsApp"],
+                        ["captureAilment", "Ailment / health issue"],
+                        ["captureService", "Service requested"],
+                        ["capturePrescriptionUpload", "Prescription upload (focus)"],
+                      ] as const
+                    ).map(([key, label]) => (
+                      <Toggle
+                        key={key}
+                        label={label}
+                        checked={draft.whatsapp.prescriptionIntake[key]}
+                        onChange={(v) =>
+                          updateWhatsapp({
+                            prescriptionIntake: { ...draft.whatsapp.prescriptionIntake, [key]: v },
+                          })
+                        }
+                      />
+                    ))}
+                  </div>
+                  <Textarea
+                    label="Bot flow notes (internal)"
+                    rows={3}
+                    hint="Webhook URL, template names, handoff to pharmacist queue"
+                    value={draft.whatsapp.prescriptionIntake.flowNotes}
+                    onChange={(v) =>
+                      updateWhatsapp({
+                        prescriptionIntake: { ...draft.whatsapp.prescriptionIntake, flowNotes: v },
+                      })
+                    }
+                  />
+                </div>
 
                 <Textarea
                   label="Internal notes"

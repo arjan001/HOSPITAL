@@ -57,6 +57,9 @@ import { StorageModule } from "./modules/storage.module"
 import { NewsletterModule } from "./modules/newsletter.module"
 import { AuditModule } from "./modules/audit.module"
 import { ContactInquiriesModule } from "./modules/contact-inquiries.module"
+import { CrmModule } from "./modules/crm.module"
+import { PrescriptionSubscriptionsModule } from "./modules/prescription-subscriptions.module"
+import { OperationsModule } from "./modules/operations.module"
 
 @Module({
   imports: [
@@ -92,6 +95,9 @@ import { ContactInquiriesModule } from "./modules/contact-inquiries.module"
     NewsletterModule,
     AuditModule,
     ContactInquiriesModule,
+    CrmModule,
+    PrescriptionSubscriptionsModule,
+    OperationsModule,
   ],
   providers: [
     // Global catch-all exception filter: normalises every error response and

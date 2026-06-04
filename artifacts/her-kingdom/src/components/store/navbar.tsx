@@ -5,7 +5,7 @@ import { Link } from "wouter"
 
 import { useState, useRef, useEffect } from "react"
 import { useLocation } from "wouter"
-import { Search, ShoppingBag, Menu, PhoneCall, User, Package, Camera, Heart, HandHeart, ArrowRight } from "lucide-react"
+import { Search, ShoppingBag, Menu, PhoneCall, User, Package, Camera, Heart, HandHeart, ArrowRight, ClipboardList } from "lucide-react"
 import { useUser, useClerk } from "@clerk/react"
 import { useCart } from "@/lib/cart-context"
 import { useWishlist } from "@/lib/wishlist-context"
@@ -148,6 +148,8 @@ export function Navbar() {
   ]
 
   const isHomeActive = location === "/"
+  const isCarePacksContext =
+    location === "/care-packs" || location.startsWith("/care-packs/")
 
   return (
     <header className="sticky top-0 z-50">
@@ -714,17 +716,29 @@ export function Navbar() {
                 <span>Speak to a doctor</span>
               </Link>
 
-              {/* Upload Prescription */}
-              <Link
-                href="/upload-prescription"
-                className="inline-flex items-center justify-center gap-2 h-12 px-5 rounded-full text-sm font-semibold whitespace-nowrap text-white shadow-sm hover:shadow-md transition-shadow"
-                style={{
-                  background: `linear-gradient(135deg, ${ACCENT_ORANGE} 0%, ${ACCENT_RED} 100%)`,
-                }}
-              >
-                <Camera className="h-4 w-4" />
-                <span>Upload Prescription</span>
-              </Link>
+              {isCarePacksContext ? (
+                <Link
+                  href="/care-packs/assessment"
+                  className="inline-flex items-center justify-center gap-2 h-12 px-5 rounded-full text-sm font-semibold whitespace-nowrap text-white shadow-sm hover:shadow-md transition-shadow"
+                  style={{
+                    background: `linear-gradient(135deg, ${ACCENT_ORANGE} 0%, ${ACCENT_RED} 100%)`,
+                  }}
+                >
+                  <ClipboardList className="h-4 w-4" />
+                  <span>Take Care Pack Assessment</span>
+                </Link>
+              ) : (
+                <Link
+                  href="/upload-prescription"
+                  className="inline-flex items-center justify-center gap-2 h-12 px-5 rounded-full text-sm font-semibold whitespace-nowrap text-white shadow-sm hover:shadow-md transition-shadow"
+                  style={{
+                    background: `linear-gradient(135deg, ${ACCENT_ORANGE} 0%, ${ACCENT_RED} 100%)`,
+                  }}
+                >
+                  <Camera className="h-4 w-4" />
+                  <span>Upload Prescription</span>
+                </Link>
+              )}
             </div>
 
           </div>

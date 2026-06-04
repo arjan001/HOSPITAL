@@ -20,7 +20,7 @@ sql/
 ├── 02_payments.sql          ← /admin/payments
 ├── 03_card_details.sql      ← /admin/card-details
 ├── 04_customers.sql         ← /admin/customers
-├── 05_prescriptions.sql     ← /admin/prescriptions
+├── 05_prescriptions.sql     ← /admin/prescriptions (OCR columns, subscriptions, refills)
 ├── 06_consultations.sql     ← /admin/consultations
 ├── 07_chat.sql              ← /admin/chat
 ├── 08_products.sql          ← /admin/products
@@ -43,8 +43,11 @@ sql/
 ├── 25_website_settings.sql  ← /admin/website-settings
 ├── 26_users_roles.sql       ← /admin/users + /admin/roles
 ├── 27_audit_log.sql         ← /admin/audit-log
-└── 28_settings.sql          ← /admin/settings
+├── 28_settings.sql          ← /admin/settings
+└── 29_crm_operations.sql    ← CRM funnel + care pack mapping + assessments
 ```
+
+**Drizzle source of truth:** `lib/db/src/schema/*.ts` — run `pnpm --filter @workspace/db run push` or see `lib/db/migrations/manual/README.md`.
 
 ## Rules
 

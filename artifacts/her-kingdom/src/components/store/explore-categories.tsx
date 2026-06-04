@@ -2,7 +2,7 @@
 
 import React from "react"
 import { Link } from "wouter"
-import { Eye, ShoppingBag, Star, ArrowRight } from "lucide-react"
+import { Eye, Star, ArrowRight } from "lucide-react"
 import { ProductImage } from "./product-image"
 
 const TEXT_WINE = "#3D0814"
@@ -19,52 +19,52 @@ const SIDEBAR_GRAD =
 type CarePack = {
   title: string
   description: string
-  price: string
   href: string
   image: string
+  assessmentPack?: string
 }
 
 const CARE_PACKS: CarePack[] = [
   {
     title: "Diabetes Care Pack",
     description: "A complete pack for reliable diabetes management.",
-    price: "KSH 6,500",
-    href: "/care-packs",
+    href: "/care-packs/assessment?pack=diabetes-care",
+    assessmentPack: "diabetes-care",
     image: "/health-essentials.png",
   },
   {
     title: "Blood Pressure Care Packs",
     description: "Daily essentials for healthy blood pressure control.",
-    price: "KSH 6,500",
-    href: "/care-packs",
+    href: "/care-packs/assessment?pack=blood-pressure-care",
+    assessmentPack: "blood-pressure-care",
     image: "/banner-wellness.png",
   },
   {
     title: "Asthma & Respiratory Packs",
     description: "Inhalers and rescue meds for breathing comfort.",
-    price: "KSH 6,500",
-    href: "/care-packs",
+    href: "/care-packs/assessment?pack=asthma-care",
+    assessmentPack: "asthma-care",
     image: "/hero-pills-transparent.png",
   },
   {
     title: "Kidney & Dialysis Support",
     description: "Renal-friendly support pack curated by clinicians.",
-    price: "KSH 6,500",
-    href: "/care-packs",
+    href: "/care-packs/assessment?pack=kidney-care",
+    assessmentPack: "kidney-care",
     image: "/newsletter-pills.png",
   },
   {
     title: "Cold & Flu Pack",
     description: "Everything to recover faster from seasonal flu.",
-    price: "KSH 6,500",
-    href: "/care-packs",
+    href: "/care-packs/assessment?pack=cold-flu",
+    assessmentPack: "cold-flu",
     image: "/health-essentials.png",
   },
   {
     title: "Pain & Injury Pack",
     description: "Relief, dressings and braces for everyday injuries.",
-    price: "KSH 6,500",
-    href: "/care-packs",
+    href: "/care-packs/assessment?pack=pain-injury",
+    assessmentPack: "pain-injury",
     image: "/banner-wellness.png",
   },
 ]
@@ -77,10 +77,10 @@ type DeviceItem = {
 }
 
 const DEVICES: DeviceItem[] = [
-  { name: "Glucometers", price: "KSH 2,000", href: "/shop?category=devices", image: "/devices-hero-transparent.png" },
-  { name: "BP Monitors", price: "KSH 2,500", href: "/shop?category=devices", image: "/devices-hero-transparent.png" },
-  { name: "Thermometers", price: "KSH 1,000", href: "/shop?category=devices", image: "/devices-hero-transparent.png" },
-  { name: "Test Strips & Lancets", price: "KSH 800", href: "/shop?category=devices", image: "/devices-hero-transparent.png" },
+  { name: "Glucometers", price: "", href: "/shop?category=devices&q=glucometer", image: "/devices-hero-transparent.png" },
+  { name: "BP Monitors", price: "", href: "/shop?category=devices&q=blood%20pressure", image: "/devices-hero-transparent.png" },
+  { name: "Thermometers", price: "", href: "/shop?category=devices&q=thermometer", image: "/devices-hero-transparent.png" },
+  { name: "Test Strips & Lancets", price: "", href: "/shop?category=devices&q=test%20strips", image: "/devices-hero-transparent.png" },
 ]
 
 export function ExploreCategories() {
@@ -197,8 +197,8 @@ function CarePackCard({ pack }: { pack: CarePack }) {
       <p className="text-xs text-center mt-1.5 leading-snug" style={{ color: TEXT_WINE_SOFT }}>
         {pack.description}
       </p>
-      <p className="text-sm font-bold text-center mt-2" style={{ color: TEXT_WINE }}>
-        {pack.price}
+      <p className="text-[11px] text-center mt-2 italic" style={{ color: TEXT_WINE_SOFT }}>
+        Pricing after pharmacist review
       </p>
 
       <Link
@@ -208,8 +208,8 @@ function CarePackCard({ pack }: { pack: CarePack }) {
         onMouseEnter={(e) => { const el = e.currentTarget as HTMLAnchorElement; el.style.background = `linear-gradient(135deg, ${ACCENT_ORANGE} 0%, ${ACCENT_RED} 100%)`; el.style.color = "white" }}
         onMouseLeave={(e) => { const el = e.currentTarget as HTMLAnchorElement; el.style.background = "#F2D4C4"; el.style.color = TEXT_WINE }}
       >
-        <ShoppingBag className="h-4 w-4" />
-        Add To Cart
+        See more
+        <ArrowRight className="h-4 w-4" />
       </Link>
     </div>
   )
@@ -238,9 +238,11 @@ function DeviceRow({ item }: { item: DeviceItem }) {
         <p className="text-sm font-semibold leading-tight" style={{ color: TEXT_WINE }}>
           {item.name}
         </p>
-        <p className="text-sm font-bold mt-1" style={{ color: TEXT_WINE }}>
-          {item.price}
-        </p>
+        {item.price ? (
+          <p className="text-sm font-bold mt-1" style={{ color: TEXT_WINE }}>
+            {item.price}
+          </p>
+        ) : null}
         <div className="flex items-center gap-0.5 mt-1.5" aria-label="5 star rating">
           {Array.from({ length: 5 }).map((_, i) => (
             <Star key={i} className="h-3 w-3" fill={ACCENT_ORANGE} stroke={ACCENT_ORANGE} />

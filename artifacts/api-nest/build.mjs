@@ -34,6 +34,8 @@ async function buildAll() {
       "class-transformer/storage",
       "cache-manager",
       "@aws-sdk/*",
+      "tesseract.js",
+      "pdf-parse",
     ],
     sourcemap: "linked",
   });

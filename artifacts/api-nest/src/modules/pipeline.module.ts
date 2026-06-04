@@ -56,6 +56,8 @@ import {
   normalizeLanguageCode,
 } from "./whatsapp.module"
 import { SmsModule, SmsService } from "./sms.module"
+import { PrescriptionsModule, PrescriptionsService } from "./prescriptions.module"
+import { extractWhatsAppInbound } from "../common/whatsapp-intake"
 import { db, communicationOutbox, communicationSentLog, campaignSends } from "@workspace/db"
 import { and, desc, eq, lt, or } from "drizzle-orm"
 import { randomUUID } from "node:crypto"
@@ -1068,23 +1070,18 @@ class CommunicationsAutomationService {
       // Email provider unconfigured — fall through to the outbox.
     }
 
-    if (tpl.channel === "whatsapp" && this.whatsapp.isEnabled()) {
-      // Proactive auto-texts (preferTemplate) send a Meta-approved *template* so
-      // the message is valid OUTSIDE the 24h customer-service window. The
-      // {{token}}→positional-param mapping is derived from the template body in
-      // order of first appearance (see orderedTemplateTokens) — the same order
-      // the Meta template must be registered in. Meta templates also carry a
-      // per-patient language code. Template sends require the Meta provider;
-      // anything else (Twilio, no template name, ad-hoc admin sends) falls back
-      // to a free-form text message (valid within the 24h window).
+    if (tpl.channel === "whatsapp" && this.whatsapp.isConfirmationsEnabled()) {
+      // Confirmations channel (Twilio by default): free-form transactional text.
+      // Meta templates only when confirmations provider is Meta AND preferTemplate.
       const language = normalizeLanguageCode(opts?.language)
+      const conf = this.whatsapp.confirmationsProvider()
       const useTemplate =
         !!opts?.preferTemplate &&
         !!tpl.whatsappTemplateName &&
-        this.whatsapp.provider() === "meta"
+        conf === "meta"
 
       const result = useTemplate
-        ? await this.whatsapp.send({
+        ? await this.whatsapp.sendConfirmations({
             to,
             templateName: tpl.whatsappTemplateName,
             variables: orderedTemplateTokens(tpl.body).map((t) =>
@@ -1092,7 +1089,7 @@ class CommunicationsAutomationService {
             ),
             languageCode: language,
           })
-        : await this.whatsapp.send({ to, body })
+        : await this.whatsapp.sendConfirmations({ to, body })
 
       // Only fall through to the outbox when the provider was unconfigured;
       // a genuine send attempt (success or hard failure) is reported directly.
@@ -1262,10 +1259,10 @@ class CommunicationsAutomationService {
     }
 
     if (row.channel === "whatsapp") {
-      if (!this.whatsapp.isEnabled()) {
-        return { ok: false, skipped: true, reason: "WhatsApp provider not configured" }
+      if (!this.whatsapp.isConfirmationsEnabled()) {
+        return { ok: false, skipped: true, reason: "WhatsApp confirmations not configured" }
       }
-      const result = await this.whatsapp.send({ to: row.to, body: row.body })
+      const result = await this.whatsapp.sendConfirmations({ to: row.to, body: row.body })
       return { ok: result.ok, skipped: result.skipped, reason: result.reason }
     }
 
@@ -1351,7 +1348,7 @@ class CommunicationsAutomationService {
       } else if (channel === "sms") {
         res = await this.sms.send({ to, message: body })
       } else {
-        res = await this.whatsapp.send({ to, body })
+        res = await this.whatsapp.sendConfirmations({ to, body })
       }
 
       if (res.skipped) {
@@ -1554,6 +1551,8 @@ class WhatsAppWebhookController {
   constructor(
     @Inject(CommunicationsAutomationService)
     private readonly comms: CommunicationsAutomationService,
+    @Inject(PrescriptionsService) private readonly rx: PrescriptionsService,
+    @Inject(WhatsAppService) private readonly whatsapp: WhatsAppService,
   ) {}
 
   @Get("webhook")
@@ -1577,6 +1576,30 @@ class WhatsAppWebhookController {
           ? new Date(Number(s.timestamp) * 1000).toISOString()
           : new Date().toISOString()
         await this.comms.applyStatusUpdate(s.id, s.status, atIso)
+      }
+
+      const inbound = extractWhatsAppInbound(body)
+      for (const msg of inbound) {
+        if (msg.type !== "text" || !msg.text?.trim()) continue
+        const phone = msg.from.replace(/\D/g, "")
+        if (phone.length < 9) continue
+        try {
+          const rx = await this.rx.createFromWhatsApp({
+            phone,
+            text: msg.text,
+          })
+          if (this.whatsapp.isBotEnabled()) {
+            const ack =
+              "Thank you — we received your prescription request (ref " +
+              `${rx.id.slice(-8)}). A pharmacist will review it and send your quotation on WhatsApp.`
+            void this.whatsapp.sendBot({ to: phone, body: ack }).catch(() => {})
+          }
+        } catch (err) {
+          console.warn(
+            "[whatsapp-webhook] prescription intake failed:",
+            err instanceof Error ? err.message : err,
+          )
+        }
       }
     } catch (err) {
       console.warn(
@@ -1655,7 +1678,14 @@ class PipelineStatusController {
 }
 
 @Module({
-  imports: [AdminCmsModule, EmailModule, NotificationsModule, WhatsAppModule, SmsModule],
+  imports: [
+    AdminCmsModule,
+    EmailModule,
+    NotificationsModule,
+    WhatsAppModule,
+    SmsModule,
+    PrescriptionsModule,
+  ],
   controllers: [
     SourcingPipelineController,
     TradingPipelineController,

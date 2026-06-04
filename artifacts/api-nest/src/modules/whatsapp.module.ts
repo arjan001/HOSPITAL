@@ -1,12 +1,12 @@
 /**
  * WhatsApp module — outbound WhatsApp dispatch.
  *
- * Provider decision (May 2026):
- *   The storefront message-templates already carry Meta-approved template
- *   names (`whatsappTemplateName`, e.g. "order_confirmation_v1"), so the
- *   primary provider is the **Meta WhatsApp Cloud API**. A **Twilio** WhatsApp
- *   transport is also supported as a drop-in alternative (useful before a Meta
- *   Business account / template approval is in place).
+ * Dual-channel model (Jun 2026):
+ *   **Confirmations** (`sendConfirmations`) — Twilio by default: order/Rx/payment/refill
+ *   transactional texts. Set `WHATSAPP_CONFIRMATIONS_PROVIDER=twilio` + `TWILIO_*`.
+ *   **Prescription bot** (`sendBot`) — Meta Cloud only: inbound webhook intake + session replies.
+ *   Set `WHATSAPP_ACCESS_TOKEN` + `WHATSAPP_PHONE_NUMBER_ID` + webhook verify token.
+ *   Meta templates apply only when confirmations provider is Meta and `preferTemplate` is set.
  *
  * The module is fully env-gated and fails *soft*: when no provider is
  * configured, `send()` returns `{ ok:false, skipped:true }` instead of
@@ -45,6 +45,7 @@ import {
   UseGuards,
 } from "@nestjs/common"
 import { AdminGuard, RequirePerm } from "../common/admin-guard"
+import { confirmationsProviderPref } from "../common/whatsapp-channels"
 
 export type WhatsAppProvider = "meta" | "twilio" | "none"
 
@@ -155,37 +156,82 @@ export class WhatsAppService {
     return !!(this.twilioSid && this.twilioToken && this.twilioFrom)
   }
 
-  /** Resolve the active provider, honouring WHATSAPP_PROVIDER then auto-detect. */
+  /** Legacy single provider (WHATSAPP_PROVIDER) — prefer confirmationsProvider() for outbound. */
   provider(): WhatsAppProvider {
-    const pref = (process.env.WHATSAPP_PROVIDER || "").trim().toLowerCase()
-    if (pref === "meta") return this.metaConfigured() ? "meta" : "none"
+    return this.confirmationsProvider()
+  }
+
+  /** Outbound confirmations: Twilio by default when configured. */
+  confirmationsProvider(): WhatsAppProvider {
+    const pref = confirmationsProviderPref()
     if (pref === "twilio") return this.twilioConfigured() ? "twilio" : "none"
-    if (this.metaConfigured()) return "meta"
+    if (pref === "meta") return this.metaConfigured() ? "meta" : "none"
     if (this.twilioConfigured()) return "twilio"
+    if (this.metaConfigured()) return "meta"
     return "none"
   }
 
+  /** Prescription intake bot — Meta Cloud API only. */
+  botProvider(): WhatsAppProvider {
+    return this.metaConfigured() ? "meta" : "none"
+  }
+
   isEnabled(): boolean {
-    return this.provider() !== "none"
+    return this.confirmationsProvider() !== "none" || this.botProvider() !== "none"
+  }
+
+  isConfirmationsEnabled(): boolean {
+    return this.confirmationsProvider() !== "none"
+  }
+
+  isBotEnabled(): boolean {
+    return this.botProvider() !== "none"
   }
 
   status() {
     return {
       configured: this.isEnabled(),
-      provider: this.provider(),
-      meta: { configured: this.metaConfigured() },
-      twilio: { configured: this.twilioConfigured() },
+      provider: this.confirmationsProvider(),
+      channels: {
+        confirmations: {
+          provider: this.confirmationsProvider(),
+          purpose: "Order/Rx confirmations, refill reminders (Twilio recommended)",
+        },
+        bot: {
+          provider: this.botProvider(),
+          purpose: "Prescription upload intake via Meta webhook",
+        },
+      },
+      meta: { configured: this.metaConfigured(), phoneNumberId: this.metaPhoneId ? "set" : "missing" },
+      twilio: { configured: this.twilioConfigured(), from: this.twilioFrom ? "set" : "missing" },
     }
   }
 
+  /** Proactive patient / transactional messages (confirmations channel). */
+  async sendConfirmations(input: SendWhatsAppInput): Promise<SendWhatsAppResult> {
+    return this.sendVia(this.confirmationsProvider(), input)
+  }
+
+  /** Replies on the Meta business line (prescription bot). */
+  async sendBot(input: SendWhatsAppInput): Promise<SendWhatsAppResult> {
+    return this.sendVia(this.botProvider(), input)
+  }
+
+  /** @deprecated Use sendConfirmations — kept for admin manual send. */
   async send(input: SendWhatsAppInput): Promise<SendWhatsAppResult> {
-    const provider = this.provider()
+    return this.sendConfirmations(input)
+  }
+
+  private async sendVia(
+    provider: WhatsAppProvider,
+    input: SendWhatsAppInput,
+  ): Promise<SendWhatsAppResult> {
     if (provider === "none") {
       return {
         ok: false,
         skipped: true,
         reason:
-          "WhatsApp provider not configured (set WHATSAPP_ACCESS_TOKEN + WHATSAPP_PHONE_NUMBER_ID for Meta, or TWILIO_ACCOUNT_SID + TWILIO_AUTH_TOKEN + TWILIO_WHATSAPP_FROM for Twilio)",
+          "WhatsApp channel not configured (Twilio: TWILIO_* for confirmations; Meta: WHATSAPP_ACCESS_TOKEN + WHATSAPP_PHONE_NUMBER_ID for bot)",
       }
     }
     const to = digits(input?.to || "")
@@ -193,16 +239,13 @@ export class WhatsAppService {
     if (!input.body && !input.templateName) {
       return { ok: false, reason: "Provide a body or a templateName" }
     }
-    try {
-      return provider === "meta"
-        ? await this.sendMeta(to, input)
-        : await this.sendTwilio(to, input)
-    } catch (err) {
-      return {
-        ok: false,
-        reason: err instanceof Error ? err.message : String(err),
-      }
+    if (provider === "meta" && input.templateName) {
+      return this.sendMeta(to, input)
     }
+    if (provider === "meta") {
+      return this.sendMeta(to, { ...input, templateName: undefined })
+    }
+    return this.sendTwilio(to, { ...input, templateName: undefined, body: input.body || "" })
   }
 
   private async sendMeta(to: string, input: SendWhatsAppInput): Promise<SendWhatsAppResult> {

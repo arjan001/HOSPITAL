@@ -28,6 +28,24 @@ export type PrescriptionFile = {
   key?: string
 }
 
+/** OCR / vision extraction status for uploaded prescription scans. */
+export type RxExtractionStatus =
+  | "pending"
+  | "processing"
+  | "completed"
+  | "failed"
+  | "skipped"
+
+/** Medication line suggested by automated Rx read — pharmacist confirms & prices. */
+export type ExtractedDrug = {
+  name: string
+  dosage?: string
+  instructions?: string
+  quantity?: number
+  /** 0–1 confidence when provided by the vision model. */
+  confidence?: number
+}
+
 export const prescriptions = pgTable("prescriptions", {
   id: text("id").primaryKey(),
   rxNumber: text("rx_number").unique().notNull(),
@@ -58,6 +76,11 @@ export const prescriptions = pgTable("prescriptions", {
   // Uploaded scans/PDFs ({ name, size?, type?, url?, key? }). Each `key` is an
   // owner-checked storage key (see uploads module).
   files: jsonb("files").$type<PrescriptionFile[]>().notNull().default([]),
+  /** Automated read of uploaded Rx scans (order capture: system reads → extraction). */
+  extractionStatus: text("extraction_status").notNull().default("pending"),
+  extractedDrugs: jsonb("extracted_drugs").$type<ExtractedDrug[]>().notNull().default([]),
+  /** OCR raw snippet or model summary for pharmacist review. */
+  extractionSummary: text("extraction_summary"),
   // Payment of the itemized approved-drug cart (set when the customer buys).
   // Amount is whole KSh; reference is the Paystack/M-PESA receipt. The unique
   // constraint gives DB-level idempotency so one charge can't be redeemed twice.

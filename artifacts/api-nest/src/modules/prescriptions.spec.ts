@@ -52,8 +52,12 @@ function makeService() {
   const inApp = { push: vi.fn() } as unknown as NotificationsService
 
   const audit = { record: vi.fn(() => Promise.resolve()) } as unknown as AuditService
+  const crm = {
+    recordSessionEvent: vi.fn(() => Promise.resolve()),
+    recordEvent: vi.fn(() => Promise.resolve()),
+  } as unknown as import("./crm.module").CrmService
 
-  const svc = new PrescriptionsService(paystack, uploads, patientNotify, inApp, audit)
+  const svc = new PrescriptionsService(paystack, uploads, patientNotify, inApp, audit, crm)
   return { svc, notifyCalls, paystack, verifyPaidReference }
 }
 

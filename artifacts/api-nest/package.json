@@ -20,6 +20,8 @@
     "cookie-parser": "^1.4.7",
     "drizzle-orm": "catalog:",
     "express": "^5.2.1",
+    "pdf-parse": "^1.1.1",
+    "tesseract.js": "^6.0.1",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1"
   },

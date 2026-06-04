@@ -37,10 +37,12 @@ export const STATUS_META: Record<RxStatus, {
   Icon: typeof Clock
   blurb: string
 }> = {
-  pending:   { label: "Awaiting review",  color: "#92400E", bg: "#FEF3C7", ring: "#FCD34D", Icon: Clock,        blurb: "A pharmacist will review your prescription shortly. You'll get a notification the moment they're done." },
-  verified:  { label: "Verified",         color: "#166534", bg: "#DCFCE7", ring: "#86EFAC", Icon: ShieldCheck,  blurb: "Your prescription has been verified. The approved medication and pharmacist instructions are below." },
-  dispensed: { label: "Dispensed",        color: "#1E40AF", bg: "#DBEAFE", ring: "#93C5FD", Icon: CheckCheck,   blurb: "Your medication has been dispensed and is on its way. Track delivery from your orders." },
-  rejected:  { label: "Action required",  color: "#991B1B", bg: "#FEE2E2", ring: "#FCA5A5", Icon: XCircle,      blurb: "We couldn't accept this prescription as-is. See the pharmacist's note for next steps." },
+  pending:   { label: "Validation pending", color: "#92400E", bg: "#FEF3C7", ring: "#FCD34D", Icon: Clock,        blurb: "Your prescription is with our pharmacy team for review. You'll receive a quotation when it's ready." },
+  verified:  { label: "Quotation ready",    color: "#166534", bg: "#DCFCE7", ring: "#86EFAC", Icon: ShieldCheck,  blurb: "Your medication list and pricing are ready. Review the quotation below and accept to proceed to payment." },
+  accepted:  { label: "Ready to pay",       color: "#1D4ED8", bg: "#DBEAFE", ring: "#93C5FD", Icon: CreditCard,   blurb: "You've accepted the quotation. Complete payment to validate your order." },
+  declined:  { label: "Quotation declined", color: "#6B7280", bg: "#F3F4F6", ring: "#D1D5DB", Icon: XCircle,      blurb: "You declined this quotation. Upload a new prescription or contact us if you'd like a revised quote." },
+  dispensed: { label: "Order validated",    color: "#1E40AF", bg: "#DBEAFE", ring: "#93C5FD", Icon: CheckCheck,   blurb: "Payment received — your medication is being dispensed and prepared for delivery." },
+  rejected:  { label: "Action required",    color: "#991B1B", bg: "#FEE2E2", ring: "#FCA5A5", Icon: XCircle,      blurb: "We couldn't accept this prescription as-is. See the pharmacist's note for next steps." },
 }
 
 export function StatusPill({ k, size = "sm" }: { k: RxStatus; size?: "sm" | "md" }) {
@@ -74,8 +76,22 @@ export function fmtTime(iso: string): string {
   return d.toLocaleDateString()
 }
 
-export function RxDetailModal({ rx, onClose }: { rx: AccountPrescription; onClose: () => void }) {
+export function RxDetailModal({
+  rx,
+  onClose,
+  onAccept,
+  onDecline,
+  onPay,
+}: {
+  rx: AccountPrescription
+  onClose: () => void
+  onAccept?: () => void | Promise<void>
+  onDecline?: () => void | Promise<void>
+  onPay?: () => void
+}) {
   const meta = STATUS_META[rx.status]
+  const showQuotation =
+    rx.status === "verified" || rx.status === "accepted" || rx.status === "dispensed"
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose() }
     window.addEventListener("keydown", onKey)
@@ -134,14 +150,19 @@ export function RxDetailModal({ rx, onClose }: { rx: AccountPrescription; onClos
           </div>
 
           <section>
-            <SectionHeading icon={Pill} title="Approved medication" />
+            <SectionHeading icon={Pill} title={showQuotation ? "Your quotation" : "Medication"} />
             {rx.approvedDrugs.length === 0 ? (
               <div className="rounded-xl border border-dashed border-border bg-muted/30 p-4 text-center">
                 <Sparkles className="mx-auto mb-1 h-4 w-4 text-muted-foreground" />
                 <p className="text-xs text-muted-foreground">
-                  The pharmacist hasn't added approved medication yet. Once verified, it
-                  will appear here with dosage and instructions.
+                  {rx.status === "pending"
+                    ? "Your prescription is being reviewed. Pricing and medication details will appear here once the pharmacist sends your quotation."
+                    : "The pharmacist hasn't added medication yet."}
                 </p>
+              </div>
+            ) : !showQuotation ? (
+              <div className="rounded-xl border border-border bg-muted/20 p-3 text-xs text-muted-foreground">
+                {rx.approvedDrugs.length} line{rx.approvedDrugs.length === 1 ? "" : "s"} identified — pricing is shared after pharmacist verification.
               </div>
             ) : (
               <ul className="space-y-2">
@@ -186,7 +207,7 @@ export function RxDetailModal({ rx, onClose }: { rx: AccountPrescription; onClos
                 ))}
               </ul>
             )}
-            {rx.approvedDrugs.length > 0 && (
+            {showQuotation && rx.approvedDrugs.length > 0 && (
               <div className="mt-2 flex items-center justify-between rounded-xl border border-border bg-muted/30 px-3 py-2.5">
                 <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Total</span>
                 <span className="text-sm font-bold" style={{ color: WINE }}>
@@ -220,6 +241,29 @@ export function RxDetailModal({ rx, onClose }: { rx: AccountPrescription; onClos
                 style={{ borderColor: "#0EA5E9" }}
               >
                 <p className="whitespace-pre-wrap">{rx.doctorNote}</p>
+              </div>
+            </section>
+          )}
+
+          {rx.files.length > 0 && (rx.extractionStatus ?? "pending") !== "skipped" && (
+            <section>
+              <SectionHeading icon={Sparkles} title="Prescription scan" />
+              <div
+                className="rounded-xl border px-3 py-2.5 text-xs"
+                style={{ borderColor: "#93C5FD", background: "#EFF6FF", color: "#1E3A8A" }}
+              >
+                {rx.extractionStatus === "pending" || rx.extractionStatus === "processing" ? (
+                  <p>We&apos;re reading your prescription scan. A pharmacist will confirm the medication list shortly.</p>
+                ) : rx.extractionStatus === "completed" && (rx.extractedDrugs?.length ?? 0) > 0 ? (
+                  <p>
+                    We detected {(rx.extractedDrugs ?? []).length} medication line
+                    {(rx.extractedDrugs ?? []).length === 1 ? "" : "s"} on your scan — your pharmacist will verify and send a quotation.
+                  </p>
+                ) : rx.extractionStatus === "failed" ? (
+                  <p>We couldn&apos;t auto-read this scan. Our pharmacy team will enter your medications manually.</p>
+                ) : (
+                  <p>Your scan is on file for pharmacist review.</p>
+                )}
               </div>
             </section>
           )}
@@ -311,7 +355,37 @@ export function RxDetailModal({ rx, onClose }: { rx: AccountPrescription; onClos
           >
             <RefreshCw className="h-3.5 w-3.5" /> Refresh
           </button>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            {rx.status === "verified" && rx.approvedDrugs.length > 0 && onAccept && (
+              <button
+                type="button"
+                onClick={() => void onAccept()}
+                className="inline-flex h-9 items-center gap-1.5 rounded-md px-4 text-xs font-semibold text-white"
+                style={{ background: `linear-gradient(135deg, ${ACCENT} 0%, ${ACCENT_RED} 100%)` }}
+              >
+                Accept quotation
+              </button>
+            )}
+            {rx.status === "verified" && onDecline && (
+              <button
+                type="button"
+                onClick={() => void onDecline()}
+                className="inline-flex h-9 items-center gap-1.5 rounded-md border border-border bg-white px-3 text-xs font-semibold"
+                style={{ color: WINE }}
+              >
+                Decline
+              </button>
+            )}
+            {rx.status === "accepted" && rx.approvedDrugs.length > 0 && onPay && (
+              <button
+                type="button"
+                onClick={onPay}
+                className="inline-flex h-9 items-center gap-1.5 rounded-md px-4 text-xs font-semibold text-white"
+                style={{ background: `linear-gradient(135deg, ${ACCENT} 0%, ${ACCENT_RED} 100%)` }}
+              >
+                <CreditCard className="h-3.5 w-3.5" /> Pay now
+              </button>
+            )}
             <Link
               href="/account/chat"
               className="inline-flex h-9 items-center gap-1.5 rounded-md border border-border bg-white px-3 text-xs font-semibold"
@@ -321,8 +395,8 @@ export function RxDetailModal({ rx, onClose }: { rx: AccountPrescription; onClos
             </Link>
             <button
               onClick={onClose}
-              className="inline-flex h-9 items-center gap-1.5 rounded-md px-4 text-xs font-semibold text-white"
-              style={{ background: `linear-gradient(135deg, ${ACCENT} 0%, ${ACCENT_RED} 100%)` }}
+              className="inline-flex h-9 items-center gap-1.5 rounded-md border border-border bg-white px-3 text-xs font-semibold"
+              style={{ color: WINE }}
               type="button"
             >
               Close

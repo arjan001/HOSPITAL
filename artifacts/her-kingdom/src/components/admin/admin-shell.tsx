@@ -134,6 +134,8 @@ const NAV_GROUPS: NavGroup[] = [
     name: "Pharmacy",
     items: [
       { label: "Prescriptions",         href: "/admin/prescriptions",          icon: ClipboardList, perm: "rx.view", hasBadge: true },
+      { label: "Care Pack Mapping",     href: "/admin/operations/care-packs",  icon: Layers,        perm: "sourcing.view" },
+      { label: "Demand Aggregation",    href: "/admin/operations/demand",      icon: LineChart,     perm: "sourcing.view" },
       { label: "Consultations",         href: "/admin/consultations",          icon: Stethoscope,   perm: "consult.handle" },
       { label: "Live Chat",             href: "/admin/chat",                   icon: MessagesSquare, perm: "chat.respond", hasBadge: true, badgeColor: "green" },
       { label: "Clinics & Partners",    href: "/admin/clinics",                icon: Building2,     perm: "users.manage" },

@@ -27,6 +27,7 @@ import { DeliveryPage } from "@/components/store/delivery-page";
 import { ServicesPage } from "@/components/store/services-page";
 import { TrackOrderForm } from "@/components/store/track-order-form";
 import { CarePacksPage } from "@/components/store/care-packs-page";
+import { CarePackAssessmentPage } from "@/components/store/care-pack-assessment-page";
 import FaqPage from "@/pages/faq";
 import ContactPage from "@/pages/contact";
 
@@ -97,6 +98,8 @@ import { AdminIntegrations } from "@/components/admin/integrations";
 import { AdminPopupOffer } from "@/components/admin/popup-offer";
 import { AdminProfile } from "@/components/admin/profile";
 import { AdminPrescriptions } from "@/components/admin/prescriptions";
+import { AdminCarePackMappings } from "@/components/admin/care-pack-mappings";
+import { AdminDemandAggregation } from "@/components/admin/demand-aggregation";
 import { AdminChat } from "@/components/admin/chat";
 import AccountChatPage from "@/pages/account/chat";
 import AccountConsultationsPage from "@/pages/account/consultations";
@@ -354,6 +357,7 @@ function Router() {
         {(params) => <BlogDetailPage slug={params.slug} />}
       </Route>
       <Route path="/search">{() => <SearchPage />}</Route>
+      <Route path="/care-packs/assessment" component={CarePackAssessmentPage} />
       <Route path="/care-packs" component={CarePacksPage} />
       <Route path="/faq" component={FaqPage} />
       <Route path="/contact" component={ContactPage} />
@@ -476,6 +480,8 @@ function Router() {
       <Route path="/admin/popup-offer" component={AdminPopupOffer} />
       <Route path="/admin/profile" component={AdminProfile} />
       <Route path="/admin/prescriptions" component={AdminPrescriptions} />
+      <Route path="/admin/operations/care-packs" component={AdminCarePackMappings} />
+      <Route path="/admin/operations/demand" component={AdminDemandAggregation} />
       <Route path="/admin/chat" component={AdminChat} />
       <Route path="/account/chat">
         {() => <ProtectedAccount><AccountChatPage /></ProtectedAccount>}

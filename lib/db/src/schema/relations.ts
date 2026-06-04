@@ -14,7 +14,15 @@ import { relations } from "drizzle-orm"
 import { users, addresses } from "./users"
 import { categories, products, productImages, productVariations } from "./catalog"
 import { orders, orderItems } from "./orders"
-import { prescriptions, prescriptionTimeline, prescriptionDrugs } from "./prescriptions"
+import {
+  prescriptions,
+  prescriptionTimeline,
+  prescriptionDrugs,
+  prescriptionSubscriptions,
+  prescriptionRefills,
+} from "./prescriptions"
+import { crmContacts } from "./crm"
+import { carePackAssessments } from "./operations"
 import { doctors, consultations } from "./consultations"
 import { uploads, wishlistItems } from "./uploads"
 import { payments } from "./payments"
@@ -32,6 +40,9 @@ export const usersRelations = relations(users, ({ many }) => ({
   wishlistItems: many(wishlistItems),
   uploads: many(uploads),
   supportTickets: many(supportTickets),
+  crmContacts: many(crmContacts),
+  carePackAssessments: many(carePackAssessments),
+  prescriptionSubscriptions: many(prescriptionSubscriptions),
 }))
 
 export const addressesRelations = relations(addresses, ({ one }) => ({
@@ -83,6 +94,8 @@ export const prescriptionsRelations = relations(prescriptions, ({ one, many }) =
   upload: one(uploads, { fields: [prescriptions.uploadId], references: [uploads.id] }),
   timeline: many(prescriptionTimeline),
   drugs: many(prescriptionDrugs),
+  subscriptions: many(prescriptionSubscriptions),
+  refills: many(prescriptionRefills),
 }))
 
 export const prescriptionTimelineRelations = relations(prescriptionTimeline, ({ one }) => ({
@@ -98,6 +111,44 @@ export const prescriptionDrugsRelations = relations(prescriptionDrugs, ({ one })
     references: [prescriptions.id],
   }),
 }))
+
+export const prescriptionSubscriptionsRelations = relations(
+  prescriptionSubscriptions,
+  ({ one, many }) => ({
+    user: one(users, {
+      fields: [prescriptionSubscriptions.userId],
+      references: [users.id],
+    }),
+    prescription: one(prescriptions, {
+      fields: [prescriptionSubscriptions.prescriptionId],
+      references: [prescriptions.id],
+    }),
+    refills: many(prescriptionRefills),
+  }),
+)
+
+export const prescriptionRefillsRelations = relations(prescriptionRefills, ({ one }) => ({
+  subscription: one(prescriptionSubscriptions, {
+    fields: [prescriptionRefills.subscriptionId],
+    references: [prescriptionSubscriptions.id],
+  }),
+  prescription: one(prescriptions, {
+    fields: [prescriptionRefills.prescriptionId],
+    references: [prescriptions.id],
+  }),
+}))
+
+/* ─────────────────── CRM & operations (workflow) ─────────────────── */
+
+export const crmContactsRelations = relations(crmContacts, ({ one }) => ({
+  user: one(users, { fields: [crmContacts.userId], references: [users.id] }),
+}))
+
+export const carePackAssessmentsRelations = relations(carePackAssessments, ({ one }) => ({
+  user: one(users, { fields: [carePackAssessments.userId], references: [users.id] }),
+}))
+
+/* carePackMappings: config table, no FKs */
 
 /* ─────────────────── consultations ─────────────────── */
 

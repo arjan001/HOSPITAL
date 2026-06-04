@@ -5,7 +5,7 @@ import { Link } from "wouter"
 import { Seo, organizationJsonLd, websiteJsonLd, breadcrumbJsonLd, faqJsonLd, productJsonLd } from "@/components/seo"
 import {
   ChevronDown, ChevronUp, ChevronLeft, ChevronRight,
-  Heart, ShoppingBag, Check, Eye,
+  ArrowRight, Eye,
   Activity, Stethoscope, Package2, Zap, Users, ShieldCheck, Cpu,
 } from "lucide-react"
 import { TopBar } from "./top-bar"
@@ -13,8 +13,6 @@ import { Navbar } from "./navbar"
 import { Footer } from "./footer"
 import { QuickViewProvider } from "@/lib/quick-view-context"
 import { QuickViewModal } from "./quick-view-modal"
-import { useCart } from "@/lib/cart-context"
-import { useWishlist } from "@/lib/wishlist-context"
 import type { Product } from "@/lib/types"
 import useSWR from "swr"
 import { safeFetcher, asArray } from "@/lib/fetcher"
@@ -117,13 +115,26 @@ function findPackProduct(packDef: PackDef, products: Product[]): Product | null 
   return products.find((p) => packDef.tags.test(blob(p))) ?? null
 }
 
+function packSeeMoreHref(packDef: PackDef, sectionId: string): string {
+  if (sectionId === "devices") {
+    const q = packDef.name.replace(/ pack$/i, "").trim()
+    return `/shop?category=devices&q=${encodeURIComponent(q)}`
+  }
+  return `/care-packs/assessment?pack=${packDef.slug}`
+}
+
 // ─── Pack Card ───────────────────────────────────────────────────────────────
-function PackCard({ packDef, product }: { packDef: PackDef; product: Product | null }) {
-  const { addItem } = useCart()
-  const { toggleItem, isInWishlist } = useWishlist()
-  const [justAdded, setJustAdded] = useState(false)
+function PackCard({
+  packDef,
+  product,
+  sectionId,
+}: {
+  packDef: PackDef
+  product: Product | null
+  sectionId: string
+}) {
   const [hover, setHover] = useState(false)
-  const wishlisted = product ? isInWishlist(product.id) : false
+  const seeMoreHref = packSeeMoreHref(packDef, sectionId)
 
   return (
     <div
@@ -134,28 +145,10 @@ function PackCard({ packDef, product }: { packDef: PackDef; product: Product | n
         boxShadow: "0 8px 22px -14px rgba(184,60,30,0.3)",
       }}
     >
-      <Seo
-        title="Care Packs — Curated Medicine Bundles"
-        description="Thoughtfully curated medicine and wellness packs for families, chronic care and recovery. Verified ingredients, fair prices, delivered to your door."
-        keywords={["care packs Kenya","medicine bundles","family health pack","chronic care pack","Shaniid RX"]}
-        canonicalPath="/care-packs"
-      />
-      {/* Heart */}
-      {product && (
-        <button
-          type="button"
-          onClick={() => toggleItem(product)}
-          className="absolute top-2.5 right-2.5 z-10 w-7 h-7 flex items-center justify-center rounded-full bg-white/80 shadow-sm"
-          style={{ border: `1px solid ${PEACH_BORDER}` }}
-        >
-          <Heart className="h-3.5 w-3.5" fill={wishlisted ? ACCENT_RED : "none"} style={{ color: ACCENT_RED }} />
-        </button>
-      )}
-
       {/* Image area */}
       <div className="p-3.5 pb-0">
         <div className="relative group">
-          <Link href={product ? `/product/${product.slug}` : `/shop?tag=${packDef.slug}`}>
+          <Link href={seeMoreHref}>
             <div
               className="w-full aspect-square rounded-[14px] flex items-center justify-center overflow-hidden"
               style={{ background: product ? "#FFF8F0" : `radial-gradient(circle, ${GOLDEN}88 0%, ${GOLDEN} 100%)` }}
@@ -176,8 +169,8 @@ function PackCard({ packDef, product }: { packDef: PackDef; product: Product | n
           </Link>
           {/* Eye icon — view product page */}
           <Link
-            href={product ? `/product/${product.slug}` : `/shop?tag=${packDef.slug}`}
-            aria-label={`View ${packDef.name}`}
+            href={seeMoreHref}
+            aria-label={`See more — ${packDef.name}`}
             className="absolute top-2 right-2 w-7 h-7 rounded-full flex items-center justify-center text-white shadow-sm opacity-0 group-hover:opacity-100 transition-opacity"
             style={{ background: ACCENT_RED }}
           >
@@ -188,7 +181,7 @@ function PackCard({ packDef, product }: { packDef: PackDef; product: Product | n
 
       {/* Info */}
       <div className="px-3.5 pt-3 pb-3.5 flex flex-col flex-1">
-        <Link href={product ? `/product/${product.slug}` : `/shop?tag=${packDef.slug}`}>
+        <Link href={seeMoreHref}>
           <h3 className="text-xs font-bold leading-snug line-clamp-2" style={{ color: WINE }}>
             {packDef.name}
           </h3>
@@ -196,51 +189,24 @@ function PackCard({ packDef, product }: { packDef: PackDef; product: Product | n
         <p className="text-[11px] mt-1 leading-snug line-clamp-2" style={{ color: WINE_SOFT }}>
           {product?.description || packDef.description}
         </p>
-        {product?.price && (
-          <p className="text-xs font-bold mt-1" style={{ color: ACCENT_RED }}>
-            KSh {product.price.toLocaleString()}
-          </p>
-        )}
+        <p className="text-[10px] mt-1.5 italic" style={{ color: WINE_SOFT }}>
+          Personalised pricing after assessment
+        </p>
 
-        {/* Button */}
-        {product ? (
-          <button
-            type="button"
-            onClick={() => { addItem(product); setJustAdded(true); window.setTimeout(() => setJustAdded(false), 1400) }}
-            onMouseEnter={() => setHover(true)}
-            onMouseLeave={() => setHover(false)}
-            className="mt-auto pt-2.5 w-full flex items-center justify-center gap-1 h-8 rounded-full text-[11px] font-bold transition-all"
-            style={
-              justAdded
-                ? { background: "#15803D", color: "white" }
-                : hover
-                  ? { background: `linear-gradient(135deg, ${ACCENT_ORANGE} 0%, ${ACCENT_RED} 100%)`, color: "white" }
-                  : { background: "#F2D4C4", color: WINE }
-            }
-          >
-            {justAdded ? <Check className="h-3 w-3" /> : <ShoppingBag className="h-3 w-3" />}
-            {justAdded ? "Added!" : "Add To Cart"}
-          </button>
-        ) : (
-          <Link
-            href={`/shop?tag=${packDef.slug}`}
-            className="mt-auto pt-2.5 w-full flex items-center justify-center gap-1 h-8 rounded-full text-[11px] font-bold transition-all"
-            style={{ background: "#F2D4C4", color: WINE }}
-            onMouseEnter={(e) => {
-              const el = e.currentTarget as HTMLAnchorElement
-              el.style.background = `linear-gradient(135deg, ${ACCENT_ORANGE} 0%, ${ACCENT_RED} 100%)`
-              el.style.color = "white"
-            }}
-            onMouseLeave={(e) => {
-              const el = e.currentTarget as HTMLAnchorElement
-              el.style.background = "#F2D4C4"
-              el.style.color = WINE
-            }}
-          >
-            <ShoppingBag className="h-3 w-3" />
-            Add To Cart
-          </Link>
-        )}
+        <Link
+          href={seeMoreHref}
+          onMouseEnter={() => setHover(true)}
+          onMouseLeave={() => setHover(false)}
+          className="mt-auto pt-2.5 w-full flex items-center justify-center gap-1 h-8 rounded-full text-[11px] font-bold transition-all"
+          style={
+            hover
+              ? { background: `linear-gradient(135deg, ${ACCENT_ORANGE} 0%, ${ACCENT_RED} 100%)`, color: "white" }
+              : { background: "#F2D4C4", color: WINE }
+          }
+        >
+          See more
+          <ArrowRight className="h-3 w-3" />
+        </Link>
       </div>
     </div>
   )
@@ -292,7 +258,12 @@ function PackSection({ section, products }: { section: Section; products: Produc
         style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
       >
         {section.packs.map((pack) => (
-          <PackCard key={pack.slug} packDef={pack} product={findPackProduct(pack, products)} />
+          <PackCard
+            key={pack.slug}
+            packDef={pack}
+            product={findPackProduct(pack, products)}
+            sectionId={section.id}
+          />
         ))}
       </div>
     </section>
@@ -338,6 +309,12 @@ function CarePacksInner() {
 
   return (
     <div className="min-h-screen flex flex-col" style={{ background: "#FFFFFF" }}>
+      <Seo
+        title="Care Packs — Curated Medicine Bundles"
+        description="Thoughtfully curated medicine and wellness packs for families, chronic care and recovery. Personalised pricing after pharmacist assessment."
+        keywords={["care packs Kenya", "medicine bundles", "family health pack", "chronic care pack", "Shaniid RX"]}
+        canonicalPath="/care-packs"
+      />
       <TopBar />
       <Navbar />
       <main className="flex-1">
@@ -368,6 +345,14 @@ function CarePacksInner() {
               <p className="mt-3 text-sm lg:text-base max-w-md" style={{ color: "rgba(255,251,245,0.8)" }}>
                 Curated medication bundles for chronic conditions, acute care, family wellness &amp; monitoring.
               </p>
+              <Link
+                href="/care-packs/assessment"
+                className="mt-5 inline-flex items-center gap-2 h-11 px-6 rounded-full text-sm font-bold text-white shadow-md hover:opacity-95 transition-opacity"
+                style={{ background: `linear-gradient(135deg, ${ACCENT_ORANGE} 0%, ${ACCENT_RED} 100%)` }}
+              >
+                Take care pack assessment
+                <ArrowRight className="h-4 w-4" />
+              </Link>
             </div>
           </div>
           {/* Bottom gradient fade */}

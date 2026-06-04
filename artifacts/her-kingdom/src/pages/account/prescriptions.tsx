@@ -10,6 +10,8 @@ import {
   RefreshCw,
   Eye,
   ChevronRight,
+  Bell,
+  Calendar,
 } from "lucide-react"
 import { TopBar } from "@/components/store/top-bar"
 import { Navbar } from "@/components/store/navbar"
@@ -17,11 +19,15 @@ import { Footer } from "@/components/store/footer"
 import { Seo } from "@/components/seo"
 import {
   useMyPrescriptions,
+  useMe,
+  useRefillReminders,
   apiPrescriptions,
+  apiRefillReminders,
   rxItemizedTotal,
   DEFAULT_DRUG_PRICE,
   type AccountPrescription,
   type RxStatus,
+  type SubscriptionFrequency,
 } from "@/lib/api-nest"
 import { RxDetailModal, StatusPill, STATUS_META, fmtTime } from "@/components/account/rx-detail-modal"
 import { PaystackPaymentModal } from "@/components/store/paystack-payment-modal"
@@ -33,18 +39,38 @@ const ACCENT_RED = "#B91C1C"
 const CREAM = "#FFFBF5"
 
 export default function AccountPrescriptionsPage() {
+  const { data: me } = useMe()
+  const refillPrefOn =
+    (me?.profile?.notifications as { refillReminders?: boolean } | undefined)?.refillReminders !== false
   const { data, isLoading, error, mutate } = useMyPrescriptions()
+  const {
+    data: reminders,
+    isLoading: remindersLoading,
+    mutate: mutateReminders,
+  } = useRefillReminders(refillPrefOn)
   const items = useMemo<AccountPrescription[]>(() => data ?? [], [data])
 
   const [openId, setOpenId] = useState<string | null>(null)
+  const [payRefillId, setPayRefillId] = useState<string | null>(null)
+  const [subscribingId, setSubscribingId] = useState<string | null>(null)
   const [filter, setFilter] = useState<RxStatus | "all">("all")
   const [buyRxId, setBuyRxId] = useState<string | null>(null)
   const open = openId ? items.find((x) => x.id === openId) ?? null : null
   const buyRx = buyRxId ? items.find((x) => x.id === buyRxId) ?? null : null
 
   const counts = useMemo(() => {
-    const c = { all: items.length, pending: 0, verified: 0, dispensed: 0, rejected: 0 }
-    items.forEach((r) => { c[r.status]++ })
+    const c = {
+      all: items.length,
+      pending: 0,
+      verified: 0,
+      accepted: 0,
+      declined: 0,
+      dispensed: 0,
+      rejected: 0,
+    }
+    items.forEach((r) => {
+      if (r.status in c) c[r.status as keyof typeof c]++
+    })
     return c
   }, [items])
 
@@ -115,17 +141,37 @@ export default function AccountPrescriptionsPage() {
               </div>
               <div className="flex items-center gap-2">
                 <KpiChip label="Total" value={counts.all} tone="rgba(255,255,255,0.95)" />
-                <KpiChip label="Verified" value={counts.verified + counts.dispensed} tone="#86EFAC" />
+                <KpiChip label="Ready / paid" value={counts.verified + counts.accepted + counts.dispensed} tone="#86EFAC" />
               </div>
             </div>
           </div>
+
+          {refillPrefOn && (
+            <RefillRemindersPanel
+              items={items}
+              reminders={reminders}
+              loading={remindersLoading}
+              subscribingId={subscribingId}
+              onSubscribe={async (rxId, frequency) => {
+                setSubscribingId(rxId)
+                try {
+                  await apiPrescriptions.subscribe(rxId, frequency)
+                  await mutateReminders()
+                } finally {
+                  setSubscribingId(null)
+                }
+              }}
+              onPayRefill={(id) => setPayRefillId(id)}
+            />
+          )}
 
           {/* Filter pills */}
           <div className="flex flex-wrap items-center gap-2">
             <FilterPill label={`All (${counts.all})`}                active={filter === "all"}       onClick={() => setFilter("all")} />
             <FilterPill label={`Awaiting (${counts.pending})`}       active={filter === "pending"}   onClick={() => setFilter("pending")} />
-            <FilterPill label={`Verified (${counts.verified})`}      active={filter === "verified"}  onClick={() => setFilter("verified")} />
-            <FilterPill label={`Dispensed (${counts.dispensed})`}    active={filter === "dispensed"} onClick={() => setFilter("dispensed")} />
+            <FilterPill label={`Quotation (${counts.verified})`}     active={filter === "verified"}  onClick={() => setFilter("verified")} />
+            <FilterPill label={`To pay (${counts.accepted})`}        active={filter === "accepted"}  onClick={() => setFilter("accepted")} />
+            <FilterPill label={`Validated (${counts.dispensed})`}  active={filter === "dispensed"} onClick={() => setFilter("dispensed")} />
             {counts.rejected > 0 && (
               <FilterPill label={`Action required (${counts.rejected})`} active={filter === "rejected"} onClick={() => setFilter("rejected")} />
             )}
@@ -191,11 +237,24 @@ export default function AccountPrescriptionsPage() {
                     {rx.status === "verified" && rx.approvedDrugs.length > 0 && (
                       <button
                         type="button"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          void apiPrescriptions.acceptQuotation(rx.id).then(() => mutate())
+                        }}
+                        className="absolute right-12 top-1/2 z-10 inline-flex h-8 -translate-y-1/2 items-center gap-1 rounded-md px-3 text-[11px] font-bold text-white shadow"
+                        style={{ background: `linear-gradient(135deg, ${ACCENT} 0%, ${ACCENT_RED} 100%)` }}
+                      >
+                        Accept quote
+                      </button>
+                    )}
+                    {rx.status === "accepted" && rx.approvedDrugs.length > 0 && (
+                      <button
+                        type="button"
                         onClick={(e) => { e.stopPropagation(); setBuyRxId(rx.id) }}
                         className="absolute right-12 top-1/2 z-10 inline-flex h-8 -translate-y-1/2 items-center gap-1 rounded-md px-3 text-[11px] font-bold text-white shadow"
                         style={{ background: `linear-gradient(135deg, ${ACCENT} 0%, ${ACCENT_RED} 100%)` }}
                       >
-                        <ShoppingBag className="h-3.5 w-3.5" /> Buy
+                        <ShoppingBag className="h-3.5 w-3.5" /> Pay
                       </button>
                     )}
                     <button
@@ -243,7 +302,25 @@ export default function AccountPrescriptionsPage() {
         </div>
       </div>
 
-      {open && <RxDetailModal rx={open} onClose={() => setOpenId(null)} />}
+      {open && (
+        <RxDetailModal
+          rx={open}
+          onClose={() => setOpenId(null)}
+          onAccept={async () => {
+            await apiPrescriptions.acceptQuotation(open.id)
+            await mutate()
+          }}
+          onDecline={async () => {
+            await apiPrescriptions.declineQuotation(open.id)
+            await mutate()
+            setOpenId(null)
+          }}
+          onPay={() => {
+            setBuyRxId(open.id)
+            setOpenId(null)
+          }}
+        />
+      )}
 
       {buyRx && (
         <RxBuyModal
@@ -253,12 +330,188 @@ export default function AccountPrescriptionsPage() {
         />
       )}
 
+      {payRefillId && reminders && (() => {
+        const refill = reminders.dueRefills.find((r) => r.id === payRefillId)
+        if (!refill) return null
+        const rx = items.find((x) => x.id === refill.prescriptionId)
+        if (!rx) return null
+        return (
+        <RefillPayModal
+          refill={refill}
+          rx={rx}
+          onClose={() => setPayRefillId(null)}
+          onPaid={() => {
+            setPayRefillId(null)
+            void mutateReminders()
+            void mutate()
+          }}
+        />
+        )
+      })()}
+
       <Footer />
     </>
   )
 }
 
 const ksh = (n: number) => `KSh ${Math.round(n).toLocaleString()}`
+
+const FREQ_LABEL: Record<SubscriptionFrequency, string> = {
+  weekly: "Weekly",
+  biweekly: "Every 2 weeks",
+  monthly: "Monthly",
+  quarterly: "Quarterly",
+}
+
+function RefillRemindersPanel({
+  items,
+  reminders,
+  loading,
+  subscribingId,
+  onSubscribe,
+  onPayRefill,
+}: {
+  items: AccountPrescription[]
+  reminders: ReturnType<typeof useRefillReminders>["data"]
+  loading: boolean
+  subscribingId: string | null
+  onSubscribe: (rxId: string, frequency: SubscriptionFrequency) => Promise<void>
+  onPayRefill: (refillId: string) => void
+}) {
+  const activeSubRx = new Set(
+    (reminders?.subscriptions ?? []).filter((s) => s.status === "active").map((s) => s.prescriptionId),
+  )
+  const eligible = items.filter(
+    (r) =>
+      (r.status === "verified" || r.status === "accepted" || r.status === "dispensed") &&
+      r.approvedDrugs.length > 0 &&
+      !activeSubRx.has(r.id),
+  )
+  const due = reminders?.dueRefills ?? []
+  const upcoming = reminders?.upcoming ?? []
+
+  if (loading && !reminders) {
+    return (
+      <div className="rounded-2xl border border-border bg-white px-5 py-4 text-sm text-muted-foreground flex items-center gap-2">
+        <Loader2 className="h-4 w-4 animate-spin" /> Loading refill reminders…
+      </div>
+    )
+  }
+
+  if (due.length === 0 && upcoming.length === 0 && eligible.length === 0) return null
+
+  return (
+    <div
+      className="rounded-2xl border p-5 space-y-4"
+      style={{ background: "#fff", borderColor: "#F2DCC8" }}
+    >
+      <div className="flex items-center gap-2">
+        <Bell className="h-4 w-4" style={{ color: ACCENT }} />
+        <h2 className="text-sm font-bold" style={{ color: WINE }}>Refill reminders</h2>
+      </div>
+
+      {due.length > 0 && (
+        <ul className="space-y-2">
+          {due.map((r) => {
+            const rx = items.find((x) => x.id === r.prescriptionId)
+            return (
+              <li
+                key={r.id}
+                className="flex flex-wrap items-center justify-between gap-2 rounded-xl px-4 py-3"
+                style={{ background: "#FFF1E6", border: "1px solid #F2DCC8" }}
+              >
+                <div>
+                  <p className="text-sm font-semibold" style={{ color: WINE }}>
+                    Refill due · {rx ? `Rx-${rx.rxNumber}` : "Prescription"}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {ksh(r.amount)} · due {new Date(r.dueAt).toLocaleDateString()}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => onPayRefill(r.id)}
+                  className="h-9 px-4 rounded-full text-xs font-bold text-white"
+                  style={{ background: `linear-gradient(135deg, ${ACCENT} 0%, ${ACCENT_RED} 100%)` }}
+                >
+                  Pay refill
+                </button>
+              </li>
+            )
+          })}
+        </ul>
+      )}
+
+      {upcoming.length > 0 && (
+        <div className="text-xs text-muted-foreground space-y-1">
+          {upcoming.slice(0, 3).map((u) => (
+            <p key={u.subscriptionId} className="flex items-center gap-1.5">
+              <Calendar className="h-3 w-3" />
+              Next {FREQ_LABEL[u.frequency] ?? u.frequency} refill · {new Date(u.dueAt).toLocaleDateString()} · {ksh(u.amount)}
+            </p>
+          ))}
+        </div>
+      )}
+
+      {eligible.length > 0 && (
+        <div className="space-y-2 pt-1 border-t border-border">
+          <p className="text-xs font-semibold text-muted-foreground">Enable automatic refills</p>
+          {eligible.map((rx) => (
+            <div key={rx.id} className="flex flex-wrap items-center justify-between gap-2">
+              <span className="text-sm font-medium" style={{ color: WINE }}>
+                Rx-{rx.rxNumber} · {rx.recipient}
+              </span>
+              <button
+                type="button"
+                disabled={subscribingId === rx.id}
+                onClick={() => void onSubscribe(rx.id, "monthly")}
+                className="h-8 px-3 rounded-md text-xs font-semibold border disabled:opacity-50"
+                style={{ borderColor: "#F2DCC8", color: WINE }}
+              >
+                {subscribingId === rx.id ? "Saving…" : "Monthly reminders"}
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function RefillPayModal({
+  refill,
+  rx,
+  onClose,
+  onPaid,
+}: {
+  refill: { id: string; amount: number; prescriptionId: string }
+  rx?: AccountPrescription
+  onClose: () => void
+  onPaid: () => void
+}) {
+  if (!rx) return null
+  return (
+    <PaystackPaymentModal
+      isOpen
+      onClose={onClose}
+      total={refill.amount}
+      customerName={rx.recipient}
+      defaultPhone={rx.phone}
+      defaultEmail={rx.email}
+      createPendingOrder={async () => ({ orderNumber: `RX-REFILL-${rx.rxNumber}` })}
+      onPaymentConfirmed={async (result) => {
+        try {
+          await apiRefillReminders.payRefill(refill.id, {
+            reference: result.reference,
+            receipt: result.mpesaReceipt,
+          })
+        } finally {
+          onPaid()
+        }
+      }}
+    />
+  )
+}
 
 /**
  * Two-stage buy flow for an approved prescription:
