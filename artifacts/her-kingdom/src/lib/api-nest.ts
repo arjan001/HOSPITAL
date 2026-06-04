@@ -421,6 +421,139 @@ export const apiAdminDemand = {
     nestFetch<DemandAggregationPayload>(`/admin/demand/aggregation?windowDays=${windowDays}`),
 }
 
+export type ProcurementDecisionRow = {
+  id: string
+  sku: string
+  productName: string
+  suggestedQty: number
+  priority: string
+  reason: string | null
+  demandSources: string[]
+  status: string
+  demandWindowDays: number
+  selectedSupplierId: string | null
+  selectedSupplierName: string | null
+  sourcingRequestId: string | null
+  decidedBy: string | null
+  decidedAt: string | null
+  notes: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export type SupplierSuggestionRow = {
+  id: string
+  procurementDecisionId: string
+  supplierId: string
+  supplierName: string
+  rank: number
+  score: number
+  unitCostEstimate: number | null
+  currency: string
+  moq: number | null
+  leadTimeDays: number | null
+  rationale: string | null
+  status: string
+  createdAt: string
+}
+
+export type ProcurementSummary = {
+  pending: number
+  approved: number
+  ordered: number
+  rejected: number
+  total: number
+}
+
+export const apiAdminProcurement = {
+  summary: () => nestFetch<ProcurementSummary>("/admin/procurement/summary"),
+  listDecisions: (status?: string) =>
+    nestFetch<ProcurementDecisionRow[]>(
+      status ? `/admin/procurement/decisions?status=${encodeURIComponent(status)}` : "/admin/procurement/decisions",
+    ),
+  getDecision: (id: string) => nestFetch<ProcurementDecisionRow>(`/admin/procurement/decisions/${id}`),
+  generateFromDemand: (input: {
+    windowDays?: number
+    inventory?: Array<{ sku: string; productName?: string; onHand: number; safetyStock: number; unitCost?: number }>
+  }) =>
+    nestFetch<{ created: number; updated: number }>("/admin/procurement/generate", {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+  patchDecision: (
+    id: string,
+    patch: Partial<{
+      status: string
+      suggestedQty: number
+      priority: string
+      notes: string
+      productName: string
+    }>,
+  ) =>
+    nestFetch<ProcurementDecisionRow>(`/admin/procurement/decisions/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(patch),
+    }),
+  listSuggestions: (decisionId: string) =>
+    nestFetch<SupplierSuggestionRow[]>(`/admin/procurement/decisions/${decisionId}/suggestions`),
+  suggestSuppliers: (
+    decisionId: string,
+    input: {
+      suppliers: Array<{
+        id: string
+        name: string
+        tier: string
+        verification: string
+        leadTimeDays: number
+        moq: number
+        rating: number
+        categories?: string[]
+      }>
+      quotes?: Array<{ supplierId: string; unitCost: number; sku?: string }>
+      inventory?: Array<{ sku: string; productName?: string; onHand: number; safetyStock: number; unitCost?: number }>
+    },
+  ) =>
+    nestFetch<SupplierSuggestionRow[]>(`/admin/procurement/decisions/${decisionId}/suggest`, {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+  selectSupplier: (
+    decisionId: string,
+    suggestionId: string,
+    inventory?: Array<{ sku: string; onHand: number; safetyStock: number; unitCost?: number }>,
+  ) =>
+    nestFetch<{
+      decision: ProcurementDecisionRow
+      suggestion: SupplierSuggestionRow
+      sourcingRequest: { id: string; sku: string; status: string }
+    }>(`/admin/procurement/decisions/${decisionId}/select-supplier`, {
+      method: "POST",
+      body: JSON.stringify({ suggestionId, inventory }),
+    }),
+}
+
+export type SourcingRequestRow = {
+  id: string
+  sku: string
+  productName: string
+  currentStock: number
+  reorderPoint: number
+  quantityNeeded: number
+  urgency: string
+  status: string
+  notes: string | null
+  assignedSupplierId: string | null
+  expectedDeliveryAt: string | null
+  fulfilledAt: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export const apiAdminSourcing = {
+  listRequests: () => nestFetch<SourcingRequestRow[]>("/admin/sourcing/requests"),
+  getRequest: (id: string) => nestFetch<SourcingRequestRow>(`/admin/sourcing/requests/${id}`),
+}
+
 /** Itemized total (price × qty, defaulting unpriced drugs) in whole KSh. */
 export function rxItemizedTotal(drugs: ApprovedDrug[]): number {
   return drugs.reduce((sum, d) => {

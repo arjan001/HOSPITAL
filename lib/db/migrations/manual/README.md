@@ -12,6 +12,7 @@ psql "$DATABASE_URL" -f lib/db/migrations/manual/20250604_crm.sql
 psql "$DATABASE_URL" -f lib/db/migrations/manual/20250604_prescription_subscriptions.sql
 psql "$DATABASE_URL" -f lib/db/migrations/manual/20250604_operations.sql
 psql "$DATABASE_URL" -f lib/db/migrations/manual/20250604_prescription_workflow_status.sql
+psql "$DATABASE_URL" -f lib/db/migrations/manual/20250604_procurement.sql
 ```
 
 Or use drizzle push when the DB is up:
@@ -29,3 +30,4 @@ pnpm --filter @workspace/db run push
 | `20250604_prescription_subscriptions.sql` | `prescription_subscriptions`, `prescription_refills` |
 | `20250604_operations.sql` | `care_pack_mappings`, `care_pack_assessments` |
 | `20250604_prescription_workflow_status.sql` | Documents `accepted` / `declined` status values |
+| `20250604_procurement.sql` | `procurement_decisions`, `supplier_suggestions` (BL #6–7) |

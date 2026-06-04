@@ -22,7 +22,7 @@ import {
   prescriptionRefills,
 } from "./prescriptions"
 import { crmContacts } from "./crm"
-import { carePackAssessments } from "./operations"
+import { carePackAssessments, procurementDecisions, supplierSuggestions } from "./operations"
 import { doctors, consultations } from "./consultations"
 import { uploads, wishlistItems } from "./uploads"
 import { payments } from "./payments"
@@ -149,6 +149,17 @@ export const carePackAssessmentsRelations = relations(carePackAssessments, ({ on
 }))
 
 /* carePackMappings: config table, no FKs */
+
+export const procurementDecisionsRelations = relations(procurementDecisions, ({ many }) => ({
+  suggestions: many(supplierSuggestions),
+}))
+
+export const supplierSuggestionsRelations = relations(supplierSuggestions, ({ one }) => ({
+  decision: one(procurementDecisions, {
+    fields: [supplierSuggestions.procurementDecisionId],
+    references: [procurementDecisions.id],
+  }),
+}))
 
 /* ─────────────────── consultations ─────────────────── */
 

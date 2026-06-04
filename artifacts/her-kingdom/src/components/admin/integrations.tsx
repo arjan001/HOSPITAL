@@ -1199,16 +1199,17 @@ function SecretInput({
 }
 
 function Textarea({
-  label, value, onChange, rows = 3, hint,
+  label, value, onChange, rows = 3, hint, className,
 }: {
   label: string
   value: string
   onChange: (v: string) => void
   rows?: number
   hint?: string
+  className?: string
 }) {
   return (
-    <label className="block">
+    <label className={`block ${className ?? ""}`}>
       <span className="block text-xs font-medium mb-1">{label}</span>
       <textarea
         value={value}

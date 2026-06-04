@@ -13,6 +13,8 @@
 | `care_pack_assessments` | [`operations.ts`](src/schema/operations.ts) | Persisted assessment outcomes |
 | `prescription_subscriptions` | [`prescriptions.ts`](src/schema/prescriptions.ts) | Refill reminder subscriptions |
 | `prescription_refills` | [`prescriptions.ts`](src/schema/prescriptions.ts) | Due/paid refill cycles |
+| `procurement_decisions` | [`operations.ts`](src/schema/operations.ts) | Buy/defer/reject from demand (BL #6) |
+| `supplier_suggestions` | [`operations.ts`](src/schema/operations.ts) | Ranked suppliers per decision (BL #7) |
 
 ## Prescription columns (recent)
 

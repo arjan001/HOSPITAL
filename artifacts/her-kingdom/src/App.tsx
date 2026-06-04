@@ -100,6 +100,7 @@ import { AdminProfile } from "@/components/admin/profile";
 import { AdminPrescriptions } from "@/components/admin/prescriptions";
 import { AdminCarePackMappings } from "@/components/admin/care-pack-mappings";
 import { AdminDemandAggregation } from "@/components/admin/demand-aggregation";
+import { AdminProcurementWorkflow } from "@/components/admin/procurement-workflow";
 import { AdminChat } from "@/components/admin/chat";
 import AccountChatPage from "@/pages/account/chat";
 import AccountConsultationsPage from "@/pages/account/consultations";
@@ -482,6 +483,7 @@ function Router() {
       <Route path="/admin/prescriptions" component={AdminPrescriptions} />
       <Route path="/admin/operations/care-packs" component={AdminCarePackMappings} />
       <Route path="/admin/operations/demand" component={AdminDemandAggregation} />
+      <Route path="/admin/operations/procurement" component={AdminProcurementWorkflow} />
       <Route path="/admin/chat" component={AdminChat} />
       <Route path="/account/chat">
         {() => <ProtectedAccount><AccountChatPage /></ProtectedAccount>}

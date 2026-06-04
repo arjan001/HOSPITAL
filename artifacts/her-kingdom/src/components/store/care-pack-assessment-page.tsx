@@ -19,16 +19,35 @@ const ACCENT_ORANGE = "#F97316"
 const PEACH_BORDER = "#F2DCC8"
 const PILL_BG = "linear-gradient(135deg, #FFF1E6 0%, #FFE2D1 100%)"
 
-const CONDITIONS = [
-  { id: "diabetes", label: "Diabetes", packSlug: "diabetes-care", packName: "Diabetes Care Pack" },
-  { id: "hypertension", label: "High blood pressure", packSlug: "blood-pressure-care", packName: "Blood Pressure Care Pack" },
-  { id: "asthma", label: "Asthma / breathing", packSlug: "asthma-care", packName: "Asthma & Respiratory Pack" },
-  { id: "chronic", label: "Other chronic condition", packSlug: "nutrition", packName: "Nutrition & Wellness Pack" },
-  { id: "acute", label: "Short-term illness (cold, pain, infection)", packSlug: "cold-flu", packName: "Cold & Flu Pack" },
-  { id: "family", label: "Family / caregiver needs", packSlug: "family-first-aid", packName: "Family First Aid Pack" },
-  { id: "wellness", label: "Prevention & wellness", packSlug: "immunity", packName: "Immunity Boost Pack" },
-  { id: "monitoring", label: "Home monitoring (BP, glucose, etc.)", packSlug: "diabetes-monitor", packName: "Diabetes Monitoring Pack" },
+const CONDITION_LABELS: Record<string, string> = {
+  diabetes: "Diabetes",
+  hypertension: "High blood pressure",
+  asthma: "Asthma / breathing",
+  chronic: "Other chronic condition",
+  acute: "Short-term illness (cold, pain, infection)",
+  family: "Family / caregiver needs",
+  wellness: "Prevention & wellness",
+  monitoring: "Home monitoring (BP, glucose, etc.)",
+}
+
+const FALLBACK_CONDITIONS = [
+  { id: "diabetes", label: CONDITION_LABELS.diabetes, packSlug: "diabetes-care", packName: "Diabetes Care Pack", productSkus: [] as string[] },
+  { id: "hypertension", label: CONDITION_LABELS.hypertension, packSlug: "blood-pressure-care", packName: "Blood Pressure Care Pack", productSkus: [] },
+  { id: "asthma", label: CONDITION_LABELS.asthma, packSlug: "asthma-care", packName: "Asthma & Respiratory Pack", productSkus: [] },
+  { id: "chronic", label: CONDITION_LABELS.chronic, packSlug: "nutrition", packName: "Nutrition & Wellness Pack", productSkus: [] },
+  { id: "acute", label: CONDITION_LABELS.acute, packSlug: "cold-flu", packName: "Cold & Flu Pack", productSkus: [] },
+  { id: "family", label: CONDITION_LABELS.family, packSlug: "family-first-aid", packName: "Family First Aid Pack", productSkus: [] },
+  { id: "wellness", label: CONDITION_LABELS.wellness, packSlug: "immunity", packName: "Immunity Boost Pack", productSkus: [] },
+  { id: "monitoring", label: CONDITION_LABELS.monitoring, packSlug: "diabetes-monitor", packName: "Diabetes Monitoring Pack", productSkus: [] },
 ] as const
+
+type ConditionOption = {
+  id: string
+  label: string
+  packSlug: string
+  packName: string
+  productSkus: string[]
+}
 
 const STEPS = ["Your health needs", "Risk profile", "Recommended pack", "Next steps"] as const
 
@@ -45,9 +64,29 @@ export function CarePackAssessmentPage() {
     return params.get("pack") ?? ""
   }, [search])
 
+  const [conditions, setConditions] = useState<ConditionOption[]>([...FALLBACK_CONDITIONS])
+
+  useEffect(() => {
+    void apiCarePacks.mappings().then((res) => {
+      if (!res.mappings?.length) return
+      const byKey = new Map(res.mappings.map((m) => [m.conditionKey, m]))
+      const merged: ConditionOption[] = FALLBACK_CONDITIONS.map((c) => {
+        const m = byKey.get(c.id)
+        if (!m) return c
+        return {
+          ...c,
+          packSlug: m.packSlug,
+          packName: m.packName,
+          productSkus: m.productSkus ?? [],
+        }
+      })
+      setConditions(merged)
+    }).catch(() => {})
+  }, [])
+
   const [step, setStep] = useState(1)
   const [selected, setSelected] = useState<string[]>(() => {
-    const match = CONDITIONS.find((c) => c.packSlug === preselect)
+    const match = FALLBACK_CONDITIONS.find((c) => c.packSlug === preselect)
     return match ? [match.id] : []
   })
 
@@ -55,13 +94,13 @@ export function CarePackAssessmentPage() {
     setSelected((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]))
 
   const recommendations = useMemo(() => {
-    const picks = CONDITIONS.filter((c) => selected.includes(c.id))
+    const picks = conditions.filter((c) => selected.includes(c.id))
     if (picks.length === 0 && preselect) {
-      const bySlug = CONDITIONS.find((c) => c.packSlug === preselect)
+      const bySlug = conditions.find((c) => c.packSlug === preselect)
       if (bySlug) return [bySlug]
     }
-    return picks.length > 0 ? picks : [CONDITIONS[6]]
-  }, [selected, preselect])
+    return picks.length > 0 ? picks : [conditions[6] ?? FALLBACK_CONDITIONS[6]]
+  }, [selected, preselect, conditions])
 
   const risk = riskLabel(selected.length)
   const crmSent = useRef(false)
@@ -75,7 +114,7 @@ export function CarePackAssessmentPage() {
         recommendedPacks: recommendations.map((r) => ({
           packSlug: r.packSlug,
           packName: r.packName,
-          productSkus: [],
+          productSkus: [...(r.productSkus ?? [])],
         })),
         riskLevel: risk.level,
       })
@@ -151,7 +190,7 @@ export function CarePackAssessmentPage() {
                 </div>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                {CONDITIONS.map((c) => {
+                {conditions.map((c) => {
                   const on = selected.includes(c.id)
                   return (
                     <button

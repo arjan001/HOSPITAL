@@ -8,6 +8,12 @@
  *   PATCH /api/v2/admin/care-pack-mappings/:id
  *   DELETE /api/v2/admin/care-pack-mappings/:id
  *   GET  /api/v2/admin/demand/aggregation         — unified demand roll-up (admin)
+ *   GET  /api/v2/admin/procurement/decisions      — procurement queue (BL #6)
+ *   POST /api/v2/admin/procurement/generate         — build decisions from demand
+ *   PATCH /api/v2/admin/procurement/decisions/:id
+ *   GET  /api/v2/admin/procurement/decisions/:id/suggestions  — supplier ranks (BL #7)
+ *   POST /api/v2/admin/procurement/decisions/:id/suggest
+ *   POST /api/v2/admin/procurement/decisions/:id/select-supplier
  */
 import {
   Body,
@@ -27,19 +33,31 @@ import {
   UseGuards,
 } from "@nestjs/common"
 import type { Request } from "express"
-import { and, desc, eq, gte, inArray } from "drizzle-orm"
+import { and, desc, eq, gte, inArray, sql } from "drizzle-orm"
 import {
   db,
   carePackAssessments,
   carePackMappings,
   prescriptions,
   prescriptionDrugs,
+  procurementDecisions,
+  supplierSuggestions,
   type CarePackMapping,
+  type ProcurementDecision,
+  type SupplierSuggestion,
 } from "@workspace/db"
 import { newId } from "../common/repository"
 import { ensureUserId } from "../common/session-user"
 import { AdminGuard, RequirePerm, AnyAdmin } from "../common/admin-guard"
 import { CrmModule, CrmService } from "./crm.module"
+import { SourcingModule, SourcingRequestsService } from "./sourcing.module"
+import {
+  priorityFromQty,
+  scoreSuppliersForSku,
+  type InventoryInput,
+  type QuoteInput,
+  type SupplierInput,
+} from "../common/supplier-scoring"
 
 const DEFAULT_MAPPINGS: Array<{
   conditionKey: string
@@ -365,6 +383,355 @@ export class DemandAggregationService {
   }
 }
 
+@Injectable()
+export class ProcurementService {
+  constructor(
+    @Inject(DemandAggregationService) private readonly demand: DemandAggregationService,
+    @Inject(SourcingRequestsService) private readonly sourcing: SourcingRequestsService,
+  ) {}
+
+  async list(opts?: { status?: string }): Promise<ProcurementDecision[]> {
+    const status = (opts?.status ?? "").trim()
+    if (status) {
+      return db
+        .select()
+        .from(procurementDecisions)
+        .where(eq(procurementDecisions.status, status))
+        .orderBy(desc(procurementDecisions.updatedAt))
+    }
+    return db.select().from(procurementDecisions).orderBy(desc(procurementDecisions.updatedAt))
+  }
+
+  async get(id: string): Promise<ProcurementDecision> {
+    const row = await db.select().from(procurementDecisions).where(eq(procurementDecisions.id, id)).limit(1)
+    if (!row[0]) throw new HttpException("Procurement decision not found", HttpStatus.NOT_FOUND)
+    return row[0]
+  }
+
+  async generateFromDemand(
+    windowDays = 30,
+    inventory: InventoryInput[] = [],
+  ): Promise<{ created: number; updated: number }> {
+    const agg = await this.demand.aggregate(windowDays)
+    const invBySku = new Map(inventory.map((i) => [i.sku, i]))
+    const now = new Date()
+    let created = 0
+    let updated = 0
+
+    for (const hint of agg.procurementHints) {
+      const sku = hint.sku.trim()
+      if (!sku) continue
+      const inv = invBySku.get(sku)
+      const productName = inv?.productName?.trim() || sku
+      const existing = await db
+        .select()
+        .from(procurementDecisions)
+        .where(and(eq(procurementDecisions.sku, sku), eq(procurementDecisions.status, "pending")))
+        .limit(1)
+
+      const sources = agg.bySku.find((r) => r.sku === sku)?.sources ?? []
+      const priority = priorityFromQty(hint.suggestedQty)
+
+      if (existing[0]) {
+        if (hint.suggestedQty > existing[0].suggestedQty) {
+          await db
+            .update(procurementDecisions)
+            .set({
+              suggestedQty: hint.suggestedQty,
+              productName: productName || existing[0].productName,
+              priority,
+              reason: hint.reason,
+              demandSources: sources,
+              demandWindowDays: windowDays,
+              updatedAt: now,
+            })
+            .where(eq(procurementDecisions.id, existing[0].id))
+          updated++
+        }
+        continue
+      }
+
+      await db.insert(procurementDecisions).values({
+        id: newId("prd"),
+        sku,
+        productName,
+        suggestedQty: hint.suggestedQty,
+        priority,
+        reason: hint.reason,
+        demandSources: sources,
+        status: "pending",
+        demandWindowDays: windowDays,
+        createdAt: now,
+        updatedAt: now,
+      })
+      created++
+    }
+
+    return { created, updated }
+  }
+
+  async patch(
+    id: string,
+    patch: {
+      status?: string
+      suggestedQty?: number
+      priority?: string
+      notes?: string
+      productName?: string
+      decidedBy?: string
+    },
+  ): Promise<ProcurementDecision> {
+    const cur = await this.get(id)
+    const now = new Date()
+    const status = patch.status ?? cur.status
+    const decidedAt =
+      patch.status && ["approved", "rejected", "ordered"].includes(patch.status) ? now : cur.decidedAt
+
+    await db
+      .update(procurementDecisions)
+      .set({
+        status,
+        suggestedQty: patch.suggestedQty ?? cur.suggestedQty,
+        priority: patch.priority ?? cur.priority,
+        notes: patch.notes ?? cur.notes,
+        productName: patch.productName?.trim() || cur.productName,
+        decidedBy: patch.decidedBy ?? cur.decidedBy,
+        decidedAt: decidedAt ?? cur.decidedAt,
+        updatedAt: now,
+      })
+      .where(eq(procurementDecisions.id, id))
+    return this.get(id)
+  }
+
+  async listSuggestions(decisionId: string): Promise<SupplierSuggestion[]> {
+    await this.get(decisionId)
+    return db
+      .select()
+      .from(supplierSuggestions)
+      .where(eq(supplierSuggestions.procurementDecisionId, decisionId))
+      .orderBy(supplierSuggestions.rank)
+  }
+
+  async suggestSuppliers(
+    decisionId: string,
+    input: {
+      suppliers: SupplierInput[]
+      quotes?: QuoteInput[]
+      inventory?: InventoryInput[]
+    },
+  ): Promise<SupplierSuggestion[]> {
+    const decision = await this.get(decisionId)
+    if (decision.status === "rejected") {
+      throw new HttpException("Cannot suggest suppliers for a rejected decision", HttpStatus.BAD_REQUEST)
+    }
+    if (decision.status === "pending") {
+      throw new HttpException(
+        "Approve the procurement decision before running supplier suggestions",
+        HttpStatus.BAD_REQUEST,
+      )
+    }
+    if (decision.status === "ordered") {
+      throw new HttpException("Supplier already selected for this line", HttpStatus.BAD_REQUEST)
+    }
+
+    const inv = input.inventory?.find((i) => i.sku === decision.sku)
+    const scored = scoreSuppliersForSku(
+      decision.sku,
+      decision.suggestedQty,
+      input.suppliers ?? [],
+      input.quotes ?? [],
+      inv,
+    )
+
+    await db
+      .delete(supplierSuggestions)
+      .where(eq(supplierSuggestions.procurementDecisionId, decisionId))
+
+    const now = new Date()
+    for (const row of scored) {
+      await db.insert(supplierSuggestions).values({
+        id: newId("sug"),
+        procurementDecisionId: decisionId,
+        supplierId: row.supplierId,
+        supplierName: row.supplierName,
+        rank: row.rank,
+        score: row.score,
+        unitCostEstimate: row.unitCostEstimate,
+        currency: row.currency,
+        moq: row.moq,
+        leadTimeDays: row.leadTimeDays,
+        rationale: row.rationale,
+        status: "suggested",
+        createdAt: now,
+      })
+    }
+
+    return this.listSuggestions(decisionId)
+  }
+
+  async selectSupplier(
+    decisionId: string,
+    suggestionId: string,
+    decidedBy?: string,
+    inventory: InventoryInput[] = [],
+  ): Promise<{
+    decision: ProcurementDecision
+    suggestion: SupplierSuggestion
+    sourcingRequest: { id: string; sku: string; status: string }
+  }> {
+    const decision = await this.get(decisionId)
+    const suggestions = await this.listSuggestions(decisionId)
+    const pick = suggestions.find((s) => s.id === suggestionId)
+    if (!pick) throw new HttpException("Suggestion not found", HttpStatus.NOT_FOUND)
+
+    const inv = inventory?.find((i) => i.sku === decision.sku)
+    const { sourcingRequest } = await this.sourcing.createFromProcurement({
+      procurementDecisionId: decisionId,
+      sku: decision.sku,
+      productName: decision.productName,
+      quantityNeeded: decision.suggestedQty,
+      urgency: decision.priority,
+      supplierId: pick.supplierId,
+      supplierName: pick.supplierName,
+      unitPrice: pick.unitCostEstimate,
+      leadTimeDays: pick.leadTimeDays,
+      notes: decision.reason ?? undefined,
+      currentStock: inv?.onHand ?? 0,
+      reorderPoint: inv?.safetyStock ?? 0,
+    })
+
+    const now = new Date()
+    for (const s of suggestions) {
+      await db
+        .update(supplierSuggestions)
+        .set({ status: s.id === suggestionId ? "selected" : "rejected" })
+        .where(eq(supplierSuggestions.id, s.id))
+    }
+
+    await db
+      .update(procurementDecisions)
+      .set({
+        status: "ordered",
+        selectedSupplierId: pick.supplierId,
+        selectedSupplierName: pick.supplierName,
+        sourcingRequestId: sourcingRequest.id,
+        decidedBy: decidedBy ?? decision.decidedBy,
+        decidedAt: now,
+        updatedAt: now,
+      })
+      .where(eq(procurementDecisions.id, decisionId))
+
+    const updated = await this.listSuggestions(decisionId)
+    const suggestion = updated.find((s) => s.id === suggestionId)!
+    return {
+      decision: await this.get(decisionId),
+      suggestion,
+      sourcingRequest: {
+        id: sourcingRequest.id,
+        sku: sourcingRequest.sku,
+        status: sourcingRequest.status,
+      },
+    }
+  }
+
+  async summary() {
+    const rows = await db
+      .select({
+        status: procurementDecisions.status,
+        count: sql<number>`count(*)::int`,
+      })
+      .from(procurementDecisions)
+      .groupBy(procurementDecisions.status)
+    const counts = Object.fromEntries(rows.map((r) => [r.status, r.count])) as Record<string, number>
+    return {
+      pending: counts.pending ?? 0,
+      approved: counts.approved ?? 0,
+      ordered: counts.ordered ?? 0,
+      rejected: counts.rejected ?? 0,
+      total: Object.values(counts).reduce((a, b) => a + b, 0),
+    }
+  }
+}
+
+@UseGuards(AdminGuard)
+@AnyAdmin()
+@Controller("admin/procurement")
+class ProcurementAdminController {
+  constructor(@Inject(ProcurementService) private readonly procurement: ProcurementService) {}
+
+  @Get("summary")
+  @RequirePerm("sourcing.view")
+  summary() {
+    return this.procurement.summary()
+  }
+
+  @Get("decisions")
+  @RequirePerm("sourcing.view")
+  list(@Query("status") status?: string) {
+    return this.procurement.list({ status })
+  }
+
+  @Get("decisions/:id")
+  @RequirePerm("sourcing.view")
+  get(@Param("id") id: string) {
+    return this.procurement.get(id)
+  }
+
+  @Post("generate")
+  @RequirePerm("sourcing.manage")
+  generate(@Body() body: Record<string, unknown>) {
+    const windowDays = Number(body.windowDays) || 30
+    const inventory = Array.isArray(body.inventory)
+      ? (body.inventory as Array<InventoryInput & { productName?: string }>)
+      : []
+    return this.procurement.generateFromDemand(windowDays, inventory)
+  }
+
+  @Patch("decisions/:id")
+  @RequirePerm("sourcing.manage")
+  patch(@Param("id") id: string, @Body() body: Record<string, unknown>) {
+    return this.procurement.patch(id, {
+      status: typeof body.status === "string" ? body.status : undefined,
+      suggestedQty: body.suggestedQty != null ? Number(body.suggestedQty) : undefined,
+      priority: typeof body.priority === "string" ? body.priority : undefined,
+      notes: typeof body.notes === "string" ? body.notes : undefined,
+      productName: typeof body.productName === "string" ? body.productName : undefined,
+      decidedBy: typeof body.decidedBy === "string" ? body.decidedBy : undefined,
+    })
+  }
+
+  @Get("decisions/:id/suggestions")
+  @RequirePerm("sourcing.view")
+  suggestions(@Param("id") id: string) {
+    return this.procurement.listSuggestions(id)
+  }
+
+  @Post("decisions/:id/suggest")
+  @RequirePerm("sourcing.manage")
+  suggest(@Param("id") id: string, @Body() body: Record<string, unknown>) {
+    return this.procurement.suggestSuppliers(id, {
+      suppliers: Array.isArray(body.suppliers) ? (body.suppliers as SupplierInput[]) : [],
+      quotes: Array.isArray(body.quotes) ? (body.quotes as QuoteInput[]) : [],
+      inventory: Array.isArray(body.inventory) ? (body.inventory as InventoryInput[]) : [],
+    })
+  }
+
+  @Post("decisions/:id/select-supplier")
+  @RequirePerm("sourcing.manage")
+  select(
+    @Param("id") id: string,
+    @Body() body: Record<string, unknown>,
+    @Req() req: Request & { adminEmail?: string },
+  ) {
+    const suggestionId = String(body.suggestionId ?? "")
+    if (!suggestionId) throw new HttpException("suggestionId required", HttpStatus.BAD_REQUEST)
+    const inventory = Array.isArray(body.inventory)
+      ? (body.inventory as InventoryInput[])
+      : []
+    return this.procurement.selectSupplier(id, suggestionId, req.adminEmail, inventory)
+  }
+}
+
 @Controller("care-packs")
 class CarePacksPublicController {
   constructor(@Inject(CarePackMappingService) private readonly svc: CarePackMappingService) {}
@@ -470,9 +837,14 @@ class DemandAdminController {
 }
 
 @Module({
-  imports: [CrmModule],
-  controllers: [CarePacksPublicController, CarePackMappingsAdminController, DemandAdminController],
-  providers: [CarePackMappingService, DemandAggregationService],
-  exports: [CarePackMappingService, DemandAggregationService],
+  imports: [CrmModule, SourcingModule],
+  controllers: [
+    CarePacksPublicController,
+    CarePackMappingsAdminController,
+    DemandAdminController,
+    ProcurementAdminController,
+  ],
+  providers: [CarePackMappingService, DemandAggregationService, ProcurementService],
+  exports: [CarePackMappingService, DemandAggregationService, ProcurementService],
 })
 export class OperationsModule {}

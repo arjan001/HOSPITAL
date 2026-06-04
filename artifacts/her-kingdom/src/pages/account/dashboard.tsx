@@ -1,7 +1,8 @@
 import { useState } from "react"
 import { Link } from "wouter"
 import { Heart, MapPin, Package, User as UserIcon, Mail, Phone, Settings, ShieldCheck, ClipboardList, Pill, Clock, CheckCheck, ChevronRight, Upload, FileText, Eye, LifeBuoy } from "lucide-react"
-import { useMe, useAddresses, useOrders, useWishlistRemote, useMyPrescriptions } from "@/lib/api-nest"
+import { useMe, useAddresses, useOrders, useWishlistRemote, useMyPrescriptions, type RxStatus } from "@/lib/api-nest"
+import { STATUS_META } from "@/components/account/rx-detail-modal"
 import { RxDetailModal } from "@/components/account/rx-detail-modal"
 import { Seo } from "@/components/seo"
 
@@ -9,12 +10,12 @@ const WINE = "#3D0814"
 const ACCENT = "#F97316"
 const CREAM = "#FFFBF5"
 
-const STATUS_TONES: Record<"pending" | "verified" | "dispensed" | "rejected", { label: string; color: string; bg: string }> = {
-  pending:   { label: "Awaiting",  color: "#92400E", bg: "#FEF3C7" },
-  verified:  { label: "Verified",  color: "#166534", bg: "#DCFCE7" },
-  dispensed: { label: "Dispensed", color: "#1E40AF", bg: "#DBEAFE" },
-  rejected:  { label: "Action",    color: "#991B1B", bg: "#FEE2E2" },
-}
+const STATUS_TONES: Record<RxStatus, { label: string; color: string; bg: string }> = Object.fromEntries(
+  (Object.keys(STATUS_META) as RxStatus[]).map((k) => [
+    k,
+    { label: STATUS_META[k].label, color: STATUS_META[k].color, bg: STATUS_META[k].bg },
+  ]),
+) as Record<RxStatus, { label: string; color: string; bg: string }>
 
 function MiniRxStat({ icon: Icon, label, value, tone, bg }: {
   icon: typeof Heart; label: string; value: number; tone: string; bg: string

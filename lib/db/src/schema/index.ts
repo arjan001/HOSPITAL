@@ -1,3 +1,7 @@
+/**
+ * Drizzle schema barrel — source of truth for Postgres tables/columns.
+ * See lib/db/SCHEMA.md and lib/db/migrations/manual/README.md to apply changes.
+ */
 export * from "./users"
 export * from "./catalog"
 export * from "./orders"

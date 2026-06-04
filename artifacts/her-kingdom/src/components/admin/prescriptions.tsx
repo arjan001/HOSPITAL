@@ -179,12 +179,12 @@ export function AdminPrescriptions() {
     if (!fresh) return
     if (
       fresh.extractionStatus !== active.extractionStatus ||
-      fresh.extractedDrugs.length !== active.extractedDrugs.length ||
+      (fresh.extractedDrugs?.length ?? 0) !== (active.extractedDrugs?.length ?? 0) ||
       fresh.extractionSummary !== active.extractionSummary
     ) {
       setActive({ ...fresh, approvedDrugs: active.approvedDrugs })
     }
-  }, [items, active?.id, active?.extractionStatus, active?.extractedDrugs.length, active?.extractionSummary, active?.approvedDrugs])
+  }, [items, active?.id, active?.extractionStatus, active?.extractedDrugs?.length, active?.extractionSummary, active?.approvedDrugs])
 
   useEffect(() => {
     if (!active) return

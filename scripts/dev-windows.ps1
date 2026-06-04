@@ -31,4 +31,4 @@ Start-Process powershell -ArgumentList @(
 
 Write-Host ""
 Write-Host "Three dev windows opened. Storefront: http://localhost:21470"
-Write-Host "If Postgres is not running, start it (Docker) then: pnpm --filter @workspace/db run push"
+Write-Host "If Postgres is not running, start it then: pnpm db:push  (or pnpm db:migrate:manual for workflow SQL only)"

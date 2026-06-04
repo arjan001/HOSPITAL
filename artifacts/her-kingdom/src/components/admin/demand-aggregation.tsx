@@ -101,9 +101,14 @@ export function AdminDemandAggregation() {
             <section className="rounded-xl border border-border overflow-hidden">
               <div className="px-4 py-3 border-b bg-muted/30 flex items-center justify-between">
                 <h3 className="font-semibold text-sm">Procurement hints (top SKUs)</h3>
-                <Link href="/admin/sourcing/forecast" className="text-xs text-primary hover:underline">
-                  Open demand forecast →
-                </Link>
+                <div className="flex gap-3">
+                  <Link href="/admin/operations/procurement" className="text-xs text-primary hover:underline font-medium">
+                    Procurement decisions →
+                  </Link>
+                  <Link href="/admin/sourcing/forecast" className="text-xs text-primary hover:underline">
+                    Demand forecast →
+                  </Link>
+                </div>
               </div>
               <table className="w-full text-sm">
                 <thead className="text-left text-xs text-muted-foreground">

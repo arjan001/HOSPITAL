@@ -60,6 +60,7 @@ import { ContactInquiriesModule } from "./modules/contact-inquiries.module"
 import { CrmModule } from "./modules/crm.module"
 import { PrescriptionSubscriptionsModule } from "./modules/prescription-subscriptions.module"
 import { OperationsModule } from "./modules/operations.module"
+import { SourcingModule } from "./modules/sourcing.module"
 
 @Module({
   imports: [
@@ -98,6 +99,7 @@ import { OperationsModule } from "./modules/operations.module"
     CrmModule,
     PrescriptionSubscriptionsModule,
     OperationsModule,
+    SourcingModule,
   ],
   providers: [
     // Global catch-all exception filter: normalises every error response and
