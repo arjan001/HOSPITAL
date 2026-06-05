@@ -27,7 +27,7 @@ import { adminAuthHeaders } from "./api-client"
 
 const BASE = "/api/v2"
 
-async function nestFetch<T>(path: string, init?: RequestInit): Promise<T> {
+export async function nestFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     credentials: "include",
     headers: {
@@ -552,6 +552,139 @@ export type SourcingRequestRow = {
 export const apiAdminSourcing = {
   listRequests: () => nestFetch<SourcingRequestRow[]>("/admin/sourcing/requests"),
   getRequest: (id: string) => nestFetch<SourcingRequestRow>(`/admin/sourcing/requests/${id}`),
+}
+
+export type StockLinePayload = {
+  sku: string
+  productName?: string
+  onHand: number
+  safetyStock?: number
+  location?: string
+  unitCost?: number
+}
+
+export type InventoryAllocationRow = {
+  id: string
+  sku: string
+  productName: string
+  quantity: number
+  referenceType: string
+  referenceId: string
+  status: string
+  location: string | null
+  notes: string | null
+  allocatedBy: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export type AvailabilityLine = StockLinePayload & {
+  reserved: number
+  available: number
+  canAllocate: boolean
+}
+
+export const apiAdminInventory = {
+  summary: () =>
+    nestFetch<{
+      reserved: { count: number; units: number }
+      committed: { count: number; units: number }
+      released: { count: number; units: number }
+    }>("/admin/inventory/allocations/summary"),
+  listAllocations: (opts?: { status?: string; referenceType?: string; referenceId?: string }) => {
+    const q = new URLSearchParams()
+    if (opts?.status) q.set("status", opts.status)
+    if (opts?.referenceType) q.set("referenceType", opts.referenceType)
+    if (opts?.referenceId) q.set("referenceId", opts.referenceId)
+    const qs = q.toString()
+    return nestFetch<InventoryAllocationRow[]>(
+      `/admin/inventory/allocations${qs ? `?${qs}` : ""}`,
+    )
+  },
+  availability: (stock: StockLinePayload[]) =>
+    nestFetch<{ lines: AvailabilityLine[]; reserved: Record<string, number> }>(
+      "/admin/inventory/availability",
+      { method: "POST", body: JSON.stringify({ stock }) },
+    ),
+  syncProcurement: (stock: StockLinePayload[]) =>
+    nestFetch<{ created: number; scanned: number; skipped: string[] }>(
+      "/admin/inventory/allocations/sync-procurement",
+      { method: "POST", body: JSON.stringify({ stock }) },
+    ),
+  patchAllocation: (id: string, status: "reserved" | "committed" | "released") =>
+    nestFetch<InventoryAllocationRow>(`/admin/inventory/allocations/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ status }),
+    }),
+}
+
+export type CarePackAssemblyJobRow = {
+  id: string
+  packSlug: string
+  packName: string
+  assessmentId: string | null
+  userId: string | null
+  sessionId: string | null
+  patientLabel: string | null
+  priority: string
+  status: string
+  notes: string | null
+  assembledBy: string | null
+  assembledAt: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export type CarePackAssemblyLineRow = {
+  id: string
+  jobId: string
+  sku: string
+  productName: string
+  quantityRequired: number
+  quantityAllocated: number
+  status: string
+  createdAt: string
+}
+
+export type AssemblyJobDetail = {
+  job: CarePackAssemblyJobRow
+  lines: CarePackAssemblyLineRow[]
+  allocations: InventoryAllocationRow[]
+}
+
+export const apiAdminAssembly = {
+  summary: () =>
+    nestFetch<Record<string, number>>("/admin/care-packs/assembly/summary"),
+  listJobs: (status?: string) =>
+    nestFetch<CarePackAssemblyJobRow[]>(
+      status
+        ? `/admin/care-packs/assembly/jobs?status=${encodeURIComponent(status)}`
+        : "/admin/care-packs/assembly/jobs",
+    ),
+  getJob: (id: string) => nestFetch<AssemblyJobDetail>(`/admin/care-packs/assembly/jobs/${id}`),
+  pendingAssessments: () =>
+    nestFetch<
+      Array<{
+        id: string
+        createdAt: string
+        recommendedPacks: Array<{ packSlug: string; packName: string; productSkus: string[] }>
+        riskLevel: string | null
+      }>
+    >("/admin/care-packs/assembly/pending-assessments"),
+  createFromAssessment: (assessmentId: string) =>
+    nestFetch<AssemblyJobDetail>(`/admin/care-packs/assembly/jobs/from-assessment/${assessmentId}`, {
+      method: "POST",
+    }),
+  allocateJob: (jobId: string, stock: StockLinePayload[]) =>
+    nestFetch<AssemblyJobDetail & { allocationsCreated: number }>(
+      `/admin/care-packs/assembly/jobs/${jobId}/allocate`,
+      { method: "POST", body: JSON.stringify({ stock }) },
+    ),
+  patchJob: (jobId: string, patch: { status?: string; notes?: string }) =>
+    nestFetch<AssemblyJobDetail>(`/admin/care-packs/assembly/jobs/${jobId}`, {
+      method: "PATCH",
+      body: JSON.stringify(patch),
+    }),
 }
 
 /** Itemized total (price × qty, defaulting unpriced drugs) in whole KSh. */

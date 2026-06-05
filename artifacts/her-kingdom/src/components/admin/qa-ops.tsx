@@ -10,18 +10,34 @@
  *          Expiry Validation → Prescription Matching → Storage Compliance
  *          → Final Pack Inspection → QA Approved
  *
- * All persisted via cmsStore so the NestJS swap is one file later.
+ * Persisted in Postgres via /api/v2/admin/qa/*.
  */
 
 import { useMemo, useState } from "react"
+import { Link } from "wouter"
 import {
   ShieldCheck, Boxes, Pill, Wrench, PackageSearch, AlertTriangle,
   CalendarX, ClipboardCheck, Plus, Pencil, Trash2, CheckCircle2,
   Activity, Settings2, Search,
 } from "lucide-react"
-import { useCmsDoc, newId } from "@/lib/cms-store"
+import { newId } from "@/lib/cms-store"
 import { useAdminOrders, type AdminOrderRecord } from "@/lib/orders-store"
-import { AdminShell } from "./admin-shell"
+import {
+  usePersistErrorBanner,
+  useQaConfig,
+  useQaDispatchChecks,
+  useQaInventory,
+} from "@/lib/use-qa-logistics-store"
+import type { QaConfigDto } from "@/lib/qa-logistics-types"
+import {
+  QA_STEP_LABEL,
+  QA_STEP_ORDER,
+  blankQaSteps,
+  validateQaApproval,
+  type QaDispatchCheck,
+  type QaInventoryItem,
+  type QaStepKey,
+} from "./qa-shared"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -34,6 +50,8 @@ import {
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
 } from "@/components/ui/dialog"
+import { useToast } from "@/hooks/use-toast"
+import { AdminShell } from "./admin-shell"
 
 const WINE = "#3D0814"
 
@@ -43,74 +61,22 @@ const WINE = "#3D0814"
 
 type ItemKind = "medication" | "device" | "consumable"
 
-interface InventoryItem {
-  id: string
-  kind: ItemKind
-  name: string
-  sku: string
-  stock: number
-  safetyStock: number          // re-order point
-  unit: string                 // "tablets", "boxes", "units"
-  expiryDate?: string          // ISO date (yyyy-mm-dd) — only meaningful for meds/consumables
-  batchRef?: string
-  location: string             // "Main warehouse · Shelf A2"
-  notes?: string
-}
+type InventoryItem = QaInventoryItem
+type DispatchCheck = QaDispatchCheck
+type QaConfig = QaConfigDto
 
-type StepKey =
-  | "dispatch_prep" | "batch_verification" | "expiry_validation"
-  | "prescription_match" | "storage_compliance" | "final_pack" | "qa_approved"
-
-const STEP_ORDER: StepKey[] = [
-  "dispatch_prep", "batch_verification", "expiry_validation",
-  "prescription_match", "storage_compliance", "final_pack", "qa_approved",
-]
-
-const STEP_LABEL: Record<StepKey, string> = {
-  dispatch_prep:        "Dispatch preparation",
-  batch_verification:   "Medication batch verification",
-  expiry_validation:    "Expiry validation",
-  prescription_match:   "Prescription matching",
-  storage_compliance:   "Storage compliance",
-  final_pack:           "Final pack inspection",
-  qa_approved:          "QA approved",
-}
-
-interface DispatchCheck {
-  id: string
-  batchRef: string             // links to logistics batch ref
-  orderRef?: string            // optional specific order
-  steps: Record<StepKey, boolean>
-  notes: string
-  checkedBy: string
-  createdAt: string
-  approvedAt?: string
-  rejectedAt?: string
-  rejectionReason?: string
-}
-
-interface QaConfig {
-  expiryWarningDays: number    // days before expiry to start warning
-  expiryCriticalDays: number   // days before expiry to flag critical
-  requireAllStepsForApproval: boolean
-  blockExpiredFromDispatch: boolean
-}
+type StepKey = QaStepKey
+const STEP_ORDER = QA_STEP_ORDER
+const STEP_LABEL = QA_STEP_LABEL
 
 // =====================================================================
-// CMS keys + defaults
+// Defaults
 // =====================================================================
-
-const KEYS = {
-  inventory: "qa.inventory",
-  dispatch: "qa.dispatch-checks",
-  config: "qa.config",
-} as const
-
-const today = () => new Date().toISOString().slice(0, 10)
 const daysFromNow = (d: number) => {
   const t = new Date(); t.setDate(t.getDate() + d)
   return t.toISOString().slice(0, 10)
 }
+const today = () => new Date().toISOString().slice(0, 10)
 
 const DEFAULT_INVENTORY: InventoryItem[] = [
   { id: "inv_paracetamol", kind: "medication", name: "Paracetamol 500mg", sku: "MED-PCM-500", stock: 240, safetyStock: 100, unit: "tablets", expiryDate: daysFromNow(180), batchRef: "BAT-2026-0001", location: "Main warehouse · Shelf A2" },
@@ -130,22 +96,22 @@ const DEFAULT_CONFIG: QaConfig = {
 }
 
 function blankSteps(): Record<StepKey, boolean> {
-  return STEP_ORDER.reduce((acc, k) => { acc[k] = false; return acc }, {} as Record<StepKey, boolean>)
+  return blankQaSteps()
 }
 
 // =====================================================================
 // Helpers
 // =====================================================================
 
-const KIND_LABEL: Record<ItemKind, string> = {
+const KIND_LABEL: Record<string, string> = {
   medication: "Medication", device: "Device", consumable: "Consumable",
 }
 
-const KIND_ICON: Record<ItemKind, typeof Pill> = {
+const KIND_ICON: Record<string, typeof Pill> = {
   medication: Pill, device: Wrench, consumable: Boxes,
 }
 
-const KIND_STYLE: Record<ItemKind, string> = {
+const KIND_STYLE: Record<string, string> = {
   medication: "bg-rose-100 text-rose-800",
   device: "bg-violet-100 text-violet-800",
   consumable: "bg-sky-100 text-sky-800",
@@ -247,10 +213,12 @@ const TABS: { key: TabKey; label: string; icon: typeof Boxes }[] = [
 ]
 
 export function AdminQaOps() {
+  const { toast } = useToast()
   const [tab, setTab] = useState<TabKey>("overview")
-  const [inventory, setInventory] = useCmsDoc<InventoryItem[]>(KEYS.inventory, DEFAULT_INVENTORY)
-  const [checks, setChecks] = useCmsDoc<DispatchCheck[]>(KEYS.dispatch, [])
-  const [config, setConfig] = useCmsDoc<QaConfig>(KEYS.config, DEFAULT_CONFIG)
+  const [inventory, setInventory, , errInv] = useQaInventory(DEFAULT_INVENTORY)
+  const [checks, setChecks, , errChecks] = useQaDispatchChecks([])
+  const [config, setConfig, , errCfg] = useQaConfig(DEFAULT_CONFIG)
+  const persistErr = usePersistErrorBanner([errInv, errChecks, errCfg])
   const { items: orders } = useAdminOrders()
 
   const kpis = useMemo(() => {
@@ -274,6 +242,14 @@ export function AdminQaOps() {
   return (
     <AdminShell title="QA · Operations">
       <div className="space-y-5">
+        {persistErr.message && (
+          <div className="text-sm rounded-xl border px-4 py-3 bg-red-50 text-red-800 border-red-200 flex justify-between gap-2">
+            <span>Could not sync with Postgres: {persistErr.message}</span>
+            <button type="button" className="text-xs underline shrink-0" onClick={persistErr.dismiss}>
+              Dismiss
+            </button>
+          </div>
+        )}
         <div>
           <p className="text-[11px] font-bold uppercase tracking-[0.18em]" style={{ color: WINE }}>
             Pipeline · QA &amp; Assurance
@@ -284,7 +260,10 @@ export function AdminQaOps() {
           </h1>
           <p className="text-sm text-muted-foreground mt-1 max-w-2xl">
             Track stock levels, expiry windows and safety-stock alerts across devices, consumables
-            and medication — then sign-off every outbound batch through the 7-step QA checklist.
+            and medication — then sign-off every outbound batch through the 7-step QA checklist.{" "}
+            <Link href="/admin/qa/batches" className="underline font-medium" style={{ color: WINE }}>
+              Batch verification →
+            </Link>
           </p>
           <div className="mt-3">
             <button
@@ -293,9 +272,16 @@ export function AdminQaOps() {
                 try {
                   const { pipelineClient } = await import("@/lib/pipeline-client")
                   const r = await pipelineClient.qa.scanExpiry()
-                  alert(`QA scan complete\n\nExpired: ${r.expired}\nCritical: ${r.critical}\nWarning: ${r.warning}\nTotal flags: ${r.flags.length}`)
+                  toast({
+                    title: "Expiry scan complete",
+                    description: `Expired ${r.expired} · critical ${r.critical} · warning ${r.warning} · ${r.flags.length} flags`,
+                  })
                 } catch (e) {
-                  alert(`Scan failed: ${e instanceof Error ? e.message : String(e)}`)
+                  toast({
+                    title: "Scan failed",
+                    description: e instanceof Error ? e.message : String(e),
+                    variant: "destructive",
+                  })
                 }
               }}
               className="text-[12px] px-3 py-1.5 rounded-sm border border-border bg-background hover:bg-muted inline-flex items-center gap-1.5"
@@ -338,7 +324,15 @@ export function AdminQaOps() {
         {tab === "inventory" && <InventoryTab inventory={inventory} setInventory={setInventory} config={config} />}
         {tab === "stock-alerts" && <StockAlertsTab inventory={inventory} setInventory={setInventory} />}
         {tab === "expiry" && <ExpiryTab inventory={inventory} config={config} />}
-        {tab === "dispatch" && <DispatchTab checks={checks} setChecks={setChecks} inventory={inventory} config={config} orders={orders} />}
+        {tab === "dispatch" && (
+          <DispatchTab
+            checks={checks}
+            setChecks={setChecks}
+            inventory={inventory}
+            config={config}
+            orders={orders}
+          />
+        )}
         {tab === "settings" && <SettingsTab config={config} setConfig={setConfig} />}
       </div>
     </AdminShell>
@@ -738,12 +732,15 @@ function DispatchTab({
 }: {
   checks: DispatchCheck[]
   setChecks: (next: DispatchCheck[] | ((p: DispatchCheck[]) => DispatchCheck[])) => void
-  inventory: InventoryItem[]
+  inventory: QaInventoryItem[]
   config: QaConfig
   orders: AdminOrderRecord[]
 }) {
+  const { toast } = useToast()
   const [editing, setEditing] = useState<DispatchCheck | null>(null)
   const [open, setOpen] = useState(false)
+  const [rejectTarget, setRejectTarget] = useState<DispatchCheck | null>(null)
+  const [rejectReason, setRejectReason] = useState("")
   const [statusFilter, setStatusFilter] = useState<"all" | "pending" | "approved" | "rejected">("all")
 
   // Confirmed (paid) orders that don't yet have a QA gate opened against them.
@@ -804,24 +801,44 @@ function DispatchTab({
     setChecks((prev) => prev.map((c) => c.id === id ? { ...c, steps: { ...c.steps, [step]: !c.steps[step] } } : c))
   }
   const approve = (c: DispatchCheck) => {
-    if (config.requireAllStepsForApproval) {
-      const allDone = STEP_ORDER.every((k) => c.steps[k])
-      if (!allDone) { alert("Cannot approve — all 7 QA steps must be checked first."); return }
+    const validation = validateQaApproval(c, inventory, config)
+    if (!validation.ok) {
+      toast({ title: "Cannot approve", description: validation.message, variant: "destructive" })
+      return
     }
-    if (config.blockExpiredFromDispatch) {
-      const expired = inventory.filter((i) => i.batchRef && i.batchRef === c.batchRef && i.expiryDate && daysUntil(i.expiryDate)! < 0)
-      if (expired.length > 0) { alert(`Cannot approve — ${expired.length} SKU(s) in this batch are expired.`); return }
-    }
-    setChecks((prev) => prev.map((x) => x.id === c.id ? { ...x, approvedAt: new Date().toISOString(), rejectedAt: undefined, rejectionReason: undefined } : x))
+    setChecks((prev) =>
+      prev.map((x) =>
+        x.id === c.id
+          ? { ...x, approvedAt: new Date().toISOString(), rejectedAt: undefined, rejectionReason: undefined }
+          : x,
+      ),
+    )
+    toast({ title: "QA approved", description: c.batchRef })
   }
-  const reject = (c: DispatchCheck) => {
-    const reason = prompt("Reason for rejection:")
-    if (!reason) return
-    setChecks((prev) => prev.map((x) => x.id === c.id ? { ...x, rejectedAt: new Date().toISOString(), rejectionReason: reason, approvedAt: undefined } : x))
+  const submitReject = () => {
+    if (!rejectTarget || !rejectReason.trim()) {
+      toast({ title: "Reason required", variant: "destructive" })
+      return
+    }
+    setChecks((prev) =>
+      prev.map((x) =>
+        x.id === rejectTarget.id
+          ? {
+              ...x,
+              rejectedAt: new Date().toISOString(),
+              rejectionReason: rejectReason.trim(),
+              approvedAt: undefined,
+            }
+          : x,
+      ),
+    )
+    setRejectTarget(null)
+    setRejectReason("")
+    toast({ title: "QA rejected", description: rejectTarget.batchRef, variant: "destructive" })
   }
   const remove = (id: string) => {
-    if (!confirm("Delete this QA check?")) return
     setChecks((prev) => prev.filter((c) => c.id !== id))
+    toast({ title: "QA check removed" })
   }
 
   return (
@@ -885,7 +902,19 @@ function DispatchTab({
                     <Badge className={`text-[10px] border-0 ${statusStyle} capitalize`}>{status}</Badge>
                     <Badge className="text-[10px] border-0 bg-secondary text-foreground">{done}/{STEP_ORDER.length} steps</Badge>
                     {status !== "approved" && <Button variant="outline" size="sm" className="h-7 text-[11px] gap-1" onClick={() => approve(c)}>Approve <CheckCircle2 className="h-3 w-3" /></Button>}
-                    {status === "pending" && <Button variant="outline" size="sm" className="h-7 text-[11px] gap-1 text-rose-700 border-rose-200" onClick={() => reject(c)}>Reject</Button>}
+                    {status === "pending" && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 text-[11px] gap-1 text-rose-700 border-rose-200"
+                        onClick={() => {
+                          setRejectTarget(c)
+                          setRejectReason("")
+                        }}
+                      >
+                        Reject
+                      </Button>
+                    )}
                     <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => { setEditing(c); setOpen(true) }}><Pencil className="h-3.5 w-3.5" /></Button>
                     <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => remove(c.id)}><Trash2 className="h-3.5 w-3.5" /></Button>
                   </div>
@@ -923,6 +952,25 @@ function DispatchTab({
           })}
         </ul>
       )}
+
+      <Dialog open={!!rejectTarget} onOpenChange={(o) => { if (!o) setRejectTarget(null) }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Reject QA check</DialogTitle>
+            <DialogDescription>{rejectTarget?.batchRef}</DialogDescription>
+          </DialogHeader>
+          <Textarea
+            rows={3}
+            value={rejectReason}
+            onChange={(e) => setRejectReason(e.target.value)}
+            placeholder="Reason (required)"
+          />
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" size="sm" onClick={() => setRejectTarget(null)}>Cancel</Button>
+            <Button size="sm" variant="destructive" onClick={submitReject}>Reject</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-w-lg">
@@ -985,7 +1033,7 @@ function SettingsTab({
           </div>
         </div>
       </div>
-      <p className="text-[11px] text-muted-foreground">Saved to <code>cmsStore["{KEYS.config}"]</code>. Migrates to the NestJS QA module without UI changes.</p>
+      <p className="text-[11px] text-muted-foreground">Persisted in Postgres via <code>/api/v2/admin/qa/*</code>.</p>
     </div>
   )
 }

@@ -269,6 +269,9 @@ export function AdminProcurementWorkflow() {
             <Link href="/admin/operations/demand" className="ml-1 underline font-medium" style={{ color: OPS_WINE }}>
               Demand aggregation →
             </Link>
+            <Link href="/admin/operations/fulfillment" className="ml-2 underline font-medium" style={{ color: OPS_WINE }}>
+              Inventory & assembly →
+            </Link>
           </p>
           <div className="flex flex-wrap items-center gap-2">
             <Select value={windowDays} onValueChange={setWindowDays}>

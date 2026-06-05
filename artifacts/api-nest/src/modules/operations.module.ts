@@ -25,6 +25,7 @@ import {
   Inject,
   Injectable,
   Module,
+  Optional,
   Param,
   Patch,
   Post,
@@ -52,6 +53,10 @@ import { AdminGuard, RequirePerm, AnyAdmin } from "../common/admin-guard"
 import { CrmModule, CrmService } from "./crm.module"
 import { SourcingModule, SourcingRequestsService } from "./sourcing.module"
 import {
+  CarePackAssemblyService,
+  OperationsFulfillmentModule,
+} from "./operations-fulfillment"
+import {
   priorityFromQty,
   scoreSuppliersForSku,
   type InventoryInput,
@@ -78,7 +83,10 @@ const DEFAULT_MAPPINGS: Array<{
 
 @Injectable()
 export class CarePackMappingService {
-  constructor(@Inject(CrmService) private readonly crm: CrmService) {}
+  constructor(
+    @Inject(CrmService) private readonly crm: CrmService,
+    @Optional() @Inject(CarePackAssemblyService) private readonly assembly?: CarePackAssemblyService,
+  ) {}
 
   async ensureDefaults(): Promise<void> {
     const rows = await db.select({ id: carePackMappings.id }).from(carePackMappings).limit(1)
@@ -237,6 +245,9 @@ export class CarePackMappingService {
       source: input.source ?? "web_assessment",
       metadata: { conditionKeys: input.conditionKeys, packs: recommended.map((p) => p.packSlug) },
     })
+    if (recommended.length > 0) {
+      void this.assembly?.createFromAssessment(id).catch(() => undefined)
+    }
     return { id, recommendedPacks: recommended, userId }
   }
 }
@@ -837,7 +848,7 @@ class DemandAdminController {
 }
 
 @Module({
-  imports: [CrmModule, SourcingModule],
+  imports: [CrmModule, SourcingModule, OperationsFulfillmentModule],
   controllers: [
     CarePacksPublicController,
     CarePackMappingsAdminController,

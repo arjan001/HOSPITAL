@@ -11,19 +11,30 @@
  *   Fulfillment Time, Only Left Turn rule, Orders per Batch, Address
  *   Resolution, SLA & Exceptions, Cost Control.
  *
- * One CMS module — all entities persist via `cmsStore` so the NestJS port
- * is a one-file swap (see `cms-store.ts`).
+ * Persisted in Postgres via /api/v2/admin/logistics/* and QA dispatch checks.
  */
 
 import { useMemo, useState } from "react"
+import { Link } from "wouter"
 import {
   Truck, MapPin, Route, Boxes, Snowflake, Users, AlertTriangle,
   CheckCircle2, XCircle, Plus, Pencil, Trash2, ArrowRight, Settings2,
   Timer, Wallet, Activity, Layers, ClipboardCheck, PackageCheck,
   Bell, Zap, CalendarClock, PackageSearch,
 } from "lucide-react"
-import { useCmsDoc, newId } from "@/lib/cms-store"
+import { newId } from "@/lib/cms-store"
 import { useAdminOrders, type AdminOrderRecord } from "@/lib/orders-store"
+import {
+  useLogisticsBatches,
+  useLogisticsColdChecks,
+  useLogisticsConfig,
+  useLogisticsDeliveries,
+  useLogisticsExceptions,
+  useLogisticsRiders,
+  useLogisticsZones,
+  usePersistErrorBanner,
+  useQaDispatchChecks,
+} from "@/lib/use-qa-logistics-store"
 import { AdminShell } from "./admin-shell"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -37,12 +48,25 @@ import {
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
 } from "@/components/ui/dialog"
+import { useToast } from "@/hooks/use-toast"
+import {
+  batchHasQaApproval,
+  blankQaSteps,
+  summarizeBatchQa,
+  type QaDispatchCheck,
+} from "./qa-shared"
+
+import type {
+  LogisticsBatchDto,
+  LogisticsColdCheckDto,
+  LogisticsConfigDto,
+  LogisticsDeliveryDto,
+  LogisticsExceptionDto,
+  LogisticsRiderDto,
+  LogisticsZoneDto,
+} from "@/lib/qa-logistics-types"
 
 const WINE = "#3D0814"
-
-// =====================================================================
-// Types
-// =====================================================================
 
 type VehicleType = "motorcycle" | "bicycle" | "van" | "cold_van"
 type BatchStatus = "planned" | "dispatched" | "in_progress" | "completed" | "cancelled"
@@ -51,108 +75,17 @@ type DeliveryStatus =
   | "out_for_delivery" | "delivered" | "failed"
 type ExceptionType = "failed_delivery" | "address" | "sla" | "cost"
 
-interface Zone {
-  id: string
-  name: string
-  areas: string         // free-text: "Westlands, Parklands, Kileleshwa"
-  slaHours: number      // target time-to-deliver
-  surcharge: number     // KES additive to delivery fee
-  coldChainCapable: boolean
-  active: boolean
-}
-
-interface Rider {
-  id: string
-  name: string
-  phone: string
-  vehicle: VehicleType
-  capacity: number      // max orders per batch
-  zoneId: string | null
-  coldChainCapable: boolean
-  active: boolean
-  notes?: string
-}
-
-interface Batch {
-  id: string
-  ref: string           // human-readable e.g. "BAT-2026-0014"
-  zoneId: string | null
-  riderId: string | null
-  scheduledAt: string   // ISO
-  status: BatchStatus
-  orderIds: string[]    // free-text order refs
-  coldChain: boolean
-  notes?: string
-  createdAt: string
-  dispatchedAt?: string
-  completedAt?: string
-}
-
-interface Delivery {
-  id: string
-  orderRef: string
-  customerName: string
-  customerPhone: string
-  address: string
-  zoneId: string | null
-  batchId: string | null
-  riderId: string | null
-  status: DeliveryStatus
-  attempts: number
-  codAmount: number
-  estimatedCost: number   // for Cost Control
-  failureReason?: string
-  createdAt: string
-  dispatchedAt?: string
-  deliveredAt?: string
-  slaHours?: number       // captured at dispatch
-}
-
-interface ColdChainCheck {
-  id: string
-  batchId: string
-  tempBefore: number     // °C
-  tempAfter: number      // °C — at handoff
-  packagedBy: string
-  packagedAt: string     // ISO
-  passed: boolean
-  notes?: string
-}
-
-interface ExceptionItem {
-  id: string
-  deliveryId: string | null
-  type: ExceptionType
-  summary: string
-  resolution: string
-  cost?: number
-  createdAt: string
-  resolvedAt?: string
-}
-
-interface LogisticsConfig {
-  targetOrdersPerBatch: number
-  targetSlaHours: number
-  costCapPerDelivery: number
-  onlyLeftTurnRule: boolean      // routing rule (UPS-style)
-  autoAssignRiders: boolean
-  smsCustomerOnDispatch: boolean
-  smsCustomerOnDelivery: boolean
-}
+type Zone = LogisticsZoneDto
+type Rider = LogisticsRiderDto
+type Batch = LogisticsBatchDto
+type Delivery = LogisticsDeliveryDto
+type ColdChainCheck = LogisticsColdCheckDto
+type ExceptionItem = LogisticsExceptionDto
+type LogisticsConfig = LogisticsConfigDto
 
 // =====================================================================
-// CMS keys + defaults
+// Defaults (seed on first save if DB empty)
 // =====================================================================
-
-const KEYS = {
-  zones: "logistics.zones",
-  riders: "logistics.riders",
-  batches: "logistics.batches",
-  deliveries: "logistics.deliveries",
-  coldChecks: "logistics.cold-chain-checks",
-  exceptions: "logistics.exceptions",
-  config: "logistics.config",
-} as const
 
 const DEFAULT_ZONES: Zone[] = [
   { id: "zn_cbd", name: "Nairobi CBD", areas: "CBD, Upper Hill", slaHours: 4, surcharge: 0, coldChainCapable: true, active: true },
@@ -181,11 +114,11 @@ const DEFAULT_CONFIG: LogisticsConfig = {
 // Helpers
 // =====================================================================
 
-const VEHICLE_LABEL: Record<VehicleType, string> = {
+const VEHICLE_LABEL: Record<string, string> = {
   motorcycle: "Motorcycle", bicycle: "Bicycle", van: "Van", cold_van: "Cold-chain van",
 }
 
-const STATUS_STYLE: Record<DeliveryStatus, string> = {
+const STATUS_STYLE: Record<string, string> = {
   pending: "bg-gray-100 text-gray-700",
   assigned: "bg-sky-100 text-sky-800",
   dispatched: "bg-indigo-100 text-indigo-800",
@@ -194,7 +127,7 @@ const STATUS_STYLE: Record<DeliveryStatus, string> = {
   failed: "bg-rose-100 text-rose-800",
 }
 
-const BATCH_STYLE: Record<BatchStatus, string> = {
+const BATCH_STYLE: Record<string, string> = {
   planned: "bg-gray-100 text-gray-700",
   dispatched: "bg-indigo-100 text-indigo-800",
   in_progress: "bg-amber-100 text-amber-900",
@@ -202,14 +135,14 @@ const BATCH_STYLE: Record<BatchStatus, string> = {
   cancelled: "bg-rose-100 text-rose-800",
 }
 
-const EXC_STYLE: Record<ExceptionType, string> = {
+const EXC_STYLE: Record<string, string> = {
   failed_delivery: "bg-rose-100 text-rose-800",
   address: "bg-amber-100 text-amber-900",
   sla: "bg-orange-100 text-orange-800",
   cost: "bg-violet-100 text-violet-800",
 }
 
-const EXC_LABEL: Record<ExceptionType, string> = {
+const EXC_LABEL: Record<string, string> = {
   failed_delivery: "Failed delivery",
   address: "Address resolution",
   sla: "SLA breach",
@@ -327,14 +260,26 @@ function matchZone(address: string, zones: Zone[]): Zone | null {
 }
 
 export function AdminLogisticsOps() {
+  const { toast } = useToast()
   const [tab, setTab] = useState<TabKey>("dispatch")
-  const [zones, setZones] = useCmsDoc<Zone[]>(KEYS.zones, DEFAULT_ZONES)
-  const [riders, setRiders] = useCmsDoc<Rider[]>(KEYS.riders, DEFAULT_RIDERS)
-  const [batches, setBatches] = useCmsDoc<Batch[]>(KEYS.batches, [])
-  const [deliveries, setDeliveries] = useCmsDoc<Delivery[]>(KEYS.deliveries, [])
-  const [coldChecks, setColdChecks] = useCmsDoc<ColdChainCheck[]>(KEYS.coldChecks, [])
-  const [exceptions, setExceptions] = useCmsDoc<ExceptionItem[]>(KEYS.exceptions, [])
-  const [config, setConfig] = useCmsDoc<LogisticsConfig>(KEYS.config, DEFAULT_CONFIG)
+  const [zones, setZones, , errZones] = useLogisticsZones(DEFAULT_ZONES)
+  const [riders, setRiders, , errRiders] = useLogisticsRiders(DEFAULT_RIDERS)
+  const [batches, setBatches, , errBatches] = useLogisticsBatches([])
+  const [deliveries, setDeliveries, , errDeliveries] = useLogisticsDeliveries([])
+  const [coldChecks, setColdChecks, , errCold] = useLogisticsColdChecks([])
+  const [exceptions, setExceptions, , errExc] = useLogisticsExceptions([])
+  const [config, setConfig, , errCfg] = useLogisticsConfig(DEFAULT_CONFIG)
+  const [qaChecks, setQaChecks, , errQa] = useQaDispatchChecks([])
+  const persistErr = usePersistErrorBanner([
+    errZones,
+    errRiders,
+    errBatches,
+    errDeliveries,
+    errCold,
+    errExc,
+    errCfg,
+    errQa,
+  ])
 
   const { items: allOrders } = useAdminOrders()
 
@@ -370,9 +315,16 @@ export function AdminLogisticsOps() {
     try {
       const { pipelineClient } = await import("@/lib/pipeline-client")
       const r = await pipelineClient.logistics.autoAssign()
-      alert(`Auto-assign complete\n\nAssigned: ${r.assigned}\nSkipped: ${r.skipped}\nSLA at risk: ${r.slaAtRisk}${r.notes.length > 0 ? "\n\n" + r.notes.join("\n") : ""}`)
+      toast({
+        title: "Rider auto-assign complete",
+        description: `Assigned ${r.assigned} · skipped ${r.skipped} · SLA at risk ${r.slaAtRisk}`,
+      })
     } catch (e) {
-      alert(`Auto-assign failed: ${e instanceof Error ? e.message : String(e)}`)
+      toast({
+        title: "Auto-assign failed",
+        description: e instanceof Error ? e.message : String(e),
+        variant: "destructive",
+      })
     }
   }
 
@@ -404,6 +356,14 @@ export function AdminLogisticsOps() {
   return (
     <AdminShell title="Logistics · Operations">
       <div className="space-y-5">
+        {persistErr.message && (
+          <div className="text-sm rounded-xl border px-4 py-3 bg-red-50 text-red-800 border-red-200 flex justify-between gap-2">
+            <span>Could not sync with Postgres: {persistErr.message}</span>
+            <button type="button" className="text-xs underline shrink-0" onClick={persistErr.dismiss}>
+              Dismiss
+            </button>
+          </div>
+        )}
         {/* Header */}
         <div>
           <p className="text-[11px] font-bold uppercase tracking-[0.18em]" style={{ color: WINE }}>
@@ -414,9 +374,11 @@ export function AdminLogisticsOps() {
             Delivery operations
           </h1>
           <p className="text-sm text-muted-foreground mt-1 max-w-2xl">
-            From zoning → batch planning → rider assignment → last-mile tracking → confirmation or
-            exception handling. Everything below persists locally and will migrate to the NestJS
-            logistics module in one step.
+            From zoning → batch planning →{" "}
+            <Link href="/admin/qa/batches" className="underline font-medium" style={{ color: WINE }}>
+              batch QA sign-off
+            </Link>{" "}
+            → rider dispatch → last-mile tracking → confirmation or exception handling.
           </p>
           <div className="mt-3">
             <button
@@ -487,6 +449,7 @@ export function AdminLogisticsOps() {
             batches={batches} setBatches={setBatches}
             deliveries={deliveries} setDeliveries={setDeliveries}
             config={config}
+            setQaChecks={setQaChecks}
           />
         )}
         {tab === "overview" && (
@@ -507,6 +470,7 @@ export function AdminLogisticsOps() {
             zones={zones} riders={riders} riderById={riderById} zoneById={zoneById}
             deliveries={deliveries} setDeliveries={setDeliveries}
             config={config}
+            qaChecks={qaChecks}
           />
         )}
         {tab === "routing" && (
@@ -547,9 +511,35 @@ export function AdminLogisticsOps() {
 // Dispatch Queue
 // =====================================================================
 
+function seedQaChecksForBatches(
+  newBatches: Batch[],
+  setQaChecks: (next: QaDispatchCheck[] | ((prev: QaDispatchCheck[]) => QaDispatchCheck[])) => void,
+) {
+  if (newBatches.length === 0) return
+  setQaChecks((prev) => {
+    const additions: QaDispatchCheck[] = []
+    for (const b of newBatches) {
+      const exists = prev.some(
+        (c) => c.batchRef === b.ref && !c.rejectedAt,
+      )
+      if (exists) continue
+      additions.push({
+        id: newId("qac"),
+        batchRef: b.ref,
+        orderRef: b.orderIds[0],
+        steps: blankQaSteps(),
+        notes: "",
+        checkedBy: "",
+        createdAt: new Date().toISOString(),
+      })
+    }
+    return additions.length ? [...additions, ...prev] : prev
+  })
+}
+
 function DispatchQueueTab({
   confirmedOrders, zones, riders, batches, setBatches,
-  deliveries, setDeliveries, config,
+  deliveries, setDeliveries, config, setQaChecks,
 }: {
   confirmedOrders: AdminOrderRecord[]
   zones: Zone[]
@@ -559,7 +549,9 @@ function DispatchQueueTab({
   deliveries: Delivery[]
   setDeliveries: (next: Delivery[] | ((prev: Delivery[]) => Delivery[])) => void
   config: LogisticsConfig
+  setQaChecks: (next: QaDispatchCheck[] | ((prev: QaDispatchCheck[]) => QaDispatchCheck[])) => void
 }) {
+  const { toast } = useToast()
   const [planning, setPlanning] = useState(false)
   const [lastPlan, setLastPlan] = useState<{ batches: number; deliveries: number } | null>(null)
   const [selected, setSelected] = useState<Set<string>>(new Set())
@@ -648,9 +640,14 @@ function DispatchQueueTab({
 
     setBatches((prev) => [...prev, ...newBatches])
     setDeliveries((prev) => [...prev, ...newDeliveries])
+    seedQaChecksForBatches(newBatches, setQaChecks)
     setLastPlan({ batches: newBatches.length, deliveries: newDeliveries.length })
     setSelected(new Set())
     setPlanning(false)
+    toast({
+      title: "Dispatch plan created",
+      description: `${newBatches.length} batch(es) · complete QA at /admin/qa/batches before dispatch.`,
+    })
   }
 
   const rush = confirmedOrders.filter((o) => !parseSchedule(o.notes).isScheduled)
@@ -723,7 +720,11 @@ function DispatchQueueTab({
           <CheckCircle2 className="h-4 w-4 text-emerald-700 flex-shrink-0" />
           <p className="text-sm text-emerald-900">
             Last plan — <span className="font-semibold">{lastPlan.batches} batch{lastPlan.batches !== 1 ? "es" : ""}</span> and{" "}
-            <span className="font-semibold">{lastPlan.deliveries} delivery record{lastPlan.deliveries !== 1 ? "s" : ""}</span> created. Remaining orders shown below.
+            <span className="font-semibold">{lastPlan.deliveries} delivery record{lastPlan.deliveries !== 1 ? "s" : ""}</span> created.{" "}
+            <Link href="/admin/qa/batches" className="underline font-medium">
+              Run batch QA
+            </Link>{" "}
+            before dispatching riders.
           </p>
         </div>
       )}
@@ -1270,7 +1271,7 @@ function RidersTab({ riders, setRiders, zones }: { riders: Rider[]; setRiders: (
 
 function BatchesTab({
   batches, setBatches, zones, riders, riderById, zoneById,
-  deliveries, setDeliveries, config,
+  deliveries, setDeliveries, config, qaChecks,
 }: {
   batches: Batch[]
   setBatches: (next: Batch[] | ((p: Batch[]) => Batch[])) => void
@@ -1281,7 +1282,9 @@ function BatchesTab({
   deliveries: Delivery[]
   setDeliveries: (next: Delivery[] | ((p: Delivery[]) => Delivery[])) => void
   config: LogisticsConfig
+  qaChecks: QaDispatchCheck[]
 }) {
+  const { toast } = useToast()
   const [editing, setEditing] = useState<Batch | null>(null)
   const [open, setOpen] = useState(false)
   const [statusFilter, setStatusFilter] = useState<BatchStatus | "all">("all")
@@ -1317,14 +1320,29 @@ function BatchesTab({
     setDeliveries((prev) => prev.map((d) => d.batchId === id ? { ...d, batchId: null, riderId: null, status: d.status === "delivered" ? d.status : "pending" } : d))
   }
   const dispatch = (b: Batch) => {
-    if (!b.riderId) { alert("Assign a rider before dispatching."); return }
-    if (b.orderIds.length === 0) { alert("Batch is empty. Add at least one order."); return }
+    if (!b.riderId) {
+      toast({ title: "Rider required", description: "Assign a rider before dispatching.", variant: "destructive" })
+      return
+    }
+    if (b.orderIds.length === 0) {
+      toast({ title: "Empty batch", description: "Add at least one order.", variant: "destructive" })
+      return
+    }
+    if (!batchHasQaApproval(b.ref, b.orderIds, qaChecks)) {
+      toast({
+        title: "QA sign-off required",
+        description: `Approve batch ${b.ref} under Batch Verification before dispatch.`,
+        variant: "destructive",
+      })
+      return
+    }
     const now = new Date().toISOString()
     const slaHours = b.zoneId ? zoneById.get(b.zoneId)?.slaHours ?? config.targetSlaHours : config.targetSlaHours
     setBatches((prev) => prev.map((x) => x.id === b.id ? { ...x, status: "dispatched", dispatchedAt: now } : x))
     setDeliveries((prev) => prev.map((d) => b.orderIds.includes(d.orderRef)
       ? { ...d, batchId: b.id, riderId: b.riderId, status: "dispatched", dispatchedAt: now, slaHours }
       : d))
+    toast({ title: "Batch dispatched", description: `${b.ref} · ${b.orderIds.length} stop(s) now in last-mile tracking.` })
   }
   const complete = (b: Batch) => {
     setBatches((prev) => prev.map((x) => x.id === b.id ? { ...x, status: "completed", completedAt: new Date().toISOString() } : x))
@@ -1360,6 +1378,7 @@ function BatchesTab({
                 <th className="text-left px-4 py-3 font-medium">Rider</th>
                 <th className="text-left px-4 py-3 font-medium">Scheduled</th>
                 <th className="text-left px-4 py-3 font-medium">Orders</th>
+                <th className="text-left px-4 py-3 font-medium">QA</th>
                 <th className="text-left px-4 py-3 font-medium">Status</th>
                 <th className="text-right px-4 py-3 font-medium">Actions</th>
               </tr>
@@ -1369,6 +1388,15 @@ function BatchesTab({
                 const overCap = b.riderId && riderById.get(b.riderId)
                   ? b.orderIds.length > (riderById.get(b.riderId)!.capacity)
                   : false
+                const qa = summarizeBatchQa(b.ref, b.orderIds, qaChecks)
+                const qaStyle =
+                  qa.status === "approved"
+                    ? "bg-emerald-100 text-emerald-800"
+                    : qa.status === "rejected"
+                      ? "bg-rose-100 text-rose-800"
+                      : qa.status === "pending"
+                        ? "bg-amber-100 text-amber-900"
+                        : "bg-gray-100 text-gray-600"
                 return (
                   <tr key={b.id} className="hover:bg-secondary/40">
                     <td className="px-4 py-3">
@@ -1381,6 +1409,14 @@ function BatchesTab({
                     <td className="px-4 py-3 text-xs">
                       <span className={overCap ? "text-rose-700 font-medium" : ""}>{b.orderIds.length}</span>
                       {overCap && <span className="text-[10px] text-rose-700 ml-1">over capacity</span>}
+                    </td>
+                    <td className="px-4 py-3">
+                      <Link href="/admin/qa/batches">
+                        <Badge className={`text-[10px] border-0 cursor-pointer ${qaStyle}`}>
+                          {qa.status === "none" ? "Assess" : qa.status}
+                          {qa.status === "pending" && ` ${qa.stepsDone}/7`}
+                        </Badge>
+                      </Link>
                     </td>
                     <td className="px-4 py-3"><Badge className={`text-[10px] border-0 ${BATCH_STYLE[b.status]}`}>{b.status.replace(/_/g, " ")}</Badge></td>
                     <td className="px-4 py-3 text-right">
@@ -1585,6 +1621,7 @@ function TrackingTab({
   setExceptions: (next: ExceptionItem[] | ((p: ExceptionItem[]) => ExceptionItem[])) => void
   config: LogisticsConfig
 }) {
+  const { toast } = useToast()
   const [statusFilter, setStatusFilter] = useState<DeliveryStatus | "all">("all")
   const [editing, setEditing] = useState<Delivery | null>(null)
   const [open, setOpen] = useState(false)
@@ -1633,7 +1670,30 @@ function TrackingTab({
     if (status === "failed") patch.attempts = (d.attempts || 0) + 1
     setDeliveries((prev) => prev.map((x) => x.id === d.id ? { ...x, ...patch } : x))
   }
-  const confirmDelivery = (d: Delivery) => setStatus(d, "delivered")
+  const confirmDelivery = (d: Delivery) => {
+    setStatus(d, "delivered")
+    toast({ title: "Delivered", description: d.orderRef })
+  }
+  const markOutForDelivery = (d: Delivery) => {
+    setStatus(d, "out_for_delivery")
+    toast({ title: "Out for delivery", description: d.orderRef })
+  }
+  const markAllOutForDelivery = () => {
+    const targets = deliveries.filter((d) => d.status === "dispatched")
+    if (targets.length === 0) {
+      toast({ title: "Nothing to update", description: "No dispatched deliveries.", variant: "destructive" })
+      return
+    }
+    const now = new Date().toISOString()
+    setDeliveries((prev) =>
+      prev.map((d) =>
+        d.status === "dispatched"
+          ? { ...d, status: "out_for_delivery" as DeliveryStatus, dispatchedAt: d.dispatchedAt ?? now }
+          : d,
+      ),
+    )
+    toast({ title: "Route started", description: `${targets.length} stop(s) marked out for delivery.` })
+  }
   const openFail = (d: Delivery) => { setFailingId(d.id); setFailReason("") }
   const submitFail = () => {
     if (!failingId) return
@@ -1652,7 +1712,15 @@ function TrackingTab({
       createdAt: new Date().toISOString(),
     }, ...prev])
     setFailingId(null); setFailReason("")
+    toast({ title: "Delivery failed", description: d.orderRef, variant: "destructive" })
   }
+
+  const slaAtRisk = deliveries.filter((d) => {
+    if (!["dispatched", "out_for_delivery", "assigned"].includes(d.status)) return false
+    const start = d.dispatchedAt ?? d.createdAt
+    const sla = d.slaHours ?? config.targetSlaHours
+    return hoursBetween(start, new Date().toISOString()) > sla * 0.85
+  }).length
 
   return (
     <div className="space-y-4">
@@ -1661,6 +1729,15 @@ function TrackingTab({
         blurb="Every order in flight. Move statuses forward (Pending → Out for delivery → Delivered) or mark failed to spawn an exception."
         action={
           <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="h-9 text-xs"
+              onClick={markAllOutForDelivery}
+            >
+              Start all dispatched routes
+            </Button>
             <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as typeof statusFilter)}>
               <SelectTrigger className="h-9 w-[170px]"><SelectValue /></SelectTrigger>
               <SelectContent>
@@ -1672,6 +1749,13 @@ function TrackingTab({
           </div>
         }
       />
+
+      {slaAtRisk > 0 && (
+        <div className="flex items-center gap-2 rounded-sm border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          <AlertTriangle className="h-4 w-4 shrink-0" />
+          {slaAtRisk} in-flight deliver{slaAtRisk === 1 ? "y" : "ies"} approaching SLA limit ({config.targetSlaHours}h target).
+        </div>
+      )}
 
       {list.length === 0 ? (
         <EmptyState icon={Truck} title="No deliveries" blurb="Add a delivery manually here, or have one auto-created from a paid order in future." />
@@ -1713,6 +1797,11 @@ function TrackingTab({
                   <td className="px-4 py-3 font-mono text-xs">{d.attempts}</td>
                   <td className="px-4 py-3 text-right">
                     <div className="flex justify-end gap-1">
+                      {d.status === "dispatched" && (
+                        <Button variant="outline" size="sm" className="h-7 text-[11px] gap-1" onClick={() => markOutForDelivery(d)}>
+                          En route
+                        </Button>
+                      )}
                       {d.status !== "delivered" && (
                         <Button variant="outline" size="sm" className="h-7 text-[11px] gap-1" onClick={() => confirmDelivery(d)}>
                           Confirm <CheckCircle2 className="h-3 w-3" />
@@ -2105,7 +2194,7 @@ function SettingsTab({
 
       <div className="text-[11px] text-muted-foreground flex items-center gap-1">
         <PackageCheck className="h-3 w-3" />
-        Saved automatically to <code>cmsStore["{KEYS.config}"]</code>. Will migrate to the NestJS logistics module without UI changes.
+        Saved in Postgres via <code>/api/v2/admin/logistics/config</code>.
       </div>
     </div>
   )

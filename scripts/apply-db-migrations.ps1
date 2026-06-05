@@ -16,7 +16,8 @@ $files = @(
   "20250604_prescription_workflow_status.sql",
   "20250604_procurement.sql",
   "20250604_procurement_sourcing_link.sql",
-  "20250604_sourcing_requests.sql"
+  "20250604_sourcing_requests.sql",
+  "20250604_fulfillment.sql"
 )
 
 $manualDir = Join-Path $root "lib\db\migrations\manual"

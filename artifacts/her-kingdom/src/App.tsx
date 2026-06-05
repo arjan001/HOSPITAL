@@ -57,7 +57,6 @@ import {
   AdminTradingBids,
   AdminTradingNegotiation,
   AdminTradingSettlements,
-  AdminQaBatches,
   AdminQaTrustSeal,
   AdminQaRecalls,
   AdminLogisticsInventory,
@@ -66,6 +65,7 @@ import {
 } from "@/components/admin/flow-pages";
 import { AdminLogistics } from "@/components/admin/logistics-ops";
 import { AdminQa } from "@/components/admin/qa-ops";
+import { AdminQaBatches } from "@/components/admin/qa-batches";
 import { AdminMessageTemplates } from "@/components/admin/message-templates";
 import { AdminMessageOutbox } from "@/components/admin/message-outbox";
 import {
@@ -101,6 +101,7 @@ import { AdminPrescriptions } from "@/components/admin/prescriptions";
 import { AdminCarePackMappings } from "@/components/admin/care-pack-mappings";
 import { AdminDemandAggregation } from "@/components/admin/demand-aggregation";
 import { AdminProcurementWorkflow } from "@/components/admin/procurement-workflow";
+import { AdminFulfillmentWorkflow } from "@/components/admin/fulfillment-workflow";
 import { AdminChat } from "@/components/admin/chat";
 import AccountChatPage from "@/pages/account/chat";
 import AccountConsultationsPage from "@/pages/account/consultations";
@@ -484,6 +485,7 @@ function Router() {
       <Route path="/admin/operations/care-packs" component={AdminCarePackMappings} />
       <Route path="/admin/operations/demand" component={AdminDemandAggregation} />
       <Route path="/admin/operations/procurement" component={AdminProcurementWorkflow} />
+      <Route path="/admin/operations/fulfillment" component={AdminFulfillmentWorkflow} />
       <Route path="/admin/chat" component={AdminChat} />
       <Route path="/account/chat">
         {() => <ProtectedAccount><AccountChatPage /></ProtectedAccount>}

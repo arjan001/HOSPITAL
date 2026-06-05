@@ -114,3 +114,76 @@ export const supplierSuggestions = pgTable(
 
 export type ProcurementDecision = typeof procurementDecisions.$inferSelect
 export type SupplierSuggestion = typeof supplierSuggestions.$inferSelect
+
+/** BL #8 — reserve on-hand stock against orders, assemblies, or procurement lines. */
+export const inventoryAllocations = pgTable(
+  "inventory_allocations",
+  {
+    id: text("id").primaryKey(),
+    sku: text("sku").notNull(),
+    productName: text("product_name").notNull(),
+    quantity: integer("quantity").notNull().default(1),
+    /** procurement_decision | care_pack_assembly | prescription | sourcing_request | manual */
+    referenceType: text("reference_type").notNull(),
+    referenceId: text("reference_id").notNull(),
+    status: text("status").notNull().default("reserved"),
+    location: text("location"),
+    notes: text("notes"),
+    allocatedBy: text("allocated_by"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (t) => ({
+    skuIdx: index("inventory_allocations_sku_idx").on(t.sku),
+    refIdx: index("inventory_allocations_ref_idx").on(t.referenceType, t.referenceId),
+    statusIdx: index("inventory_allocations_status_idx").on(t.status),
+  }),
+)
+
+/** BL #9 — physical care pack build jobs (pick, pack, QA-ready). */
+export const carePackAssemblyJobs = pgTable(
+  "care_pack_assembly_jobs",
+  {
+    id: text("id").primaryKey(),
+    packSlug: text("pack_slug").notNull(),
+    packName: text("pack_name").notNull(),
+    assessmentId: text("assessment_id"),
+    userId: text("user_id").references(() => users.id, { onDelete: "set null" }),
+    sessionId: text("session_id"),
+    patientLabel: text("patient_label"),
+    priority: text("priority").notNull().default("normal"),
+    status: text("status").notNull().default("queued"),
+    notes: text("notes"),
+    assembledBy: text("assembled_by"),
+    assembledAt: timestamp("assembled_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (t) => ({
+    statusIdx: index("care_pack_assembly_jobs_status_idx").on(t.status),
+    packIdx: index("care_pack_assembly_jobs_pack_idx").on(t.packSlug),
+  }),
+)
+
+export const carePackAssemblyLines = pgTable(
+  "care_pack_assembly_lines",
+  {
+    id: text("id").primaryKey(),
+    jobId: text("job_id")
+      .notNull()
+      .references(() => carePackAssemblyJobs.id, { onDelete: "cascade" }),
+    sku: text("sku").notNull(),
+    productName: text("product_name").notNull(),
+    quantityRequired: integer("quantity_required").notNull().default(1),
+    quantityAllocated: integer("quantity_allocated").notNull().default(0),
+    status: text("line_status").notNull().default("open"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (t) => ({
+    jobIdx: index("care_pack_assembly_lines_job_idx").on(t.jobId),
+  }),
+)
+
+export type InventoryAllocation = typeof inventoryAllocations.$inferSelect
+export type CarePackAssemblyJob = typeof carePackAssemblyJobs.$inferSelect
+export type CarePackAssemblyLine = typeof carePackAssemblyLines.$inferSelect

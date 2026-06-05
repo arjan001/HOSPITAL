@@ -61,6 +61,8 @@ import { CrmModule } from "./modules/crm.module"
 import { PrescriptionSubscriptionsModule } from "./modules/prescription-subscriptions.module"
 import { OperationsModule } from "./modules/operations.module"
 import { SourcingModule } from "./modules/sourcing.module"
+import { OperationsFulfillmentModule } from "./modules/operations-fulfillment"
+import { QaLogisticsModule } from "./modules/qa-logistics.module"
 
 @Module({
   imports: [
@@ -100,6 +102,8 @@ import { SourcingModule } from "./modules/sourcing.module"
     PrescriptionSubscriptionsModule,
     OperationsModule,
     SourcingModule,
+    OperationsFulfillmentModule,
+    QaLogisticsModule,
   ],
   providers: [
     // Global catch-all exception filter: normalises every error response and

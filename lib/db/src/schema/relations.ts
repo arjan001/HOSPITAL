@@ -22,7 +22,14 @@ import {
   prescriptionRefills,
 } from "./prescriptions"
 import { crmContacts } from "./crm"
-import { carePackAssessments, procurementDecisions, supplierSuggestions } from "./operations"
+import {
+  carePackAssessments,
+  carePackAssemblyJobs,
+  carePackAssemblyLines,
+  inventoryAllocations,
+  procurementDecisions,
+  supplierSuggestions,
+} from "./operations"
 import { doctors, consultations } from "./consultations"
 import { uploads, wishlistItems } from "./uploads"
 import { payments } from "./payments"
@@ -158,6 +165,18 @@ export const supplierSuggestionsRelations = relations(supplierSuggestions, ({ on
   decision: one(procurementDecisions, {
     fields: [supplierSuggestions.procurementDecisionId],
     references: [procurementDecisions.id],
+  }),
+}))
+
+export const carePackAssemblyJobsRelations = relations(carePackAssemblyJobs, ({ one, many }) => ({
+  user: one(users, { fields: [carePackAssemblyJobs.userId], references: [users.id] }),
+  lines: many(carePackAssemblyLines),
+}))
+
+export const carePackAssemblyLinesRelations = relations(carePackAssemblyLines, ({ one }) => ({
+  job: one(carePackAssemblyJobs, {
+    fields: [carePackAssemblyLines.jobId],
+    references: [carePackAssemblyJobs.id],
   }),
 }))
 

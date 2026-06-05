@@ -15,6 +15,13 @@
 | `prescription_refills` | [`prescriptions.ts`](src/schema/prescriptions.ts) | Due/paid refill cycles |
 | `procurement_decisions` | [`operations.ts`](src/schema/operations.ts) | Buy/defer/reject from demand (BL #6) |
 | `supplier_suggestions` | [`operations.ts`](src/schema/operations.ts) | Ranked suppliers per decision (BL #7) |
+| `inventory_allocations` | [`operations.ts`](src/schema/operations.ts) | Soft stock reservations (BL #8) |
+| `care_pack_assembly_jobs` | [`operations.ts`](src/schema/operations.ts) | Care pack pick/assemble queue (BL #9) |
+| `care_pack_assembly_lines` | [`operations.ts`](src/schema/operations.ts) | SKU lines per assembly job (BL #9) |
+| `qa_inventory_items` | [`qa-logistics.ts`](src/schema/qa-logistics.ts) | QA stock ledger |
+| `qa_dispatch_checks` | [`qa-logistics.ts`](src/schema/qa-logistics.ts) | 7-step dispatch QA gates |
+| `qa_settings` | [`qa-logistics.ts`](src/schema/qa-logistics.ts) | QA thresholds (singleton) |
+| `logistics_*` | [`qa-logistics.ts`](src/schema/qa-logistics.ts) | Zones, riders, batches, deliveries, exceptions |
 
 ## Prescription columns (recent)
 

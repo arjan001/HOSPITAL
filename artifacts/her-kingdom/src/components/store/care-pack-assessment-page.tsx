@@ -64,7 +64,9 @@ export function CarePackAssessmentPage() {
     return params.get("pack") ?? ""
   }, [search])
 
-  const [conditions, setConditions] = useState<ConditionOption[]>([...FALLBACK_CONDITIONS])
+  const [conditions, setConditions] = useState<ConditionOption[]>(() =>
+    FALLBACK_CONDITIONS.map((c) => ({ ...c, productSkus: [...c.productSkus] })),
+  )
 
   useEffect(() => {
     void apiCarePacks.mappings().then((res) => {
@@ -72,12 +74,12 @@ export function CarePackAssessmentPage() {
       const byKey = new Map(res.mappings.map((m) => [m.conditionKey, m]))
       const merged: ConditionOption[] = FALLBACK_CONDITIONS.map((c) => {
         const m = byKey.get(c.id)
-        if (!m) return c
+        if (!m) return { ...c, productSkus: [...c.productSkus] }
         return {
           ...c,
           packSlug: m.packSlug,
           packName: m.packName,
-          productSkus: m.productSkus ?? [],
+          productSkus: [...(m.productSkus ?? [])],
         }
       })
       setConditions(merged)

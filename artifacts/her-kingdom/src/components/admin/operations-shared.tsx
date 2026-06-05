@@ -22,6 +22,22 @@ export const DECISION_STATUS_STYLE: Record<string, string> = {
   rejected: "bg-slate-100 text-slate-600 border-slate-200",
 }
 
+export const ALLOCATION_STATUS_STYLE: Record<string, string> = {
+  reserved: "bg-amber-50 text-amber-900 border-amber-200",
+  committed: "bg-emerald-50 text-emerald-900 border-emerald-200",
+  released: "bg-slate-100 text-slate-600 border-slate-200",
+}
+
+export const ASSEMBLY_STATUS_STYLE: Record<string, string> = {
+  queued: "bg-slate-100 text-slate-700 border-slate-200",
+  allocating: "bg-amber-50 text-amber-900 border-amber-200",
+  picking: "bg-sky-50 text-sky-900 border-sky-200",
+  assembled: "bg-emerald-50 text-emerald-900 border-emerald-200",
+  ready: "bg-violet-50 text-violet-900 border-violet-200",
+  dispatched: "bg-indigo-50 text-indigo-900 border-indigo-200",
+  cancelled: "bg-rose-50 text-rose-800 border-rose-200",
+}
+
 export function OpsPanel({
   title,
   subtitle,

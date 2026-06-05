@@ -62,6 +62,7 @@ import { db, communicationOutbox, communicationSentLog, campaignSends } from "@w
 import { and, desc, eq, lt, or } from "drizzle-orm"
 import { randomUUID } from "node:crypto"
 import { AdminGuard, RequirePerm, AnyAdmin } from "../common/admin-guard"
+import { QaLogisticsModule, LogisticsOpsService, QaOpsService } from "./qa-logistics.module"
 
 /**
  * Pipeline automation — server-side intelligence layer on top of cmsStore.
@@ -555,66 +556,10 @@ type QaFlag = {
 
 @Injectable()
 class QaAutomationService {
-  async scanExpiry(): Promise<{ flags: QaFlag[]; expired: number; critical: number; warning: number }> {
-    const [inventory, config] = await Promise.all([
-      cmsGet<QaInventory[]>("qa.inventory", []),
-      cmsGet<QaConfig>("qa.config", {
-        expiryWarningDays: 60,
-        expiryCriticalDays: 14,
-        blockExpiredFromDispatch: true,
-      }),
-    ])
+  constructor(@Inject(QaOpsService) private readonly qa: QaOpsService) {}
 
-    const now = Date.now()
-    const flags: QaFlag[] = []
-    let expired = 0
-    let critical = 0
-    let warning = 0
-
-    for (const item of inventory) {
-      if (item.expiryDate) {
-        const days = Math.ceil((new Date(item.expiryDate).getTime() - now) / 86_400_000)
-        let severity: QaFlag["severity"] | null = null
-        if (days < 0) {
-          severity = "expired"
-          expired++
-        } else if (days <= config.expiryCriticalDays) {
-          severity = "critical"
-          critical++
-        } else if (days <= config.expiryWarningDays) {
-          severity = "warning"
-          warning++
-        }
-        if (severity) {
-          flags.push({
-            id: newId("qaflag"),
-            sku: item.sku,
-            name: item.name,
-            batchRef: item.batchRef,
-            expiryDate: item.expiryDate,
-            daysToExpiry: days,
-            severity,
-            blockDispatch: severity === "expired" && config.blockExpiredFromDispatch,
-            flaggedAt: new Date().toISOString(),
-          })
-        }
-      }
-      if (item.stock <= item.safetyStock) {
-        flags.push({
-          id: newId("qaflag"),
-          sku: item.sku,
-          name: item.name,
-          batchRef: item.batchRef,
-          daysToExpiry: 9999,
-          severity: "low_stock",
-          blockDispatch: false,
-          flaggedAt: new Date().toISOString(),
-        })
-      }
-    }
-
-    await cmsPut("qa.expiry-flags", { generatedAt: new Date().toISOString(), flags })
-    return { flags, expired, critical, warning }
+  scanExpiry() {
+    return this.qa.scanExpiry()
   }
 }
 
@@ -666,61 +611,10 @@ class QaPipelineController {
 
 @Injectable()
 class LogisticsAutomationService {
-  async autoAssign(): Promise<{
-    assigned: number
-    skipped: number
-    slaAtRisk: number
-    notes: string[]
-  }> {
-    const [deliveries, riders, config] = await Promise.all([
-      cmsGet<LogisticsDelivery[]>("logistics.deliveries", []),
-      cmsGet<LogisticsRider[]>("logistics.riders", []),
-      cmsGet<LogisticsConfig>("logistics.config", {
-        targetOrdersPerBatch: 8,
-        targetSlaHours: 4,
-        autoAssignRiders: true,
-      }),
-    ])
+  constructor(@Inject(LogisticsOpsService) private readonly logistics: LogisticsOpsService) {}
 
-    if (!config.autoAssignRiders) {
-      return { assigned: 0, skipped: deliveries.length, slaAtRisk: 0, notes: ["Auto-assign disabled in config"] }
-    }
-
-    const load = new Map<string, number>()
-    for (const d of deliveries) {
-      if (d.riderId) load.set(d.riderId, (load.get(d.riderId) ?? 0) + 1)
-    }
-
-    const activeRiders = riders.filter((r) => r.active)
-    const notes: string[] = []
-    let assigned = 0
-    let skipped = 0
-    let atRisk = 0
-
-    const updated = deliveries.map((d) => {
-      if (d.status !== "pending" || d.riderId) {
-        skipped++
-        return d
-      }
-      // pick lowest-loaded rider whose zone matches
-      const candidates = activeRiders
-        .filter((r) => !d.zoneId || !r.zoneId || r.zoneId === d.zoneId)
-        .filter((r) => (load.get(r.id) ?? 0) < r.capacity)
-        .sort((a, b) => (load.get(a.id) ?? 0) - (load.get(b.id) ?? 0))
-      const rider = candidates[0]
-      if (!rider) {
-        atRisk++
-        notes.push(`No rider for ${d.orderRef} (zone ${d.zoneId ?? "any"})`)
-        skipped++
-        return d
-      }
-      load.set(rider.id, (load.get(rider.id) ?? 0) + 1)
-      assigned++
-      return { ...d, riderId: rider.id, status: "assigned" as const }
-    })
-
-    if (assigned > 0) await cmsPut("logistics.deliveries", updated)
-    return { assigned, skipped, slaAtRisk: atRisk, notes: notes.slice(0, 10) }
+  autoAssign() {
+    return this.logistics.autoAssign()
   }
 }
 
@@ -1685,6 +1579,7 @@ class PipelineStatusController {
     WhatsAppModule,
     SmsModule,
     PrescriptionsModule,
+    QaLogisticsModule,
   ],
   controllers: [
     SourcingPipelineController,

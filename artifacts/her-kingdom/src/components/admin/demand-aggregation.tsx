@@ -105,6 +105,9 @@ export function AdminDemandAggregation() {
                   <Link href="/admin/operations/procurement" className="text-xs text-primary hover:underline font-medium">
                     Procurement decisions →
                   </Link>
+                  <Link href="/admin/operations/fulfillment" className="text-xs text-primary hover:underline font-medium">
+                    Inventory & assembly →
+                  </Link>
                   <Link href="/admin/sourcing/forecast" className="text-xs text-primary hover:underline">
                     Demand forecast →
                   </Link>
