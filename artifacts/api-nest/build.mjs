@@ -21,6 +21,13 @@ async function buildAll() {
     external: [
       "*.node",
       "pg-native",
+      "stream",
+      "fs",
+      "path",
+      "crypto",
+      "util",
+      "events",
+      "buffer",
       // NestJS optional peer deps loaded via dynamic require — not used here.
       "@nestjs/microservices",
       "@nestjs/websockets",
