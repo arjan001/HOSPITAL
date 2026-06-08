@@ -40,8 +40,8 @@ import { createHmac, timingSafeEqual } from "node:crypto"
 import { and, desc, eq, ne, sql } from "drizzle-orm"
 import { db, payments } from "@workspace/db"
 import { newId } from "../common/repository"
-import { OrdersModule, OrdersService } from "./orders.module"
-import { AuditService } from "./audit.module"
+import { OrdersService } from "./orders.module"
+import { AuditModule, AuditService } from "./audit.module"
 
 type PaystackStatus = "pending" | "success" | "failed" | "cancelled"
 
@@ -666,7 +666,7 @@ class PaystackController {
 }
 
 @Module({
-  imports: [OrdersModule],
+  imports: [AuditModule],
   controllers: [PaystackController],
   providers: [PaystackService],
   exports: [PaystackService],
