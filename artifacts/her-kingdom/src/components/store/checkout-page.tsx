@@ -91,6 +91,10 @@ interface SavedAddress {
 /* Default centre: Nairobi CBD */
 const DEFAULT_CENTER: [number, number] = [-1.2921, 36.8219]
 
+function generateOrderNumber(): string {
+  return `HK-${Date.now().toString(36).toUpperCase()}`
+}
+
 /* Custom wine-colored pin (no need for image assets) */
 const pinIcon = L.divIcon({
   className: "",
@@ -740,34 +744,6 @@ export function CheckoutPage() {
   /* ── Build payload ──
      For an M-PESA order the customer phone IS the freshly-entered payment
      number; for COD it's the contact phone on file. */
-  const resolvedPhone = paymentMethod === "mpesa"
-    ? (mpesaPhone || formData.phone || savedAddress?.phone || "")
-    : (formData.phone || savedAddress?.phone || "")
-  const buildOrderPayload = (via: string) => ({
-    customerName:     formData.name || savedAddress?.name || "",
-    customerEmail:    formData.email || undefined,
-    customerPhone:    resolvedPhone,
-    deliveryLocationId: deliveryLocation || undefined,
-    deliveryAddress:  formData.address,
-    deliveryFee:      freeShipping ? 0 : deliveryFee,
-    subtotal:         totalPrice,
-    total:            grandTotal,
-    notes:            [deliveryNote, shippingType === "scheduled" && scheduledDate ? `Scheduled for ${scheduledDate} ${scheduledTime}` : null].filter(Boolean).join(" · ") || undefined,
-    specialInstructions: deliveryNote || undefined,
-    shippingType,
-    scheduledFor:     shippingType === "scheduled" && scheduledDate ? `${scheduledDate} ${scheduledTime}` : undefined,
-    orderedVia:       via,
-    items: items.map(item => ({
-      productId:   item.product.id,
-      productName: item.product.name,
-      productImage: item.product.images[0],
-      variation:   item.selectedVariations ? Object.entries(item.selectedVariations).map(([k, v]) => `${k}: ${v}`).join(", ") : undefined,
-      quantity:    item.quantity,
-      unitPrice:   item.product.price,
-      totalPrice:  item.product.price * item.quantity,
-    })),
-  })
-
   /* ── Abandon tracking ── */
   const trackAbandoned = (step: string, reason = "") => {
     if (items.length === 0) return
@@ -865,17 +841,11 @@ export function CheckoutPage() {
 
   /* ── Paystack (M-Pesa STK + Card) ── */
   const createPaystackPendingOrder = async (
-    method: "mpesa" | "card",
+    _method: "mpesa" | "card",
   ): Promise<{ orderNumber: string } | { error: string; hint?: string } | null> => {
-    try {
-      const res  = await fetch("/api/orders", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...buildOrderPayload(method), paymentMethod: method, status: "pending" }) })
-      const data = await res.json().catch(() => ({}))
-      if (!res.ok) return { error: data?.error || `Server error (${res.status})`, hint: data?.hint }
-      if (!data?.orderNumber) return { error: "Server did not return an order number" }
-      // The pending order is recorded server-side only once payment confirms (via
-      // persistOrderToAccount → /me/orders, which mirrors into admin Sales & Orders).
-      return { orderNumber: data.orderNumber }
-    } catch (err) { return { error: err instanceof Error ? err.message : "Network error" } }
+    // Order numbers are client-generated; the order is persisted after payment
+    // confirms via persistOrderToAccount → /me/orders (NestJS).
+    return { orderNumber: generateOrderNumber() }
   }
 
   const handlePaystackConfirmed = (result: { orderNumber: string; mpesaReceipt: string; phone: string; reference: string; method: "mpesa" | "card" }) => {
@@ -1741,23 +1711,10 @@ export function CheckoutPage() {
                         ;(async () => {
                           try {
                             setIsSubmitting(true)
-                            const payload = { ...buildOrderPayload("website"), paymentMethod: "cod", status: "pending" }
-                            const res  = await fetch("/api/orders", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) })
-                            const data = await res.json().catch(() => ({}))
-                            if (!res.ok || !data?.orderNumber) {
-                              const msg = data?.hint
-                                ? `${data.error}: ${data.hint}`
-                                : (data?.error || "We couldn't place the order. Please try again.")
-                              setFormError(msg)
-                              return
-                            }
-                            {
-                              const snap = buildOrderSnapshot({ orderNumber: data.orderNumber, paymentMethod: "cod" })
-                              // COD: placed as pending — the server mirrors it into admin
-                              // Sales & Orders; it becomes a Sale when admin confirms cash received.
-                              setOrderResult(snap)
-                              void persistOrderToAccount(snap)
-                            }
+                            const orderNumber = generateOrderNumber()
+                            const snap = buildOrderSnapshot({ orderNumber, paymentMethod: "cod" })
+                            setOrderResult(snap)
+                            void persistOrderToAccount(snap)
                             clearCart()
                           } catch (err) {
                             setFormError(err instanceof Error ? err.message : "Network error")

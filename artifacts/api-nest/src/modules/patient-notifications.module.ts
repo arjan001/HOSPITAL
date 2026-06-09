@@ -43,7 +43,7 @@
  *   tsx/esbuild does not emit emitDecoratorMetadata. Explicit @Inject(Token)
  *   is required on every constructor — project-wide rule.
  */
-import { Inject, Injectable, Module } from "@nestjs/common"
+import { forwardRef, Inject, Injectable, Module } from "@nestjs/common"
 import {
   CommunicationsAutomationService,
   PipelineModule,
@@ -115,7 +115,7 @@ export type NotifyOptions = {
 @Injectable()
 export class PatientNotificationsService {
   constructor(
-    @Inject(CommunicationsAutomationService)
+    @Inject(forwardRef(() => CommunicationsAutomationService))
     private readonly comms: CommunicationsAutomationService,
   ) {}
 
@@ -171,7 +171,7 @@ export class PatientNotificationsService {
 }
 
 @Module({
-  imports: [PipelineModule],
+  imports: [forwardRef(() => PipelineModule)],
   providers: [PatientNotificationsService],
   exports: [PatientNotificationsService],
 })

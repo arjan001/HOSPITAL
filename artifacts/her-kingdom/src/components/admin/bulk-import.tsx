@@ -39,6 +39,21 @@ const PRODUCT_SAMPLE = [
    "vitamin, immunity", "yes", "no", "", "yes", "80"],
 ]
 
+async function downloadNestCsv(path: string, filename: string) {
+  const res = await fetch(`${NEST_BASE}${path}`, {
+    credentials: "include",
+    headers: adminAuthHeaders(),
+  })
+  if (!res.ok) throw new Error(`Export failed (${res.status})`)
+  const blob = await res.blob()
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement("a")
+  a.href = url
+  a.download = filename
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
 function downloadCsv(filename: string, headers: string[], rows: string[][]) {
   const csv = Papa.unparse({ fields: headers, data: rows })
   const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8" })
@@ -283,11 +298,16 @@ function ProductsPanel() {
         <Button variant="outline" onClick={() => downloadCsv("shaniid-rx-products-template.csv", PRODUCT_HEADERS, PRODUCT_SAMPLE)}>
           <Download className="mr-2 h-4 w-4" /> Download template
         </Button>
-        <a href="/api/admin/products?format=csv" target="_blank" rel="noreferrer">
-          <Button variant="outline">
-            <Download className="mr-2 h-4 w-4" /> Export current products
-          </Button>
-        </a>
+        <Button
+          variant="outline"
+          onClick={() => {
+            void downloadNestCsv("/products/export", "shaniid-rx-products.csv").catch((err) =>
+              alert(err instanceof Error ? err.message : "Export failed"),
+            )
+          }}
+        >
+          <Download className="mr-2 h-4 w-4" /> Export current products
+        </Button>
       </div>
 
       <div className="grid gap-4 md:grid-cols-2">

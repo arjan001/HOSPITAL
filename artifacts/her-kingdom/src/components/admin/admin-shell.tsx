@@ -66,6 +66,7 @@ import {
   GitBranch,
   ListChecks,
   PackageCheck,
+  Pill,
 } from "lucide-react"
 
 const COLLAPSE_KEY = "shaniidrx.admin.sidebarCollapsed"
@@ -129,12 +130,14 @@ const NAV_GROUPS: NavGroup[] = [
     name: "Customers",
     items: [
       { label: "All Customers", href: "/admin/customers", icon: UserCircle, perm: "users.manage" },
+      { label: "CRM Pipeline", href: "/admin/crm", icon: LineChart, perm: "marketing.view" },
     ],
   },
   {
     name: "Pharmacy",
     items: [
       { label: "Prescriptions",         href: "/admin/prescriptions",          icon: ClipboardList, perm: "rx.view", hasBadge: true },
+      { label: "Refill Queue",          href: "/admin/refills",                icon: Pill,          perm: "rx.verify" },
       { label: "Care Pack Mapping",     href: "/admin/operations/care-packs",  icon: Layers,        perm: "sourcing.view" },
       { label: "Demand Aggregation",    href: "/admin/operations/demand",      icon: LineChart,     perm: "sourcing.view" },
       { label: "Procurement & Suppliers", href: "/admin/operations/procurement", icon: ClipboardList, perm: "sourcing.view" },
@@ -221,6 +224,7 @@ const NAV_GROUPS: NavGroup[] = [
         children: [
           { label: "Partner Registry",          href: "/admin/logistics-partners",    icon: Building2,  perm: "delivery.manage" },
           { label: "Delivery Operations",       href: "/admin/logistics",             icon: Truck,      perm: "delivery.manage", hasBadge: true },
+          { label: "Delivery Feedback",         href: "/admin/feedback",              icon: MessageSquare, perm: "delivery.manage" },
           { label: "Delivery Locations",        href: "/admin/delivery-locations",    icon: Truck,      perm: "delivery.manage" },
           { label: "Inventory Optimization",    href: "/admin/logistics/inventory",   icon: Warehouse,  perm: "delivery.manage" },
           { label: "Lead Time Monitoring",      href: "/admin/logistics/lead-time",   icon: Timer,      perm: "delivery.manage" },

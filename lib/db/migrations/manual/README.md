@@ -17,6 +17,7 @@ psql "$DATABASE_URL" -f lib/db/migrations/manual/20250604_procurement_sourcing_l
 psql "$DATABASE_URL" -f lib/db/migrations/manual/20250604_sourcing_requests.sql
 psql "$DATABASE_URL" -f lib/db/migrations/manual/20250604_fulfillment.sql
 psql "$DATABASE_URL" -f lib/db/migrations/manual/20250604_qa_logistics.sql
+psql "$DATABASE_URL" -f lib/db/migrations/manual/20250605_doctors.sql
 ```
 
 Or use drizzle push when the DB is up:
@@ -37,3 +38,4 @@ pnpm --filter @workspace/db run push
 | `20250604_procurement.sql` | `procurement_decisions`, `supplier_suggestions` (BL #6–7) |
 | `20250604_fulfillment.sql` | `inventory_allocations`, `care_pack_assembly_jobs`, `care_pack_assembly_lines` (BL #8–9) |
 | `20250604_qa_logistics.sql` | QA inventory, dispatch checks, settings; logistics zones through settings |
+| `20250605_doctors.sql` | `doctors` (extended profile), `doctor_accounts` (portal login) |

@@ -171,6 +171,13 @@ export type LogisticsEarnings = {
 }
 
 // ───────────────────────────── auth ─────────────────────────────
+export function partnerClerkSession(type: PartnerType, clerkToken: string) {
+  return pFetch<{ ok: true; partner: PartnerAccount }>(`/${type}/clerk-session`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${clerkToken}` },
+  })
+}
+
 export function partnerLogin(type: PartnerType, email: string, password: string) {
   return pFetch<{ ok: true; partner: PartnerAccount }>(`/${type}/auth`, {
     method: "POST",

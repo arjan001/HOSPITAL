@@ -8,6 +8,7 @@ import { Footer } from "@/components/store/footer"
 import { Seo } from "@/components/seo"
 import { useEffectivePermissions } from "@/lib/permissions"
 import { useDoctors } from "@/lib/doctors-store"
+import { useDoctorMe, doctorSignout } from "@/lib/doctors-client"
 import { useAdminNotifications } from "@/lib/notifications-client"
 import { useCmsDoc } from "@/lib/cms-store"
 import type { Consultation } from "@/components/admin/consultations"
@@ -35,13 +36,31 @@ export default function DoctorPanelPage() {
     || eff.permissions.has("rx.recommend")
     || eff.isSuperAdmin
 
+  const { data: portalMe } = useDoctorMe(true)
   const { items: doctors } = useDoctors()
-  const me = useMemo(
-    () => doctors.find((d) => d.email && eff.user?.email && d.email.toLowerCase() === eff.user.email.toLowerCase())
-      ?? doctors[0]
-      ?? null,
-    [doctors, eff.user?.email],
-  )
+  const me = useMemo(() => {
+    if (portalMe?.doctor) {
+      return {
+        id: portalMe.doctor.id,
+        name: portalMe.doctor.name,
+        title: portalMe.doctor.title,
+        specialization: portalMe.doctor.specialization,
+        licenseNumber: portalMe.doctor.licenseNumber,
+        bio: portalMe.doctor.bio,
+        avatarUrl: portalMe.doctor.avatarUrl,
+        languages: portalMe.doctor.languages,
+        consultationRateKES: portalMe.doctor.consultationRateKES,
+        availability: portalMe.doctor.availability,
+        email: portalMe.doctor.email,
+        phone: portalMe.doctor.phone,
+        active: portalMe.doctor.active,
+        createdAt: portalMe.doctor.createdAt,
+        updatedAt: portalMe.doctor.updatedAt,
+      }
+    }
+    return doctors.find((d) => d.email && eff.user?.email && d.email.toLowerCase() === eff.user.email.toLowerCase())
+      ?? null
+  }, [portalMe, doctors, eff.user?.email])
 
   const { items: notifs, unread, markAllRead } = useAdminNotifications("doctor")
 
@@ -99,12 +118,26 @@ export default function DoctorPanelPage() {
             </h1>
             <p className="mt-1 max-w-2xl text-sm text-white/80">
               Review consultations, sign off prescriptions and keep your patients' clinical notes up to date.
-              Pay-before-call is enforced — patients who book you have already authorised payment.
             </p>
+            {!portalMe && (
+              <p className="mt-2 text-xs text-white/70">
+                <Link href="/doctor/login" className="underline font-semibold">Sign in with your doctor portal password</Link>
+                {" "}for full access, or continue as admin staff below.
+              </p>
+            )}
             {me && (
               <p className="mt-3 text-[11px] uppercase tracking-widest text-white/70">
                 {me.specialization} · License {me.licenseNumber || "—"} · KSh {me.consultationRateKES.toLocaleString()} / session
               </p>
+            )}
+            {portalMe && (
+              <button
+                type="button"
+                onClick={() => { void doctorSignout().then(() => window.location.reload()) }}
+                className="absolute top-4 right-4 text-xs font-semibold text-white/80 hover:text-white underline"
+              >
+                Sign out
+              </button>
             )}
           </div>
 
@@ -119,7 +152,7 @@ export default function DoctorPanelPage() {
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             <PanelCard icon={ClipboardList} title="Prescriptions inbox" desc="Verify uploaded prescriptions and write dosing notes." href="/admin/prescriptions" />
             <PanelCard icon={CalendarClock} title="My consultations" desc="Upcoming and past consultations with notes." href="/admin/consultations" />
-            <PanelCard icon={Users} title="My patients" desc="Search patients and open sticky-note threads." href="/admin/customers" />
+            <PanelCard icon={Users} title="My patients" desc="Consultations assigned to you — open sticky-note threads." href="/doctor/patients" />
             <PanelCard icon={NotebookPen} title="Sticky notes" desc="Shared clinical memory per patient." href="/admin/customers" />
             <PanelCard icon={Bell} title={`Notifications${unread ? ` · ${unread} unread` : ""}`} desc="Pings about consultations and prescription approvals." onAction={() => { void markAllRead() }} actionLabel="Mark read" />
           </div>

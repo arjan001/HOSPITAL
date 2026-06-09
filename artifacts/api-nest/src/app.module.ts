@@ -63,6 +63,17 @@ import { OperationsModule } from "./modules/operations.module"
 import { SourcingModule } from "./modules/sourcing.module"
 import { OperationsFulfillmentModule } from "./modules/operations-fulfillment"
 import { QaLogisticsModule } from "./modules/qa-logistics.module"
+import { DoctorsModule } from "./modules/doctors.module"
+import { CustomerFeedbackModule } from "./modules/customer-feedback.module"
+import { CatalogModule } from "./modules/catalog.module"
+import { CartModule } from "./modules/cart.module"
+import { SendyModule } from "./modules/sendy.module"
+import { StorefrontModule } from "./modules/storefront.module"
+import { AnalyticsModule } from "./modules/analytics.module"
+import { BlogsModule } from "./modules/blogs.module"
+import { VideoModule } from "./modules/video.module"
+import { CampaignsAdminModule } from "./modules/campaigns-admin.module"
+import { SupplierPurchaseOrdersModule } from "./modules/supplier-purchase-orders.module"
 
 @Module({
   imports: [
@@ -104,6 +115,17 @@ import { QaLogisticsModule } from "./modules/qa-logistics.module"
     SourcingModule,
     OperationsFulfillmentModule,
     QaLogisticsModule,
+    DoctorsModule,
+    CustomerFeedbackModule,
+    CatalogModule,
+    CartModule,
+    SendyModule,
+    StorefrontModule,
+    AnalyticsModule,
+    BlogsModule,
+    VideoModule,
+    CampaignsAdminModule,
+    SupplierPurchaseOrdersModule,
   ],
   providers: [
     // Global catch-all exception filter: normalises every error response and

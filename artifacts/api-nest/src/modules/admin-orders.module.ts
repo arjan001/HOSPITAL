@@ -26,6 +26,7 @@ import {
   Body,
   Controller,
   Delete,
+  forwardRef,
   Get,
   HttpException,
   HttpStatus,
@@ -145,7 +146,7 @@ type UpsertInput = Partial<Omit<AdminOrderRecord, "id" | "createdAt" | "updatedA
 @Injectable()
 class AdminOrdersService {
   constructor(
-    @Inject(PatientNotificationsService)
+    @Inject(forwardRef(() => PatientNotificationsService))
     private readonly patientNotify: PatientNotificationsService,
     @Inject(NotificationsService)
     private readonly notifications: NotificationsService,
@@ -386,7 +387,11 @@ class AdminOrdersService {
     return saved
   }
 
-  async patchStatus(id: string, status: AdminOrderStatus): Promise<AdminOrderRecord> {
+  async patchStatus(
+    id: string,
+    status: AdminOrderStatus,
+    opts?: { notify?: boolean },
+  ): Promise<AdminOrderRecord> {
     const target = await this.get(id)
     const [row] = await db
       .update(adminOrdersTable)
@@ -395,7 +400,7 @@ class AdminOrdersService {
       .returning()
     const saved = toRecord(row)
     if (status !== target.status) {
-      this.notifyStatusChange(saved, status)
+      if (opts?.notify !== false) this.notifyStatusChange(saved, status)
       void this.audit.record({
         module: "Orders",
         action: "status",
@@ -475,7 +480,7 @@ class AdminOrdersController {
 }
 
 @Module({
-  imports: [PatientNotificationsModule, NotificationsModule],
+  imports: [forwardRef(() => PatientNotificationsModule), NotificationsModule],
   controllers: [AdminOrdersController],
   providers: [AdminOrdersService],
   exports: [AdminOrdersService],

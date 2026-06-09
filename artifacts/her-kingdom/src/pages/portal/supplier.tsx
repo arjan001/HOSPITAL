@@ -22,6 +22,7 @@ import {
   useSupplierOpportunities, useSupplierQuotes, submitSupplierQuote,
   type PartnerAccount, type SupplierProduct, type SourcingOpportunity, type PartnerQuote,
 } from "@/lib/partners-client"
+import { PartnerClerkDivider, PartnerClerkSignIn } from "@/components/portal/partner-clerk-signin"
 import {
   ShieldCheck, LogOut, ClipboardList, BarChart3, User, AlertTriangle,
   CheckCircle2, XCircle, Eye, EyeOff, ArrowRight, Star, TrendingUp,
@@ -212,6 +213,13 @@ function SupplierAuthScreen() {
                   {signingIn ? <Loader2 className="h-4 w-4 animate-spin" /> : <>Sign in to your portal <ArrowRight className="h-4 w-4" /></>}
                 </Button>
               </form>
+
+              <PartnerClerkDivider />
+              <PartnerClerkSignIn
+                type="supplier"
+                redirectPath="/portal/supplier"
+                onError={setSigninErr}
+              />
 
               <p className="text-xs text-gray-400 text-center mt-6">
                 New supplier? <button type="button" onClick={() => setMode("apply")} className="underline" style={{ color: WINE }}>Apply to join</button>

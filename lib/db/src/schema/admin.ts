@@ -244,6 +244,34 @@ export const partnerApplications = pgTable("partner_applications", {
 })
 
 /**
+ * purchase_orders — admin-raised POs against cms `suppliers` records.
+ */
+export const purchaseOrders = pgTable("purchase_orders", {
+  id: text("id").primaryKey(),
+  supplierId: text("supplier_id").notNull(),
+  poNumber: text("po_number").notNull(),
+  status: text("status").notNull().default("draft"),
+  // draft | sent | confirmed | dispatched | received | disputed | cancelled
+  total: integer("total").notNull().default(0),
+  expectedDate: timestamp("expected_date"),
+  notes: text("notes"),
+  createdBy: text("created_by"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+})
+
+export const purchaseOrderLines = pgTable("purchase_order_lines", {
+  id: text("id").primaryKey(),
+  purchaseOrderId: text("purchase_order_id")
+    .notNull()
+    .references(() => purchaseOrders.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  qty: integer("qty").notNull(),
+  unitPrice: integer("unit_price").notNull(),
+  sortOrder: integer("sort_order").notNull().default(0),
+})
+
+/**
  * supplier_products — a supplier partner's own catalogue: the SKUs, prices,
  * MOQs and lead times they can fulfil. Drives quote pre-fill + procurement.
  */
@@ -393,6 +421,13 @@ export const insertSupplierProductSchema = createInsertSchema(supplierProducts).
 export const selectSupplierProductSchema = createSelectSchema(supplierProducts)
 export type InsertSupplierProduct = z.infer<typeof insertSupplierProductSchema>
 export type SupplierProduct = typeof supplierProducts.$inferSelect
+
+export const insertPurchaseOrderSchema = createInsertSchema(purchaseOrders).omit({
+  createdAt: true,
+  updatedAt: true,
+})
+export type PurchaseOrder = typeof purchaseOrders.$inferSelect
+export type PurchaseOrderLine = typeof purchaseOrderLines.$inferSelect
 
 export const insertClinicTransactionSchema = createInsertSchema(clinicTransactions).omit({
   createdAt: true,

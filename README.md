@@ -139,15 +139,6 @@ over.
 | `PAYSTACK_PUBLIC_KEY` | No | Surfaced on `/charge` response for Paystack-branded UI |
 | `PAYSTACK_CALLBACK_URL` | No | Webhook URL sent on each charge; falls back to `{host}/api/v2/payments/paystack/callback` |
 
-### Payments — PayHero (Legacy Express, **deprecated**)
-| Variable | Purpose |
-|---|---|
-| `PAYHERO_BASIC_AUTH_TOKEN` | Preferred auth (replaces username+password) |
-| `PAYHERO_API_USERNAME` | Fallback auth |
-| `PAYHERO_API_PASSWORD` | Fallback auth |
-| `PAYHERO_CHANNEL_ID` | Channel to push STK |
-| `PAYHERO_CALLBACK_URL` | Webhook URL |
-
 ### Video / Telemedicine
 | Variable | Purpose |
 |---|---|
@@ -390,11 +381,8 @@ handlers so every request carries the Clerk auth context.
 
 | Path | Description |
 |---|---|
-| `/api/auth/*` | Legacy stub auth endpoints (not the Clerk proxy — the real Clerk Frontend API proxy is mounted at `/api/__clerk`). |
-| `/api/payments/payhero/stk` | PayHero M-Pesa STK push (**deprecated, use Paystack**) |
-| `/api/payments/payhero/status` | PayHero payment status poll |
-| `/api/payments/payhero/callback` | PayHero webhook |
-| `/api/video/{room,token,heartbeat,end,active,status}` | Daily.co integration — create rooms, mint meeting tokens, heartbeat, end call, live status. Powered by `DAILY_API_KEY`. |
+| `/api/auth/*` | Legacy paths proxied to Nest admin auth in dev |
+| `/api/video/{room,token,heartbeat,end,active,status}` | Daily.co integration (Nest `/api/v2/video`) |
 | `GET /api/healthz` | Express health check |
 
 ---
@@ -535,10 +523,6 @@ Drizzle swap = replace the Map with a `paystack_payments` table insert/select.
 
 **Phone normalisation:** `07XXXXXXXX` → `2547XXXXXXXX` (Safaricom E.164). Only Safaricom numbers
 accepted (regex: `^254[17]\d{8}$`).
-
-### Legacy — PayHero M-Pesa (Express `/api`)
-Routes still exist at `/api/payments/payhero/{stk,status,callback}` but the storefront no longer
-calls them. Kept for reference until the module is formally deleted in Phase 2.
 
 ### Card Payments
 Logic exists but UI is hidden behind `VITE_ENABLE_CARD_PAYMENTS=false`. Set to `true` to surface

@@ -384,6 +384,37 @@ export class AdminAuthService {
       .where(and(eq(adminUsers.role, "super_admin"), eq(adminUsers.active, true)))
     return rows.length
   }
+
+  async changePassword(
+    userId: string,
+    currentPassword: string,
+    newPassword: string,
+  ): Promise<void> {
+    if (userId === "env-super-admin" || userId === "dev-super-admin") {
+      throw new HttpException(
+        "Cannot change password for the environment master account",
+        HttpStatus.BAD_REQUEST,
+      )
+    }
+    if (newPassword.length < 8) {
+      throw new HttpException("Password must be at least 8 characters", HttpStatus.BAD_REQUEST)
+    }
+    if (currentPassword === newPassword) {
+      throw new HttpException(
+        "New password must be different from the current one",
+        HttpStatus.BAD_REQUEST,
+      )
+    }
+    const rows = await db.select().from(adminUsers).where(eq(adminUsers.id, userId)).limit(1)
+    const user = rows[0]
+    if (!user || !verifyPassword(currentPassword, user.passwordHash)) {
+      throw new HttpException("Current password is incorrect", HttpStatus.UNAUTHORIZED)
+    }
+    await db
+      .update(adminUsers)
+      .set({ passwordHash: hashPassword(newPassword), updatedAt: new Date() })
+      .where(eq(adminUsers.id, userId))
+  }
 }
 
 function bearerFrom(req: Request): string {
@@ -450,6 +481,22 @@ class AdminAuthController {
       message:
         "If that email is registered as an admin account, recovery instructions will be sent. For urgent access contact your system administrator.",
     }
+  }
+
+  @Post("change-password")
+  async changePassword(
+    @Req() req: Request,
+    @Body() body: { currentPassword?: string; newPassword?: string },
+  ) {
+    const user = await this.svc.verifyToken(bearerFrom(req))
+    if (!user) throw new HttpException("Unauthorized", HttpStatus.UNAUTHORIZED)
+    const currentPassword = String(body?.currentPassword ?? "")
+    const newPassword = String(body?.newPassword ?? "")
+    if (!currentPassword) {
+      throw new HttpException("Current password is required", HttpStatus.BAD_REQUEST)
+    }
+    await this.svc.changePassword(user.id, currentPassword, newPassword)
+    return { ok: true }
   }
 
   @Get("me")

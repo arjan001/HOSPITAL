@@ -54,6 +54,7 @@ import {
 } from "@workspace/db"
 import { newId } from "../common/repository"
 import { signPartnerToken, verifyPartnerToken } from "../common/partner-token"
+import { verifyClerkBearer } from "../common/clerk-auth"
 import { EmailModule, EmailService } from "./email.module"
 import { AdminCmsModule, AdminCmsService } from "./admin-cms.module"
 import { AdminGuard } from "../common/admin-guard"
@@ -148,25 +149,94 @@ export class PartnerAuthService {
 
   /** Resolve the signed token from header or cookie and return the live account. */
   async requirePartner(req: Request, expectedType?: PartnerType): Promise<PartnerAccount> {
-    const raw =
+    const cookieToken = (req as Request & { cookies?: Record<string, string> }).cookies?.[
+      PARTNER_TOKEN_COOKIE
+    ]
+    const headerToken =
       (req.header("x-partner-token") || "").trim() ||
-      (req.header("authorization") || "").replace(/^Bearer\s+/i, "").trim() ||
-      (req as Request & { cookies?: Record<string, string> }).cookies?.[PARTNER_TOKEN_COOKIE] ||
-      ""
+      (req.header("authorization") || "").replace(/^Bearer\s+/i, "").trim()
+    const raw = headerToken || cookieToken || ""
     const claims = verifyPartnerToken(raw)
-    if (!claims) throw new HttpException("Not signed in", HttpStatus.UNAUTHORIZED)
-    if (expectedType && claims.partnerType !== expectedType) {
-      throw new HttpException("Wrong portal for this account", HttpStatus.FORBIDDEN)
+    if (claims) {
+      if (expectedType && claims.partnerType !== expectedType) {
+        throw new HttpException("Wrong portal for this account", HttpStatus.FORBIDDEN)
+      }
+      const [acc] = await db
+        .select()
+        .from(partnerAccounts)
+        .where(eq(partnerAccounts.id, claims.pid))
+        .limit(1)
+      if (!acc || acc.status !== "active") {
+        throw new HttpException("Account is not active", HttpStatus.UNAUTHORIZED)
+      }
+      return acc
     }
-    const [acc] = await db
-      .select()
-      .from(partnerAccounts)
-      .where(eq(partnerAccounts.id, claims.pid))
-      .limit(1)
-    if (!acc || acc.status !== "active") {
-      throw new HttpException("Account is not active", HttpStatus.UNAUTHORIZED)
+
+    const clerk = await verifyClerkBearer(req.header("authorization"))
+    if (clerk?.email) {
+      const metaType = clerk.publicMetadata?.partnerType
+      const partnerType =
+        expectedType ||
+        (metaType === "supplier" || metaType === "clinic" || metaType === "logistics"
+          ? (metaType as PartnerType)
+          : null)
+      if (!partnerType) {
+        throw new HttpException(
+          "Clerk account is missing partnerType in public metadata",
+          HttpStatus.FORBIDDEN,
+        )
+      }
+      let [acc] = await db
+        .select()
+        .from(partnerAccounts)
+        .where(
+          and(
+            eq(partnerAccounts.email, clerk.email),
+            eq(partnerAccounts.partnerType, partnerType),
+          ),
+        )
+        .limit(1)
+      if (!acc) {
+        const partnerId = String(clerk.publicMetadata?.partnerId ?? "").trim()
+        if (partnerId) {
+          const recs = await this.cmsLookup<CmsPartnerRecord[]>(CMS_KEY_FOR[partnerType], [])
+          const rec = recs.find((r) => r.id === partnerId)
+          if (rec) {
+            ;[acc] = await db
+              .insert(partnerAccounts)
+              .values({
+                id: newId("pacc"),
+                email: clerk.email,
+                passwordHash: null,
+                partnerType,
+                partnerId,
+                displayName:
+                  (rec.companyName as string) ||
+                  (rec.clinicName as string) ||
+                  (rec.name as string) ||
+                  clerk.email,
+                status: "active",
+                metadata: { clerkUserId: clerk.userId },
+              })
+              .returning()
+          }
+        }
+      } else if (clerk.userId) {
+        await db
+          .update(partnerAccounts)
+          .set({
+            metadata: { ...(acc.metadata ?? {}), clerkUserId: clerk.userId },
+            updatedAt: new Date(),
+          })
+          .where(eq(partnerAccounts.id, acc.id))
+      }
+      if (!acc || acc.status !== "active") {
+        throw new HttpException("No active partner account for this Clerk user", HttpStatus.UNAUTHORIZED)
+      }
+      return acc
     }
-    return acc
+
+    throw new HttpException("Not signed in", HttpStatus.UNAUTHORIZED)
   }
 
   private issue(res: Response, acc: PartnerAccount) {
@@ -254,6 +324,27 @@ export class PartnerAuthService {
       .set({ lastLoginAt: new Date(), updatedAt: new Date() })
       .where(eq(partnerAccounts.id, acc.id))
 
+    const token = this.issue(res, acc)
+    return { ok: true, token, partner: publicAccount(acc) }
+  }
+
+  /** Exchange a Clerk session JWT for a partner portal cookie (same as password login). */
+  async clerkSession(
+    res: Response,
+    type: string,
+    authHeader: string | undefined,
+  ): Promise<{ ok: true; token: string; partner: ReturnType<typeof publicAccount> }> {
+    const partnerType = assertType(type)
+    const clerk = await verifyClerkBearer(authHeader)
+    if (!clerk?.email) {
+      throw new HttpException("Valid Clerk session token required", HttpStatus.UNAUTHORIZED)
+    }
+    const req = { header: (n: string) => (n.toLowerCase() === "authorization" ? authHeader ?? "" : "") } as Request
+    const acc = await this.requirePartner(req, partnerType)
+    await db
+      .update(partnerAccounts)
+      .set({ lastLoginAt: new Date(), updatedAt: new Date() })
+      .where(eq(partnerAccounts.id, acc.id))
     const token = this.issue(res, acc)
     return { ok: true, token, partner: publicAccount(acc) }
   }
@@ -898,6 +989,15 @@ class PartnerAuthController {
   ) {
     // Accept `password` (new) or `portalCode` (legacy field name) for compat.
     return this.svc.login(res, type, body?.email ?? "", body?.password ?? body?.portalCode ?? "")
+  }
+
+  @Post(":type/clerk-session")
+  clerkSession(
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+    @Param("type") type: string,
+  ) {
+    return this.svc.clerkSession(res, type, req.header("authorization"))
   }
 
   @Post(":type/signout")

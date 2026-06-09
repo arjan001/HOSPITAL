@@ -1,25 +1,30 @@
 /**
- * Doctors + sticky-notes store.
+ * Doctors store — Postgres-backed via /api/v2/doctors (see doctors-client.ts).
  *
- * Persists through `cmsStore` so admin-managed doctor profiles round-trip
- * to api-nest via the same `/api/v2/admin/cms/:key` seam every other CMS
- * surface uses. Per-patient sticky notes use the key pattern
- * `patient-notes:<patientId>` so each patient detail page only loads its
- * own thread.
+ * Sticky notes persist via Nest PatientNotesModule (`patient-notes-client.ts`).
  */
-import { useCmsCollection, useCmsDoc, cmsStore, newId } from "@/lib/cms-store"
-import type { CmsRecord } from "@/lib/cms-store"
+import { useCallback, useMemo } from "react"
+import { useAdminDoctors, usePublicDoctors, type DoctorRecord } from "@/lib/doctors-client"
+import { deriveInitials, type StandbyDoctor } from "@/lib/consultation-settings"
+import { newId } from "@/lib/cms-store"
+import {
+  createPatientNote,
+  deletePatientNote,
+  updatePatientNote,
+  usePatientNotes,
+  type ApiPatientNote,
+} from "@/lib/patient-notes-client"
 
 export type DoctorAvailability = {
   monFri: boolean
   weekends: boolean
-  hours: string // free-form "08:00–18:00 EAT"
+  hours: string
 }
 
-export interface Doctor extends CmsRecord {
+export interface Doctor {
   id: string
   name: string
-  title: string // "MBChB", "Pharm.D"
+  title: string
   specialization: string
   licenseNumber: string
   bio: string
@@ -34,7 +39,7 @@ export interface Doctor extends CmsRecord {
   updatedAt: string
 }
 
-export interface StickyNote extends CmsRecord {
+export interface StickyNote {
   id: string
   patientId: string
   body: string
@@ -46,18 +51,67 @@ export interface StickyNote extends CmsRecord {
   updatedAt: string
 }
 
-const DOCTORS_KEY = "doctors"
+type UiColor = StickyNote["color"]
+type ApiColor = ApiPatientNote["color"]
 
+function uiToApiColor(c: UiColor): ApiColor {
+  if (c === "wine") return "purple"
+  if (c === "orange") return "red"
+  if (c === "blue") return "blue"
+  return "yellow"
+}
+
+function apiToUiColor(c: ApiColor): UiColor {
+  if (c === "purple") return "wine"
+  if (c === "red") return "orange"
+  if (c === "blue") return "blue"
+  return "yellow"
+}
+
+function apiToSticky(n: ApiPatientNote): StickyNote {
+  return {
+    id: n.id,
+    patientId: n.patientId,
+    body: n.note,
+    authorName: n.createdByName || n.createdBy || "Staff",
+    authorRole: n.createdBy === "pharmacist" ? "pharmacist" : n.createdBy === "doctor" ? "doctor" : "admin",
+    pinned: n.pinned,
+    color: apiToUiColor(n.color),
+    createdAt: n.createdAt,
+    updatedAt: n.updatedAt,
+  }
+}
+
+/** Admin doctor directory (Postgres). */
 export function useDoctors() {
-  return useCmsCollection<Doctor>(DOCTORS_KEY, [])
+  const { items, records, error, isLoading, refresh, upsert, remove, invite } = useAdminDoctors()
+  return {
+    items,
+    records,
+    error,
+    isLoading,
+    refresh,
+    upsert,
+    remove,
+    invite,
+  }
 }
 
-export function getDoctors(): Doctor[] {
-  return cmsStore.get<Doctor[]>(DOCTORS_KEY, [])
+/** Public storefront directory (active doctors only). */
+export function usePublicDoctorDirectory() {
+  return usePublicDoctors()
 }
 
-export function activeDoctors(): Doctor[] {
-  return getDoctors().filter((d) => d.active)
+/** Map a Postgres doctor row to the standby profile shape used on consult screens. */
+export function doctorRecordToStandby(d: DoctorRecord): Required<StandbyDoctor> {
+  return {
+    name: d.name,
+    specialty: d.specialization,
+    yearsExperience: d.yearsExperience ?? 0,
+    initials: deriveInitials(d.name),
+    avatarUrl: d.avatarUrl || "",
+    bio: d.bio || "",
+  }
 }
 
 export function makeDoctor(partial: Partial<Doctor>): Doctor {
@@ -65,14 +119,14 @@ export function makeDoctor(partial: Partial<Doctor>): Doctor {
   return {
     id: partial.id ?? newId("doc"),
     name: partial.name ?? "",
-    title: partial.title ?? "MBChB",
+    title: partial.title ?? "Dr.",
     specialization: partial.specialization ?? "General Practice",
     licenseNumber: partial.licenseNumber ?? "",
     bio: partial.bio ?? "",
     avatarUrl: partial.avatarUrl,
-    languages: partial.languages ?? ["English", "Swahili"],
-    consultationRateKES: partial.consultationRateKES ?? 500,
-    availability: partial.availability ?? { monFri: true, weekends: false, hours: "08:00–18:00 EAT" },
+    languages: partial.languages ?? ["English"],
+    consultationRateKES: partial.consultationRateKES ?? 1500,
+    availability: partial.availability ?? { monFri: true, weekends: false, hours: "9am – 5pm" },
     email: partial.email ?? "",
     phone: partial.phone ?? "",
     active: partial.active ?? true,
@@ -82,7 +136,45 @@ export function makeDoctor(partial: Partial<Doctor>): Doctor {
 }
 
 export function useStickyNotes(patientId: string) {
-  return useCmsCollection<StickyNote>(`patient-notes:${patientId}`, [])
+  const { notes, refresh } = usePatientNotes(patientId)
+  const items = useMemo(() => notes.map(apiToSticky), [notes])
+
+  const upsert = useCallback(
+    (note: StickyNote) => {
+      void (async () => {
+        const existing = notes.find((n) => n.id === note.id)
+        if (existing) {
+          await updatePatientNote(patientId, note.id, {
+            note: note.body,
+            color: uiToApiColor(note.color),
+            pinned: note.pinned,
+          })
+        } else {
+          await createPatientNote(patientId, {
+            note: note.body,
+            color: uiToApiColor(note.color),
+            pinned: note.pinned,
+            createdBy: note.authorRole,
+            createdByName: note.authorName,
+          })
+        }
+        await refresh()
+      })()
+    },
+    [patientId, notes, refresh],
+  )
+
+  const remove = useCallback(
+    (id: string) => {
+      void (async () => {
+        await deletePatientNote(patientId, id)
+        await refresh()
+      })()
+    },
+    [patientId, refresh],
+  )
+
+  return { items, upsert, remove }
 }
 
 export function makeStickyNote(partial: Partial<StickyNote> & { patientId: string }): StickyNote {

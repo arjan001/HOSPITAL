@@ -23,6 +23,7 @@
 import {
   Body,
   Controller,
+  forwardRef,
   Get,
   Headers,
   HttpException,
@@ -163,7 +164,7 @@ class PaystackService {
   private readonly base = "https://api.paystack.co"
 
   constructor(
-    @Inject(OrdersService) private readonly orders: OrdersService,
+    @Inject(forwardRef(() => OrdersService)) private readonly orders: OrdersService,
     @Inject(AuditService) private readonly audit: AuditService,
   ) {}
 
@@ -666,7 +667,7 @@ class PaystackController {
 }
 
 @Module({
-  imports: [OrdersModule],
+  imports: [forwardRef(() => OrdersModule)],
   controllers: [PaystackController],
   providers: [PaystackService],
   exports: [PaystackService],

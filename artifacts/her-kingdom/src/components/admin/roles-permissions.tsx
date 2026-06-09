@@ -1,5 +1,11 @@
 "use client"
 
+/**
+ * Legacy CMS staff/roles editor. Production admin logins use Postgres
+ * (`/admin/accounts` + `admin_users`). This page remains for role preview
+ * and permission catalog reference only — do not create new staff here.
+ */
+
 import { useMemo, useState } from "react"
 import { AdminShell } from "./admin-shell"
 import { useCmsDoc, newId } from "@/lib/cms-store"

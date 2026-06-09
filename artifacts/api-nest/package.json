@@ -15,6 +15,7 @@
     "@nestjs/common": "^11.0.0",
     "@nestjs/core": "^11.0.0",
     "@nestjs/platform-express": "^11.0.0",
+    "@clerk/backend": "^3.4.7",
     "@workspace/db": "workspace:*",
     "cloudinary": "^2.10.0",
     "cookie-parser": "^1.4.7",

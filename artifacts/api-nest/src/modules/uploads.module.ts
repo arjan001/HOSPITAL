@@ -31,13 +31,18 @@ import {
   Module,
   Post,
   Req,
+  UploadedFile,
+  UseGuards,
+  UseInterceptors,
 } from "@nestjs/common"
+import { FileInterceptor } from "@nestjs/platform-express"
 import type { Request } from "express"
 import { eq } from "drizzle-orm"
 import { db, uploads } from "@workspace/db"
 import { getStorage, type Storage } from "../common/storage"
 import { ensureUserId } from "../common/session-user"
 import { newId } from "../common/repository"
+import { AdminGuard, AnyAdmin } from "../common/admin-guard"
 
 type UploadBody = {
   namespace?: string
@@ -55,6 +60,20 @@ const ALLOWED_TYPES = new Set([
   "image/webp",
   "image/gif",
   "application/pdf",
+])
+
+const ADMIN_IMAGE_TYPES = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/gif",
+  "image/svg+xml",
+])
+const ADMIN_VIDEO_TYPES = new Set([
+  "video/mp4",
+  "video/webm",
+  "video/ogg",
+  "video/quicktime",
 ])
 
 // Simple in-memory sliding-window rate limit keyed by sessionId. The global
@@ -121,6 +140,29 @@ class UploadsService {
     })
     return { url, key, size: buf.byteLength }
   }
+
+  /** Admin multipart upload for product/blog media (legacy `/api/upload` contract). */
+  async putMultipart(
+    file: { buffer: Buffer; mimetype: string; size: number; originalname: string },
+    productSlug?: string,
+  ): Promise<{ url: string; key: string; isVideo: boolean }> {
+    const isImage = ADMIN_IMAGE_TYPES.has(file.mimetype)
+    const isVideo = ADMIN_VIDEO_TYPES.has(file.mimetype)
+    if (!isImage && !isVideo) {
+      throw new HttpException("Invalid file type", HttpStatus.BAD_REQUEST)
+    }
+    if (isImage && file.size > 5 * 1024 * 1024) {
+      throw new HttpException("Image too large (max 5MB)", HttpStatus.PAYLOAD_TOO_LARGE)
+    }
+    if (isVideo && file.size > 50 * 1024 * 1024) {
+      throw new HttpException("Video too large (max 50MB)", HttpStatus.PAYLOAD_TOO_LARGE)
+    }
+    const namespace = String(productSlug || "products").slice(0, 80)
+    const storage: Storage = getStorage()
+    const { url, key } = await storage.put(namespace, file.originalname, file.buffer, file.mimetype)
+    const publicUrl = url.startsWith("http") ? url : `/uploads/${key}`
+    return { url: publicUrl, key, isVideo }
+  }
 }
 
 @Controller("uploads")
@@ -130,6 +172,19 @@ class UploadsController {
   @Post()
   async upload(@Req() req: Request, @Body() body: UploadBody) {
     return this.svc.putBase64(req.sessionId, body ?? {})
+  }
+
+  /** Legacy admin multipart route — proxied from `/api/upload` in dev. */
+  @Post("admin")
+  @UseGuards(AdminGuard)
+  @AnyAdmin()
+  @UseInterceptors(FileInterceptor("file", { limits: { fileSize: 50 * 1024 * 1024 } }))
+  async adminUpload(
+    @UploadedFile() file?: { buffer: Buffer; mimetype: string; size: number; originalname: string },
+    @Body("productSlug") productSlug?: string,
+  ) {
+    if (!file) throw new HttpException("No file provided", HttpStatus.BAD_REQUEST)
+    return this.svc.putMultipart(file, productSlug)
   }
 }
 

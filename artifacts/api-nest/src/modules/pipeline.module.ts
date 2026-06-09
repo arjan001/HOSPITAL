@@ -35,6 +35,7 @@
 import {
   Body,
   Controller,
+  forwardRef,
   Get,
   HttpException,
   HttpStatus,
@@ -1445,7 +1446,7 @@ class WhatsAppWebhookController {
   constructor(
     @Inject(CommunicationsAutomationService)
     private readonly comms: CommunicationsAutomationService,
-    @Inject(PrescriptionsService) private readonly rx: PrescriptionsService,
+    @Inject(forwardRef(() => PrescriptionsService)) private readonly rx: PrescriptionsService,
     @Inject(WhatsAppService) private readonly whatsapp: WhatsAppService,
   ) {}
 
@@ -1578,7 +1579,7 @@ class PipelineStatusController {
     NotificationsModule,
     WhatsAppModule,
     SmsModule,
-    PrescriptionsModule,
+    forwardRef(() => PrescriptionsModule),
     QaLogisticsModule,
   ],
   controllers: [

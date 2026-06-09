@@ -17,6 +17,7 @@ import {
   useClinicProductLookup, useClinicOrders, useClinicLedger, placeClinicOrder,
   type PartnerAccount, type ClinicProduct, type ClinicOrderLine,
 } from "@/lib/partners-client"
+import { PartnerClerkDivider, PartnerClerkSignIn } from "@/components/portal/partner-clerk-signin"
 import {
   Stethoscope, LogOut, ShoppingCart, ClipboardList, CreditCard,
   AlertTriangle, CheckCircle2, Eye, EyeOff, ArrowRight,
@@ -190,6 +191,8 @@ function ClinicAuthScreen() {
                   {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <>Sign in to your portal <ArrowRight className="h-4 w-4" /></>}
                 </Button>
               </form>
+              <PartnerClerkDivider />
+              <PartnerClerkSignIn type="clinic" redirectPath="/portal/clinic" onError={setError} />
               <p className="text-xs text-gray-400 text-center mt-6">
                 New facility? <button onClick={() => { setMode("apply"); setError("") }} className="underline" style={{ color: WINE }}>Apply to join</button>
               </p>

@@ -25,6 +25,7 @@
 import {
   Body,
   Controller,
+  forwardRef,
   Get,
   HttpException,
   HttpStatus,
@@ -235,9 +236,9 @@ function buildPrescription(row: RxRow, drugs: DrugRow[], timeline: TlRow[]): Pre
 @Injectable()
 export class PrescriptionsService {
   constructor(
-    @Inject(PaystackService) private readonly paystack: PaystackService,
+    @Inject(forwardRef(() => PaystackService)) private readonly paystack: PaystackService,
     @Inject(UploadsService) private readonly uploads: UploadsService,
-    @Inject(PatientNotificationsService) private readonly patientNotify: PatientNotificationsService,
+    @Inject(forwardRef(() => PatientNotificationsService)) private readonly patientNotify: PatientNotificationsService,
     // In-app notification feed — backs the bell for the patient (customer:<sid>)
     // and the pharmacy team ("admin" audience). Distinct from patientNotify,
     // which is the SMS/WhatsApp transport.
@@ -1021,6 +1022,15 @@ export class PrescriptionsService {
     return this.loadById(id)
   }
 
+  /** One-click buy — auto-accepts a verified quote then redeems payment. */
+  async purchase(sid: string, id: string, input: PayInput): Promise<Prescription> {
+    const current = await this.get(sid, id)
+    if (current.status === "verified") {
+      await this.acceptQuotation(sid, id)
+    }
+    return this.pay(sid, id, input)
+  }
+
   async pay(sid: string, id: string, input: PayInput): Promise<Prescription> {
     const current = await this.get(sid, id)
     if (current.status !== "accepted" && current.status !== "verified") {
@@ -1088,7 +1098,7 @@ export class PrescriptionsService {
         .where(
           and(
             eq(rxTable.id, id),
-            eq(rxTable.status, "verified"),
+            inArray(rxTable.status, ["verified", "accepted"]),
             isNull(rxTable.paidAt),
           ),
         )
@@ -1259,6 +1269,12 @@ class MyPrescriptionsController {
     return this.svc.pay(req.sessionId, id, body ?? {})
   }
 
+  /** One-click purchase — accepts quote (if needed) and records payment. */
+  @Post(":id/purchase")
+  purchase(@Req() req: Request, @Param("id") id: string, @Body() body: PayInput) {
+    return this.svc.purchase(req.sessionId, id, body ?? {})
+  }
+
   /**
    * Stream a prescription file (owner-checked) instead of using the cookie-only
    * static mount, so the scan is only served to the patient who uploaded it.
@@ -1385,7 +1401,13 @@ class AdminPrescriptionsController {
 }
 
 @Module({
-  imports: [PaystackModule, UploadsModule, PatientNotificationsModule, NotificationsModule, CrmModule],
+  imports: [
+    forwardRef(() => PaystackModule),
+    UploadsModule,
+    forwardRef(() => PatientNotificationsModule),
+    NotificationsModule,
+    CrmModule,
+  ],
   controllers: [MyPrescriptionsController, AdminPrescriptionsController],
   providers: [PrescriptionsService],
   exports: [PrescriptionsService],

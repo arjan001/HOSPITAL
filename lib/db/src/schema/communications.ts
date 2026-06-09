@@ -1,4 +1,4 @@
-import { boolean, pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core"
+import { boolean, jsonb, pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core"
 import { createInsertSchema, createSelectSchema } from "drizzle-zod"
 import { z } from "zod/v4"
 
@@ -143,6 +143,37 @@ export const insertCommunicationOutboxSchema = createInsertSchema(communicationO
 export const selectCommunicationOutboxSchema = createSelectSchema(communicationOutbox)
 export type InsertCommunicationOutbox = z.infer<typeof insertCommunicationOutboxSchema>
 export type CommunicationOutbox = typeof communicationOutbox.$inferSelect
+
+/** Campaign definitions — Postgres-durable (replaces cmsStore campaign docs). */
+export const campaignDefinitions = pgTable("campaign_definitions", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  channel: text("channel").notNull().default("email"),
+  status: text("status").notNull().default("draft"),
+  config: jsonb("config").$type<Record<string, unknown>>().notNull().default({}),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+})
+
+export const campaignPipelines = pgTable("campaign_pipelines", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  steps: jsonb("steps").$type<unknown[]>().notNull().default([]),
+  active: boolean("active").notNull().default(false),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+})
+
+export const campaignQueueItems = pgTable("campaign_queue_items", {
+  id: text("id").primaryKey(),
+  campaignId: text("campaign_id").notNull(),
+  recipient: text("recipient").notNull(),
+  channel: text("channel").notNull(),
+  status: text("status").notNull().default("pending"),
+  payload: jsonb("payload").$type<Record<string, unknown>>(),
+  scheduledAt: timestamp("scheduled_at"),
+  sentAt: timestamp("sent_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+})
 
 export const insertCommunicationSentLogSchema = createInsertSchema(communicationSentLog)
 export const selectCommunicationSentLogSchema = createSelectSchema(communicationSentLog)

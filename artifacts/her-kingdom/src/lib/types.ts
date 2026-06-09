@@ -14,6 +14,7 @@ export interface Product {
   isOnOffer?: boolean
   offerPercentage?: number
   inStock: boolean
+  trustSeal?: boolean
   stockCount?: number
   lowStockThreshold?: number
   collection?: string

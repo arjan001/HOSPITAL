@@ -16,6 +16,7 @@ import {
   formatOverageLabel,
   logOverageCharge,
 } from "@/lib/consultation-settings"
+import { doctorRecordToStandby, usePublicDoctorDirectory } from "@/lib/doctors-store"
 import { SessionTimer } from "@/components/consultation/session-timer"
 import { OveragePaymentModal } from "@/components/consultation/overage-payment-modal"
 import { useUser } from "@clerk/react"
@@ -135,7 +136,11 @@ function Shell({ children }: { children: React.ReactNode }) {
 ══════════════════════════════════════════════════════════════*/
 export default function SpeakToADoctorPage() {
   const [consultSettings] = useConsultationSettings()
-  const doc = standbyDoctorOf(consultSettings)
+  const { records: publicDoctors } = usePublicDoctorDirectory()
+  const doc = useMemo(
+    () => (publicDoctors[0] ? doctorRecordToStandby(publicDoctors[0]) : standbyDoctorOf(consultSettings)),
+    [publicDoctors, consultSettings],
+  )
   const { user, isSignedIn } = useUser()
   /* When the patient is signed in we pass their real identity so the doctor
      sees who they're talking to — no need to type their name. Guests stay
@@ -196,6 +201,11 @@ export default function SpeakToADoctorPage() {
   // Overage: phone the FIRST STK push went to, reused for the auto second push,
   // and the in-flight flag that gates the session from resuming until paid.
   const [lastPaidPhone, setLastPaidPhone] = useState("")
+  const [consultPayment, setConsultPayment] = useState<{
+    reference: string
+    receipt?: string
+    fee: number
+  } | null>(null)
   const [overagePaying, setOveragePaying] = useState(false)
   const [endedByDoctor, setEndedByDoctor] = useState(false)
   // True briefly while the patient ends their own session, so the archived
@@ -432,7 +442,14 @@ export default function SpeakToADoctorPage() {
           // and pushed to the URL as a real, visible navigation (new id).
           if (!ensuredRef.current) {
             try {
-              const res = await apiChat.startNewConsultation(patientMeta)
+              const res = await apiChat.startNewConsultation({
+                ...patientMeta,
+                paymentReference: consultPayment?.reference,
+                fee: consultPayment?.fee ?? fee,
+                paymentReceipt: consultPayment?.receipt,
+                consultType: consType,
+                doctorId: publicDoctors[0]?.id,
+              })
               // Only claim the consultation as ensured AFTER it succeeds, so a
               // failed request doesn't strand us on a stale segment — the
               // chat-screen effect can then fall back to ensureMyConsultation.
@@ -1004,6 +1021,11 @@ export default function SpeakToADoctorPage() {
               createPendingOrder={async () => ({ orderNumber: `CONS-${Date.now()}` })}
               onPaymentConfirmed={(result) => {
                 if (result?.phone) setLastPaidPhone(result.phone)
+                setConsultPayment({
+                  reference: result.reference,
+                  receipt: result.mpesaReceipt,
+                  fee,
+                })
                 setPaystackOpen(false)
                 setScreen("connecting")
                 // Notify the doctor audience that a new consultation has been paid and is connecting.

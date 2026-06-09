@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react"
 import { AdminShell } from "./admin-shell"
 import { useCmsDoc } from "@/lib/cms-store"
+import { adminAuthHeaders } from "@/lib/api-client"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -116,19 +117,16 @@ export function AdminProfile() {
 
     setPwBusy(true)
     try {
-      const res = await fetch("/api/auth/change-password", {
+      const res = await fetch("/api/v2/admin/auth/change-password", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...adminAuthHeaders() },
+        credentials: "include",
         body: JSON.stringify({ currentPassword: pwCurrent, newPassword: pwNext }),
       })
       const data = await res.json().catch(() => ({}))
-      if (!res.ok) throw new Error(data?.error || `Could not change password (${res.status})`)
+      if (!res.ok) throw new Error(data?.error || data?.message || `Could not change password (${res.status})`)
 
-      setPwOk(
-        data?.degraded
-          ? "Password validated locally. Real authentication isn't wired in this environment yet — this is a no-op until the NestJS admin auth lands."
-          : "Password updated successfully.",
-      )
+      setPwOk("Password updated successfully.")
       setPwCurrent(""); setPwNext(""); setPwConfirm("")
       try {
         logActivity({

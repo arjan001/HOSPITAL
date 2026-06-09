@@ -535,20 +535,18 @@ interface LogisticsVehicle {
 
 ---
 
-## 5. api-server — `/api/*` (legacy)
+## 5. Legacy `/api/*` paths (dev proxy → Nest)
 
-Still in production; retires as Nest modules replace each route.
+The Vite dev server rewrites remaining legacy storefront paths to **`/api/v2/*`** on port **8090**. The Express **api-server** (port 8080) is no longer required for local development.
 
-| Method | Path | Description | Status |
-| ------ | ---- | ----------- | ------ |
-| `GET` | `/api/products`, `/api/categories`, `/api/site-data` | Storefront catalog reads. | Active |
-| `POST` | `/api/orders` | Pending-order creation (storefront still uses this). | Active |
-| `GET` | `/api/orders/:orderNumber` | Lookup by order number. | Active |
-| `POST` | `/api/track-view`, `/api/track-event`, `/api/track-abandoned` | Analytics ingestion. | Active |
-| `*` | `/api/payments/payhero/*` | Legacy PayHero STK/status/callback. | **Deprecated** — replaced by Paystack; kept for in-flight transactions. |
-| `*` | `/api/admin/*` | Legacy CMS read/write. | **Stubbed** (`legacy-store.ts` no-ops) — persist via `cmsStore` instead. |
+| Method | Legacy path | Nest target | Status |
+| ------ | ----------- | ----------- | ------ |
+| `GET` | `/api/products`, `/api/categories`, `/api/site-data`, `/api/blogs`, … | `/api/v2/…` | **Active** (Nest) |
+| `POST` | `/api/track-view`, `/api/track-event`, `/api/track-abandoned` | `/api/v2/track-*` | **Active** (Nest) |
+| `POST` | `/api/upload` | `/api/v2/uploads/admin` | **Active** (Nest) |
+| `POST` | `/api/auth/change-password` | `/api/v2/admin/auth/change-password` | **Active** (Nest) |
 
-**Why it's still running:** some integrations still hit `POST /api/orders`; a stray PayHero callback may still arrive; a hard cutover buys nothing. Each module ports in turn.
+Checkout creates orders via **`POST /api/v2/me/orders`** (client-generated order numbers). Paystack payments use **`/api/v2/payments/paystack/*`** only.
 
 ---
 

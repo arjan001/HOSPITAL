@@ -13,7 +13,8 @@
  * All data persists via cmsStore("suppliers") — NestJS swap is one file.
  */
 
-import { useState, useMemo } from "react"
+import { useState, useMemo, useEffect } from "react"
+import useSWR from "swr"
 import {
   Building2, Plus, Search, CheckCircle2, XCircle, AlertTriangle,
   Star, Truck, FileText, Eye, MoreHorizontal, Shield,
@@ -23,6 +24,7 @@ import {
 } from "lucide-react"
 import { useCmsDoc, newId } from "@/lib/cms-store"
 import { adminAuthHeaders } from "@/lib/api-client"
+import { apiSupplierPurchaseOrders, type SupplierPurchaseOrder } from "@/lib/api-nest"
 import { AdminShell } from "./admin-shell"
 import { PartnerPortalPanel } from "./partner-portal-panel"
 import { Button } from "@/components/ui/button"
@@ -362,6 +364,200 @@ function SupplierModal({
   )
 }
 
+/* ─── Supplier PO tab (Postgres via Nest) ─────────────────────── */
+
+const PO_STATUSES = ["draft", "sent", "confirmed", "dispatched", "received", "disputed", "cancelled"] as const
+
+function PoStatusBadge({ status }: { status: string }) {
+  const colors: Record<string, string> = {
+    draft: "bg-gray-100 text-gray-600",
+    sent: "bg-blue-50 text-blue-700",
+    confirmed: "bg-indigo-50 text-indigo-700",
+    dispatched: "bg-purple-50 text-purple-700",
+    received: "bg-green-50 text-green-700",
+    disputed: "bg-amber-50 text-amber-700",
+    cancelled: "bg-red-50 text-red-700",
+  }
+  return (
+    <Badge variant="outline" className={`text-xs capitalize ${colors[status] ?? "bg-gray-50"}`}>
+      {status}
+    </Badge>
+  )
+}
+
+function SupplierOrdersTab({
+  supplier,
+  onUpdate,
+}: {
+  supplier: Supplier
+  onUpdate: (s: Supplier) => void
+}) {
+  const { data: pos, mutate, isLoading } = useSWR(
+    `supplier-pos-${supplier.id}`,
+    () => apiSupplierPurchaseOrders.list(supplier.id),
+  )
+  const [showForm, setShowForm] = useState(false)
+  const [itemName, setItemName] = useState("")
+  const [qty, setQty] = useState("1")
+  const [unitPrice, setUnitPrice] = useState("")
+  const [notes, setNotes] = useState("")
+  const [creating, setCreating] = useState(false)
+  const [err, setErr] = useState("")
+
+  const refreshStats = async () => {
+    try {
+      const stats = await apiSupplierPurchaseOrders.stats(supplier.id)
+      onUpdate({
+        ...supplier,
+        activePoCount: stats.activePoCount,
+        totalPoValue: stats.totalPoValue,
+      })
+    } catch {
+      /* stats optional when migration pending */
+    }
+  }
+
+  useEffect(() => {
+    void refreshStats()
+  }, [supplier.id])
+
+  const createPo = async () => {
+    setErr("")
+    if (!itemName.trim()) {
+      setErr("Item name is required")
+      return
+    }
+    setCreating(true)
+    try {
+      await apiSupplierPurchaseOrders.create({
+        supplierId: supplier.id,
+        items: [{
+          name: itemName.trim(),
+          qty: Math.max(1, Number(qty) || 1),
+          unitPrice: Math.max(0, Number(unitPrice) || 0),
+        }],
+        notes: notes.trim() || undefined,
+        status: "sent",
+      })
+      setItemName("")
+      setQty("1")
+      setUnitPrice("")
+      setNotes("")
+      setShowForm(false)
+      await mutate()
+      await refreshStats()
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Could not create PO")
+    } finally {
+      setCreating(false)
+    }
+  }
+
+  const changeStatus = async (po: SupplierPurchaseOrder, status: string) => {
+    await apiSupplierPurchaseOrders.updateStatus(po.id, status)
+    await mutate()
+    await refreshStats()
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="flex justify-between items-center">
+        <p className="text-sm font-semibold text-gray-700">Purchase Orders</p>
+        <Button
+          size="sm"
+          style={{ background: WINE }}
+          className="text-white text-xs"
+          onClick={() => setShowForm(s => !s)}
+        >
+          <Plus className="h-3.5 w-3.5 mr-1" />
+          {showForm ? "Cancel" : "New PO"}
+        </Button>
+      </div>
+
+      {err && (
+        <p className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2">{err}</p>
+      )}
+
+      {showForm && (
+        <div className="border rounded-xl p-4 space-y-3 bg-gray-50/80">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+            <div className="sm:col-span-3">
+              <Label className="text-xs">Item</Label>
+              <Input value={itemName} onChange={e => setItemName(e.target.value)} placeholder="Product name" className="mt-1 h-9" />
+            </div>
+            <div>
+              <Label className="text-xs">Qty</Label>
+              <Input type="number" min={1} value={qty} onChange={e => setQty(e.target.value)} className="mt-1 h-9" />
+            </div>
+            <div>
+              <Label className="text-xs">Unit price (KES)</Label>
+              <Input type="number" min={0} value={unitPrice} onChange={e => setUnitPrice(e.target.value)} className="mt-1 h-9" />
+            </div>
+            <div className="flex items-end">
+              <Button onClick={createPo} disabled={creating} className="w-full h-9 text-white text-xs" style={{ background: WINE }}>
+                {creating ? "Creating…" : "Create & send"}
+              </Button>
+            </div>
+          </div>
+          <div>
+            <Label className="text-xs">Notes</Label>
+            <Textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2} className="mt-1 text-sm" />
+          </div>
+        </div>
+      )}
+
+      {isLoading ? (
+        <p className="text-sm text-gray-400 py-8 text-center">Loading purchase orders…</p>
+      ) : !pos?.length ? (
+        <div className="text-center py-12 text-gray-400">
+          <PackageSearch className="h-8 w-8 mx-auto mb-2 opacity-30" />
+          <p className="text-sm">No purchase orders yet</p>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {pos.map(po => (
+            <div key={po.id} className="border rounded-xl p-3 bg-white">
+              <div className="flex flex-wrap items-start justify-between gap-2 mb-2">
+                <div>
+                  <p className="font-mono text-sm font-semibold text-gray-800">{po.poNumber}</p>
+                  <p className="text-xs text-gray-400">
+                    {new Date(po.createdAt).toLocaleDateString()}
+                    {po.expectedDate ? ` · Expected ${new Date(po.expectedDate).toLocaleDateString()}` : ""}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <PoStatusBadge status={po.status} />
+                  <span className="text-sm font-semibold" style={{ color: WINE }}>
+                    KES {Number(po.total || 0).toLocaleString()}
+                  </span>
+                </div>
+              </div>
+              <ul className="text-xs text-gray-600 space-y-0.5 mb-2">
+                {po.items.map(it => (
+                  <li key={it.id}>
+                    {it.name} × {it.qty} @ KES {Number(it.unitPrice).toLocaleString()}
+                  </li>
+                ))}
+              </ul>
+              {po.notes && <p className="text-xs text-gray-500 italic mb-2">{po.notes}</p>}
+              <Select value={po.status} onValueChange={v => void changeStatus(po, v)}>
+                <SelectTrigger className="h-8 text-xs w-40">
+                  <SelectValue placeholder="Status" />
+                </SelectTrigger>
+                <SelectContent>
+                  {PO_STATUSES.map(s => (
+                    <SelectItem key={s} value={s} className="capitalize">{s}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 /* ─── Supplier Drawer ─────────────────────────────────────────── */
 
 function SupplierDrawer({ supplier, open, onClose, onUpdate }: {
@@ -492,22 +688,7 @@ function SupplierDrawer({ supplier, open, onClose, onUpdate }: {
           )}
 
           {tab === "orders" && (
-            <div className="space-y-2">
-              <div className="flex justify-between items-center mb-3">
-                <p className="text-sm font-semibold text-gray-700">Purchase Orders</p>
-                <Button size="sm" style={{ background: WINE }} className="text-white text-xs">
-                  <Plus className="h-3.5 w-3.5 mr-1" />New PO
-                </Button>
-              </div>
-              {supplier.activePoCount === 0 ? (
-                <div className="text-center py-12 text-gray-400">
-                  <PackageSearch className="h-8 w-8 mx-auto mb-2 opacity-30" />
-                  <p className="text-sm">No purchase orders yet</p>
-                </div>
-              ) : (
-                <p className="text-sm text-gray-500">Purchase orders coming with Phase 2 database integration.</p>
-              )}
-            </div>
+            <SupplierOrdersTab supplier={supplier} onUpdate={onUpdate} />
           )}
 
           {tab === "performance" && (

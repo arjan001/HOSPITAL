@@ -3,7 +3,7 @@ import { createInsertSchema, createSelectSchema } from "drizzle-zod"
 import { z } from "zod/v4"
 import { orders } from "./orders"
 
-export type PaymentProvider = "payhero" | "paystack" | "card"
+export type PaymentProvider = "paystack" | "card" | "mpesa"
 export type PaymentRecordStatus = "pending" | "success" | "failed" | "cancelled" | "refunded"
 
 export const payments = pgTable("payments", {

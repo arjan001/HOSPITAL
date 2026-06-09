@@ -46,6 +46,7 @@ interface ProductForm {
   inStock: boolean
   stockCount: string
   lowStockThreshold: string
+  trustSeal: boolean
   variations: ProductVariation[]
   tags: string
 }
@@ -64,6 +65,7 @@ const emptyForm: ProductForm = {
   inStock: true,
   stockCount: "0",
   lowStockThreshold: "5",
+  trustSeal: false,
   variations: [],
   tags: "",
 }
@@ -140,6 +142,7 @@ export function AdminProducts() {
       inStock: product.inStock,
       stockCount: (product.stockCount ?? 0).toString(),
       lowStockThreshold: (product.lowStockThreshold ?? 5).toString(),
+      trustSeal: product.trustSeal ?? false,
       variations: product.variations ? [...product.variations] : [],
       tags: product.tags.join(", "),
     })
@@ -168,6 +171,7 @@ export function AdminProducts() {
       inStock: form.inStock,
       stockCount: Number.parseInt(form.stockCount) || 0,
       lowStockThreshold: Number.parseInt(form.lowStockThreshold) || 5,
+      trustSeal: form.trustSeal,
       variations: form.variations,
       tags: form.tags.split(",").map((t) => t.trim()).filter(Boolean),
       createdAt: existing?.createdAt ?? new Date().toISOString(),
@@ -985,6 +989,10 @@ export function AdminProducts() {
               <div className="flex items-center gap-2">
                 <Switch checked={form.isOnOffer} onCheckedChange={(checked) => setForm({ ...form, isOnOffer: checked })} />
                 <Label className="text-sm">On Offer</Label>
+              </div>
+              <div className="flex items-center gap-2">
+                <Switch checked={form.trustSeal} onCheckedChange={(checked) => setForm({ ...form, trustSeal: checked })} />
+                <Label className="text-sm">Trust Seal</Label>
               </div>
               {form.isOnOffer && (
                 <div>

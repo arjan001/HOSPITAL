@@ -5,6 +5,7 @@ import {
   Body,
   Controller,
   Delete,
+  forwardRef,
   Get,
   HttpException,
   HttpStatus,
@@ -47,6 +48,11 @@ import {
   type QaDispatchCheckDto,
   type QaInventoryDto,
 } from "./qa-logistics.dto"
+import { AdminOrdersModule, AdminOrdersService } from "./admin-orders.module"
+import {
+  PatientNotificationsModule,
+  PatientNotificationsService,
+} from "./patient-notifications.module"
 
 const QA_SETTINGS_ID = "default"
 const LOGISTICS_SETTINGS_ID = "default"
@@ -449,6 +455,45 @@ export class QaOpsService {
 
 @Injectable()
 export class LogisticsOpsService {
+  constructor(
+    @Inject(forwardRef(() => AdminOrdersService))
+    private readonly adminOrders: AdminOrdersService,
+    @Inject(forwardRef(() => PatientNotificationsService))
+    private readonly patientNotify: PatientNotificationsService,
+  ) {}
+
+  /** When a delivery transitions to delivered, sync admin order + notify patient. */
+  private async onNewlyDelivered(
+    items: LogisticsDeliveryDto[],
+    before: Array<{ orderRef: string; status: string }>,
+    config: LogisticsConfigDto,
+  ) {
+    const prevByRef = new Map(before.map((d) => [d.orderRef, d.status]))
+    for (const d of items) {
+      if (d.status !== "delivered") continue
+      if (prevByRef.get(d.orderRef) === "delivered") continue
+      try {
+        await this.adminOrders.upsert({
+          orderNo: d.orderRef,
+          status: "delivered",
+          customer: d.customerName,
+          phone: d.customerPhone,
+          address: d.address,
+          notes: `Delivered via logistics ${d.id}`,
+        })
+      } catch {
+        /* best-effort */
+      }
+      if (config.smsCustomerOnDelivery) {
+        this.patientNotify.notify("order_delivered", {
+          phone: d.customerPhone,
+          name: d.customerName,
+          variables: { order_id: d.orderRef },
+        })
+      }
+    }
+  }
+
   async listZones() {
     return (await db.select().from(logisticsZones).orderBy(logisticsZones.name)).map(mapZone)
   }
@@ -541,6 +586,10 @@ export class LogisticsOpsService {
   }
 
   async replaceDeliveries(items: LogisticsDeliveryDto[]) {
+    const [config, beforeRows] = await Promise.all([
+      this.getConfig(),
+      db.select({ orderRef: logisticsDeliveries.orderRef, status: logisticsDeliveries.status }).from(logisticsDeliveries),
+    ])
     const now = new Date()
     await db.transaction(async (tx) => {
       await tx.delete(logisticsDeliveries)
@@ -569,6 +618,7 @@ export class LogisticsOpsService {
         )
       }
     })
+    void this.onNewlyDelivered(items, beforeRows, config)
     return this.listDeliveries()
   }
 
@@ -888,6 +938,10 @@ class LogisticsAdminController {
 }
 
 @Module({
+  imports: [
+    forwardRef(() => AdminOrdersModule),
+    forwardRef(() => PatientNotificationsModule),
+  ],
   controllers: [QaAdminController, LogisticsAdminController],
   providers: [QaOpsService, LogisticsOpsService],
   exports: [QaOpsService, LogisticsOpsService],

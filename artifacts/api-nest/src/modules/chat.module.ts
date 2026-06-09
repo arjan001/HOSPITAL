@@ -577,8 +577,24 @@ class ChatService {
    */
   async startNewConsultation(
     sid: string,
-    profile?: { name?: string; phone?: string },
+    profile?: {
+      name?: string
+      phone?: string
+      paymentReference?: string
+      fee?: number
+      paymentReceipt?: string
+      consultType?: string
+      doctorId?: string
+    },
   ): Promise<{ consultationId: string; thread: ChatThread }> {
+    const payRef = String(profile?.paymentReference ?? "").trim()
+    if (!payRef) {
+      throw new HttpException(
+        "Payment is required before starting a consultation",
+        HttpStatus.PAYMENT_REQUIRED,
+      )
+    }
+    const fee = Math.max(0, Math.round(Number(profile?.fee ?? 0)))
     const t = await this.ensureThread(sid, profile)
     if (t.consultationId) {
       await db
@@ -592,13 +608,15 @@ class ChatService {
     await db.insert(consultations).values({
       id: cid,
       threadId: sid,
-      type: "chat",
+      type: profile?.consultType === "call" || profile?.consultType === "video" ? "call" : "chat",
       specialty: "General",
       patientName: cur?.patientName || "Guest patient",
       patientPhone: cur?.patientPhone || "",
       status: "in_progress",
-      paymentStatus: "pending",
-      fee: 0,
+      paymentStatus: "paid",
+      paymentReference: payRef,
+      fee,
+      doctorId: profile?.doctorId ? String(profile.doctorId) : null,
       startedAt: now,
     })
     const updated = await db
@@ -837,6 +855,10 @@ type SendBody = {
   text?: string
   name?: string
   phone?: string
+  paymentReference?: string
+  fee?: number
+  paymentReceipt?: string
+  consultType?: string
   attachmentUrl?: string
   attachmentName?: string
   attachmentType?: AttachmentType
@@ -923,7 +945,14 @@ class ChatController {
   // and opens a clean conversation. Used when a returning patient begins again.
   @Post("me/consultation/new")
   async newConsultation(@Req() req: Request, @Body() body: SendBody) {
-    return this.svc.startNewConsultation(req.sessionId, { name: body?.name, phone: body?.phone })
+    return this.svc.startNewConsultation(req.sessionId, {
+      name: body?.name,
+      phone: body?.phone,
+      paymentReference: body?.paymentReference,
+      fee: body?.fee,
+      paymentReceipt: body?.paymentReceipt,
+      consultType: body?.consultType,
+    })
   }
 
   // The signed-in patient's past consultations (newest first).

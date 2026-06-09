@@ -120,6 +120,35 @@ export type AccountOrder = {
   createdAt: string
 }
 
+export type DeliveryFeedbackDto = {
+  id: string
+  orderRef: string
+  userId: string | null
+  deliveryId: string | null
+  rating: number
+  nps: number | null
+  comment: string | null
+  createdAt: string
+}
+
+export type CrmContact = {
+  id: string
+  channelKey: string
+  userId: string | null
+  name: string | null
+  email: string | null
+  phone: string | null
+  stage: string
+  source: string | null
+  updatedAt: string
+}
+
+export type CrmListResponse = {
+  items: CrmContact[]
+  counts: Record<string, number>
+  stages: string[]
+}
+
 export const apiNest = {
   health: () => nestFetch<{ ok: boolean }>("/healthz"),
 
@@ -166,6 +195,37 @@ export const apiNest = {
     specialInstructions?: string
   }) =>
     nestFetch<AccountOrder>("/me/orders", { method: "POST", body: JSON.stringify(input) }),
+
+  getOrderFeedback: (orderNo: string) =>
+    nestFetch<DeliveryFeedbackDto | null>(`/me/orders/${encodeURIComponent(orderNo)}/feedback`),
+  submitOrderFeedback: (
+    orderNo: string,
+    input: { rating: number; nps?: number; comment?: string },
+  ) =>
+    nestFetch<DeliveryFeedbackDto>(`/me/orders/${encodeURIComponent(orderNo)}/feedback`, {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+
+  cart: () => nestFetch<Array<{
+    id: string
+    productId: string
+    productSlug: string
+    name: string
+    unitPrice: number
+    quantity: number
+    variations?: Record<string, string>
+  }>>("/me/cart"),
+  replaceCart: (items: Array<{
+    productId: string
+    productSlug: string
+    name: string
+    unitPrice: number
+    quantity: number
+    variations?: Record<string, string>
+    snapshot?: Record<string, unknown>
+  }>) =>
+    nestFetch("/me/cart", { method: "PUT", body: JSON.stringify({ items }) }),
 }
 
 const swrFetcher = <T,>(path: string) => nestFetch<T>(path)
@@ -181,6 +241,13 @@ export function useWishlistRemote() {
 }
 export function useOrders() {
   return useSWR<AccountOrder[]>("/me/orders", swrFetcher)
+}
+
+export function useAdminCrm(stage?: string) {
+  const q = stage ? `?stage=${encodeURIComponent(stage)}` : ""
+  return useSWR<CrmListResponse>(`/admin/crm/contacts${q}`, () =>
+    nestFetch<CrmListResponse>(`/admin/crm/contacts${q}`),
+  )
 }
 
 /* ────────────────────────────────────────────────────────────
@@ -324,6 +391,12 @@ export const apiPrescriptions = {
   /** Pay for the approved drugs; advances the Rx to dispensed. */
   pay: (id: string, input: { amount?: number; reference: string; receipt?: string }) =>
     nestFetch<AccountPrescription>(`/me/prescriptions/${id}/pay`, {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+  /** One-click purchase — accepts quote if needed, then records payment. */
+  purchase: (id: string, input: { amount?: number; reference: string; receipt?: string }) =>
+    nestFetch<AccountPrescription>(`/me/prescriptions/${id}/purchase`, {
       method: "POST",
       body: JSON.stringify(input),
     }),
@@ -1026,7 +1099,15 @@ export const apiChat = {
    * Start a BRAND-NEW consultation: closes the current one (kept as history)
    * and opens a clean conversation. Used when a returning patient begins again.
    */
-  startNewConsultation: (profile?: { name?: string; phone?: string }) =>
+  startNewConsultation: (profile?: {
+    name?: string
+    phone?: string
+    paymentReference?: string
+    fee?: number
+    paymentReceipt?: string
+    consultType?: string
+    doctorId?: string
+  }) =>
     nestFetch<{ consultationId: string; thread: ChatThread }>("/chat/me/consultation/new", {
       method: "POST",
       body: JSON.stringify({ ...(profile || {}) }),
@@ -1179,4 +1260,46 @@ export function refreshAccount() {
     globalMutate("/me/wishlist"),
     globalMutate("/me/orders"),
   ])
+}
+
+export type SupplierPurchaseOrder = {
+  id: string
+  supplierId: string
+  poNumber: string
+  status: string
+  total: number
+  expectedDate: string | null
+  notes: string | null
+  items: Array<{ id: string; name: string; qty: number; unitPrice: number }>
+  createdAt: string
+  updatedAt: string
+}
+
+export const apiSupplierPurchaseOrders = {
+  list: (supplierId?: string) =>
+    nestFetch<SupplierPurchaseOrder[]>(
+      supplierId
+        ? `/admin/supplier-purchase-orders?supplierId=${encodeURIComponent(supplierId)}`
+        : "/admin/supplier-purchase-orders",
+    ),
+  stats: (supplierId: string) =>
+    nestFetch<{ activePoCount: number; totalPoValue: number }>(
+      `/admin/supplier-purchase-orders/stats?supplierId=${encodeURIComponent(supplierId)}`,
+    ),
+  create: (input: {
+    supplierId: string
+    items: Array<{ name: string; qty: number; unitPrice: number }>
+    expectedDate?: string | null
+    notes?: string
+    status?: string
+  }) =>
+    nestFetch<SupplierPurchaseOrder>("/admin/supplier-purchase-orders", {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+  updateStatus: (id: string, status: string) =>
+    nestFetch<SupplierPurchaseOrder>(`/admin/supplier-purchase-orders/${id}/status`, {
+      method: "PUT",
+      body: JSON.stringify({ status }),
+    }),
 }

@@ -3,7 +3,16 @@
 import { useEffect, useMemo, useState } from "react"
 import { Link, useLocation } from "wouter"
 import { AdminShell } from "./admin-shell"
-import { useCmsDoc, newId, cmsStore } from "@/lib/cms-store"
+import { newId, cmsStore } from "@/lib/cms-store"
+import {
+  useCampaignDoc,
+  useCampaignPipelines,
+  useCampaignQueue,
+  fetchCampaignQueue,
+  saveCampaignQueue,
+  fetchCampaignDoc,
+  saveCampaignDoc,
+} from "@/lib/campaigns-client"
 import { notify } from "@/lib/notify"
 import { usePermission } from "@/lib/permissions"
 import { pipelineClient, type CampaignRecipientResult } from "@/lib/pipeline-client"
@@ -298,10 +307,10 @@ function notifyCampaignComplete(kind: "Email" | "SMS", name: string, id: string,
   })
 }
 
-function rollupCampaignStats() {
-  const queue = cmsStore.get<QueueItem[]>("campaign-queue", [])
-  const emails = cmsStore.get<EmailCampaign[]>("campaign-emails", [])
-  const sms    = cmsStore.get<SmsCampaign[]>("campaign-sms", [])
+async function rollupCampaignStats() {
+  const queue = await fetchCampaignQueue<QueueItem[]>()
+  const emails = await fetchCampaignDoc<EmailCampaign[]>("campaign-emails")
+  const sms = await fetchCampaignDoc<SmsCampaign[]>("campaign-sms")
   let emailsTouched = false, smsTouched = false
   for (const c of emails) {
     const items = queue.filter((q) => q.campaignId === c.id)
@@ -343,19 +352,19 @@ function rollupCampaignStats() {
       smsTouched = true
     }
   }
-  if (emailsTouched) cmsStore.set("campaign-emails", emails)
-  if (smsTouched)    cmsStore.set("campaign-sms", sms)
+  if (emailsTouched) await saveCampaignDoc("campaign-emails", emails)
+  if (smsTouched) await saveCampaignDoc("campaign-sms", sms)
 }
 
 /** Fold a backend dispatch response (or hard error) back into the queue. */
-function applyDispatchResults(
+async function applyDispatchResults(
   campaignId: string,
   dispatchedIds: Set<string>,
   results: CampaignRecipientResult[] | null,
   hardError?: string,
 ) {
   inFlightCampaigns.delete(campaignId)
-  const queue = cmsStore.get<QueueItem[]>("campaign-queue", [])
+  const queue = await fetchCampaignQueue<QueueItem[]>()
   const byRecipient = new Map((results ?? []).map((r) => [r.to, r]))
   let changed = false
   for (const q of queue) {
@@ -383,80 +392,86 @@ function applyDispatchResults(
     }
     changed = true
   }
-  if (changed) cmsStore.set("campaign-queue", queue)
-  rollupCampaignStats()
+  if (changed) await saveCampaignQueue(queue)
+  await rollupCampaignStats()
 }
 
 function startSimulatorTick() {
-  const tick = () => {
-    const queue = cmsStore.get<QueueItem[]>("campaign-queue", [])
-    if (queue.length === 0) return
-    const now = Date.now()
-    // Recover orphaned "sending" rows left over from a prior page session: a row
-    // is only legitimately mid-flight while its campaign is in inFlightCampaigns
-    // (an in-memory Set reset on every page load). Any "sending" row without an
-    // in-flight owner was stranded by a reload/crash — return it to "queued" so
-    // this tick re-dispatches it instead of leaving it stuck forever.
-    let recovered = false
-    for (const q of queue) {
-      if (q.status === "sending" && !inFlightCampaigns.has(q.campaignId)) {
-        q.status = "queued"
-        recovered = true
+  const tick = async () => {
+    try {
+      let queue = await fetchCampaignQueue<QueueItem[]>()
+      if (queue.length === 0) return
+      const now = Date.now()
+      let recovered = false
+      for (const q of queue) {
+        if (q.status === "sending" && !inFlightCampaigns.has(q.campaignId)) {
+          q.status = "queued"
+          recovered = true
+        }
       }
-    }
-    if (recovered) cmsStore.set("campaign-queue", queue)
-    // Group due, not-yet-dispatched items by campaign (skip in-flight campaigns).
-    const grouped = new Map<string, QueueItem[]>()
-    for (const q of queue) {
-      if (
-        q.status === "queued" &&
-        new Date(q.scheduledAt).getTime() <= now &&
-        !inFlightCampaigns.has(q.campaignId)
-      ) {
-        if (!grouped.has(q.campaignId)) grouped.set(q.campaignId, [])
-        grouped.get(q.campaignId)!.push(q)
+      if (recovered) {
+        await saveCampaignQueue(queue)
       }
-    }
-    if (grouped.size === 0) { rollupCampaignStats(); return }
+      const grouped = new Map<string, QueueItem[]>()
+      for (const q of queue) {
+        if (
+          q.status === "queued" &&
+          new Date(q.scheduledAt).getTime() <= now &&
+          !inFlightCampaigns.has(q.campaignId)
+        ) {
+          if (!grouped.has(q.campaignId)) grouped.set(q.campaignId, [])
+          grouped.get(q.campaignId)!.push(q)
+        }
+      }
+      if (grouped.size === 0) {
+        await rollupCampaignStats()
+        return
+      }
 
-    const emails = cmsStore.get<EmailCampaign[]>("campaign-emails", [])
-    const sms    = cmsStore.get<SmsCampaign[]>("campaign-sms", [])
-    let changed = false
-    for (const [campaignId, items] of grouped) {
-      const batch = items.slice(0, 50) // cap recipients dispatched per tick
-      const channel = batch[0].channel
-      let subject: string | undefined
-      let body: string
-      if (channel === "email") {
-        const c = emails.find((e) => e.id === campaignId)
-        if (!c) continue
-        subject = c.subject
-        body = c.body
-      } else {
-        const c = sms.find((s) => s.id === campaignId)
-        if (!c) continue
-        body = c.message
+      const emails = await fetchCampaignDoc<EmailCampaign[]>("campaign-emails")
+      const sms = await fetchCampaignDoc<SmsCampaign[]>("campaign-sms")
+      let changed = false
+      for (const [campaignId, items] of grouped) {
+        const batch = items.slice(0, 50)
+        const channel = batch[0].channel
+        let subject: string | undefined
+        let body: string
+        if (channel === "email") {
+          const c = emails.find((e) => e.id === campaignId)
+          if (!c) continue
+          subject = c.subject
+          body = c.body
+        } else {
+          const c = sms.find((s) => s.id === campaignId)
+          if (!c) continue
+          body = c.message
+        }
+        const dispatchedIds = new Set(batch.map((b) => b.id))
+        const recipients = batch.map((b) => b.recipient)
+        for (const it of batch) {
+          it.status = "sending"
+          changed = true
+        }
+        inFlightCampaigns.add(campaignId)
+        pipelineClient.communications
+          .campaignSend({ channel, subject, body, recipients, campaignId })
+          .then((res) => applyDispatchResults(campaignId, dispatchedIds, res.results))
+          .catch((err) =>
+            applyDispatchResults(
+              campaignId,
+              dispatchedIds,
+              null,
+              err instanceof Error ? err.message : "Send failed",
+            ),
+          )
       }
-      const dispatchedIds = new Set(batch.map((b) => b.id))
-      const recipients = batch.map((b) => b.recipient)
-      for (const it of batch) { it.status = "sending"; changed = true }
-      inFlightCampaigns.add(campaignId)
-      pipelineClient.communications
-        .campaignSend({ channel, subject, body, recipients, campaignId })
-        .then((res) => applyDispatchResults(campaignId, dispatchedIds, res.results))
-        .catch((err) =>
-          applyDispatchResults(
-            campaignId,
-            dispatchedIds,
-            null,
-            err instanceof Error ? err.message : "Send failed",
-          ),
-        )
+      if (changed) await saveCampaignQueue(queue)
+      await rollupCampaignStats()
+    } catch {
+      /* best-effort background tick */
     }
-    if (changed) cmsStore.set("campaign-queue", queue)
-    rollupCampaignStats()
   }
-  simulatorTimer = window.setInterval(tick, 1500) as unknown as number
+  simulatorTimer = window.setInterval(() => { void tick() }, 1500) as unknown as number
 }
 
 function stopSimulatorTick() {
@@ -477,12 +492,12 @@ function useCampaignSimulator() {
 /* ────────────────────────────────────────────────────────────────────────────
    Helpers
 ──────────────────────────────────────────────────────────────────────────── */
-function enqueueCampaign(
+async function enqueueCampaign(
   channel: CampaignChannel,
   campaign: { id: string; name: string; scheduledAt: string | null; batchSize?: number; batchIntervalSec?: number },
   recipients: string[],
-): number {
-  const queue = cmsStore.get<QueueItem[]>("campaign-queue", [])
+): Promise<number> {
+  const queue = await fetchCampaignQueue<QueueItem[]>()
   const startAt = campaign.scheduledAt ? new Date(campaign.scheduledAt).getTime() : Date.now()
   const batchSize = Math.max(1, campaign.batchSize ?? 25)
   const intervalMs = Math.max(1000, (campaign.batchIntervalSec ?? 20) * 1000)
@@ -503,7 +518,7 @@ function enqueueCampaign(
       batchNumber,
     }
   })
-  cmsStore.set("campaign-queue", [...queue, ...fresh])
+  await saveCampaignQueue([...queue, ...fresh])
   return fresh.length
 }
 
@@ -612,10 +627,10 @@ function PageHeader({ title, subtitle, action }: { title: string; subtitle?: str
 ═══════════════════════════════════════════════════════════════════════════ */
 export function AdminCampaignsOverview() {
   useCampaignSimulator()
-  const [emails] = useCmsDoc<EmailCampaign[]>("campaign-emails", [])
-  const [sms]    = useCmsDoc<SmsCampaign[]>("campaign-sms", [])
-  const [queue]  = useCmsDoc<QueueItem[]>("campaign-queue", [])
-  const [pipelines] = useCmsDoc<Pipeline[]>("campaign-pipelines", [])
+  const [emails] = useCampaignDoc<EmailCampaign[]>("campaign-emails", [])
+  const [sms]    = useCampaignDoc<SmsCampaign[]>("campaign-sms", [])
+  const [queue]  = useCampaignQueue<QueueItem[]>([])
+  const [pipelines] = useCampaignPipelines<Pipeline[]>([])
 
   const stats = useMemo(() => {
     const all: { status: CampaignStatus; recipients: number; sent: number; failed: number }[] = [
@@ -794,9 +809,9 @@ const BLANK_EMAIL = (): EmailCampaign => ({
 export function AdminCampaignsEmail() {
   useCampaignSimulator()
   const canManage = usePermission("integrations.manage")
-  const [emails, setEmails] = useCmsDoc<EmailCampaign[]>("campaign-emails", [])
-  const [audiences] = useCmsDoc<Audience[]>("campaign-audiences", [])
-  const [settings] = useCmsDoc<CampaignSettings>("campaign-settings", DEFAULT_SETTINGS)
+  const [emails, setEmails] = useCampaignDoc<EmailCampaign[]>("campaign-emails", [])
+  const [audiences] = useCampaignDoc<Audience[]>("campaign-audiences", [])
+  const [settings] = useCampaignDoc<CampaignSettings>("campaign-settings", DEFAULT_SETTINGS)
   const [editing, setEditing] = useState<EmailCampaign | null>(null)
   const [filter, setFilter] = useState<"all" | CampaignStatus>("all")
 
@@ -816,8 +831,10 @@ export function AdminCampaignsEmail() {
   const remove = (id: string) => {
     if (!confirm("Delete this campaign? Queued sends will be cancelled.")) return
     setEmails((prev) => prev.filter((e) => e.id !== id))
-    const queue = cmsStore.get<QueueItem[]>("campaign-queue", [])
-    cmsStore.set("campaign-queue", queue.filter((q) => q.campaignId !== id))
+    void (async () => {
+      const queue = await fetchCampaignQueue<QueueItem[]>()
+      await saveCampaignQueue(queue.filter((q) => q.campaignId !== id))
+    })()
     notify.success("Campaign deleted")
   }
 
@@ -837,7 +854,7 @@ export function AdminCampaignsEmail() {
     notify.success("Duplicated")
   }
 
-  const sendOrSchedule = (c: EmailCampaign) => {
+  const sendOrSchedule = async (c: EmailCampaign) => {
     const audience = audiences.find((a) => a.id === c.audienceId)
     if (!audience) { notify.error("Pick an audience first"); return }
     const recipients = resolveRecipients(audience)
@@ -854,7 +871,7 @@ export function AdminCampaignsEmail() {
       if (idx === -1) return [next, ...prev]
       const copy = [...prev]; copy[idx] = next; return copy
     })
-    const n = enqueueCampaign("email", {
+    const n = await enqueueCampaign("email", {
       id: next.id, name: next.name, scheduledAt: next.scheduledAt,
       batchSize: settings.throttle.defaultBatchSize,
       batchIntervalSec: settings.throttle.defaultBatchIntervalSec,
@@ -1212,9 +1229,9 @@ const BLANK_SMS = (defaults: CampaignSettings): SmsCampaign => ({
 export function AdminCampaignsSms() {
   useCampaignSimulator()
   const canManage = usePermission("integrations.manage")
-  const [sms, setSms] = useCmsDoc<SmsCampaign[]>("campaign-sms", [])
-  const [audiences] = useCmsDoc<Audience[]>("campaign-audiences", [])
-  const [settings] = useCmsDoc<CampaignSettings>("campaign-settings", DEFAULT_SETTINGS)
+  const [sms, setSms] = useCampaignDoc<SmsCampaign[]>("campaign-sms", [])
+  const [audiences] = useCampaignDoc<Audience[]>("campaign-audiences", [])
+  const [settings] = useCampaignDoc<CampaignSettings>("campaign-settings", DEFAULT_SETTINGS)
   const [editing, setEditing] = useState<SmsCampaign | null>(null)
 
   const save = (c: SmsCampaign) => {
@@ -1232,12 +1249,14 @@ export function AdminCampaignsSms() {
   const remove = (id: string) => {
     if (!confirm("Delete this SMS campaign? Queued sends will be cancelled.")) return
     setSms((prev) => prev.filter((e) => e.id !== id))
-    const queue = cmsStore.get<QueueItem[]>("campaign-queue", [])
-    cmsStore.set("campaign-queue", queue.filter((q) => q.campaignId !== id))
+    void (async () => {
+      const queue = await fetchCampaignQueue<QueueItem[]>()
+      await saveCampaignQueue(queue.filter((q) => q.campaignId !== id))
+    })()
     notify.success("Deleted")
   }
 
-  const sendOrSchedule = (c: SmsCampaign) => {
+  const sendOrSchedule = async (c: SmsCampaign) => {
     const audience = audiences.find((a) => a.id === c.audienceId)
     if (!audience) { notify.error("Pick an audience first"); return }
     const recipients = resolveRecipients(audience)
@@ -1255,7 +1274,7 @@ export function AdminCampaignsSms() {
       if (idx === -1) return [next, ...prev]
       const copy = [...prev]; copy[idx] = next; return copy
     })
-    const n = enqueueCampaign("sms", {
+    const n = await enqueueCampaign("sms", {
       id: next.id, name: next.name, scheduledAt: next.scheduledAt,
       batchSize: next.batchSize, batchIntervalSec: next.batchIntervalSec,
     }, recipients)
@@ -1522,7 +1541,7 @@ function SmsDesigner({
 ═══════════════════════════════════════════════════════════════════════════ */
 export function AdminCampaignsAudiences() {
   const canManage = usePermission("integrations.manage")
-  const [audiences, setAudiences] = useCmsDoc<Audience[]>("campaign-audiences", [])
+  const [audiences, setAudiences] = useCampaignDoc<Audience[]>("campaign-audiences", [])
   const [editing, setEditing] = useState<Audience | null>(null)
 
   const save = (a: Audience) => {
@@ -1711,8 +1730,8 @@ const BLANK_PIPELINE = (): Pipeline => ({
 
 export function AdminCampaignsPipelines() {
   const canManage = usePermission("integrations.manage")
-  const [pipelines, setPipelines] = useCmsDoc<Pipeline[]>("campaign-pipelines", [])
-  const [audiences] = useCmsDoc<Audience[]>("campaign-audiences", [])
+  const [pipelines, setPipelines] = useCampaignPipelines<Pipeline[]>([])
+  const [audiences] = useCampaignDoc<Audience[]>("campaign-audiences", [])
   const [editing, setEditing] = useState<Pipeline | null>(null)
 
   const save = (p: Pipeline) => {
@@ -1950,7 +1969,7 @@ function PipelineEditor({
 export function AdminCampaignsQueue() {
   useCampaignSimulator()
   const canManage = usePermission("integrations.manage")
-  const [queue, setQueue] = useCmsDoc<QueueItem[]>("campaign-queue", [])
+  const [queue, setQueue] = useCampaignQueue<QueueItem[]>([])
   const [filter, setFilter] = useState<"all" | QueueItem["status"]>("all")
   const [search, setSearch] = useState("")
   const [paused, setPaused] = useState(false)
@@ -2101,7 +2120,7 @@ export function AdminCampaignsQueue() {
 ═══════════════════════════════════════════════════════════════════════════ */
 export function AdminCampaignsSettings() {
   const canManage = usePermission("integrations.manage")
-  const [settings, setSettings] = useCmsDoc<CampaignSettings>("campaign-settings", DEFAULT_SETTINGS)
+  const [settings, setSettings] = useCampaignDoc<CampaignSettings>("campaign-settings", DEFAULT_SETTINGS)
   const [draft, setDraft] = useState<CampaignSettings>(settings)
   useEffect(() => { setDraft(settings) }, [settings])
 

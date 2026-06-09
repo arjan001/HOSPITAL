@@ -237,14 +237,11 @@ export default function AccountPrescriptionsPage() {
                     {rx.status === "verified" && rx.approvedDrugs.length > 0 && (
                       <button
                         type="button"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          void apiPrescriptions.acceptQuotation(rx.id).then(() => mutate())
-                        }}
+                        onClick={(e) => { e.stopPropagation(); setBuyRxId(rx.id) }}
                         className="absolute right-12 top-1/2 z-10 inline-flex h-8 -translate-y-1/2 items-center gap-1 rounded-md px-3 text-[11px] font-bold text-white shadow"
                         style={{ background: `linear-gradient(135deg, ${ACCENT} 0%, ${ACCENT_RED} 100%)` }}
                       >
-                        Accept quote
+                        <ShoppingBag className="h-3.5 w-3.5" /> Buy now
                       </button>
                     )}
                     {rx.status === "accepted" && rx.approvedDrugs.length > 0 && (
@@ -552,7 +549,7 @@ function RxBuyModal({
         createPendingOrder={async () => ({ orderNumber: `RX-${rx.rxNumber}` })}
         onPaymentConfirmed={async (result) => {
           try {
-            await apiPrescriptions.pay(rx.id, {
+            await apiPrescriptions.purchase(rx.id, {
               amount: total,
               reference: result.reference,
               receipt: result.mpesaReceipt,

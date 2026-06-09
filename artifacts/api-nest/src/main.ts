@@ -45,12 +45,13 @@ async function bootstrap() {
   app.use(express.json({ limit: "8mb" }))
   app.use(express.urlencoded({ extended: true, limit: "8mb" }))
 
-  // Serve uploaded files from the local-disk Storage backend. Mounted at
-  // the same URL prefix that `common/storage.ts` returns from `put()`.
-  // Files here are PII (prescription scans) so we require a session cookie
-  // before serving any byte — URLs are unguessable but should not be
-  // bearer-secrets. When swapping to S3, drop this mount and switch to
-  // private-bucket + signedUrl() instead.
+  // Public storefront media (product images/videos). Same disk root as PII
+  // uploads but no session gate — URLs are served at `/uploads/...` for
+  // backward compatibility with the legacy api-server contract.
+  app.use("/uploads", express.static(UPLOAD_DISK_ROOT, { index: false }))
+
+  // Session-gated reads for PII uploads (prescription scans). Mounted at
+  // the URL prefix that `common/storage.ts` returns from `put()`.
   // `fallthrough: true` (the default) lets non-GET/HEAD requests pass through
   // to the Nest router so `POST /api/v2/uploads` still hits UploadsController.
   app.use(

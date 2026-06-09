@@ -26,14 +26,17 @@
 import {
   Body,
   Controller,
+  Get,
   HttpException,
   HttpStatus,
   Inject,
   Injectable,
   Module,
   Post,
+  Res,
   UseGuards,
 } from "@nestjs/common"
+import type { Response } from "express"
 import { AdminGuard, RequirePerm } from "../common/admin-guard"
 
 /* ─────────────────────── shared CMS loopback ─────────────────────── */
@@ -387,7 +390,7 @@ class CatalogImportService {
       url = `https://docs.google.com/spreadsheets/d/${editMatch[1]}/export?format=csv&gid=${gid}`
     }
 
-    let res: Response
+    let res: globalThis.Response
     try {
       res = await withTimeout(fetch(url, { redirect: "follow" }), CALL_TIMEOUT_MS * 2)
     } catch (err) {
@@ -405,6 +408,75 @@ class CatalogImportService {
     const text = await res.text()
     const rows = parseCsv(text)
     return { ok: true, total: rows.length, rows, csv: text }
+  }
+
+  async exportProductsCsv(): Promise<string> {
+    type Row = Record<string, unknown>
+    const products = await cmsGet<Row[]>("products", [])
+    const headers = [
+      "name", "slug", "price", "originalPrice", "categorySlug", "description",
+      "images", "tags", "isNew", "isOnOffer", "offerPercentage", "inStock", "stockCount", "trustSeal",
+    ]
+    const esc = (v: unknown) => {
+      const s = v == null ? "" : String(v)
+      return s.includes(",") || s.includes('"') || s.includes("\n") ? `"${s.replace(/"/g, '""')}"` : s
+    }
+    const lines = [headers.join(",")]
+    for (const p of products) {
+      const images = Array.isArray(p.images) ? (p.images as string[]).join("|") : ""
+      const tags = Array.isArray(p.tags) ? (p.tags as string[]).join(", ") : ""
+      lines.push(
+        [
+          esc(p.name),
+          esc(p.slug ?? ""),
+          p.price ?? "",
+          p.originalPrice ?? "",
+          esc(p.categorySlug ?? p.category ?? ""),
+          esc(p.description ?? ""),
+          esc(images),
+          esc(tags),
+          p.isNew ? "yes" : "no",
+          p.isOnOffer ? "yes" : "no",
+          p.offerPercentage ?? "",
+          p.inStock === false ? "no" : "yes",
+          p.stockCount ?? "",
+          p.trustSeal ? "yes" : "no",
+        ].join(","),
+      )
+    }
+    return `\uFEFF${lines.join("\n")}`
+  }
+
+  async exportCategoriesCsv(): Promise<string> {
+    type Row = { name?: string; slug?: string; parentId?: string | null; icon?: string; image?: string; banner?: string; isActive?: boolean }
+    const categories = await cmsGet<Row[]>("categories", [])
+    const byId = new Map(categories.map((c) => [String(c.slug), c]))
+    const parentSlug = (parentId: string | null | undefined) => {
+      if (!parentId) return ""
+      const hit = categories.find((c) => (c as { id?: string }).id === parentId)
+      return hit?.slug ?? ""
+    }
+    const headers = ["name", "slug", "parentSlug", "icon", "image", "banner", "isActive"]
+    const esc = (v: unknown) => {
+      const s = v == null ? "" : String(v)
+      return s.includes(",") || s.includes('"') ? `"${s.replace(/"/g, '""')}"` : s
+    }
+    const lines = [headers.join(",")]
+    for (const c of categories) {
+      lines.push(
+        [
+          esc(c.name),
+          esc(c.slug),
+          esc(parentSlug(c.parentId)),
+          esc(c.icon ?? ""),
+          esc(c.image ?? ""),
+          esc(c.banner ?? ""),
+          c.isActive === false ? "no" : "yes",
+        ].join(","),
+      )
+    }
+    void byId
+    return `\uFEFF${lines.join("\n")}`
   }
 }
 
@@ -429,6 +501,22 @@ class CatalogImportController {
   @Post("google-sheet")
   fetchGoogleSheet(@Body() body: { url?: string }) {
     return this.svc.fetchGoogleSheet(body || {})
+  }
+
+  @Get("products/export")
+  async exportProducts(@Res() res: Response) {
+    const csv = await this.svc.exportProductsCsv()
+    res.setHeader("Content-Type", "text/csv; charset=utf-8")
+    res.setHeader("Content-Disposition", 'attachment; filename="shaniid-rx-products.csv"')
+    res.send(csv)
+  }
+
+  @Get("categories/export")
+  async exportCategories(@Res() res: Response) {
+    const csv = await this.svc.exportCategoriesCsv()
+    res.setHeader("Content-Type", "text/csv; charset=utf-8")
+    res.setHeader("Content-Disposition", 'attachment; filename="shaniid-rx-categories.csv"')
+    res.send(csv)
   }
 }
 

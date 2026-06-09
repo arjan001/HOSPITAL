@@ -59,6 +59,29 @@ export function CartProvider({ children }: { children: ReactNode }) {
     }
   }, [items, hydrated])
 
+  // Sync cart to server-backed /me/cart (best-effort; local cart remains primary UX)
+  useEffect(() => {
+    if (!hydrated) return
+    const t = window.setTimeout(() => {
+      void import("./api-nest")
+        .then(({ apiNest }) =>
+          apiNest.replaceCart(
+            items.map((i) => ({
+              productId: i.product.id,
+              productSlug: i.product.slug,
+              name: i.product.name,
+              unitPrice: i.product.price,
+              quantity: i.quantity,
+              variations: i.selectedVariations,
+              snapshot: { images: i.product.images?.[0] },
+            })),
+          ),
+        )
+        .catch(() => {})
+    }, 600)
+    return () => window.clearTimeout(t)
+  }, [items, hydrated])
+
   const addItem = useCallback((product: Product, quantity = 1, variations?: Record<string, string>) => {
     setItems((prev) => {
       const variationKey = variations ? JSON.stringify(variations) : ""

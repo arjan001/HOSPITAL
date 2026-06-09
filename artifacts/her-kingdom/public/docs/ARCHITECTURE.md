@@ -383,9 +383,8 @@ implementation against the `admin_cms` table. No client changes needed.
 
 | Route | Description |
 |---|---|
-| `POST /api/auth/*` | Auth helpers (legacy, mostly pass-through) |
-| `POST /api/payments/payhero/*` | Legacy PayHero M-Pesa (kept, not used) |
-| `GET/POST /api/video/daily` | Daily.co video consultation tokens |
+| `POST /api/auth/*` | Auth helpers (legacy paths proxied to Nest admin auth) |
+| `GET/POST /api/video/daily` | Daily.co video consultation tokens (Nest `/api/v2/video`) |
 | `GET /api/__clerk/*` | Clerk API proxy (forwarded by clerkProxyMiddleware) |
 
 ---
@@ -525,8 +524,8 @@ Today (in-memory + localStorage)
 ──────────────────────────────────
   api-nest services     → InMemoryRepository<T>  (per-session Map)
   Admin CMS             → localStorage + /api/v2/admin/cms/:key
-  PayHero / Paystack    → in-memory Map<reference, PaymentRecord>
-  api-server catalog    → legacy-store.ts stubs  (empty reads)
+  Paystack payments      → Postgres-backed payment records (Nest `/api/v2/payments/paystack`)
+  Storefront catalog    → Nest `/api/v2/products` (CMS-backed)
 
 Tomorrow (Postgres)
 ───────────────────
@@ -600,7 +599,6 @@ behind the `shaniidrx_sid` session cookie (PII guard).
 | `DATABASE_URL` | No | — | Postgres (unused until Drizzle swap) |
 | `CLERK_PUBLISHABLE_KEY` | No | — | Clerk proxy host resolution |
 | `DAILY_API_KEY` | No | — | Daily.co video consultation |
-| `PAYHERO_*` | No | — | Legacy PayHero (not used) |
 
 ### her-kingdom (`artifacts/her-kingdom`)
 
@@ -618,7 +616,7 @@ behind the `shaniidrx_sid` session cookie (PII guard).
 Phase 1 (done — May 2026)
   ✓ NestJS api-nest scaffold
   ✓ Profile, Addresses, Wishlist, Orders modules
-  ✓ Paystack M-Pesa payments (replaces PayHero)
+  ✓ Paystack M-Pesa payments
   ✓ Admin CMS module (replaces localStorage-only path)
   ✓ Prescriptions, Uploads, Chat, Email, Notifications, Pipeline
   ✓ Clerk customer auth (sign-in / sign-up / OAuth / password reset)

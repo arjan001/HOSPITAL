@@ -3,18 +3,25 @@
 import { useMemo, useState } from "react"
 import { AdminShell } from "./admin-shell"
 import { useDoctors, makeDoctor, type Doctor } from "@/lib/doctors-store"
+import type { DoctorRecord } from "@/lib/doctors-client"
 import { RequirePerm } from "@/lib/permissions"
 import {
   Stethoscope, Plus, Pencil, Trash2, X, Check, ShieldCheck, Languages,
-  Phone, Mail, BadgeCheck, Clock, Search,
+  Phone, Mail, BadgeCheck, Clock, Search, Send, Loader2,
 } from "lucide-react"
+import { toast } from "@/hooks/use-toast"
 
 const WINE = "#3D0814"
 const ACCENT = "#F97316"
 const ACCENT_RED = "#B91C1C"
 
 export function AdminDoctors() {
-  const { items, upsert, remove } = useDoctors()
+  const { items, records, upsert, remove, invite, isLoading, error } = useDoctors()
+  const [invitingId, setInvitingId] = useState<string | null>(null)
+  const recordById = useMemo(
+    () => Object.fromEntries(records.map((r) => [r.id, r])) as Record<string, DoctorRecord>,
+    [records],
+  )
   const [q, setQ] = useState("")
   const [editing, setEditing] = useState<Doctor | null>(null)
   const [creating, setCreating] = useState(false)
@@ -79,7 +86,18 @@ export function AdminDoctors() {
         />
       </div>
 
-      {visible.length === 0 ? (
+      {error && (
+        <div className="mb-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+          Could not load doctors: {error.message}
+        </div>
+      )}
+      {isLoading && items.length === 0 && (
+        <div className="flex items-center gap-2 text-sm text-muted-foreground mb-4">
+          <Loader2 className="h-4 w-4 animate-spin" /> Loading doctors…
+        </div>
+      )}
+
+      {visible.length === 0 && !isLoading ? (
         <div className="rounded-xl border border-dashed border-border bg-white p-12 text-center">
           <Stethoscope className="h-8 w-8 mx-auto mb-3 text-muted-foreground" />
           <p className="text-sm font-semibold" style={{ color: WINE }}>No doctors yet</p>
@@ -135,15 +153,46 @@ export function AdminDoctors() {
                 </div>
               </dl>
 
-              <div className="mt-4 flex items-center justify-between">
-                <span
-                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold"
-                  style={{ background: "#FFF1E6", color: ACCENT_RED }}
-                >
-                  KSh {d.consultationRateKES.toLocaleString()} / session
-                </span>
+              <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold"
+                    style={{ background: "#FFF1E6", color: ACCENT_RED }}
+                  >
+                    KSh {d.consultationRateKES.toLocaleString()} / session
+                  </span>
+                  <span className="text-[10px] text-muted-foreground capitalize">
+                    Portal: {recordById[d.id]?.accountStatus ?? "none"}
+                  </span>
+                </div>
                 <RequirePerm perm={["users.manage", "consult.handle"]} hideWhenDenied>
                   <div className="flex items-center gap-1">
+                    {d.email && (
+                      <button
+                        type="button"
+                        disabled={invitingId === d.id}
+                        onClick={async () => {
+                          setInvitingId(d.id)
+                          try {
+                            await invite(d.id)
+                            toast({ title: "Invite sent", description: `Portal email sent to ${d.email}` })
+                          } catch (e) {
+                            toast({
+                              title: "Invite failed",
+                              description: e instanceof Error ? e.message : "Could not send invite",
+                              variant: "destructive",
+                            })
+                          } finally {
+                            setInvitingId(null)
+                          }
+                        }}
+                        className="p-1.5 rounded-md hover:bg-orange-50 text-orange-700"
+                        aria-label="Send portal invite"
+                        title="Email password setup link"
+                      >
+                        {invitingId === d.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
+                      </button>
+                    )}
                     <button
                       type="button"
                       onClick={() => setEditing(d)}
@@ -154,8 +203,18 @@ export function AdminDoctors() {
                     </button>
                     <button
                       type="button"
-                      onClick={() => {
-                        if (confirm(`Remove ${d.name} from the directory?`)) remove(d.id)
+                      onClick={async () => {
+                        if (!confirm(`Remove ${d.name} from the directory?`)) return
+                        try {
+                          await remove(d.id)
+                          toast({ title: "Doctor removed" })
+                        } catch (e) {
+                          toast({
+                            title: "Remove failed",
+                            description: e instanceof Error ? e.message : "Could not remove",
+                            variant: "destructive",
+                          })
+                        }
                       }}
                       className="p-1.5 rounded-md hover:bg-red-50 text-red-600"
                       aria-label="Remove doctor"
@@ -174,7 +233,20 @@ export function AdminDoctors() {
         <DoctorEditor
           initial={editing ?? makeDoctor({})}
           onClose={() => { setCreating(false); setEditing(null) }}
-          onSave={(d) => { upsert(d); setCreating(false); setEditing(null) }}
+          onSave={async (d) => {
+            try {
+              await upsert(d)
+              toast({ title: "Doctor saved" })
+              setCreating(false)
+              setEditing(null)
+            } catch (e) {
+              toast({
+                title: "Save failed",
+                description: e instanceof Error ? e.message : "Could not save",
+                variant: "destructive",
+              })
+            }
+          }}
         />
       )}
     </AdminShell>

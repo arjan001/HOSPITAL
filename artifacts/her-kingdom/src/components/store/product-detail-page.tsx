@@ -578,8 +578,7 @@ function ProductDetailPageInner({ slug }: { slug: string }) {
                     Out of Stock
                   </span>
                 )}
-                {/* Trust Seal — shown for genuine, in-stock items. Can later be gated on a real `verified` field. */}
-                {product.inStock && (
+                {product.inStock && product.trustSeal && (
                   <TrustSeal size="md" variant="soft" label="Verified Genuine" />
                 )}
               </div>

@@ -20,20 +20,25 @@ import {
   Patch,
   Post,
   Req,
+  UseGuards,
 } from "@nestjs/common"
 import type { Request } from "express"
 import { and, desc, eq, lte } from "drizzle-orm"
 import {
   db,
   prescriptions as rxTable,
+  prescriptionDrugs,
   prescriptionSubscriptions,
   prescriptionRefills,
   type SubscriptionFrequency,
 } from "@workspace/db"
 import { newId } from "../common/repository"
 import { ensureUserId } from "../common/session-user"
+import { AdminGuard, AnyAdmin, RequirePerm } from "../common/admin-guard"
 import { PrescriptionsModule, PrescriptionsService, itemizedTotal } from "./prescriptions.module"
 import { CrmModule, CrmService } from "./crm.module"
+import { AdminOrdersModule, AdminOrdersService } from "./admin-orders.module"
+import { NotificationsModule, NotificationsService } from "./notifications.module"
 
 const FREQ_DAYS: Record<SubscriptionFrequency, number> = {
   weekly: 7,
@@ -47,6 +52,8 @@ export class PrescriptionSubscriptionsService {
   constructor(
     @Inject(PrescriptionsService) private readonly rx: PrescriptionsService,
     @Inject(CrmService) private readonly crm: CrmService,
+    @Inject(AdminOrdersService) private readonly adminOrders: AdminOrdersService,
+    @Inject(NotificationsService) private readonly notifications: NotificationsService,
   ) {}
 
   private async assertOwnedRx(sid: string, rxId: string) {
@@ -250,7 +257,67 @@ export class PrescriptionSubscriptionsService {
       })
       .where(eq(prescriptionSubscriptions.id, sub.id))
 
-    return { ok: true, nextRefillAt: next.toISOString(), amount: rfl.amount }
+    const [rxRow] = await db
+      .select()
+      .from(rxTable)
+      .where(eq(rxTable.id, rfl.prescriptionId))
+      .limit(1)
+    const drugs = await db
+      .select()
+      .from(prescriptionDrugs)
+      .where(eq(prescriptionDrugs.prescriptionId, rfl.prescriptionId))
+    const orderNo = `RFL-${ref.replace(/[^A-Z0-9]/gi, "").slice(-10).toUpperCase() || refillId.slice(-8).toUpperCase()}`
+    try {
+      await this.adminOrders.upsert({
+        orderNo,
+        status: "confirmed",
+        customer: rxRow?.patientName ?? "Patient",
+        phone: rxRow?.patientPhone ?? "",
+        email: rxRow?.email ?? "",
+        items: drugs.map((d) => ({
+          name: d.name,
+          qty: d.quantity ?? 1,
+          price: d.price ?? 0,
+        })),
+        subtotal: rfl.amount,
+        delivery: 0,
+        total: rfl.amount,
+        paymentMethod: "card",
+        paymentRef: ref,
+        orderedVia: "refill",
+        notes: `Prescription refill · Rx ${rxRow?.rxNumber ?? rfl.prescriptionId}`,
+        specialInstructions: `refill:${refillId}`,
+      })
+      void this.notifications
+        .push("admin", {
+          module: "orders",
+          level: "success",
+          title: "Refill paid — ready to fulfill",
+          body: `${rxRow?.patientName ?? "Patient"} · KSh ${rfl.amount.toLocaleString()} · ${orderNo}`,
+          href: "/admin/refills",
+        })
+        .catch(() => {})
+    } catch {
+      /* order creation must not fail the payment write */
+    }
+
+    return { ok: true, nextRefillAt: next.toISOString(), amount: rfl.amount, orderNo }
+  }
+
+  async listDueRefillsAdmin() {
+    const now = new Date()
+    const rows = await db
+      .select()
+      .from(prescriptionRefills)
+      .where(and(eq(prescriptionRefills.status, "scheduled"), lte(prescriptionRefills.dueAt, now)))
+      .orderBy(desc(prescriptionRefills.dueAt))
+    const paid = await db
+      .select()
+      .from(prescriptionRefills)
+      .where(eq(prescriptionRefills.status, "paid"))
+      .orderBy(desc(prescriptionRefills.paidAt))
+      .limit(50)
+    return { due: rows, recentlyPaid: paid }
   }
 
   async updateSubscription(
@@ -333,9 +400,24 @@ class RefillRemindersController {
   }
 }
 
+@UseGuards(AdminGuard)
+@AnyAdmin()
+@Controller("admin/refills")
+class AdminRefillsController {
+  constructor(
+    @Inject(PrescriptionSubscriptionsService) private readonly subs: PrescriptionSubscriptionsService,
+  ) {}
+
+  @Get("due")
+  @RequirePerm("rx.verify")
+  listDue() {
+    return this.subs.listDueRefillsAdmin()
+  }
+}
+
 @Module({
-  imports: [PrescriptionsModule, CrmModule],
-  controllers: [SubscribeController, RefillRemindersController],
+  imports: [PrescriptionsModule, CrmModule, AdminOrdersModule, NotificationsModule],
+  controllers: [SubscribeController, RefillRemindersController, AdminRefillsController],
   providers: [PrescriptionSubscriptionsService],
   exports: [PrescriptionSubscriptionsService],
 })

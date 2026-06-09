@@ -18,6 +18,7 @@ import {
   useLogisticsJobs, useLogisticsEarnings, updateDeliveryStatus, submitDeliveryPod,
   type PartnerAccount, type DeliveryJob,
 } from "@/lib/partners-client"
+import { PartnerClerkDivider, PartnerClerkSignIn } from "@/components/portal/partner-clerk-signin"
 import {
   Truck, LogOut, Package, MapPin, BarChart3, User,
   AlertTriangle, CheckCircle2, ArrowRight, Eye, EyeOff,
@@ -223,6 +224,13 @@ function AuthScreen() {
                   {signingIn ? <Loader2 className="h-4 w-4 animate-spin" /> : <>Sign in <ArrowRight className="h-4 w-4" /></>}
                 </Button>
               </form>
+
+              <PartnerClerkDivider />
+              <PartnerClerkSignIn
+                type="logistics"
+                redirectPath="/portal/logistics"
+                onError={setSigninErr}
+              />
 
               <p className="text-xs text-gray-400 text-center mt-6">
                 New partner? <button type="button" onClick={() => setMode("apply")} className="underline font-medium" style={{ color: WINE }}>Apply to join</button>

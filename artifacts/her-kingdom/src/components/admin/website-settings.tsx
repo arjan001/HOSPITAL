@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from "react"
 import { AdminShell } from "./admin-shell"
-import { useCmsDoc } from "@/lib/cms-store"
+import { useCmsDoc, cmsStore } from "@/lib/cms-store"
 import { notify } from "@/lib/notify"
 import {
   Settings, Save, Building2, Phone, Share2, Search, DollarSign, Clock, Truck,
@@ -236,6 +236,11 @@ export function AdminWebsiteSettings() {
 
   const save = () => {
     setSettings(draft)
+    const store = cmsStore.get<Record<string, unknown>>("store-settings", {})
+    cmsStore.set("store-settings", {
+      ...store,
+      maintenance_mode: draft.flags.maintenanceMode,
+    })
     notify.saved("Website settings saved")
   }
   const reset = () => {
@@ -584,7 +589,7 @@ export function AdminWebsiteSettings() {
                 <div className="space-y-3">
                   <Toggle
                     label="Maintenance mode"
-                    hint="When on, storefront shows a 'we'll be back soon' page (TODO: wire up)."
+                    hint="Mirrors to Settings → Maintenance Mode and shows a storefront hold page."
                     checked={draft.flags.maintenanceMode}
                     onChange={(v) => update("flags", { maintenanceMode: v })}
                   />

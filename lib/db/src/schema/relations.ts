@@ -30,7 +30,7 @@ import {
   procurementDecisions,
   supplierSuggestions,
 } from "./operations"
-import { doctors, consultations } from "./consultations"
+import { doctorAccounts, doctors, consultations } from "./consultations"
 import { uploads, wishlistItems } from "./uploads"
 import { payments } from "./payments"
 import { chatThreads, chatMessages } from "./chat"
@@ -184,6 +184,11 @@ export const carePackAssemblyLinesRelations = relations(carePackAssemblyLines, (
 
 export const doctorsRelations = relations(doctors, ({ many }) => ({
   consultations: many(consultations),
+  accounts: many(doctorAccounts),
+}))
+
+export const doctorAccountsRelations = relations(doctorAccounts, ({ one }) => ({
+  doctor: one(doctors, { fields: [doctorAccounts.doctorId], references: [doctors.id] }),
 }))
 
 export const consultationsRelations = relations(consultations, ({ one, many }) => ({

@@ -78,8 +78,10 @@ import {
   AdminCampaignsSettings,
 } from "@/components/admin/campaigns";
 import { AdminSettings } from "@/components/admin/settings";
-// import { AdminPos } from "@/components/admin/pos"; // hidden until client requests POS module
 import { UsersManagement } from "@/components/admin/users";
+import { AdminDeliveryFeedback } from "@/components/admin/delivery-feedback";
+import { AdminCrm } from "@/components/admin/crm";
+import { AdminRefillQueue } from "@/components/admin/refill-queue";
 import { AdminSuppliers } from "@/components/admin/suppliers";
 import { AdminClinics } from "@/components/admin/clinics";
 import { AdminLogisticsPartners } from "@/components/admin/logistics-partners";
@@ -114,11 +116,13 @@ import { AdminAuditLog } from "@/components/admin/audit-log";
 import { AdminDocs } from "@/components/admin/docs";
 import { AdminBulkImport } from "@/components/admin/bulk-import";
 import { PopupOffer } from "@/components/store/popup-offer";
+import { FloatingWhatsApp } from "@/components/store/floating-whatsapp";
 
 // Account pages (customer-facing)
 import AccountSettingsPage from "@/pages/account/settings";
 import AccountDashboard from "@/pages/account/dashboard";
 import AccountPrescriptionsPage from "@/pages/account/prescriptions";
+import AccountOrdersPage from "@/pages/account/orders";
 import AccountLoginPage from "@/pages/account/login";
 import AccountRegisterPage from "@/pages/account/register";
 import AccountSupportPage from "@/pages/account/support";
@@ -126,6 +130,9 @@ import DashboardPage from "@/pages/dashboard";
 import UploadPrescriptionPage from "@/pages/upload-prescription";
 import SpeakToADoctorPage from "@/pages/speak-to-a-doctor";
 import DoctorPanelPage from "@/pages/doctor/panel";
+import DoctorPatientsPage from "@/pages/doctor/patients";
+import DoctorLoginPage from "@/pages/doctor/login";
+import DoctorAcceptPage from "@/pages/doctor/accept";
 import { AdminDoctors } from "@/components/admin/doctors";
 import { AdminPatientDetail } from "@/components/admin/patient-detail";
 import { AdminSupportTickets } from "@/components/admin/support-tickets";
@@ -413,6 +420,9 @@ function Router() {
       <Route path="/account/prescriptions">
         {() => <ProtectedAccount><AccountPrescriptionsPage /></ProtectedAccount>}
       </Route>
+      <Route path="/account/orders">
+        {() => <ProtectedAccount><AccountOrdersPage /></ProtectedAccount>}
+      </Route>
       <Route path="/dashboard">
         {() => <ProtectedAccount><DashboardPage /></ProtectedAccount>}
       </Route>
@@ -424,6 +434,9 @@ function Router() {
       </Route>
       <Route path="/speak-to-a-doctor" component={SpeakToADoctorPage} />
       <Route path="/speak-to-a-doctor/:cid" component={SpeakToADoctorPage} />
+      <Route path="/doctor/login" component={DoctorLoginPage} />
+      <Route path="/doctor/accept" component={DoctorAcceptPage} />
+      <Route path="/doctor/patients" component={DoctorPatientsPage} />
       <Route path="/doctor" component={DoctorPanelPage} />
       <Route path="/account/support" component={AccountSupportPage} />
       {/* Admin login — public, no AdminShell wrapper */}
@@ -468,8 +481,10 @@ function Router() {
       <Route path="/admin/campaigns/pipelines"  component={AdminCampaignsPipelines} />
       <Route path="/admin/campaigns/queue"      component={AdminCampaignsQueue} />
       <Route path="/admin/campaigns/settings"   component={AdminCampaignsSettings} />
-      {/* <Route path="/admin/pos" component={AdminPos} /> hidden until client requests POS module */}
       <Route path="/admin/settings" component={AdminSettings} />
+      <Route path="/admin/feedback" component={AdminDeliveryFeedback} />
+      <Route path="/admin/crm" component={AdminCrm} />
+      <Route path="/admin/refills" component={AdminRefillQueue} />
       <Route path="/admin/users" component={UsersManagement} />
       <Route path="/admin/accounts" component={AdminAccounts} />
       <Route path="/admin/customers" component={AdminCustomers} />
@@ -523,6 +538,7 @@ function GlobalOverlays() {
   return (
     <>
       <PopupOffer />
+      <FloatingWhatsApp />
       <BackToTop />
     </>
   );
@@ -551,11 +567,13 @@ function MaintenanceGate({ children }: { children: ReactNode }) {
   const { data } = useSWR<{ settings?: { maintenance_mode?: boolean } }>(
     "/api/site-data",
     (url: string) => fetch(url).then((r) => r.json()),
-    { revalidateOnFocus: false, dedupingInterval: 60_000 },
+    { revalidateOnFocus: true, dedupingInterval: 15_000 },
   );
   const maintenance = data?.settings?.maintenance_mode === true;
   const exempt =
     location.startsWith("/admin") ||
+    location.startsWith("/doctor") ||
+    location.startsWith("/portal") ||
     location.startsWith("/account/login") ||
     location.startsWith("/account/register") ||
     location.startsWith("/account/sso-callback") ||
