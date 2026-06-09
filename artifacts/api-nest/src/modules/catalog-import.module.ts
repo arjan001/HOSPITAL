@@ -12,15 +12,9 @@
  *                                                    URL server-side to avoid
  *                                                    browser CORS)
  *
- * Both categories AND products are persisted into the cmsStore via the
- * AdminCmsController loopback (`/api/v2/admin/cms/:key`) using the keys
- * "categories" and "products" respectively. The storefront `cmsStore.get`
- * helper reads these same keys, so imports are visible immediately.
- *
- * Earlier revisions forwarded product imports to the legacy Express
- * `/api/admin/products` endpoint, which is backed by a no-op stub and
- * therefore silently dropped all writes. That bug is now fixed by
- * routing through the same cmsStore seam as categories.
+ * Both categories AND products are persisted into cms_docs via AdminCmsService
+ * using the keys "categories" and "products". The storefront reads these via
+ * `/api/v2/cms/categories` (public) and proxied `/api/products`.
  */
 
 import {
@@ -38,58 +32,7 @@ import {
 } from "@nestjs/common"
 import type { Response } from "express"
 import { AdminGuard, RequirePerm } from "../common/admin-guard"
-
-/* ─────────────────────── shared CMS loopback ─────────────────────── */
-
-const NEST_PORT = process.env.PORT || 8090
-const NEST_BASE = `http://127.0.0.1:${NEST_PORT}/api/v2/admin/cms`
-const CALL_TIMEOUT_MS = 6_000
-const INTERNAL_TOKEN = process.env.ADMIN_API_TOKEN?.trim()
-const INTERNAL_HEADERS: Record<string, string> = INTERNAL_TOKEN
-  ? { "x-admin-token": INTERNAL_TOKEN }
-  : {}
-
-async function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
-  return await Promise.race([
-    p,
-    new Promise<T>((_, reject) =>
-      setTimeout(() => reject(new Error(`timeout ${ms}ms`)), ms),
-    ),
-  ])
-}
-
-async function cmsGet<T>(key: string, fallback: T): Promise<T> {
-  const res = await withTimeout(
-    fetch(`${NEST_BASE}/${encodeURIComponent(key)}`, { headers: INTERNAL_HEADERS }),
-    CALL_TIMEOUT_MS,
-  )
-  if (res.status === 404) return fallback
-  if (!res.ok) {
-    throw new HttpException(
-      `cms read failed for ${key}: ${res.status}`,
-      HttpStatus.BAD_GATEWAY,
-    )
-  }
-  const body = (await res.json()) as { value: T }
-  return body.value ?? fallback
-}
-
-async function cmsPut<T>(key: string, value: T): Promise<void> {
-  const res = await withTimeout(
-    fetch(`${NEST_BASE}/${encodeURIComponent(key)}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json", ...INTERNAL_HEADERS },
-      body: JSON.stringify(value),
-    }),
-    CALL_TIMEOUT_MS,
-  )
-  if (!res.ok) {
-    throw new HttpException(
-      `cms write failed for ${key}: ${res.status}`,
-      HttpStatus.BAD_GATEWAY,
-    )
-  }
-}
+import { AdminCmsModule, AdminCmsService } from "./admin-cms.module"
 
 /* ─────────────────────── helpers ─────────────────────── */
 
@@ -176,14 +119,26 @@ type CmsCategory = {
 }
 
 const CATEGORY_REQUIRED = ["name"] as const
+const FETCH_TIMEOUT_MS = 12_000
+
+async function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
+  return await Promise.race([
+    p,
+    new Promise<T>((_, reject) =>
+      setTimeout(() => reject(new Error(`timeout ${ms}ms`)), ms),
+    ),
+  ])
+}
 
 @Injectable()
 class CatalogImportService {
+  constructor(@Inject(AdminCmsService) private readonly cms: AdminCmsService) {}
+
   async importCategories(body: ImportBody) {
     const rows = pickRows(body)
     const mode = body.mode === "replace" ? "replace" : "upsert"
 
-    const existing = mode === "replace" ? [] : await cmsGet<CmsCategory[]>("categories", [])
+    const existing = mode === "replace" ? [] : await this.cms.getValue<CmsCategory[]>("categories", [])
     const bySlug = new Map(existing.map((c) => [c.slug, c]))
     const byId = new Map(existing.map((c) => [c.id, c]))
 
@@ -236,7 +191,7 @@ class CatalogImportService {
       byId.set(record.id, record)
     })
 
-    await cmsPut("categories", existing)
+    await this.cms.putValue("categories", existing)
 
     return {
       ok: errors.length === 0,
@@ -273,9 +228,9 @@ class CatalogImportService {
       createdAt: string
     }
 
-    const existing = mode === "replace" ? [] : await cmsGet<CmsProduct[]>("products", [])
+    const existing = mode === "replace" ? [] : await this.cms.getValue<CmsProduct[]>("products", [])
     const bySlug = new Map(existing.map((p) => [p.slug, p]))
-    const categories = await cmsGet<{ slug: string; name: string }[]>("categories", [])
+    const categories = await this.cms.getValue<{ slug: string; name: string }[]>("categories", [])
     const categoryName = new Map(categories.map((c) => [c.slug, c.name]))
 
     const results: { row: number; ok: boolean; id?: string; reason?: string }[] = []
@@ -357,7 +312,7 @@ class CatalogImportService {
     }
 
     try {
-      await cmsPut("products", existing)
+      await this.cms.putValue("products", existing)
     } catch (err) {
       throw new HttpException(
         `Failed to persist products: ${err instanceof Error ? err.message : "unknown"}`,
@@ -392,7 +347,7 @@ class CatalogImportService {
 
     let res: globalThis.Response
     try {
-      res = await withTimeout(fetch(url, { redirect: "follow" }), CALL_TIMEOUT_MS * 2)
+      res = await withTimeout(fetch(url, { redirect: "follow" }), FETCH_TIMEOUT_MS)
     } catch (err) {
       throw new HttpException(
         `failed to fetch sheet: ${err instanceof Error ? err.message : "unknown"}`,
@@ -412,7 +367,7 @@ class CatalogImportService {
 
   async exportProductsCsv(): Promise<string> {
     type Row = Record<string, unknown>
-    const products = await cmsGet<Row[]>("products", [])
+    const products = await this.cms.getValue<Row[]>("products", [])
     const headers = [
       "name", "slug", "price", "originalPrice", "categorySlug", "description",
       "images", "tags", "isNew", "isOnOffer", "offerPercentage", "inStock", "stockCount", "trustSeal",
@@ -449,7 +404,7 @@ class CatalogImportService {
 
   async exportCategoriesCsv(): Promise<string> {
     type Row = { name?: string; slug?: string; parentId?: string | null; icon?: string; image?: string; banner?: string; isActive?: boolean }
-    const categories = await cmsGet<Row[]>("categories", [])
+    const categories = await this.cms.getValue<Row[]>("categories", [])
     const byId = new Map(categories.map((c) => [String(c.slug), c]))
     const parentSlug = (parentId: string | null | undefined) => {
       if (!parentId) return ""
@@ -521,6 +476,7 @@ class CatalogImportController {
 }
 
 @Module({
+  imports: [AdminCmsModule],
   controllers: [CatalogImportController],
   providers: [CatalogImportService],
   exports: [CatalogImportService],

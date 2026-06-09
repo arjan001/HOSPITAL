@@ -7,22 +7,11 @@ import { Footer } from "@/components/store/footer"
 import { X, ArrowLeft, FileText, ShieldCheck, Phone, Clock, ArrowRight, MessageCircle } from "lucide-react"
 import { useStoreContact } from "@/hooks/use-store-contact"
 import { Seo, organizationJsonLd, websiteJsonLd, breadcrumbJsonLd, faqJsonLd, productJsonLd } from "@/components/seo"
-import { cmsStore, newId } from "@/lib/cms-store"
-import type { Prescription } from "@/components/admin/prescriptions"
+import { newId } from "@/lib/cms-store"
 import { apiPrescriptions, apiUploads, refreshMyPrescriptions, useMe } from "@/lib/api-nest"
 import { pushAdminNotification } from "@/lib/notifications-client"
 import { useCmsDoc } from "@/lib/cms-store"
 import { INTEGRATIONS_DEFAULTS, type IntegrationsConfig } from "@/components/admin/integrations"
-
-type UserPrescriptionRow = {
-  id: string
-  rxNumber: string
-  name: string
-  date: string
-  total: number
-  recipient: string
-  status: "Pending" | "Verified" | "Dispensed" | "Cancelled"
-}
 
 const WINE       = "#3D0814"
 const ACCENT_RED = "#B91C1C"
@@ -228,42 +217,6 @@ export default function UploadPrescriptionPage() {
     const fileNames = files.map((f) => f.name).join(", ") || "No file"
     const displayName = files[0]?.name ?? "Prescription"
 
-    const adminRec: Prescription = {
-      id,
-      patientName: fullName,
-      phone: "",
-      dob,
-      imageUrl: "",
-      notes:
-        `Submitted via storefront. Files: ${fileNames}. ` +
-        `Payment: ${paymentMethod === "insurance" ? "Insurance" : "Cash"}. ` +
-        (ailment ? `Issue: ${ailment}. ` : "") +
-        (serviceWanted ? `Service: ${serviceWanted}. ` : ""),
-      status: "pending",
-      pharmacistNote: "",
-      recommendedDrugs: [],
-      createdAt: now.toISOString(),
-      updatedAt: now.toISOString(),
-    }
-    const adminList = cmsStore.get<Prescription[]>("prescriptions", [])
-    cmsStore.set("prescriptions", [adminRec, ...adminList])
-
-    const userRec: UserPrescriptionRow = {
-      id,
-      rxNumber,
-      name: displayName.length > 60 ? displayName.slice(0, 57) + "…" : displayName,
-      date: isoDate,
-      total: 0,
-      recipient: fullName,
-      status: "Pending",
-    }
-    const userList = cmsStore.get<UserPrescriptionRow[]>("user-prescriptions", [])
-    cmsStore.set("user-prescriptions", [userRec, ...userList])
-
-    // Also persist to the NestJS api-nest backend so the customer's
-    // /account/prescriptions view has a real per-session source of truth.
-    // localStorage above keeps the legacy admin panel (still on cmsStore)
-    // working until it ports to NestJS.
     let failedUploads = 0
     let createFailed = false
     try {

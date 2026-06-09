@@ -10,7 +10,7 @@
  *   - KYC approval / suspension workflow
  *   - Auto-generated portal codes that suppliers use to log in at /portal/supplier
  *
- * All data persists via cmsStore("suppliers") — NestJS swap is one file.
+ * All data persists via Postgres partner_directory (Nest /api/v2/admin/partner-directory/suppliers).
  */
 
 import { useState, useMemo, useEffect } from "react"
@@ -22,7 +22,8 @@ import {
   PackageSearch, BarChart3, ArrowRight, Download, Users,
   Award, Globe, Phone, Mail, MapPin, Hash, CreditCard,
 } from "lucide-react"
-import { useCmsDoc, newId } from "@/lib/cms-store"
+import { newId } from "@/lib/cms-store"
+import { usePartnerDirectoryDoc } from "@/lib/partners-directory-client"
 import { adminAuthHeaders } from "@/lib/api-client"
 import { apiSupplierPurchaseOrders, type SupplierPurchaseOrder } from "@/lib/api-nest"
 import { AdminShell } from "./admin-shell"
@@ -751,7 +752,7 @@ function SupplierDrawer({ supplier, open, onClose, onUpdate }: {
 /* ─── Main Page ───────────────────────────────────────────────── */
 
 export function AdminSuppliers() {
-  const [suppliers, setSuppliers] = useCmsDoc<Supplier[]>("suppliers", [])
+  const [suppliers, setSuppliers] = usePartnerDirectoryDoc<Supplier>("suppliers", [])
   const [search, setSearch] = useState("")
   const [statusFilter, setStatusFilter] = useState("all")
   const [catFilter, setCatFilter] = useState("all")

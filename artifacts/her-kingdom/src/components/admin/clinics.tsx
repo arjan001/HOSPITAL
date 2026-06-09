@@ -22,7 +22,8 @@ import {
   Users, Phone, Mail, MapPin, Hash, Award, Activity,
   ClipboardList, Package, ChevronRight,
 } from "lucide-react"
-import { useCmsDoc, newId } from "@/lib/cms-store"
+import { newId } from "@/lib/cms-store"
+import { usePartnerDirectoryDoc } from "@/lib/partners-directory-client"
 import { adminAuthHeaders } from "@/lib/api-client"
 import { AdminShell } from "./admin-shell"
 import { PartnerPortalPanel } from "./partner-portal-panel"
@@ -635,7 +636,7 @@ function ClinicDrawer({ clinic, open, onClose, onUpdate, onTrade }: {
 /* ─── Main Page ───────────────────────────────────────────────── */
 
 export function AdminClinics() {
-  const [clinics, setClinics] = useCmsDoc<Clinic[]>("clinics", [])
+  const [clinics, setClinics] = usePartnerDirectoryDoc<Clinic>("clinics", [])
   const [search, setSearch] = useState("")
   const [statusFilter, setStatusFilter] = useState("all")
   const [showAdd, setShowAdd] = useState(false)

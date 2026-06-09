@@ -126,7 +126,6 @@ import AccountOrdersPage from "@/pages/account/orders";
 import AccountLoginPage from "@/pages/account/login";
 import AccountRegisterPage from "@/pages/account/register";
 import AccountSupportPage from "@/pages/account/support";
-import DashboardPage from "@/pages/dashboard";
 import UploadPrescriptionPage from "@/pages/upload-prescription";
 import SpeakToADoctorPage from "@/pages/speak-to-a-doctor";
 import DoctorPanelPage from "@/pages/doctor/panel";
@@ -293,8 +292,8 @@ function SsoCallbackPage() {
         </p>
       </div>
       <AuthenticateWithRedirectCallback
-        signInFallbackRedirectUrl={`${basePath}/user`}
-        signUpFallbackRedirectUrl={`${basePath}/user`}
+        signInFallbackRedirectUrl={`${basePath}/account/dashboard`}
+        signUpFallbackRedirectUrl={`${basePath}/account/dashboard`}
       />
     </main>
   );
@@ -424,10 +423,10 @@ function Router() {
         {() => <ProtectedAccount><AccountOrdersPage /></ProtectedAccount>}
       </Route>
       <Route path="/dashboard">
-        {() => <ProtectedAccount><DashboardPage /></ProtectedAccount>}
+        {() => <Redirect to="/account/dashboard" />}
       </Route>
       <Route path="/user">
-        {() => <ProtectedAccount><DashboardPage /></ProtectedAccount>}
+        {() => <Redirect to="/account/dashboard" />}
       </Route>
       <Route path="/upload-prescription">
         {() => <ProtectedAccount><UploadPrescriptionPage /></ProtectedAccount>}

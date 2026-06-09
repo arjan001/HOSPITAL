@@ -21,10 +21,8 @@
 
 import { useEffect, useMemo, useState } from "react"
 import { AdminShell } from "./admin-shell"
-import { newId, cmsStore } from "@/lib/cms-store"
 import { usePermission } from "@/lib/permissions"
 import { notify } from "@/lib/notify"
-import type { Consultation } from "./consultations"
 import { DrugPicker, SuggestFromNotesButton } from "./drug-picker"
 import {
   useAdminPrescriptionsPaged,
@@ -318,35 +316,9 @@ export function AdminPrescriptions() {
     void persist({ status: "rejected", rejectedReason: reason }, { close: true, successMessage: "Prescription rejected" })
   }
 
-  // Cross-module: spin up a video consultation pre-filled with this Rx so the
-  // pharmacist can clarify with the patient before dispensing. Consultations
-  // still live in cmsStore; the prescription record itself is backend-owned.
   const openConsultation = () => {
     if (!active) return
-    const list = cmsStore.get<Consultation[]>("consultations", [])
-    const existing = list.find((c) => c.phone === active.phone && c.status !== "completed" && c.status !== "missed")
-    if (existing) {
-      notify.info(`Existing ${existing.status} consultation for this patient — opening it.`)
-      window.location.assign("/admin/consultations")
-      return
-    }
-    const c: Consultation = {
-      id: newId("c"),
-      patientName: active.recipient || active.patientName || "Patient",
-      phone: active.phone,
-      doctorName: "Dr. on call",
-      mode: "video",
-      status: "queued",
-      topic: `Clarify Rx-${active.rxNumber}`,
-      startedAt: new Date().toISOString(),
-      messages: [
-        { id: newId("m"), from: "system", text: `Opened from prescription Rx-${active.rxNumber} for clarification.`, at: new Date().toISOString() },
-      ],
-      doctorNote: active.pharmacistNote,
-      recommendedDrugs: active.approvedDrugs.map((r) => ({ ...r })),
-    }
-    cmsStore.set("consultations", [c, ...list])
-    notify.saved(`Consultation ${c.id} created — opening`)
+    notify.info(`Open Consultations to connect with ${active.recipient || active.patientName || "this patient"}.`)
     window.location.assign("/admin/consultations")
   }
 

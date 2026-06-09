@@ -57,6 +57,7 @@ import { signPartnerToken, verifyPartnerToken } from "../common/partner-token"
 import { verifyClerkBearer } from "../common/clerk-auth"
 import { EmailModule, EmailService } from "./email.module"
 import { AdminCmsModule, AdminCmsService } from "./admin-cms.module"
+import { PartnerDirectoryModule, PartnerDirectoryService, type DirectoryKey } from "./partner-directory.module"
 import { AdminGuard } from "../common/admin-guard"
 
 export type PartnerType = "supplier" | "clinic" | "logistics"
@@ -71,11 +72,8 @@ const PORTAL_PATHS: Record<PartnerType, string> = {
   logistics: "/portal/logistics",
 }
 
-// ─────────────────────── cms helper (profile + credit fallback) ───────────────────────
-// Reads go through the injected AdminCmsService (Postgres source of truth), never an
-// HTTP loopback to the AdminGuard-protected /admin/cms route — that route fails closed
-// in prod without ADMIN_API_TOKEN and would silently drop profile/credit lookups.
-const CMS_KEY_FOR: Record<PartnerType, string> = {
+// ─────────────────────── partner directory (Postgres profiles) ───────────────────────
+const CMS_KEY_FOR: Record<PartnerType, DirectoryKey> = {
   supplier: "suppliers",
   clinic: "clinics",
   logistics: "logistics-partners",
@@ -135,9 +133,20 @@ export class PartnerAuthService {
   constructor(
     @Inject(EmailService) private readonly email: EmailService,
     @Inject(AdminCmsService) private readonly cms: AdminCmsService,
+    @Inject(PartnerDirectoryService) private readonly directory: PartnerDirectoryService,
   ) {}
 
-  /** CMS read via Postgres source of truth (no guarded HTTP loopback). */
+  /** Partner profile list from Postgres `partner_directory`. */
+  async partnerRecords(type: PartnerType): Promise<CmsPartnerRecord[]> {
+    return (await this.directory.list(CMS_KEY_FOR[type])) as CmsPartnerRecord[]
+  }
+
+  async partnerRecord(type: PartnerType, id: string): Promise<CmsPartnerRecord | null> {
+    const row = await this.directory.findById(type, id)
+    return row as CmsPartnerRecord | null
+  }
+
+  /** Generic cms_docs read (non-partner keys only). */
   async cmsLookup<T>(key: string, fallback: T): Promise<T> {
     try {
       const entry = await this.cms.get(key)
@@ -199,7 +208,7 @@ export class PartnerAuthService {
       if (!acc) {
         const partnerId = String(clerk.publicMetadata?.partnerId ?? "").trim()
         if (partnerId) {
-          const recs = await this.cmsLookup<CmsPartnerRecord[]>(CMS_KEY_FOR[partnerType], [])
+          const recs = await this.partnerRecords(partnerType)
           const rec = recs.find((r) => r.id === partnerId)
           if (rec) {
             ;[acc] = await db
@@ -279,7 +288,7 @@ export class PartnerAuthService {
     // password matches the cms portalCode, auto-provision an active account so
     // existing partners keep working without a manual migration.
     if (!acc) {
-      const recs = await this.cmsLookup<CmsPartnerRecord[]>(CMS_KEY_FOR[partnerType], [])
+      const recs = await this.partnerRecords(partnerType)
       const rec = recs.find(
         (r) =>
           String(r.email ?? "").trim().toLowerCase() === cleanedEmail &&
@@ -451,8 +460,8 @@ export class PartnerAuthService {
 
   async me(req: Request): Promise<{ ok: true; partner: ReturnType<typeof publicAccount>; profile: unknown }> {
     const acc = await this.requirePartner(req)
-    const recs = await this.cmsLookup<CmsPartnerRecord[]>(CMS_KEY_FOR[acc.partnerType as PartnerType], [])
-    const profile = recs.find((r) => r.id === acc.partnerId) ?? null
+    const recs = await this.partnerRecords(acc.partnerType as PartnerType)
+    const profile = recs.find((r: CmsPartnerRecord) => r.id === acc.partnerId) ?? null
     return { ok: true, partner: publicAccount(acc), profile }
   }
 
@@ -779,8 +788,7 @@ export class PartnerPortalService {
     const meta = (acc.metadata ?? {}) as Record<string, unknown>
     const fromMeta = Number(meta.creditLimit)
     if (Number.isFinite(fromMeta)) return fromMeta
-    const recs = await this.auth.cmsLookup<CmsPartnerRecord[]>("clinics", [])
-    const rec = recs.find((r) => r.id === acc.partnerId)
+    const rec = await this.auth.partnerRecord("clinic", acc.partnerId)
     return Number(rec?.creditLimit ?? 0) || 0
   }
 
@@ -1170,7 +1178,7 @@ class PartnerWelcomeController {
 }
 
 @Module({
-  imports: [EmailModule, AdminCmsModule],
+  imports: [EmailModule, AdminCmsModule, PartnerDirectoryModule],
   controllers: [
     PartnerAuthController,
     PartnerSupplierController,

@@ -47,7 +47,8 @@ import {
   Query,
   UseGuards,
 } from "@nestjs/common"
-import { AdminCmsModule } from "./admin-cms.module"
+import { AdminCmsModule, AdminCmsService } from "./admin-cms.module"
+import { PartnerDirectoryModule, PartnerDirectoryService } from "./partner-directory.module"
 import { EmailModule, EmailService } from "./email.module"
 import { NotificationsModule, NotificationsService } from "./notifications.module"
 import {
@@ -68,11 +69,8 @@ import { QaLogisticsModule, LogisticsOpsService, QaOpsService } from "./qa-logis
 /**
  * Pipeline automation — server-side intelligence layer on top of cmsStore.
  *
- * Data is owned by the storefront cmsStore (dual-writes to /api/v2/admin/cms).
- * This module READS cmsStore via a thin internal client (NestJS app talks to
- * itself over HTTP so we don't have to inject AdminCmsService — keeps the
- * automation logic decoupled and easy to port to a worker later) and writes
- * back derived results to the same store.
+ * Data is owned by cms_docs (via AdminCmsService). Automation services read/write
+ * through injected AdminCmsService — no HTTP loopback to /admin/cms.
  *
  * Five pipelines:
  *   - Sourcing       → scan inventory + forecast → create requests
@@ -93,63 +91,6 @@ import { QaLogisticsModule, LogisticsOpsService, QaOpsService } from "./qa-logis
  * crash/restart mid-send and must be retried rather than stranded forever.
  */
 const CAMPAIGN_CLAIM_STALE_MS = 10 * 60 * 1000
-
-const CMS_BASE = `http://127.0.0.1:${process.env.PORT || 8090}/api/v2/admin/cms`
-const CMS_TIMEOUT_MS = 4_000
-const INTERNAL_TOKEN = process.env.ADMIN_API_TOKEN?.trim()
-const INTERNAL_HEADERS: Record<string, string> = INTERNAL_TOKEN
-  ? { "x-admin-token": INTERNAL_TOKEN }
-  : {}
-
-async function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
-  return await Promise.race([
-    p,
-    new Promise<T>((_, reject) => setTimeout(() => reject(new Error(`timeout ${ms}ms`)), ms)),
-  ])
-}
-
-async function cmsGet<T>(key: string, fallback: T): Promise<T> {
-  try {
-    const res = await withTimeout(
-      fetch(`${CMS_BASE}/${encodeURIComponent(key)}`, { headers: INTERNAL_HEADERS }),
-      CMS_TIMEOUT_MS,
-    )
-    if (res.status === 404) return fallback
-    if (!res.ok) {
-      throw new HttpException(`CMS read failed for ${key}: ${res.status}`, HttpStatus.BAD_GATEWAY)
-    }
-    const body = (await res.json()) as { value: T }
-    return body.value ?? fallback
-  } catch (err) {
-    if (err instanceof HttpException) throw err
-    throw new HttpException(
-      `CMS read failed for ${key}: ${err instanceof Error ? err.message : String(err)}`,
-      HttpStatus.BAD_GATEWAY,
-    )
-  }
-}
-
-async function cmsPut<T>(key: string, value: T): Promise<void> {
-  try {
-    const res = await withTimeout(
-      fetch(`${CMS_BASE}/${encodeURIComponent(key)}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json", ...INTERNAL_HEADERS },
-        body: JSON.stringify(value),
-      }),
-      CMS_TIMEOUT_MS,
-    )
-    if (!res.ok) {
-      throw new HttpException(`CMS write failed for ${key}: ${res.status}`, HttpStatus.BAD_GATEWAY)
-    }
-  } catch (err) {
-    if (err instanceof HttpException) throw err
-    throw new HttpException(
-      `CMS write failed for ${key}: ${err instanceof Error ? err.message : String(err)}`,
-      HttpStatus.BAD_GATEWAY,
-    )
-  }
-}
 
 function newId(prefix = "id"): string {
   return `${prefix}_${Math.random().toString(36).slice(2, 9)}${Date.now().toString(36)}`
@@ -297,15 +238,17 @@ type SentLogRow = {
 
 @Injectable()
 class SourcingAutomationService {
+  constructor(@Inject(AdminCmsService) private readonly cms: AdminCmsService) {}
+
   async scan(): Promise<{
     rulesEvaluated: number
     requestsCreated: number
     flagged: Array<{ sku: string; productName: string; reason: string }>
   }> {
     const [rules, inventory, requests] = await Promise.all([
-      cmsGet<SourcingRule[]>("sourcing-automation-rules", []),
-      cmsGet<InventoryItem[]>("sourcing-inventory", []),
-      cmsGet<SourcingRequest[]>("sourcing-requests", []),
+      this.cms.getValue<SourcingRule[]>("sourcing-automation-rules", []),
+      this.cms.getValue<InventoryItem[]>("sourcing-inventory", []),
+      this.cms.getValue<SourcingRequest[]>("sourcing-requests", []),
     ])
 
     const active = rules.filter((r) => r.isActive)
@@ -365,7 +308,7 @@ class SourcingAutomationService {
     }
 
     if (created.length > 0) {
-      await cmsPut("sourcing-requests", [...created, ...requests])
+      await this.cms.putValue("sourcing-requests", [...created, ...requests])
     }
 
     const updatedRules = rules.map((r) =>
@@ -373,7 +316,7 @@ class SourcingAutomationService {
         ? { ...r, lastRunAt: now, lastRunSummary: `${created.length} request(s) created` }
         : r,
     )
-    await cmsPut("sourcing-automation-rules", updatedRules)
+    await this.cms.putValue("sourcing-automation-rules", updatedRules)
 
     return {
       rulesEvaluated: active.length,
@@ -439,6 +382,8 @@ type MarginRecommendation = {
 
 @Injectable()
 class TradingAutomationService {
+  constructor(@Inject(AdminCmsService) private readonly cms: AdminCmsService) {}
+
   async recomputeMargins(targetMarginPct = 25): Promise<{
     recomputed: number
     aboveMarket: number
@@ -446,8 +391,8 @@ class TradingAutomationService {
     recommendations: MarginRecommendation[]
   }> {
     const [history, competitor] = await Promise.all([
-      cmsGet<PriceHistoryRow[]>("sourcing-price-history", []),
-      cmsGet<CompetitorRow[]>("sourcing-competitor-prices", []),
+      this.cms.getValue<PriceHistoryRow[]>("sourcing-price-history", []),
+      this.cms.getValue<CompetitorRow[]>("sourcing-competitor-prices", []),
     ])
 
     const ourBySku = new Map<string, PriceHistoryRow>()
@@ -508,7 +453,7 @@ class TradingAutomationService {
       })
     }
 
-    await cmsPut("trading-margin-recommendations", {
+    await this.cms.putValue("trading-margin-recommendations", {
       generatedAt: new Date().toISOString(),
       targetMarginPct,
       recommendations,
@@ -627,6 +572,7 @@ class LogisticsPipelineController {
     @Inject(LogisticsAutomationService) private readonly svc: LogisticsAutomationService,
     @Inject(NotificationsService) private readonly notif: NotificationsService,
     @Inject(EmailService) private readonly email: EmailService,
+    @Inject(PartnerDirectoryService) private readonly directory: PartnerDirectoryService,
   ) {}
 
   @Post("auto-assign")
@@ -645,18 +591,16 @@ class LogisticsPipelineController {
       })
     }
     if (result.assigned > 0) {
-      const partners = await cmsGet<
-        Array<{ email?: string; companyName?: string; portalCode?: string }>
-      >("logistics-partners", [])
+      const partners = await this.directory.list("logistics-partners")
       const baseUrl = process.env.PUBLIC_APP_URL?.trim() || "https://shaniidrx.com"
       for (const p of partners.filter((p) => p.email)) {
         void this.email
           .send({
-            to: p.email!,
+            to: String(p.email),
             template: "delivery.job.assigned",
             subject: `[Shaniid RX] ${result.assigned} delivery job(s) assigned to your fleet`,
             data: {
-              name: p.companyName || p.email || "Partner",
+              name: String(p.companyName ?? p.email ?? "Partner"),
               count: result.assigned,
               portalUrl: `${baseUrl}/portal/logistics`,
             },
@@ -871,6 +815,7 @@ class CommunicationsAutomationService {
     @Inject(WhatsAppService) private readonly whatsapp: WhatsAppService,
     @Inject(SmsService) private readonly sms: SmsService,
     @Inject(CommunicationsStore) private readonly store: CommunicationsStore,
+    @Inject(AdminCmsService) private readonly cms: AdminCmsService,
   ) {}
 
   async send(input: {
@@ -878,7 +823,7 @@ class CommunicationsAutomationService {
     to: string
     variables?: Record<string, string | number>
   }): Promise<{ ok: boolean; channel: string; preview: string; skipped?: boolean; reason?: string }> {
-    const templates = await cmsGet<MessageTemplate[]>("message-templates", [])
+    const templates = await this.cms.getValue<MessageTemplate[]>("message-templates", [])
     const tpl = templates.find((t) => t.id === input.templateId)
     if (!tpl) {
       throw new HttpException("Template not found", HttpStatus.NOT_FOUND)
@@ -907,7 +852,7 @@ class CommunicationsAutomationService {
     preferTemplate?: boolean
   }): Promise<{ ok: boolean; channel: string; preview: string; skipped?: boolean; reason?: string }> {
     const channel = input.channel ?? "whatsapp"
-    const templates = await cmsGet<MessageTemplate[]>("message-templates", [])
+    const templates = await this.cms.getValue<MessageTemplate[]>("message-templates", [])
     const matches = templates.filter((t) => t.trigger === input.trigger && t.channel === channel)
     const tpl = matches.find((t) => t.enabled) ?? matches[0]
     if (!tpl) {
@@ -1043,7 +988,7 @@ class CommunicationsAutomationService {
   }
 
   async render(templateId: string, variables: Record<string, string | number>) {
-    const templates = await cmsGet<MessageTemplate[]>("message-templates", [])
+    const templates = await this.cms.getValue<MessageTemplate[]>("message-templates", [])
     const tpl = templates.find((t) => t.id === templateId)
     if (!tpl) throw new HttpException("Template not found", HttpStatus.NOT_FOUND)
     return {
@@ -1538,14 +1483,16 @@ function extractWhatsAppStatuses(
 @AnyAdmin()
 @Controller("admin/pipeline")
 class PipelineStatusController {
+  constructor(@Inject(AdminCmsService) private readonly cms: AdminCmsService) {}
+
   @Get("status")
   async status() {
     const [rules, deliveries, riders, templates, qaConfig] = await Promise.all([
-      cmsGet<SourcingRule[]>("sourcing-automation-rules", []),
-      cmsGet<LogisticsDelivery[]>("logistics.deliveries", []),
-      cmsGet<LogisticsRider[]>("logistics.riders", []),
-      cmsGet<MessageTemplate[]>("message-templates", []),
-      cmsGet<QaConfig>("qa.config", {
+      this.cms.getValue<SourcingRule[]>("sourcing-automation-rules", []),
+      this.cms.getValue<LogisticsDelivery[]>("logistics.deliveries", []),
+      this.cms.getValue<LogisticsRider[]>("logistics.riders", []),
+      this.cms.getValue<MessageTemplate[]>("message-templates", []),
+      this.cms.getValue<QaConfig>("qa.config", {
         expiryWarningDays: 60,
         expiryCriticalDays: 14,
         blockExpiredFromDispatch: true,
@@ -1575,6 +1522,7 @@ class PipelineStatusController {
 @Module({
   imports: [
     AdminCmsModule,
+    PartnerDirectoryModule,
     EmailModule,
     NotificationsModule,
     WhatsAppModule,

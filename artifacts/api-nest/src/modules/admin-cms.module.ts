@@ -140,6 +140,17 @@ export class AdminCmsService {
     this.cache.delete(key)
     return rows.length > 0
   }
+
+  /** Typed read helper — replaces HTTP loopback `cmsGet` in server modules. */
+  async getValue<T>(key: string, fallback: T): Promise<T> {
+    const entry = await this.get(key)
+    return (entry?.value as T) ?? fallback
+  }
+
+  /** Typed write helper — replaces HTTP loopback `cmsPut` in server modules. */
+  async putValue(key: string, value: unknown): Promise<CmsEntry> {
+    return this.put(key, value)
+  }
 }
 
 function assertKey(key: string) {

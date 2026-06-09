@@ -8,10 +8,8 @@ import { Footer } from "@/components/store/footer"
 import { Seo } from "@/components/seo"
 import { useEffectivePermissions } from "@/lib/permissions"
 import { useDoctors } from "@/lib/doctors-store"
-import { useDoctorMe, doctorSignout } from "@/lib/doctors-client"
+import { useDoctorMe, useDoctorPatients, doctorSignout } from "@/lib/doctors-client"
 import { useAdminNotifications } from "@/lib/notifications-client"
-import { useCmsDoc } from "@/lib/cms-store"
-import type { Consultation } from "@/components/admin/consultations"
 import {
   Stethoscope, ClipboardList, Users, CalendarClock, NotebookPen, ShieldCheck,
   ArrowRight, Bell, Activity, CheckCircle2, Hourglass,
@@ -64,17 +62,13 @@ export default function DoctorPanelPage() {
 
   const { items: notifs, unread, markAllRead } = useAdminNotifications("doctor")
 
-  const [consults] = useCmsDoc<Consultation[]>("consultations", [])
-  const consultStats = useMemo(() => {
-    const startOfDay = new Date(); startOfDay.setHours(0, 0, 0, 0)
-    let queued = 0, live = 0, completedToday = 0
-    for (const c of consults) {
-      if (c.status === "queued") queued++
-      else if (c.status === "live") live++
-      else if (c.status === "completed" && new Date(c.endedAt || c.startedAt) >= startOfDay) completedToday++
-    }
-    return { queued, live, completedToday }
-  }, [consults])
+  const { data: myPatients } = useDoctorPatients(!!portalMe?.doctor)
+
+  const consultStats = useMemo(() => ({
+    queued: unread,
+    live: 0,
+    completedToday: myPatients?.length ?? 0,
+  }), [unread, myPatients])
 
   if (!allowed) {
     return (

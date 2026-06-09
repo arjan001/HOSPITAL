@@ -74,6 +74,7 @@ import { BlogsModule } from "./modules/blogs.module"
 import { VideoModule } from "./modules/video.module"
 import { CampaignsAdminModule } from "./modules/campaigns-admin.module"
 import { SupplierPurchaseOrdersModule } from "./modules/supplier-purchase-orders.module"
+import { PartnerDirectoryModule } from "./modules/partner-directory.module"
 
 @Module({
   imports: [
@@ -126,6 +127,7 @@ import { SupplierPurchaseOrdersModule } from "./modules/supplier-purchase-orders
     VideoModule,
     CampaignsAdminModule,
     SupplierPurchaseOrdersModule,
+    PartnerDirectoryModule,
   ],
   providers: [
     // Global catch-all exception filter: normalises every error response and

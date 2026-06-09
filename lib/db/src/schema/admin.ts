@@ -1,4 +1,4 @@
-import { boolean, integer, jsonb, pgTable, text, timestamp } from "drizzle-orm/pg-core"
+import { boolean, integer, jsonb, pgTable, text, timestamp, index } from "drizzle-orm/pg-core"
 import { createInsertSchema, createSelectSchema } from "drizzle-zod"
 import { z } from "zod/v4"
 
@@ -212,7 +212,7 @@ export const partnerAccounts = pgTable("partner_accounts", {
   partnerType: text("partner_type").notNull(),
   // partnerType values: supplier | clinic | logistics
   partnerId: text("partner_id").notNull(),
-  // links to the cmsStore partner record id (suppliers/clinics/logistics-partners)
+  // links to partner_directory.id (supplier | clinic | logistics profile)
   displayName: text("display_name").notNull(),
   status: text("status").notNull().default("active"),
   // status values: invited | active | suspended
@@ -244,7 +244,31 @@ export const partnerApplications = pgTable("partner_applications", {
 })
 
 /**
- * purchase_orders — admin-raised POs against cms `suppliers` records.
+ * partner_directory — normalized supplier / clinic / logistics partner profiles.
+ * Replaces cms_docs JSON arrays (`suppliers`, `clinics`, `logistics-partners`).
+ * `payload` holds the full admin UI record; indexed columns speed lookups.
+ */
+export const partnerDirectory = pgTable(
+  "partner_directory",
+  {
+    id: text("id").primaryKey(),
+    partnerType: text("partner_type").notNull(),
+    // partnerType values: supplier | clinic | logistics
+    payload: jsonb("payload").$type<Record<string, unknown>>().notNull(),
+    email: text("email").notNull().default(""),
+    displayName: text("display_name").notNull().default(""),
+    status: text("status").notNull().default("pending"),
+    portalCode: text("portal_code").notNull().default(""),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (t) => ({
+    typeIdx: index("partner_directory_type_idx").on(t.partnerType),
+  }),
+)
+
+/**
+ * purchase_orders — admin-raised POs against partner_directory supplier ids.
  */
 export const purchaseOrders = pgTable("purchase_orders", {
   id: text("id").primaryKey(),

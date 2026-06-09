@@ -20,7 +20,8 @@ import {
   Phone, Mail, Hash, Package, Activity, Star, ChevronRight,
   Shield, Gauge, Timer, Warehouse, Users, Car, Bike,
 } from "lucide-react"
-import { useCmsDoc, newId } from "@/lib/cms-store"
+import { newId } from "@/lib/cms-store"
+import { usePartnerDirectoryDoc } from "@/lib/partners-directory-client"
 import { adminAuthHeaders } from "@/lib/api-client"
 import { AdminShell } from "./admin-shell"
 import { PartnerPortalPanel } from "./partner-portal-panel"
@@ -579,7 +580,7 @@ function PartnerDrawer({ partner, open, onClose, onUpdate }: {
 /* ─── Main Page ───────────────────────────────────────────────── */
 
 export function AdminLogisticsPartners() {
-  const [partners, setPartners] = useCmsDoc<LogisticsPartner[]>("logistics-partners", [])
+  const [partners, setPartners] = usePartnerDirectoryDoc<LogisticsPartner>("logistics-partners", [])
   const [search, setSearch] = useState("")
   const [statusFilter, setStatusFilter] = useState("all")
   const [showAdd, setShowAdd] = useState(false)
