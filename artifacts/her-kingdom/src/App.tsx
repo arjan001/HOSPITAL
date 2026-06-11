@@ -153,16 +153,18 @@ const queryClient = new QueryClient();
 
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
 
-const clerkPubKey = publishableKeyFromHost(
-  window.location.hostname,
-  import.meta.env.VITE_CLERK_PUBLISHABLE_KEY,
-);
+const clerkPubKey = (() => {
+  try {
+    return publishableKeyFromHost(
+      window.location.hostname,
+      import.meta.env.VITE_CLERK_PUBLISHABLE_KEY,
+    );
+  } catch {
+    return null;
+  }
+})();
 
 const clerkProxyUrl = import.meta.env.VITE_CLERK_PROXY_URL;
-
-if (!clerkPubKey) {
-  throw new Error("Missing VITE_CLERK_PUBLISHABLE_KEY");
-}
 
 function stripBase(path: string): string {
   return basePath && path.startsWith(basePath)
@@ -631,6 +633,31 @@ function SiteHead() {
 function ClerkProviderWithRoutes() {
   const [, setLocation] = useLocation();
 
+  const inner = (
+    <QueryClientProvider client={queryClient}>
+      <ClerkQueryClientCacheInvalidator />
+      <CustomerMirror />
+      <SiteHead />
+      <ScrollToTop />
+      <WishlistProvider>
+        <CartProvider>
+          <ErrorBoundary scope="routes">
+            <MaintenanceGate>
+              <Router />
+            </MaintenanceGate>
+          </ErrorBoundary>
+          <GlobalOverlays />
+          <PageViewTracker />
+        </CartProvider>
+      </WishlistProvider>
+      <Toaster position="top-right" richColors closeButton />
+    </QueryClientProvider>
+  );
+
+  if (!clerkPubKey) {
+    return inner;
+  }
+
   return (
     <ClerkProvider
       publishableKey={clerkPubKey}
@@ -655,24 +682,7 @@ function ClerkProviderWithRoutes() {
       routerPush={(to) => setLocation(stripBase(to))}
       routerReplace={(to) => setLocation(stripBase(to), { replace: true })}
     >
-      <QueryClientProvider client={queryClient}>
-        <ClerkQueryClientCacheInvalidator />
-        <CustomerMirror />
-        <SiteHead />
-        <ScrollToTop />
-        <WishlistProvider>
-          <CartProvider>
-            <ErrorBoundary scope="routes">
-              <MaintenanceGate>
-                <Router />
-              </MaintenanceGate>
-            </ErrorBoundary>
-            <GlobalOverlays />
-            <PageViewTracker />
-          </CartProvider>
-        </WishlistProvider>
-        <Toaster position="top-right" richColors closeButton />
-      </QueryClientProvider>
+      {inner}
     </ClerkProvider>
   );
 }
