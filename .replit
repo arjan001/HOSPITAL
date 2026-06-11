@@ -32,7 +32,7 @@ args = "pnpm --filter @workspace/api-nest run test"
 isValidation = true
 
 [agent]
-stack = "PNPM_WORKSPACE"
+stack = "BEST_EFFORT_FALLBACK"
 expertMode = true
 
 [postMerge]
@@ -81,6 +81,10 @@ externalPort = 80
 PAYSTACK_PUBLIC_KEY = "pk_test_29cf9e81fde7d39d097459c2ebd74af8135d274e"
 
 [userenv.production]
+
+[userenv.development]
+PORT = "8080"
+NODE_ENV = "development"
 
 [nix]
 channel = "stable-25_05"
