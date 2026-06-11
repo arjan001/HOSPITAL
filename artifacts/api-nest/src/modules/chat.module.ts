@@ -37,6 +37,7 @@ import {
   Injectable,
   Module,
   Param,
+  Patch,
   Post,
   Req,
   Sse,
@@ -1149,6 +1150,18 @@ class ChatController {
   @Get("admin/consultations/:cid/messages")
   adminConsultationMessages(@Param("cid") cid: string) {
     return this.svc.listConsultationMessages(cid)
+  }
+
+  @UseGuards(AdminGuard)
+  @Patch("admin/consultations/:cid/assign-doctor")
+  async assignDoctor(@Param("cid") cid: string, @Body() body: { doctorId?: string | null }) {
+    const rows = await db
+      .update(consultations)
+      .set({ doctorId: body?.doctorId ?? null })
+      .where(eq(consultations.id, cid))
+      .returning()
+    if (!rows[0]) throw new HttpException("Consultation not found", HttpStatus.NOT_FOUND)
+    return rows[0]
   }
 
   @UseGuards(AdminGuard)

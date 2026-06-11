@@ -162,7 +162,24 @@ function CategoriesPanel() {
     setRows(r.rows); setHeaders(r.headers); setErrors(r.errors); setSummary(null)
   }
 
-  const exportCurrent = () => {
+  const exportCurrent = async () => {
+    try {
+      // Prefer the Nest API (source-of-truth) over the cmsStore snapshot.
+      const res = await fetch(`${NEST_BASE}/categories/export`, {
+        headers: adminAuthHeaders(),
+      })
+      if (res.ok) {
+        const blob = await res.blob()
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement("a")
+        a.href = url
+        a.download = "shaniid-rx-categories.csv"
+        a.click()
+        URL.revokeObjectURL(url)
+        return
+      }
+    } catch { /* fall through to cmsStore fallback */ }
+    // Fallback: build CSV from cmsStore snapshot when the API is unavailable.
     const current = cmsStore.get<{ id: string; name: string; slug: string; parentId: string | null; icon: string; image: string; banner: string; isActive: boolean }[]>("categories", [])
     const byId = new Map(current.map((c) => [c.id, c]))
     const rows = current.map((c) => [

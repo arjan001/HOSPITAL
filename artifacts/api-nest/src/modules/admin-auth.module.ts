@@ -47,11 +47,12 @@ import {
   UseGuards,
 } from "@nestjs/common"
 import type { Request, Response } from "express"
-import { randomBytes, randomUUID, scryptSync, timingSafeEqual } from "node:crypto"
-import { and, eq } from "drizzle-orm"
-import { db, adminUsers, type AdminUser } from "@workspace/db"
+import { createHash, randomBytes, randomUUID, scryptSync, timingSafeEqual } from "node:crypto"
+import { and, eq, gt } from "drizzle-orm"
+import { db, adminUsers, adminPasswordResets, type AdminUser } from "@workspace/db"
 import { AdminGuard, Public, RequirePerm } from "../common/admin-guard"
 import { signAdminToken, verifyAdminToken } from "../common/admin-token"
+import { EmailModule, EmailService } from "./email.module"
 
 const DEV_TOKEN = "shaniidrx-admin-dev-token"
 
@@ -415,6 +416,72 @@ export class AdminAuthService {
       .set({ passwordHash: hashPassword(newPassword), updatedAt: new Date() })
       .where(eq(adminUsers.id, userId))
   }
+
+  /**
+   * Create a one-time password reset token for the given admin email.
+   * Returns `{ token, toEmail, toName }` when the email is found and active,
+   * `null` otherwise — blind response prevents email enumeration.
+   * Token is valid for 1 hour; previous tokens for the same user are purged.
+   */
+  async createResetToken(
+    email: string,
+  ): Promise<{ token: string; toEmail: string; toName: string } | null> {
+    const normalized = (email || "").trim().toLowerCase()
+    if (!normalized) return null
+    const [user] = await db
+      .select()
+      .from(adminUsers)
+      .where(and(eq(adminUsers.email, normalized), eq(adminUsers.active, true)))
+      .limit(1)
+    if (!user) return null
+    // Purge existing tokens so only one reset link is active at a time.
+    await db.delete(adminPasswordResets).where(eq(adminPasswordResets.adminUserId, user.id))
+    const token = randomBytes(32).toString("hex")
+    const tokenHash = createHash("sha256").update(token).digest("hex")
+    await db.insert(adminPasswordResets).values({
+      id: randomUUID(),
+      adminUserId: user.id,
+      tokenHash,
+      expiresAt: new Date(Date.now() + 60 * 60 * 1000), // 1 hour
+    })
+    return { token, toEmail: user.email, toName: user.name }
+  }
+
+  /**
+   * Verify a reset token and update the user's password.
+   * The token row is deleted immediately after a successful reset (single-use).
+   */
+  async consumeResetToken(token: string, newPassword: string): Promise<void> {
+    if (!token || !newPassword) {
+      throw new HttpException("Token and new password are required", HttpStatus.BAD_REQUEST)
+    }
+    if (newPassword.length < 8) {
+      throw new HttpException("Password must be at least 8 characters", HttpStatus.BAD_REQUEST)
+    }
+    const tokenHash = createHash("sha256").update(token).digest("hex")
+    const [reset] = await db
+      .select()
+      .from(adminPasswordResets)
+      .where(
+        and(
+          eq(adminPasswordResets.tokenHash, tokenHash),
+          gt(adminPasswordResets.expiresAt, new Date()),
+        ),
+      )
+      .limit(1)
+    if (!reset) {
+      throw new HttpException(
+        "Invalid or expired reset link. Please request a new one.",
+        HttpStatus.BAD_REQUEST,
+      )
+    }
+    await db
+      .update(adminUsers)
+      .set({ passwordHash: hashPassword(newPassword), updatedAt: new Date() })
+      .where(eq(adminUsers.id, reset.adminUserId))
+    // Consume the token so it cannot be replayed.
+    await db.delete(adminPasswordResets).where(eq(adminPasswordResets.id, reset.id))
+  }
 }
 
 function bearerFrom(req: Request): string {
@@ -426,7 +493,10 @@ function bearerFrom(req: Request): string {
 
 @Controller("admin/auth")
 class AdminAuthController {
-  constructor(@Inject(AdminAuthService) private readonly svc: AdminAuthService) {}
+  constructor(
+    @Inject(AdminAuthService) private readonly svc: AdminAuthService,
+    @Inject(EmailService) private readonly emailSvc: EmailService,
+  ) {}
 
   @Public()
   @Post("login")
@@ -472,15 +542,34 @@ class AdminAuthController {
 
   @Public()
   @Post("forgot-password")
-  forgotPassword(@Body() _body: { email?: string }) {
-    // Always return ok to avoid leaking which emails are registered.
-    // TODO: when RESEND_API_KEY is set, generate a time-limited token,
-    // persist to admin_password_resets, and email it via EmailService.
+  async forgotPassword(@Req() req: Request, @Body() body: { email?: string }) {
+    // Fire-and-forget: always return blind success to prevent email enumeration.
+    const result = await this.svc.createResetToken(body?.email ?? "").catch(() => null)
+    if (result) {
+      const host =
+        process.env.APP_URL ||
+        (req.headers.origin as string | undefined) ||
+        `${req.protocol}://${req.headers.host}`
+      const resetUrl = `${host}/admin/reset-password?token=${result.token}`
+      void this.emailSvc.send({
+        to: result.toEmail,
+        template: "account.password_reset",
+        subject: "Reset your Shaniid RX admin password",
+        data: { name: result.toName, resetUrl },
+      })
+    }
     return {
       ok: true,
       message:
         "If that email is registered as an admin account, recovery instructions will be sent. For urgent access contact your system administrator.",
     }
+  }
+
+  @Public()
+  @Post("reset-password")
+  async resetPassword(@Body() body: { token?: string; newPassword?: string }) {
+    await this.svc.consumeResetToken(body?.token ?? "", body?.newPassword ?? "")
+    return { ok: true, message: "Password updated. You can now sign in with your new password." }
   }
 
   @Post("change-password")
@@ -589,6 +678,7 @@ class AdminUsersController {
 }
 
 @Module({
+  imports: [EmailModule],
   controllers: [AdminAuthController, AdminUsersController],
   providers: [AdminAuthService],
   exports: [AdminAuthService],

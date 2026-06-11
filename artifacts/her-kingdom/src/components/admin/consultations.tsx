@@ -15,6 +15,8 @@ import {
   type ChatPrescriptionDrug,
   type ConsultationSummary,
 } from "@/lib/api-nest"
+import { useAdminDoctors, type DoctorRecord } from "@/lib/doctors-client"
+import { mutate as globalMutate } from "swr"
 import {
   MessageSquare,
   Phone,
@@ -123,6 +125,20 @@ function ConsultationDetail({ consultation }: { consultation: ConsultationSummar
   const drugs = useMemo(() => rxDrugsFromMessages(msgs), [msgs])
   const apiBase = (import.meta.env.BASE_URL || "/").replace(/\/$/, "")
   const live = isLive(consultation)
+  const { data: doctorList } = useAdminDoctors()
+  const [assignSaving, setAssignSaving] = useState(false)
+
+  async function handleAssignDoctor(doctorId: string | null) {
+    setAssignSaving(true)
+    try {
+      await apiChat.assignDoctorToConsultation(consultation.id, doctorId)
+      await globalMutate("/chat/admin/consultations")
+    } catch {
+      // silent — UI stays unchanged
+    } finally {
+      setAssignSaving(false)
+    }
+  }
 
   return (
     <div className="flex flex-col min-h-[70vh]">
@@ -170,6 +186,30 @@ function ConsultationDetail({ consultation }: { consultation: ConsultationSummar
           )}
         </div>
       </div>
+
+      {/* Assign doctor sub-band */}
+      {doctorList && doctorList.length > 0 && (
+        <div className="px-5 py-2 border-b border-border flex items-center gap-3 flex-wrap bg-muted/20">
+          <Stethoscope className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
+          <span className="text-xs text-muted-foreground">Attending doctor:</span>
+          <select
+            value={consultation.doctorId ?? ""}
+            disabled={assignSaving}
+            onChange={(e) => handleAssignDoctor(e.target.value || null)}
+            className="h-7 px-2 rounded-md border border-border bg-background text-xs focus:outline-none focus:ring-1 disabled:opacity-50"
+          >
+            <option value="">— unassigned —</option>
+            {doctorList.map((d: DoctorRecord) => (
+              <option key={d.id} value={d.id}>
+                {d.title} {d.name} · {d.specialization}
+              </option>
+            ))}
+          </select>
+          {assignSaving && (
+            <span className="text-xs text-muted-foreground animate-pulse">Saving…</span>
+          )}
+        </div>
+      )}
 
       {/* Body: transcript + prescribed drugs */}
       <div className="flex-1 grid grid-cols-1 lg:grid-cols-[1fr_300px] min-h-0">

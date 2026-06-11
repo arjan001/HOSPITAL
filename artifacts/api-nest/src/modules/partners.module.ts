@@ -50,6 +50,8 @@ import {
   clinicTransactions,
   deliveryJobs,
   products,
+  purchaseOrders,
+  purchaseOrderLines,
   type PartnerAccount,
 } from "@workspace/db"
 import { newId } from "../common/repository"
@@ -753,6 +755,36 @@ export class PartnerPortalService {
       .orderBy(desc(partnerQuotes.submittedAt))
   }
 
+  /** Return all purchase orders placed for this supplier, with line items. */
+  async listSupplierPOs(supplierId: string) {
+    const pos = await db
+      .select()
+      .from(purchaseOrders)
+      .where(eq(purchaseOrders.supplierId, supplierId))
+      .orderBy(desc(purchaseOrders.createdAt))
+    if (pos.length === 0) return []
+    const lines = await db
+      .select()
+      .from(purchaseOrderLines)
+      .where(inArray(purchaseOrderLines.purchaseOrderId, pos.map((p) => p.id)))
+    const linesByPo = new Map<string, typeof lines>()
+    for (const l of lines) {
+      const arr = linesByPo.get(l.purchaseOrderId) ?? []
+      arr.push(l)
+      linesByPo.set(l.purchaseOrderId, arr)
+    }
+    return pos.map((po) => ({
+      ...po,
+      items: (linesByPo.get(po.id) ?? []).map((l) => ({
+        id: l.id,
+        name: l.name,
+        qty: l.qty,
+        unitPrice: l.unitPrice,
+        total: l.qty * l.unitPrice,
+      })),
+    }))
+  }
+
   // ---- clinic ----
   async productLookup(q: string) {
     const term = (q || "").trim()
@@ -1062,6 +1094,12 @@ class PartnerSupplierController {
   async quotes(@Req() req: Request) {
     const acc = await this.svc.auth.requirePartner(req, "supplier")
     return this.svc.listQuotes(acc.partnerId)
+  }
+
+  @Get("purchase-orders")
+  async purchaseOrders(@Req() req: Request) {
+    const acc = await this.svc.auth.requirePartner(req, "supplier")
+    return this.svc.listSupplierPOs(acc.partnerId)
   }
 }
 

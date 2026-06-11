@@ -1174,6 +1174,12 @@ export const apiChat = {
   /** The transcript of one consultation (admin). */
   adminConsultationMessages: (consultationId: string) =>
     nestFetch<ChatMessage[]>(`/chat/admin/consultations/${consultationId}/messages`),
+  /** Assign (or remove) the attending doctor for a consultation. */
+  assignDoctorToConsultation: (consultationId: string, doctorId: string | null) =>
+    nestFetch<ConsultationSummary>(`/chat/admin/consultations/${consultationId}/assign-doctor`, {
+      method: "PATCH",
+      body: JSON.stringify({ doctorId }),
+    }),
 }
 
 export function chatStreamUrl(scope: "me" | "admin"): string {

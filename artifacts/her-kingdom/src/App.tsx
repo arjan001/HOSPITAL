@@ -137,6 +137,7 @@ import { AdminDoctors } from "@/components/admin/doctors";
 import { AdminPatientDetail } from "@/components/admin/patient-detail";
 import { AdminSupportTickets } from "@/components/admin/support-tickets";
 import { AdminLoginPage } from "@/pages/admin/login";
+import { AdminResetPasswordPage } from "@/pages/admin/reset-password";
 
 // Policy pages
 import PolicyPage from "@/pages/policy";
@@ -441,8 +442,9 @@ function Router() {
       <Route path="/doctor/patients" component={DoctorPatientsPage} />
       <Route path="/doctor" component={DoctorPanelPage} />
       <Route path="/account/support" component={AccountSupportPage} />
-      {/* Admin login — public, no AdminShell wrapper */}
+      {/* Admin login / password reset — public, no AdminShell wrapper */}
       <Route path="/admin/login" component={AdminLoginPage} />
+      <Route path="/admin/reset-password" component={AdminResetPasswordPage} />
       {/* Admin */}
       <Route path="/admin" component={AdminDashboard} />
       <Route path="/admin/dashboard" component={AdminDashboard} />
