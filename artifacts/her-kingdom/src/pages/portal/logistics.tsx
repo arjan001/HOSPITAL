@@ -198,7 +198,10 @@ function AuthScreen() {
           {mode === "signin" ? (
             <>
               <h1 className="text-2xl font-bold text-gray-800 mb-1">Logistics sign in</h1>
-              <p className="text-gray-500 text-sm mb-8">Use the email and password for your logistics account.</p>
+              <p className="text-gray-500 text-sm mb-2">Use the email and password for your logistics account.</p>
+              <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-6">
+                First time? Enter your registered email and use the <span className="font-semibold">portal code</span> shared by your Shaniid RX coordinator as your password.
+              </p>
 
               {signinErr && (
                 <div className="mb-5 flex items-center gap-2.5 p-3.5 rounded-xl bg-red-50 border border-red-200 text-sm text-red-700">

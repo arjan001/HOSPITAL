@@ -185,7 +185,10 @@ function SupplierAuthScreen() {
           {mode === "signin" ? (
             <>
               <h1 className="text-2xl font-bold text-gray-800 mb-1">Supplier sign in</h1>
-              <p className="text-gray-500 text-sm mb-8">Enter the email and password for your supplier account.</p>
+              <p className="text-gray-500 text-sm mb-2">Enter the email and password for your supplier account.</p>
+              <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-6">
+                First time? Enter your supplier email and use the <span className="font-semibold">portal code</span> shared by the Shaniid RX team as your password.
+              </p>
 
               {signinErr && <ErrorBanner message={signinErr} />}
 
