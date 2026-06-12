@@ -28,6 +28,9 @@ import { ServicesPage } from "@/components/store/services-page";
 import { TrackOrderForm } from "@/components/store/track-order-form";
 import { CarePacksPage } from "@/components/store/care-packs-page";
 import { CarePackAssessmentPage } from "@/components/store/care-pack-assessment-page";
+import { CarePackDetailPage } from "@/pages/store/care-pack-detail";
+import { AdminPharmacyBranches } from "@/components/admin/pharmacy-branches";
+import { AdminPharmacyPos } from "@/components/admin/pharmacy-pos";
 import FaqPage from "@/pages/faq";
 import ContactPage from "@/pages/contact";
 
@@ -296,8 +299,8 @@ function SsoCallbackPage() {
         </p>
       </div>
       <AuthenticateWithRedirectCallback
-        signInFallbackRedirectUrl={`${basePath}/user`}
-        signUpFallbackRedirectUrl={`${basePath}/user`}
+        signInFallbackRedirectUrl={`${basePath}/account`}
+        signUpFallbackRedirectUrl={`${basePath}/account`}
       />
     </main>
   );
@@ -370,6 +373,7 @@ function Router() {
       </Route>
       <Route path="/search">{() => <SearchPage />}</Route>
       <Route path="/care-packs/assessment" component={CarePackAssessmentPage} />
+      <Route path="/care-packs/:slug" component={CarePackDetailPage} />
       <Route path="/care-packs" component={CarePacksPage} />
       <Route path="/faq" component={FaqPage} />
       <Route path="/contact" component={ContactPage} />
@@ -430,7 +434,7 @@ function Router() {
         {() => <ProtectedAccount><DashboardPage /></ProtectedAccount>}
       </Route>
       <Route path="/user">
-        {() => <ProtectedAccount><DashboardPage /></ProtectedAccount>}
+        {() => <Redirect to="/account" />}
       </Route>
       <Route path="/upload-prescription">
         {() => <ProtectedAccount><UploadPrescriptionPage /></ProtectedAccount>}
@@ -518,6 +522,8 @@ function Router() {
       <Route path="/admin/bulk-import" component={AdminBulkImport} />
       <Route path="/admin/consultations" component={AdminConsultations} />
       <Route path="/admin/inquiries" component={AdminContactInquiries} />
+      <Route path="/admin/pharmacy/branches" component={AdminPharmacyBranches} />
+      <Route path="/admin/pharmacy/pos" component={AdminPharmacyPos} />
       <Route path="/admin/doctors" component={AdminDoctors} />
       <Route path="/admin/patients/:id" component={AdminPatientDetail} />
       <Route path="/admin/support" component={AdminSupportTickets} />

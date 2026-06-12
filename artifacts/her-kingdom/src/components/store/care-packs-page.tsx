@@ -120,7 +120,7 @@ function packSeeMoreHref(packDef: PackDef, sectionId: string): string {
     const q = packDef.name.replace(/ pack$/i, "").trim()
     return `/shop?category=devices&q=${encodeURIComponent(q)}`
   }
-  return `/care-packs/assessment?pack=${packDef.slug}`
+  return `/care-packs/${packDef.slug}`
 }
 
 // ─── Pack Card ───────────────────────────────────────────────────────────────
@@ -197,15 +197,14 @@ function PackCard({
           href={seeMoreHref}
           onMouseEnter={() => setHover(true)}
           onMouseLeave={() => setHover(false)}
-          className="mt-auto pt-2.5 w-full flex items-center justify-center gap-1 h-8 rounded-full text-[11px] font-bold transition-all"
+          className="mt-auto pt-2.5 w-full flex items-center justify-center h-8 rounded-full text-[11px] font-bold transition-all"
           style={
             hover
               ? { background: `linear-gradient(135deg, ${ACCENT_ORANGE} 0%, ${ACCENT_RED} 100%)`, color: "white" }
               : { background: "#F2D4C4", color: WINE }
           }
         >
-          See more
-          <ArrowRight className="h-3 w-3" />
+          <span className="flex items-center gap-1">See more <ArrowRight className="h-3 w-3" /></span>
         </Link>
       </div>
     </div>

@@ -6,9 +6,10 @@ import { createPortal } from "react-dom"
 import { Link } from "wouter"
 import { useLocation } from "wouter"
 import { useAdminOrders } from "@/lib/orders-store"
-import { useAdminPrescriptions, useAdminThreads } from "@/lib/api-nest"
+import { useAdminPrescriptions, useAdminThreads, useAdminConsultations } from "@/lib/api-nest"
 import { useCmsDoc, cmsStore } from "@/lib/cms-store"
 import { NotificationBell } from "@/components/admin/notification-bell"
+import { useNotificationSound } from "@/lib/notification-sound"
 import {
   LayoutDashboard,
   Package,
@@ -148,6 +149,8 @@ const NAV_GROUPS: NavGroup[] = [
       { label: "Doctors",               href: "/admin/doctors",                icon: Stethoscope,   perm: "consult.handle" },
       { label: "Consultation Settings", href: "/admin/consultation-settings",  icon: Timer,         perm: "consult.handle" },
       { label: "Support Tickets",       href: "/admin/support",                icon: MessageSquare, perm: "chat.respond" },
+      { label: "Branches & Shifts",     href: "/admin/pharmacy/branches",      icon: Building2,     perm: "products.view" },
+      { label: "Point of Sale (POS)",   href: "/admin/pharmacy/pos",           icon: ShoppingCart,  perm: "products.view" },
     ],
   },
   {
@@ -738,6 +741,16 @@ export function AdminShell({ children, title }: { children: ReactNode; title: st
   const { data: chatThreads } = useAdminThreads()
   const chatUnread = (chatThreads ?? []).reduce((n, t) => n + (t.unreadByStaff || 0), 0)
 
+  // Consultation queue badge — queued + live consultations awaiting staff action.
+  const { data: consultData } = useAdminConsultations()
+  const pendingConsult = (consultData ?? []).filter(
+    (c) => c.status === "queued" || c.status === "live",
+  ).length
+
+  // Alert sounds — play a chime when new orders or consultations arrive
+  useNotificationSound(newOrders, "order")
+  useNotificationSound(pendingConsult, "consultation")
+
   // Newsletter "new since last viewed" badge (header bell mirrors this via the
   // durable admin notification feed; this drives the sidebar counter).
   const [newsletterSubs] = useCmsDoc<{ subscribed_at?: string }[]>("newsletter-subscribers", [])
@@ -964,7 +977,7 @@ export function AdminShell({ children, title }: { children: ReactNode; title: st
               renderGroupedNav(
                 collapsed ? permittedGroups : filteredGroups,
                 pathname,
-                { "/admin/orders": newOrders, "/admin/logistics": dispatchReady, "/admin/prescriptions": pendingRx, "/admin/chat": chatUnread, "/admin/newsletter": newNewsletter },
+                { "/admin/orders": newOrders, "/admin/logistics": dispatchReady, "/admin/prescriptions": pendingRx, "/admin/chat": chatUnread, "/admin/newsletter": newNewsletter, "/admin/consultations": pendingConsult },
                 collapsed,
                 searchAwareExpanded,
                 toggleExpanded,
@@ -1121,7 +1134,7 @@ export function AdminShell({ children, title }: { children: ReactNode; title: st
                   renderGroupedNav(
                     filteredGroups,
                     pathname,
-                    { "/admin/orders": newOrders, "/admin/logistics": dispatchReady, "/admin/prescriptions": pendingRx, "/admin/chat": chatUnread, "/admin/newsletter": newNewsletter },
+                    { "/admin/orders": newOrders, "/admin/logistics": dispatchReady, "/admin/prescriptions": pendingRx, "/admin/chat": chatUnread, "/admin/newsletter": newNewsletter, "/admin/consultations": pendingConsult },
                     false,
                     searchAwareExpanded,
                     toggleExpanded,

@@ -165,6 +165,33 @@ export default function AccountPrescriptionsPage() {
             />
           )}
 
+          {/* Quotation-ready alert banner */}
+          {(counts.verified > 0 || counts.accepted > 0) && (
+            <button
+              type="button"
+              onClick={() => setFilter(counts.verified > 0 ? "verified" : "accepted")}
+              className="flex w-full items-center gap-3 rounded-xl border-2 px-4 py-3 text-left transition hover:opacity-90"
+              style={{ background: "#ECFDF5", borderColor: "#6EE7B7", color: "#065F46" }}
+            >
+              <div className="grid h-8 w-8 flex-shrink-0 place-items-center rounded-lg" style={{ background: "#6EE7B7" }}>
+                <Bell className="h-4 w-4 text-white" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-bold">
+                  {counts.verified > 0
+                    ? `You have ${counts.verified} quotation${counts.verified === 1 ? "" : "s"} ready to review`
+                    : `You have ${counts.accepted} prescription${counts.accepted === 1 ? "" : "s"} ready to pay`}
+                </p>
+                <p className="text-xs mt-0.5">
+                  {counts.verified > 0
+                    ? "Your pharmacist has reviewed and priced your medication — click here to accept and proceed to payment."
+                    : "You accepted a quotation — click here to complete payment for your medication."}
+                </p>
+              </div>
+              <ChevronRight className="h-4 w-4 flex-shrink-0" />
+            </button>
+          )}
+
           {/* Filter pills */}
           <div className="flex flex-wrap items-center gap-2">
             <FilterPill label={`All (${counts.all})`}                active={filter === "all"}       onClick={() => setFilter("all")} />

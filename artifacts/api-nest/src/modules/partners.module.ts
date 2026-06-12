@@ -59,7 +59,15 @@ import { signPartnerToken, verifyPartnerToken } from "../common/partner-token"
 import { verifyClerkBearer } from "../common/clerk-auth"
 import { EmailModule, EmailService } from "./email.module"
 import { AdminCmsModule, AdminCmsService } from "./admin-cms.module"
+import { WhatsAppModule, WhatsAppService } from "./whatsapp.module"
 import { AdminGuard } from "../common/admin-guard"
+
+/** Generate a human-readable temporary password: e.g. "SHNRX-AB3X7F" */
+function generateTempPassword(): string {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+  const rand = (n: number) => Array.from({ length: n }, () => chars[Math.floor(Math.random() * chars.length)]).join("")
+  return `SHNRX-${rand(6)}`
+}
 
 export type PartnerType = "supplier" | "clinic" | "logistics"
 
@@ -137,6 +145,7 @@ export class PartnerAuthService {
   constructor(
     @Inject(EmailService) private readonly email: EmailService,
     @Inject(AdminCmsService) private readonly cms: AdminCmsService,
+    @Inject(WhatsAppService) private readonly whatsapp: WhatsAppService,
   ) {}
 
   /** CMS read via Postgres source of truth (no guarded HTTP loopback). */
@@ -464,6 +473,7 @@ export class PartnerAuthService {
     const partnerId = String(body?.partnerId ?? "").trim()
     const email = String(body?.email ?? "").trim().toLowerCase()
     const displayName = String(body?.displayName ?? "").trim() || email
+    const phone = String(body?.phone ?? "").trim()
     const metadata = (body?.metadata ?? null) as Record<string, unknown> | null
     if (!partnerId || !email) {
       throw new HttpException("partnerId and email are required", HttpStatus.BAD_REQUEST)
@@ -476,38 +486,57 @@ export class PartnerAuthService {
     if (existing.length) {
       throw new HttpException("An account with that email already exists", HttpStatus.CONFLICT)
     }
+
+    // Auto-generate a temp password so the partner can log in immediately
+    // without needing to click an invite link first.
+    const tempPassword = generateTempPassword()
     const inviteToken = randomBytes(24).toString("hex")
+
     const [acc] = await db
       .insert(partnerAccounts)
       .values({
         id: newId("pacc"),
         email,
-        passwordHash: null,
+        passwordHash: hashPassword(tempPassword),
         partnerType,
         partnerId,
         displayName,
-        status: "invited",
+        status: "active",
         inviteToken,
         inviteExpiresAt: new Date(Date.now() + INVITE_TTL_MS),
-        metadata,
+        metadata: { ...(metadata ?? {}), requirePasswordChange: true },
       })
       .returning()
 
+    const loginUrl = `${baseUrl()}${PORTAL_PATHS[partnerType]}`
     const acceptUrl = `${baseUrl()}${PORTAL_PATHS[partnerType]}/accept?token=${inviteToken}`
+
+    const portalLabel = partnerType === "supplier" ? "Supplier" : partnerType === "clinic" ? "Clinic" : "Logistics"
+
     void this.email
       .send({
         to: email,
         template: "generic",
-        subject: "You're invited to the Shaniid RX partner portal",
+        subject: `Your Shaniid RX ${portalLabel} Portal credentials`,
         data: {
           name: displayName,
-          heading: "Partner portal invitation",
-          body: `You've been invited to join Shaniid RX as a ${partnerType} partner. Click below to set your password and access your portal.`,
+          heading: `Welcome to the Shaniid RX ${portalLabel} Portal`,
+          body: `You have been registered as a ${partnerType} partner on Shaniid RX.\n\nYour login credentials are:\nEmail: ${email}\nTemporary password: ${tempPassword}\n\nLogin now at: ${loginUrl}\n\nFor your security, please change your password after first login. Alternatively, click the button below to set your own password directly.`,
           cta_url: acceptUrl,
-          cta_label: "Set your password",
+          cta_label: "Set your own password",
         },
       })
       .catch(() => undefined)
+
+    // Share credentials via WhatsApp if a phone number was provided
+    if (phone) {
+      void this.whatsapp
+        .send({
+          to: phone,
+          body: `Welcome to Shaniid RX ${portalLabel} Portal!\n\nYour login credentials:\nEmail: ${email}\nTemp password: ${tempPassword}\nPortal: ${loginUrl}\n\nPlease change your password after first login.`,
+        })
+        .catch(() => undefined)
+    }
 
     return publicAccount(acc)
   }
@@ -1208,7 +1237,7 @@ class PartnerWelcomeController {
 }
 
 @Module({
-  imports: [EmailModule, AdminCmsModule],
+  imports: [EmailModule, AdminCmsModule, WhatsAppModule],
   controllers: [
     PartnerAuthController,
     PartnerSupplierController,

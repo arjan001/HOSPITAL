@@ -435,3 +435,81 @@ export const insertClinicTransactionSchema = createInsertSchema(clinicTransactio
 export const selectClinicTransactionSchema = createSelectSchema(clinicTransactions)
 export type InsertClinicTransaction = z.infer<typeof insertClinicTransactionSchema>
 export type ClinicTransaction = typeof clinicTransactions.$inferSelect
+
+// ─── Pharmacy Branches ───────────────────────────────────────────────────────
+
+export const pharmacyBranches = pgTable("pharmacy_branches", {
+  id: text("id").primaryKey(),
+  branchCode: text("branch_code").unique().notNull(),
+  name: text("name").notNull(),
+  address: text("address").notNull(),
+  city: text("city").notNull().default(""),
+  phone: text("phone"),
+  latitude: text("latitude"),
+  longitude: text("longitude"),
+  status: text("status").notNull().default("active"),
+  // status: active | inactive | temporarily_closed
+  managerId: text("manager_id"),
+  managerName: text("manager_name"),
+  managerEmail: text("manager_email"),
+  operatingHours: jsonb("operating_hours").$type<Record<string, string>>().default({}),
+  maxCapacity: integer("max_capacity").notNull().default(0),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+})
+
+export const pharmacyShifts = pgTable("pharmacy_shifts", {
+  id: text("id").primaryKey(),
+  branchId: text("branch_id").notNull().references(() => pharmacyBranches.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  startTime: text("start_time").notNull(),
+  endTime: text("end_time").notNull(),
+  daysOfWeek: jsonb("days_of_week").$type<number[]>().notNull().default([]),
+  // daysOfWeek: 0=Sun, 1=Mon, ... 6=Sat
+  maxStaff: integer("max_staff").notNull().default(0),
+  active: boolean("active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+})
+
+export const pharmacyEmployees = pgTable("pharmacy_employees", {
+  id: text("id").primaryKey(),
+  userId: text("user_id"),
+  adminUserId: text("admin_user_id"),
+  branchId: text("branch_id").notNull().references(() => pharmacyBranches.id, { onDelete: "cascade" }),
+  shiftId: text("shift_id").references(() => pharmacyShifts.id, { onDelete: "set null" }),
+  displayName: text("display_name").notNull(),
+  email: text("email"),
+  phone: text("phone"),
+  role: text("role").notNull().default("pharmacist"),
+  // role: pharmacist | cashier | manager | technician | intern
+  status: text("status").notNull().default("active"),
+  assignedAt: timestamp("assigned_at").defaultNow().notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+})
+
+export const posTransactions = pgTable("pos_transactions", {
+  id: text("id").primaryKey(),
+  branchId: text("branch_id").notNull().references(() => pharmacyBranches.id),
+  employeeId: text("employee_id"),
+  customerName: text("customer_name"),
+  customerPhone: text("customer_phone"),
+  items: jsonb("items").$type<{ productId: string; name: string; qty: number; unitPrice: number; total: number }[]>().notNull().default([]),
+  subtotal: integer("subtotal").notNull().default(0),
+  discount: integer("discount").notNull().default(0),
+  total: integer("total").notNull().default(0),
+  paymentMethod: text("payment_method").notNull().default("cash"),
+  paystackRef: text("paystack_ref"),
+  status: text("status").notNull().default("pending"),
+  // status: pending | paid | cancelled | refunded
+  receiptNo: text("receipt_no").unique(),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+})
+
+export type PharmacyBranch = typeof pharmacyBranches.$inferSelect
+export type PharmacyShift = typeof pharmacyShifts.$inferSelect
+export type PharmacyEmployee = typeof pharmacyEmployees.$inferSelect
+export type PosTransaction = typeof posTransactions.$inferSelect
