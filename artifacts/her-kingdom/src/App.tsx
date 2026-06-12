@@ -126,6 +126,10 @@ import AccountSettingsPage from "@/pages/account/settings";
 import AccountDashboard from "@/pages/account/dashboard";
 import AccountPrescriptionsPage from "@/pages/account/prescriptions";
 import AccountOrdersPage from "@/pages/account/orders";
+import AccountAddressesPage from "@/pages/account/addresses";
+import AccountWishlistPage from "@/pages/account/wishlist";
+import AccountNotificationsPage from "@/pages/account/notifications";
+import AccountSecurityPage from "@/pages/account/security";
 import AccountLoginPage from "@/pages/account/login";
 import AccountRegisterPage from "@/pages/account/register";
 import AccountSupportPage from "@/pages/account/support";
@@ -299,8 +303,8 @@ function SsoCallbackPage() {
         </p>
       </div>
       <AuthenticateWithRedirectCallback
-        signInFallbackRedirectUrl={`${basePath}/account`}
-        signUpFallbackRedirectUrl={`${basePath}/account`}
+        signInFallbackRedirectUrl={`${basePath}/account/settings`}
+        signUpFallbackRedirectUrl={`${basePath}/account/settings`}
       />
     </main>
   );
@@ -429,6 +433,18 @@ function Router() {
       </Route>
       <Route path="/account/orders">
         {() => <ProtectedAccount><AccountOrdersPage /></ProtectedAccount>}
+      </Route>
+      <Route path="/account/addresses">
+        {() => <ProtectedAccount><AccountAddressesPage /></ProtectedAccount>}
+      </Route>
+      <Route path="/account/wishlist">
+        {() => <ProtectedAccount><AccountWishlistPage /></ProtectedAccount>}
+      </Route>
+      <Route path="/account/notifications">
+        {() => <ProtectedAccount><AccountNotificationsPage /></ProtectedAccount>}
+      </Route>
+      <Route path="/account/security">
+        {() => <ProtectedAccount><AccountSecurityPage /></ProtectedAccount>}
       </Route>
       <Route path="/dashboard">
         {() => <ProtectedAccount><DashboardPage /></ProtectedAccount>}

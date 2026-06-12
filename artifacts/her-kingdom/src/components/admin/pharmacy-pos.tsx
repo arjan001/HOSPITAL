@@ -9,29 +9,31 @@
  * - Customer name/phone (optional)
  * - Branch selection
  * - Discount entry
- * - Cash / Paystack payment
+ * - Cash / Mesa (M-PESA via Paystack) payment
+ * - Mesa: phone modal + STK push + live polling
+ * - Cart persisted in localStorage between refreshes
  * - Receipt view with print support
  */
 
-import { useState, useMemo, useRef, useEffect } from "react"
+import { useState, useMemo, useRef, useEffect, useCallback } from "react"
 import useSWR from "swr"
 import {
   ShoppingCart, Search, Plus, Minus, Trash2, Printer,
   CheckCircle2, X, User, Phone, Tag, Building2,
-  Receipt, ArrowLeft, Package,
+  Receipt, Package, Loader2, Smartphone, RefreshCw, AlertCircle,
+  Wifi,
 } from "lucide-react"
 import { adminAuthHeaders } from "@/lib/api-client"
 import { AdminShell } from "./admin-shell"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import type { Product } from "@/lib/types"
-import useSWRMut from "swr/mutation"
 
 const WINE = "#3D0814"
 const ACCENT_RED = "#B91C1C"
 const ACCENT_ORANGE = "#F97316"
-const PEACH_BG = "#FFF6EE"
 const PEACH_BORDER = "#F2DCC8"
+const CART_KEY = "shaniidrx-pos-cart"
 
 type Branch = { id: string; name: string; branchCode: string; status: string }
 
@@ -55,6 +57,7 @@ type PosTransaction = {
   total: number
   paymentMethod: string
   status: string
+  paymentRef?: string
   createdAt: string
 }
 
@@ -81,10 +84,18 @@ async function patchTx(id: string, body: unknown) {
     body: JSON.stringify(body),
   })
   if (!r.ok) throw new Error(await r.text())
-  return r.json()
+  return r.json() as Promise<PosTransaction>
 }
 
-// ─── Receipt View ────────────────────────────────────────────────────────
+async function getTx(id: string) {
+  const r = await fetch(`${BASE}/pharmacy/pos/transactions/${id}`, {
+    headers: adminAuthHeaders(),
+  })
+  if (!r.ok) throw new Error(await r.text())
+  return r.json() as Promise<PosTransaction>
+}
+
+// ─── Receipt View ─────────────────────────────────────────────────────────
 
 function ReceiptView({ tx, branchName, onClose }: {
   tx: PosTransaction
@@ -106,6 +117,8 @@ function ReceiptView({ tx, branchName, onClose }: {
     win.document.close()
     win.print()
   }
+
+  const payLabel = tx.paymentMethod === "mesa" ? "M-PESA (Mesa)" : tx.paymentMethod.toUpperCase()
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
@@ -158,7 +171,8 @@ function ReceiptView({ tx, branchName, onClose }: {
             <span>KES {tx.total.toLocaleString()}</span>
           </div>
           <hr className="my-2" />
-          <p className="text-center">Payment: {tx.paymentMethod.toUpperCase()}</p>
+          <p className="text-center">Payment: {payLabel}</p>
+          {tx.paymentRef && <p className="text-center opacity-60">Ref: {tx.paymentRef}</p>}
           <p className="text-center mt-2 opacity-60">Thank you for choosing Shaniid RX</p>
         </div>
 
@@ -168,7 +182,302 @@ function ReceiptView({ tx, branchName, onClose }: {
   )
 }
 
+// ─── Mesa Payment Modal ────────────────────────────────────────────────────
+
+type MesaState = "idle" | "sending" | "waiting" | "success" | "failed"
+
+function MesaModal({
+  total,
+  prefillPhone,
+  onConfirmed,
+  onCancel,
+}: {
+  total: number
+  prefillPhone?: string
+  onConfirmed: (mpesaRef: string, phone: string) => void
+  onCancel: () => void
+}) {
+  const [phone, setPhone] = useState(prefillPhone ?? "")
+  const [state, setState] = useState<MesaState>("idle")
+  const [txId, setTxId] = useState<string | null>(null)
+  const [mpesaRef, setMpesaRef] = useState<string | null>(null)
+  const [err, setErr] = useState("")
+  const [elapsed, setElapsed] = useState(0)
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const pollRef  = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  const TIMEOUT_SECS = 90
+
+  function stopTimers() {
+    if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null }
+    if (pollRef.current)  { clearInterval(pollRef.current);  pollRef.current  = null }
+  }
+
+  useEffect(() => () => stopTimers(), [])
+
+  async function sendRequest() {
+    const e164 = phone.replace(/\s+/g, "").replace(/^0/, "+254").replace(/^254/, "+254")
+    if (!/^\+254\d{9}$/.test(e164)) {
+      setErr("Enter a valid Kenyan M-PESA number, e.g. 0712 345 678")
+      return
+    }
+    setErr("")
+    setState("sending")
+
+    try {
+      const r = await fetch(`${BASE}/payments/paystack/initiate`, {
+        method: "POST",
+        headers: { ...adminAuthHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify({
+          amount: total,
+          phone: e164,
+          channel: "mobile_money",
+          metadata: { source: "pos" },
+        }),
+      })
+      if (!r.ok) {
+        const body = await r.json().catch(() => ({})) as { message?: string }
+        throw new Error(body.message ?? "Failed to initiate payment")
+      }
+      const data = await r.json() as { reference?: string; data?: { reference?: string } }
+      const ref = data.reference ?? data.data?.reference
+      if (ref) setTxId(ref)
+      setState("waiting")
+      setElapsed(0)
+
+      timerRef.current = setInterval(() => {
+        setElapsed((s) => {
+          if (s + 1 >= TIMEOUT_SECS) {
+            stopTimers()
+            setState("failed")
+            setErr("Payment timed out. Ask the customer to check their phone and retry.")
+            return s + 1
+          }
+          return s + 1
+        })
+      }, 1000)
+
+      pollRef.current = setInterval(async () => {
+        if (!ref) return
+        try {
+          const pr = await fetch(`${BASE}/payments/paystack/status/${encodeURIComponent(ref)}`, {
+            headers: adminAuthHeaders(),
+          })
+          if (!pr.ok) return
+          const ps = await pr.json() as { status?: string; data?: { status?: string; gateway_response?: string; authorization?: { sender_country?: string } } }
+          const status = ps.status ?? ps.data?.status
+          if (status === "success" || status === "paid") {
+            stopTimers()
+            setMpesaRef(ref)
+            setState("success")
+            setTimeout(() => onConfirmed(ref, e164), 1200)
+          } else if (status === "failed" || status === "cancelled" || status === "reversed") {
+            stopTimers()
+            setState("failed")
+            setErr(`Payment ${status}. Please retry.`)
+          }
+        } catch { /* silent poll error */ }
+      }, 4000)
+
+    } catch (e) {
+      setState("idle")
+      setErr(e instanceof Error ? e.message : "Failed to send payment request")
+    }
+  }
+
+  const remaining = Math.max(0, TIMEOUT_SECS - elapsed)
+  const pct = ((TIMEOUT_SECS - remaining) / TIMEOUT_SECS) * 100
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
+      <div
+        className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6"
+        style={{ border: `1px solid ${PEACH_BORDER}` }}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between mb-5">
+          <div className="flex items-center gap-2">
+            <div
+              className="h-9 w-9 rounded-xl flex items-center justify-center"
+              style={{ background: "#DCFCE7" }}
+            >
+              <Smartphone className="h-5 w-5 text-green-700" />
+            </div>
+            <div>
+              <h3 className="font-bold text-sm" style={{ color: WINE }}>Mesa Payment</h3>
+              <p className="text-[11px] text-muted-foreground">M-PESA STK Push</p>
+            </div>
+          </div>
+          <button type="button" onClick={onCancel} disabled={state === "waiting" || state === "sending"}>
+            <X className="h-5 w-5 opacity-50" />
+          </button>
+        </div>
+
+        {/* Amount */}
+        <div
+          className="rounded-xl px-4 py-3 mb-5 text-center"
+          style={{ background: "#FFFBF5", border: `1px solid ${PEACH_BORDER}` }}
+        >
+          <p className="text-xs text-muted-foreground uppercase tracking-wider mb-0.5">Amount due</p>
+          <p className="text-2xl font-black" style={{ color: WINE }}>KES {total.toLocaleString()}</p>
+        </div>
+
+        {/* States */}
+        {(state === "idle" || state === "sending") && (
+          <div className="space-y-4">
+            <div>
+              <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1.5 block">
+                Customer M-PESA number
+              </label>
+              <div className="relative">
+                <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <input
+                  className="w-full h-11 rounded-xl border pl-9 pr-4 text-sm font-medium outline-none focus:ring-2"
+                  style={{ borderColor: PEACH_BORDER }}
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  placeholder="0712 345 678"
+                  inputMode="tel"
+                  disabled={state === "sending"}
+                />
+              </div>
+              <p className="text-[10px] text-muted-foreground mt-1">Supports 07XX and 01XX numbers</p>
+            </div>
+
+            {err && (
+              <div className="flex items-center gap-2 rounded-lg bg-red-50 border border-red-100 px-3 py-2 text-xs text-red-700">
+                <AlertCircle className="h-3.5 w-3.5 flex-shrink-0" /> {err}
+              </div>
+            )}
+
+            <button
+              type="button"
+              onClick={() => void sendRequest()}
+              disabled={state === "sending" || !phone.trim()}
+              className="w-full h-11 rounded-full font-bold text-sm text-white flex items-center justify-center gap-2 disabled:opacity-50"
+              style={{ background: "linear-gradient(135deg, #059669, #047857)" }}
+            >
+              {state === "sending"
+                ? <><Loader2 className="h-4 w-4 animate-spin" /> Sending request…</>
+                : <><Smartphone className="h-4 w-4" /> Send M-PESA Request</>
+              }
+            </button>
+
+            <button
+              type="button"
+              onClick={onCancel}
+              className="w-full h-9 rounded-full border text-sm text-muted-foreground hover:bg-gray-50 transition-colors"
+              style={{ borderColor: PEACH_BORDER }}
+            >
+              Cancel
+            </button>
+          </div>
+        )}
+
+        {state === "waiting" && (
+          <div className="space-y-4 text-center">
+            <div className="relative mx-auto w-20 h-20">
+              <svg className="w-20 h-20 -rotate-90" viewBox="0 0 80 80">
+                <circle cx="40" cy="40" r="34" fill="none" stroke="#F2DCC8" strokeWidth="6" />
+                <circle
+                  cx="40" cy="40" r="34"
+                  fill="none" stroke="#059669" strokeWidth="6"
+                  strokeDasharray={`${2 * Math.PI * 34}`}
+                  strokeDashoffset={`${2 * Math.PI * 34 * (pct / 100)}`}
+                  strokeLinecap="round"
+                  style={{ transition: "stroke-dashoffset 1s linear" }}
+                />
+              </svg>
+              <div className="absolute inset-0 flex flex-col items-center justify-center">
+                <span className="text-lg font-black" style={{ color: WINE }}>{remaining}</span>
+                <span className="text-[9px] text-muted-foreground">secs</span>
+              </div>
+            </div>
+
+            <div>
+              <p className="font-semibold text-sm" style={{ color: WINE }}>Waiting for payment…</p>
+              <p className="text-xs text-muted-foreground mt-1">
+                An M-PESA prompt has been sent to <span className="font-medium">{phone}</span>.
+                Ask the customer to enter their PIN.
+              </p>
+            </div>
+
+            <div className="flex items-center justify-center gap-1.5 text-xs text-muted-foreground">
+              <Wifi className="h-3.5 w-3.5 animate-pulse" />
+              Checking every 4 seconds…
+            </div>
+
+            <button
+              type="button"
+              onClick={() => { stopTimers(); setState("idle"); setErr("") }}
+              className="w-full h-9 rounded-full border text-sm text-muted-foreground hover:bg-gray-50 transition-colors"
+              style={{ borderColor: PEACH_BORDER }}
+            >
+              Cancel / Retry
+            </button>
+          </div>
+        )}
+
+        {state === "success" && (
+          <div className="text-center space-y-3">
+            <div className="mx-auto h-16 w-16 rounded-full bg-green-100 flex items-center justify-center">
+              <CheckCircle2 className="h-8 w-8 text-green-600" />
+            </div>
+            <p className="font-bold text-base" style={{ color: WINE }}>Payment confirmed!</p>
+            <p className="text-xs text-muted-foreground">
+              Ref: <span className="font-mono font-semibold">{mpesaRef}</span>
+            </p>
+            <p className="text-xs text-muted-foreground">Generating receipt…</p>
+          </div>
+        )}
+
+        {state === "failed" && (
+          <div className="space-y-4">
+            <div className="text-center">
+              <div className="mx-auto h-14 w-14 rounded-full bg-red-100 flex items-center justify-center mb-2">
+                <AlertCircle className="h-7 w-7 text-red-600" />
+              </div>
+              <p className="font-semibold text-sm text-red-700">{err}</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => { setState("idle"); setErr(""); setElapsed(0) }}
+              className="w-full h-9 rounded-full text-sm font-semibold text-white flex items-center justify-center gap-2"
+              style={{ background: `linear-gradient(135deg, ${ACCENT_ORANGE}, ${ACCENT_RED})` }}
+            >
+              <RefreshCw className="h-4 w-4" /> Retry Payment
+            </button>
+            <button
+              type="button"
+              onClick={onCancel}
+              className="w-full h-9 rounded-full border text-sm text-muted-foreground"
+              style={{ borderColor: PEACH_BORDER }}
+            >
+              Cancel
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ─── Main POS ─────────────────────────────────────────────────────────────
+
+function loadCartFromStorage(): CartItem[] {
+  try {
+    const raw = localStorage.getItem(CART_KEY)
+    if (!raw) return []
+    return JSON.parse(raw) as CartItem[]
+  } catch { return [] }
+}
+
+function saveCartToStorage(cart: CartItem[]) {
+  try {
+    if (cart.length === 0) localStorage.removeItem(CART_KEY)
+    else localStorage.setItem(CART_KEY, JSON.stringify(cart))
+  } catch { /* ignore */ }
+}
 
 export function AdminPharmacyPos() {
   const { data: productsData } = useSWR<Product[]>("/api/products", authFetcher)
@@ -180,15 +489,24 @@ export function AdminPharmacyPos() {
 
   const [branchId, setBranchId] = useState("")
   const [search, setSearch] = useState("")
-  const [cart, setCart] = useState<CartItem[]>([])
+  const [cart, setCartRaw] = useState<CartItem[]>(() => loadCartFromStorage())
   const [customerName, setCustomerName] = useState("")
   const [customerPhone, setCustomerPhone] = useState("")
   const [discount, setDiscount] = useState(0)
-  const [paymentMethod, setPaymentMethod] = useState<"cash" | "paystack">("cash")
+  const [paymentMethod, setPaymentMethod] = useState<"cash" | "mesa">("cash")
   const [processing, setProcessing] = useState(false)
   const [receipt, setReceipt] = useState<PosTransaction | null>(null)
+  const [showMesa, setShowMesa] = useState(false)
   const [err, setErr] = useState("")
   const searchRef = useRef<HTMLInputElement>(null)
+
+  function setCart(updater: CartItem[] | ((prev: CartItem[]) => CartItem[])) {
+    setCartRaw((prev) => {
+      const next = typeof updater === "function" ? updater(prev) : updater
+      saveCartToStorage(next)
+      return next
+    })
+  }
 
   // Auto-select first branch
   useEffect(() => {
@@ -229,14 +547,13 @@ export function AdminPharmacyPos() {
   }
 
   function changeQty(productId: string, delta: number) {
-    setCart((prev) => {
-      const updated = prev.map((i) => {
+    setCart((prev) =>
+      prev.map((i) => {
         if (i.productId !== productId) return i
         const qty = Math.max(0, i.qty + delta)
         return { ...i, qty, total: qty * i.unitPrice }
-      }).filter((i) => i.qty > 0)
-      return updated
-    })
+      }).filter((i) => i.qty > 0),
+    )
   }
 
   function clearCart() {
@@ -247,7 +564,7 @@ export function AdminPharmacyPos() {
     setErr("")
   }
 
-  async function checkout() {
+  async function checkoutCash() {
     if (!branchId) { setErr("Please select a branch."); return }
     if (cart.length === 0) { setErr("Cart is empty."); return }
     setProcessing(true)
@@ -261,7 +578,7 @@ export function AdminPharmacyPos() {
         subtotal,
         discount,
         total,
-        paymentMethod,
+        paymentMethod: "cash",
         status: "paid",
       })
       setReceipt(tx)
@@ -274,6 +591,43 @@ export function AdminPharmacyPos() {
     }
   }
 
+  async function handleMesaConfirmed(mpesaRef: string, phone: string) {
+    setShowMesa(false)
+    setProcessing(true)
+    setErr("")
+    try {
+      const tx = await createTx({
+        branchId,
+        customerName: customerName || undefined,
+        customerPhone: phone,
+        items: cart,
+        subtotal,
+        discount,
+        total,
+        paymentMethod: "mesa",
+        status: "paid",
+        paymentRef: mpesaRef,
+      })
+      setReceipt(tx)
+      clearCart()
+      void mutTxs()
+    } catch (e: unknown) {
+      setErr(e instanceof Error ? e.message : "Failed to record Mesa payment")
+    } finally {
+      setProcessing(false)
+    }
+  }
+
+  function handleCheckout() {
+    if (!branchId) { setErr("Please select a branch."); return }
+    if (cart.length === 0) { setErr("Cart is empty."); return }
+    if (paymentMethod === "mesa") {
+      setShowMesa(true)
+    } else {
+      void checkoutCash()
+    }
+  }
+
   const branchName = useMemo(() => branches.find((b) => b.id === branchId)?.name ?? "Branch", [branches, branchId])
 
   return (
@@ -283,6 +637,15 @@ export function AdminPharmacyPos() {
           tx={receipt}
           branchName={branchName}
           onClose={() => setReceipt(null)}
+        />
+      )}
+
+      {showMesa && (
+        <MesaModal
+          total={total}
+          prefillPhone={customerPhone || undefined}
+          onConfirmed={(ref, ph) => void handleMesaConfirmed(ref, ph)}
+          onCancel={() => setShowMesa(false)}
         />
       )}
 
@@ -372,7 +735,9 @@ export function AdminPharmacyPos() {
                   >
                     <p className="font-semibold" style={{ color: WINE }}>{tx.receiptNo}</p>
                     <p className="text-muted-foreground">KES {tx.total.toLocaleString()}</p>
-                    <p className="text-muted-foreground">{new Date(tx.createdAt).toLocaleDateString()}</p>
+                    <p className="text-muted-foreground capitalize">
+                      {tx.paymentMethod === "mesa" ? "Mesa" : tx.paymentMethod}
+                    </p>
                   </div>
                 ))}
               </div>
@@ -502,33 +867,42 @@ export function AdminPharmacyPos() {
 
               {/* Payment method */}
               <div className="flex gap-2">
-                {(["cash", "paystack"] as const).map((m) => (
+                {(["cash", "mesa"] as const).map((m) => (
                   <button
                     key={m}
                     type="button"
                     onClick={() => setPaymentMethod(m)}
-                    className="flex-1 h-9 rounded-full text-xs font-semibold border transition-colors capitalize"
+                    className="flex-1 h-9 rounded-full text-xs font-semibold border transition-colors"
                     style={paymentMethod === m
                       ? { background: WINE, color: "#fff", borderColor: WINE }
                       : { color: WINE, borderColor: PEACH_BORDER }
                     }
                   >
-                    {m}
+                    {m === "mesa" ? "Mesa (M-PESA)" : "Cash"}
                   </button>
                 ))}
               </div>
+
+              {paymentMethod === "mesa" && (
+                <p className="text-[10px] text-muted-foreground flex items-center gap-1">
+                  <Smartphone className="h-3 w-3" />
+                  Customer will receive an STK push on their phone
+                </p>
+              )}
 
               {err && <p className="text-xs text-destructive">{err}</p>}
 
               <button
                 type="button"
-                onClick={() => void checkout()}
+                onClick={handleCheckout}
                 disabled={processing || !branchId}
                 className="w-full h-11 rounded-full text-sm font-bold text-white flex items-center justify-center gap-2 disabled:opacity-50"
                 style={{ background: `linear-gradient(135deg, ${ACCENT_ORANGE}, ${ACCENT_RED})` }}
               >
-                <Receipt className="h-4 w-4" />
-                {processing ? "Processing…" : "Charge & Print Receipt"}
+                {processing
+                  ? <><Loader2 className="h-4 w-4 animate-spin" /> Processing…</>
+                  : <><Receipt className="h-4 w-4" /> Charge & Print Receipt</>
+                }
               </button>
             </div>
           )}
