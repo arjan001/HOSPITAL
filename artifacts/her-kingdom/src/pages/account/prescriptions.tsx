@@ -318,7 +318,6 @@ export default function AccountPrescriptionsPage() {
             )}
           </div>
         </div>
-      </div>
 
       {open && (
         <RxDetailModal

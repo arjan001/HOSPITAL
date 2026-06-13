@@ -151,6 +151,11 @@ function tiersForPack(pack: PackDef): Tier[] {
   ]
 }
 
+// Helper to resolve a tier image path. Falls back to placeholder when missing at runtime.
+function tierImageFor(slug: string, tierId: Tier["id"]) {
+  return `/images/care-packs/${slug}-${tierId}.jpg`
+}
+
 // ─── Assessment Gate Modal ────────────────────────────────────────────────
 
 const ASSESSMENT_KEY = "shaniidrx.carepack.assessment_done"
@@ -314,6 +319,9 @@ export function CarePackDetailPage() {
   const [selectedTier, setSelectedTier] = useState<Tier["id"]>("standard")
   const [showGate, setShowGate] = useState(false)
   const [gateChecked, setGateChecked] = useState(false)
+  const [quantity, setQuantity] = useState(1)
+
+  const selectedTierObj = useMemo(() => tiers.find((t) => t.id === selectedTier) ?? null, [tiers, selectedTier])
 
   const { data: productsData } = useSWR<Product[]>("/api/products", safeFetcher)
   const products = asArray<Product>(productsData)
@@ -365,7 +373,7 @@ export function CarePackDetailPage() {
       tags: [pack.section],
       stock_quantity: 99,
       status: "active",
-    } as unknown as Product, 1)
+    } as unknown as Product, quantity)
     navigate("/cart")
   }
 
@@ -405,119 +413,181 @@ export function CarePackDetailPage() {
           </Link>
           <h1 className="text-3xl lg:text-4xl font-black text-white leading-tight">{pack.name}</h1>
           <p className="mt-2 text-sm max-w-lg" style={{ color: "rgba(255,251,245,0.75)" }}>{pack.description}</p>
-          <div className="mt-4 flex items-center gap-2">
-            <ShieldCheck className="h-4 w-4" style={{ color: "#F97316" }} />
-            <span className="text-xs font-semibold" style={{ color: "#FEF0E4" }}>
-              Genuine medicines · Pharmacist-reviewed · Delivered to your door
-            </span>
-          </div>
         </div>
       </div>
 
-      <main className="max-w-5xl mx-auto px-4 lg:px-6 py-10">
-
-        {/* Tier picker */}
-        <div className="mb-10">
-          <h2 className="text-xl font-black mb-1" style={{ color: WINE }}>Choose your tier</h2>
-          <p className="text-sm text-muted-foreground mb-6">
-            Select the plan that matches your needs. You can change tiers any time.
-          </p>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            {tiers.map((tier) => (
-              <TierCard
-                key={tier.id}
-                tier={tier}
-                selected={selectedTier === tier.id}
-                onSelect={() => setSelectedTier(tier.id)}
-                onAddToCart={handleAddToCart}
-              />
-            ))}
-          </div>
-        </div>
-
-        {/* Matching products */}
-        {matchingProducts.length > 0 && (
-          <div className="mb-10">
-            <h2 className="text-xl font-black mb-5" style={{ color: WINE }}>
-              Products included in this pack
-            </h2>
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-              {matchingProducts.map((p) => (
-                <Link
-                  key={p.id}
-                  href={`/products/${p.id}`}
-                  className="rounded-xl border overflow-hidden hover:shadow-md transition-shadow"
-                  style={{ borderColor: PEACH_BORDER }}
+      <main className="max-w-[1280px] mx-auto px-4 lg:px-6 py-10">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+          {/* Gallery */}
+          <div className="lg:col-span-5">
+            {/* Thumbnail / tier indicators (evenly distributed; no scrolling) */}
+            <div className="flex gap-3 pb-2">
+              {tiers.map((t) => (
+                <button
+                  key={t.id}
+                  type="button"
+                  onClick={() => setSelectedTier(t.id)}
+                  className="flex-1 flex items-center gap-3 p-2 rounded-lg transition-all"
+                  style={{ border: selectedTier === t.id ? `2px solid ${ACCENT_RED}` : `1px solid ${PEACH_BORDER}`, background: selectedTier === t.id ? PEACH_BG : "white" }}
                 >
-                  <div className="aspect-square bg-gray-50 overflow-hidden">
-                    {p.images?.[0] ? (
-                      <img src={p.images[0]} alt={p.name} className="w-full h-full object-cover" />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center opacity-20">
-                        <Pill className="h-8 w-8" />
-                      </div>
-                    )}
+                  <div className="w-16 h-16 flex-shrink-0 flex items-center justify-center rounded-md bg-white" style={{ border: `1px solid ${PEACH_BORDER}` }}>
+                    <img loading="lazy" src={tierImageFor(pack.slug, t.id)} alt={t.label} className="w-full h-full object-contain" onError={(e) => { (e.currentTarget as HTMLImageElement).src = "/placeholder.svg" }} />
                   </div>
-                  <div className="p-2.5">
-                    <p className="text-[11px] font-semibold leading-tight line-clamp-2" style={{ color: WINE }}>{p.name}</p>
-                    <p className="text-[11px] text-muted-foreground mt-0.5">
-                      KES {Number(p.price).toLocaleString()}
-                    </p>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-semibold truncate" style={{ color: WINE }}>{t.label}</div>
+                    <div className="text-xs text-muted-foreground truncate">KES {t.priceKES.toLocaleString()}</div>
                   </div>
-                </Link>
+                </button>
               ))}
             </div>
+
+            <div className="relative rounded-2xl overflow-hidden mt-3" style={{ border: `1px solid ${PEACH_BORDER}`, background: "#FFF6EE" }}>
+              <div className="aspect-square flex items-center justify-center p-6">
+                <img
+                  src={tierImageFor(pack.slug, selectedTier)}
+                  alt={`${pack.name} - ${selectedTier}`}
+                  className="w-full h-full object-contain"
+                  onError={(e) => { (e.currentTarget as HTMLImageElement).src = "/placeholder.svg" }}
+                />
+              </div>
+            </div>
           </div>
-        )}
+
+          {/* Info */}
+          <div className="lg:col-span-4">
+            <h2 className="text-2xl font-bold mb-2" style={{ color: WINE }}>{pack.name}</h2>
+            <p className="text-sm text-muted-foreground mb-4">{pack.description}</p>
+
+            <div className="mb-6">
+              <h3 className="text-sm font-bold mb-2" style={{ color: WINE }}>Choose your tier</h3>
+              <div>
+                {selectedTierObj && (
+                  <div className="rounded-2xl border p-4" style={{ borderColor: PEACH_BORDER, background: selectedTierObj.highlight ? PEACH_BG : '#FFF' }}>
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center gap-3">
+                        <div className="text-[10px] font-bold px-2.5 py-0.5 rounded-full text-white" style={{ background: selectedTierObj.badgeColor }}>{selectedTierObj.badge}</div>
+                        <div>
+                          <div className="text-lg font-black" style={{ color: WINE }}>{selectedTierObj.label}</div>
+                          <div className="text-xs text-muted-foreground">{selectedTierObj.tagline}</div>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-xl font-extrabold" style={{ color: WINE }}>KES {selectedTierObj.priceKES.toLocaleString()}</div>
+                        <div className="text-xs text-neutral-400">{selectedTierObj.supplyDuration}</div>
+                      </div>
+                    </div>
+
+                    <ul className="mb-3 text-sm space-y-1 text-gray-700">
+                      {selectedTierObj.features.map((f) => (
+                        <li key={f} className="flex items-start gap-2"><CheckCircle2 className="h-4 w-4" style={{ color: ACCENT_RED }} />{f}</li>
+                      ))}
+                    </ul>
+
+                    <div className="flex items-center gap-2">
+                      <button onClick={() => setSelectedTier(selectedTierObj.id)} className="px-3 py-2 rounded-full text-sm font-semibold" style={{ border: `1px solid ${PEACH_BORDER}`, background: '#FFF' }}>Selected</button>
+                      <button onClick={handleAddToCart} className="ml-auto px-4 py-2 rounded-full text-sm font-bold text-white" style={{ background: `linear-gradient(135deg, ${ACCENT_ORANGE}, ${ACCENT_RED})` }}>Add to Cart</button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {matchingProducts.length > 0 && (
+              <div>
+                <h3 className="text-sm font-bold mb-3" style={{ color: WINE }}>Products included</h3>
+                <div className="grid grid-cols-3 gap-3">
+                  {matchingProducts.map((p) => (
+                    <Link key={p.id} href={`/products/${p.id}`} className="text-xs text-neutral-700 hover:underline">
+                      <div className="flex flex-col items-center gap-2">
+                        <div className="w-16 h-16 bg-white rounded-lg flex items-center justify-center" style={{ border: `1px solid ${PEACH_BORDER}` }}>
+                          {p.images?.[0] ? <img src={p.images[0]} className="w-full h-full object-contain" /> : <Pill className="h-6 w-6 opacity-30" />}
+                        </div>
+                        <div className="text-[11px] text-center">{p.name}</div>
+                      </div>
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Purchase card */}
+          <aside className="lg:col-span-3">
+            <div className="lg:sticky lg:top-6">
+              <div className="rounded-2xl p-5 lg:p-6" style={{ background: "linear-gradient(160deg, #FFFFFF 0%, #FFF6EB 100%)", border: `1px solid ${PEACH_BORDER}` }}>
+                <div className="relative">
+                  <div className="mb-2 text-sm text-muted-foreground">{tiers.find((t) => t.id === selectedTier)?.label} tier</div>
+
+                  <div className="flex items-baseline gap-3">
+                    <span className="text-3xl font-extrabold" style={{ color: WINE }}>KES {tiers.find((t) => t.id === selectedTier)?.priceKES.toLocaleString()}</span>
+                    <span className="text-sm text-neutral-400 line-through">KES {Math.round((tiers.find((t) => t.id === selectedTier)?.priceKES ?? 0) * 1.2).toLocaleString()}</span>
+                  </div>
+
+                  <div className="mt-3 inline-flex items-center gap-2 text-[12px] font-medium px-3 py-1.5 rounded-full" style={{ color: WINE, background: "#FFF1E2", border: `1px solid ${PEACH_BORDER}` }}>
+                    <span className="mr-1">👍</span>
+                    {((Array.from(pack.slug).reduce((s, c) => s + c.charCodeAt(0), 0) % 22) + 5)} sold in the last 7 days
+                  </div>
+
+                  <div className="mt-4">
+                    <p className="font-semibold" style={{ color: WINE }}>Delivery within 4 hours</p>
+                    <p className="text-sm text-neutral-500 mt-0.5">on all orders placed between <span className="font-semibold" style={{ color: "#0F8A65" }}>8:00 AM</span> &amp; <span className="font-semibold" style={{ color: "#0F8A65" }}>8:00 PM</span></p>
+                  </div>
+
+                  <div className="mt-5">
+                    <p className="text-xs font-semibold mb-1.5 text-neutral-500 uppercase tracking-wider">Quantity</p>
+                    <div className="inline-flex items-center rounded-full overflow-hidden" style={{ border: `1px solid ${PEACH_BORDER}`, background: "white" }}>
+                      <button type="button" onClick={() => setQuantity(Math.max(1, quantity - 1))} className="w-9 h-9 grid place-items-center hover:bg-[#FFF1E2] transition-colors" aria-label="Decrease quantity">-</button>
+                      <span className="w-10 h-9 grid place-items-center text-sm font-semibold" style={{ color: WINE }}>{quantity}</span>
+                      <button type="button" onClick={() => setQuantity(quantity + 1)} className="w-9 h-9 grid place-items-center hover:bg-[#FFF1E2] transition-colors" aria-label="Increase quantity">+</button>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={handleAddToCart}
+                    disabled={false}
+                    className="mt-5 w-full h-11 rounded-full text-sm font-semibold transition-all inline-flex items-center justify-center gap-2"
+                    style={{ background: '#F2D4C4', color: '#3D0814' }}
+                  >
+                    <ShoppingCart className="h-4 w-4" /> Add To Cart
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {}}
+                    className="mt-2.5 w-full h-11 rounded-full text-sm font-semibold transition-colors inline-flex items-center justify-center gap-2 bg-white hover:bg-neutral-50"
+                    style={{ color: WINE, border: `1px solid #E5E7EB` }}
+                  >
+                    Add To Wish List
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-3 gap-2 mt-6 pt-4 border-t" style={{ borderColor: PEACH_BORDER }}>
+                  <div className="text-[12px] text-center">Fast Delivery</div>
+                  <div className="text-[12px] text-center">Verified</div>
+                  <div className="text-[12px] text-center">24/7 Support</div>
+                </div>
+              </div>
+            </div>
+          </aside>
+        </div>
 
         {/* Trust banner */}
-        <div
-          className="rounded-2xl p-6 flex flex-col sm:flex-row items-start sm:items-center gap-4"
-          style={{ background: PEACH_BG, border: `1px solid ${PEACH_BORDER}` }}
-        >
-          <div
-            className="w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0"
-            style={{ background: WINE }}
-          >
+        <div className="mt-8 rounded-2xl p-6 flex items-start gap-4" style={{ background: PEACH_BG, border: `1px solid ${PEACH_BORDER}` }}>
+          <div className="w-12 h-12 rounded-full flex items-center justify-center" style={{ background: WINE }}>
             <ShieldCheck className="h-6 w-6 text-white" />
           </div>
           <div>
             <p className="text-sm font-bold mb-0.5" style={{ color: WINE }}>Shaniid RX Trust Seal</p>
             <p className="text-xs text-gray-600 leading-relaxed max-w-xl">
               Every medicine in this pack is verified genuine by our in-house pharmacists.
-              We only source from licensed suppliers and all products are checked for quality before dispatch.
             </p>
           </div>
         </div>
 
-        {/* Sticky CTA bar (bottom) */}
-        <div
-          className="fixed bottom-0 left-0 right-0 z-30 flex items-center justify-between gap-4 px-4 py-3 border-t lg:hidden"
-          style={{ background: "#FFFFFFEE", backdropFilter: "blur(12px)", borderColor: PEACH_BORDER }}
-        >
-          <div>
-            <p className="text-[11px] text-muted-foreground">
-              {tiers.find((t) => t.id === selectedTier)?.label ?? ""} tier
-            </p>
-            <p className="text-base font-black" style={{ color: WINE }}>
-              KES {(tiers.find((t) => t.id === selectedTier)?.priceKES ?? 0).toLocaleString()}
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={handleAddToCart}
-            className="flex items-center gap-2 h-10 px-5 rounded-full text-sm font-bold text-white"
-            style={{ background: `linear-gradient(135deg, ${ACCENT_ORANGE}, ${ACCENT_RED})` }}
-          >
-            <ShoppingCart className="h-4 w-4" />
-            Add to Cart
-          </button>
+        <div className="pb-16 lg:pb-0">
+          <Footer />
         </div>
       </main>
-
-      <div className="pb-16 lg:pb-0">
-        <Footer />
-      </div>
     </>
   )
 }
