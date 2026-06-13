@@ -170,7 +170,10 @@ function ClinicAuthScreen() {
           {mode === "signin" && (
             <>
               <h1 className="text-2xl font-bold text-gray-800 mb-1">Clinic sign in</h1>
-              <p className="text-gray-500 text-sm mb-8">Use the email and password for your facility account.</p>
+              <p className="text-gray-500 text-sm mb-2">Use the email and password for your facility account.</p>
+              <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-6">
+                First time? Enter your facility email and use the <span className="font-semibold">portal code</span> (e.g. <span className="font-mono">CLN-XXXX-XXXX</span>) as your password.
+              </p>
               <form onSubmit={doSignIn} className="space-y-4">
                 <div>
                   <Label className="text-sm font-medium text-gray-700">Facility email</Label>

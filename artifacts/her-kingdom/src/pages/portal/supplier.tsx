@@ -20,7 +20,9 @@ import {
   usePartnerMe, refreshPartnerMe,
   useSupplierCatalog, addSupplierProduct, updateSupplierProduct, deleteSupplierProduct,
   useSupplierOpportunities, useSupplierQuotes, submitSupplierQuote,
+  useSupplierPOs,
   type PartnerAccount, type SupplierProduct, type SourcingOpportunity, type PartnerQuote,
+  type PurchaseOrderSummary,
 } from "@/lib/partners-client"
 import { PartnerClerkDivider, PartnerClerkSignIn } from "@/components/portal/partner-clerk-signin"
 import {
@@ -183,7 +185,10 @@ function SupplierAuthScreen() {
           {mode === "signin" ? (
             <>
               <h1 className="text-2xl font-bold text-gray-800 mb-1">Supplier sign in</h1>
-              <p className="text-gray-500 text-sm mb-8">Enter the email and password for your supplier account.</p>
+              <p className="text-gray-500 text-sm mb-2">Enter the email and password for your supplier account.</p>
+              <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-6">
+                First time? Enter your supplier email and use the <span className="font-semibold">portal code</span> shared by the Shaniid RX team as your password.
+              </p>
 
               {signinErr && <ErrorBanner message={signinErr} />}
 
@@ -418,15 +423,16 @@ function EmptyState({ icon: Icon, title, desc }: { icon: typeof Boxes; title: st
 
 /* ─── Dashboard ──────────────────────────────────────────────── */
 
-type Tab = "overview" | "catalog" | "opportunities" | "quotes" | "kyc" | "profile"
+type Tab = "overview" | "catalog" | "opportunities" | "quotes" | "purchase-orders" | "kyc" | "profile"
 
 const TABS: { id: Tab; label: string; icon: typeof Building2 }[] = [
-  { id: "overview",      label: "Overview",        icon: BarChart3     },
-  { id: "catalog",       label: "Catalog",         icon: Boxes         },
-  { id: "opportunities", label: "Opportunities",   icon: PackageSearch },
-  { id: "quotes",        label: "My Quotes",       icon: ClipboardList },
-  { id: "kyc",           label: "KYC & Trust Seal", icon: ShieldCheck  },
-  { id: "profile",       label: "My Profile",      icon: User          },
+  { id: "overview",        label: "Overview",          icon: BarChart3     },
+  { id: "catalog",         label: "Catalog",           icon: Boxes         },
+  { id: "opportunities",   label: "Opportunities",     icon: PackageSearch },
+  { id: "quotes",          label: "My Quotes",         icon: ClipboardList },
+  { id: "purchase-orders", label: "Purchase Orders",   icon: FileText      },
+  { id: "kyc",             label: "KYC & Trust Seal",  icon: ShieldCheck   },
+  { id: "profile",         label: "My Profile",        icon: User          },
 ]
 
 const PARTNER_STATUS: Record<PartnerAccount["status"], { label: string; color: string; bg: string }> = {
@@ -750,6 +756,7 @@ function SupplierDashboard({ partner, onLogout }: {
   const catalog = useSupplierCatalog()
   const opportunities = useSupplierOpportunities()
   const quotes = useSupplierQuotes()
+  const pos = useSupplierPOs()
 
   const [productModal, setProductModal] = useState<{ open: boolean; product: SupplierProduct | null }>({ open: false, product: null })
   const [deleteTarget, setDeleteTarget] = useState<SupplierProduct | null>(null)
@@ -1118,6 +1125,87 @@ function SupplierDashboard({ partner, onLogout }: {
                       })}
                     </tbody>
                   </table>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── PURCHASE ORDERS ── */}
+          {tab === "purchase-orders" && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <p className="text-sm text-gray-500">Purchase orders placed by Shaniid RX to your account</p>
+                {pos.data && (
+                  <span className="text-[11px] font-semibold px-2.5 py-1 rounded-full" style={{ color: WINE, background: `${WINE}12` }}>
+                    {pos.data.length} order{pos.data.length !== 1 ? "s" : ""}
+                  </span>
+                )}
+              </div>
+
+              {pos.isLoading ? (
+                <LoadingState label="Loading purchase orders…" />
+              ) : pos.error ? (
+                <ErrorState label={pos.error instanceof Error ? pos.error.message : "Could not load purchase orders."} onRetry={() => pos.mutate()} />
+              ) : (pos.data ?? []).length === 0 ? (
+                <EmptyState icon={FileText} title="No purchase orders yet" desc="Shaniid RX will place purchase orders here once procurement is initiated." />
+              ) : (
+                <div className="space-y-3">
+                  {(pos.data ?? []).map((po: PurchaseOrderSummary) => {
+                    const statusColors: Record<string, { color: string; bg: string }> = {
+                      draft:      { color: "#374151", bg: "#F3F4F6" },
+                      sent:       { color: "#1D4ED8", bg: "#EFF6FF" },
+                      confirmed:  { color: "#065F46", bg: "#D1FAE5" },
+                      dispatched: { color: "#7C3AED", bg: "#EDE9FE" },
+                      received:   { color: "#047857", bg: "#D1FAE5" },
+                      disputed:   { color: "#DC2626", bg: "#FEE2E2" },
+                      cancelled:  { color: "#6B7280", bg: "#F9FAFB" },
+                    }
+                    const sc = statusColors[po.status] ?? statusColors.draft
+                    return (
+                      <div key={po.id} className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+                        <div className="px-5 py-4 flex flex-wrap items-center gap-4">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex flex-wrap items-center gap-2 mb-1">
+                              <p className="font-bold text-gray-800 font-mono">{po.poNumber}</p>
+                              <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full capitalize"
+                                style={{ color: sc.color, background: sc.bg }}>
+                                {po.status}
+                              </span>
+                            </div>
+                            <p className="text-xs text-gray-400">
+                              Issued {new Date(po.createdAt).toLocaleDateString()}
+                              {po.expectedDate && ` · Expected ${new Date(po.expectedDate).toLocaleDateString()}`}
+                            </p>
+                          </div>
+                          <p className="font-bold text-lg" style={{ color: WINE }}>{fmtMoney(po.total)}</p>
+                        </div>
+                        {po.items.length > 0 && (
+                          <div className="border-t border-gray-50">
+                            <table className="w-full text-sm">
+                              <thead className="bg-gray-50">
+                                <tr>
+                                  <th className="px-5 py-2 text-left text-[11px] font-semibold text-gray-400 uppercase tracking-wide">Item</th>
+                                  <th className="px-5 py-2 text-right text-[11px] font-semibold text-gray-400 uppercase tracking-wide">Qty</th>
+                                  <th className="px-5 py-2 text-right text-[11px] font-semibold text-gray-400 uppercase tracking-wide">Unit</th>
+                                  <th className="px-5 py-2 text-right text-[11px] font-semibold text-gray-400 uppercase tracking-wide">Total</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {po.items.map((item) => (
+                                  <tr key={item.id} className="border-t border-gray-50">
+                                    <td className="px-5 py-2.5 text-gray-700">{item.name}</td>
+                                    <td className="px-5 py-2.5 text-right text-gray-500">{item.qty.toLocaleString()}</td>
+                                    <td className="px-5 py-2.5 text-right text-gray-500">{fmtMoney(item.unitPrice)}</td>
+                                    <td className="px-5 py-2.5 text-right font-medium" style={{ color: WINE }}>{fmtMoney(item.total)}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
                 </div>
               )}
             </div>

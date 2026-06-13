@@ -7,7 +7,7 @@ import { Seo, organizationJsonLd, websiteJsonLd, breadcrumbJsonLd, faqJsonLd, pr
 import {
   MessageSquare, Phone, Clock, Users, Check, Lock, ArrowLeft, ArrowRight,
   Send, Plus, ShieldCheck, Video, X, FileText, Stethoscope, Brain, Pill, HeartPulse, Info,
-  ShoppingCart, Loader2, CheckCircle2, CalendarDays, MessageCircle,
+  ShoppingCart, Loader2, CheckCircle2, CalendarDays, MessageCircle, User,
 } from "lucide-react"
 import { DailyCall } from "@/components/video/daily-call"
 import {
@@ -137,6 +137,7 @@ function Shell({ children }: { children: React.ReactNode }) {
 export default function SpeakToADoctorPage() {
   const [consultSettings] = useConsultationSettings()
   const { records: publicDoctors } = usePublicDoctorDirectory()
+  const [selectedDoctorId, setSelectedDoctorId] = useState<string | null>(null)
   const doc = useMemo(
     () => (publicDoctors[0] ? doctorRecordToStandby(publicDoctors[0]) : standbyDoctorOf(consultSettings)),
     [publicDoctors, consultSettings],
@@ -448,7 +449,7 @@ export default function SpeakToADoctorPage() {
                 fee: consultPayment?.fee ?? fee,
                 paymentReceipt: consultPayment?.receipt,
                 consultType: consType,
-                doctorId: publicDoctors[0]?.id,
+                doctorId: selectedDoctorId ?? publicDoctors[0]?.id,
               })
               // Only claim the consultation as ensured AFTER it succeeds, so a
               // failed request doesn't strand us on a stale segment — the
@@ -731,6 +732,49 @@ export default function SpeakToADoctorPage() {
             </button>
           </div>
         </div>
+
+        {/* Doctor picker — only shown when there are multiple doctors */}
+        {publicDoctors.length > 1 && (
+          <div className="mt-8">
+            <p className="text-xs font-semibold uppercase tracking-wide mb-3" style={{ color: "#6b7280" }}>
+              Choose your doctor <span className="normal-case font-normal">(optional — we'll assign the best match)</span>
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {publicDoctors.map((d) => {
+                const isSelected = (selectedDoctorId ?? publicDoctors[0]?.id) === d.id
+                return (
+                  <button
+                    key={d.id}
+                    onClick={() => setSelectedDoctorId(d.id)}
+                    className="flex items-center gap-3 rounded-lg px-4 py-3 text-left transition-all hover:shadow-sm"
+                    style={{
+                      background: "white",
+                      border: `1.5px solid ${isSelected ? WINE : BORDER}`,
+                    }}
+                  >
+                    <div className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden"
+                      style={{ background: isSelected ? `${WINE}15` : "#f3f4f6" }}>
+                      {d.avatarUrl
+                        ? <img src={d.avatarUrl} alt={d.name} className="w-full h-full object-cover" />
+                        : <User className="h-5 w-5" style={{ color: isSelected ? WINE : "#9ca3af" }} />
+                      }
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold text-sm truncate" style={{ color: WINE }}>{d.title} {d.name}</p>
+                      <p className="text-xs truncate" style={{ color: "#6b7280" }}>{d.specialization}</p>
+                    </div>
+                    {isSelected && (
+                      <span className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0"
+                        style={{ background: WINE }}>
+                        <Check className="h-3 w-3 text-white" />
+                      </span>
+                    )}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        )}
 
         {/* Trust badges */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-6">

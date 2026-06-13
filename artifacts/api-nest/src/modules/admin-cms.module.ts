@@ -33,11 +33,14 @@ import {
   Module,
   Param,
   Put,
+  Req,
   UseGuards,
 } from "@nestjs/common"
 import { and, asc, eq, sql } from "drizzle-orm"
 import { db, cmsDocs } from "@workspace/db"
 import { AdminGuard, AnyAdmin } from "../common/admin-guard"
+import { hasPermission } from "../common/admin-permissions"
+import type { Request } from "express"
 
 export type CmsEntry = {
   key: string
@@ -162,6 +165,45 @@ function assertKey(key: string) {
   }
 }
 
+/**
+ * Maps CMS document keys (or key prefixes) to the admin permission required
+ * to write/delete them. Any key not listed here requires no specific permission
+ * beyond a valid admin token (AnyAdmin). Super-admins always pass.
+ */
+const CMS_WRITE_PERM: Record<string, string> = {
+  "hero-slides":      "cms.banners",
+  "promo-banners":    "cms.banners",
+  "announcement":     "cms.banners",
+  "navbar-offers":    "cms.banners",
+  "popup-offer":      "cms.banners",
+  "custom-pages":     "cms.pages",
+  "footer":           "cms.footer",
+  "website-settings": "cms.settings",
+  "store-settings":   "cms.settings",
+  "categories":       "categories.manage",
+  "roles":            "roles.manage",
+  "staff":            "users.manage",
+  "message-templates":"integrations.manage",
+  "error-reporting":  "integrations.manage",
+  "storage":          "integrations.manage",
+  "clinics":          "sourcing.manage",
+  "suppliers":        "sourcing.manage",
+  "logistics-partners":"sourcing.manage",
+}
+
+function assertCmsWritePerm(key: string, req: Request): void {
+  const adminUser = (req as any).adminUser as { permissions?: string[]; role?: string } | undefined
+  const perms = adminUser?.permissions ?? []
+  const required = CMS_WRITE_PERM[key]
+  if (!required) return // no specific perm needed beyond AnyAdmin
+  if (!hasPermission(perms, required)) {
+    throw new HttpException(
+      `Permission denied — '${required}' is required to modify '${key}'`,
+      HttpStatus.FORBIDDEN,
+    )
+  }
+}
+
 @UseGuards(AdminGuard)
 @AnyAdmin()
 @Controller("admin/cms")
@@ -182,16 +224,18 @@ class AdminCmsController {
   }
 
   @Put(":key")
-  async put(@Param("key") key: string, @Body() body: unknown) {
+  async put(@Param("key") key: string, @Body() body: unknown, @Req() req: Request) {
     assertKey(key)
+    assertCmsWritePerm(key, req)
     // The raw request body IS the value — no envelope. This lets the client
     // PUT `JSON.stringify(value)` directly without wrapping in `{ value: … }`.
     return this.svc.put(key, body)
   }
 
   @Delete(":key")
-  async remove(@Param("key") key: string) {
+  async remove(@Param("key") key: string, @Req() req: Request) {
     assertKey(key)
+    assertCmsWritePerm(key, req)
     return { ok: await this.svc.remove(key) }
   }
 }

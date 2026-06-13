@@ -1,7 +1,7 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
-import { Search, Package, Truck, CheckCircle, Clock, XCircle, Loader2, Phone, Hash, MapPin } from "lucide-react"
+import { useState, useEffect, useCallback, useRef } from "react"
+import { Search, Package, Truck, CheckCircle, Clock, Loader2, Phone, Hash, MapPin } from "lucide-react"
 import { useStoreContact } from "@/hooks/use-store-contact"
 import { Seo, organizationJsonLd, websiteJsonLd, breadcrumbJsonLd, faqJsonLd, productJsonLd } from "@/components/seo"
 import { OrderJourney } from "./order-journey"
@@ -69,6 +69,12 @@ function getStepIndex(status: OrderStatus) {
   return statusSteps.findIndex(s => s.key === status)
 }
 
+const POLL_INTERVAL_MS = 30_000
+
+function isTerminal(status: OrderStatus) {
+  return status === "delivered" || status === "cancelled"
+}
+
 export function TrackOrderForm({ initialOrderNumber }: { initialOrderNumber?: string }) {
   const { whatsappNumber } = useStoreContact()
   const [searchType, setSearchType] = useState<"order" | "phone">("order")
@@ -77,24 +83,67 @@ export function TrackOrderForm({ initialOrderNumber }: { initialOrderNumber?: st
   const [loading,   setLoading]  = useState(false)
   const [error,     setError]    = useState("")
   const [searched,  setSearched] = useState(false)
+  const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null)
+  const [polling,   setPolling]  = useState(false)
+
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+
+  const fetchOrders = useCallback(async (type: "order" | "phone", value: string, silent = false): Promise<TrackedOrder[]> => {
+    const param = type === "order"
+      ? `orderNumber=${encodeURIComponent(value.trim())}`
+      : `phone=${encodeURIComponent(value.trim())}`
+    const res  = await fetch(`/api/v2/orders/track?${param}`, { credentials: "include" })
+    const data = await res.json()
+    if (!res.ok) throw new Error(data.error || "Order not found")
+    return data as TrackedOrder[]
+  }, [])
+
+  const stopPolling = useCallback(() => {
+    if (pollRef.current) {
+      clearInterval(pollRef.current)
+      pollRef.current = null
+    }
+    setPolling(false)
+  }, [])
+
+  const startPolling = useCallback((type: "order" | "phone", value: string) => {
+    stopPolling()
+    const tick = async () => {
+      try {
+        const fresh = await fetchOrders(type, value, true)
+        setOrders(fresh)
+        setLastRefreshed(new Date())
+        if (fresh.length > 0 && fresh.every(o => isTerminal(o.status))) {
+          stopPolling()
+        }
+      } catch {
+        // silent — don't clear existing results on a poll failure
+      }
+    }
+    pollRef.current = setInterval(tick, POLL_INTERVAL_MS)
+    setPolling(true)
+  }, [fetchOrders, stopPolling])
 
   const doSearch = useCallback(async (type: "order" | "phone", value: string) => {
     if (!value.trim()) return
+    stopPolling()
     setLoading(true); setError(""); setOrders([]); setSearched(true)
     try {
-      const param = type === "order"
-        ? `orderNumber=${encodeURIComponent(value.trim())}`
-        : `phone=${encodeURIComponent(value.trim())}`
-      const res  = await fetch(`/api/v2/orders/track?${param}`, { credentials: "include" })
-      const data = await res.json()
-      if (!res.ok) setError(data.error || "Order not found")
-      else setOrders(data)
-    } catch {
-      setError("Something went wrong. Please try again.")
+      const result = await fetchOrders(type, value)
+      setOrders(result)
+      setLastRefreshed(new Date())
+      const hasActive = result.some(o => !isTerminal(o.status))
+      if (hasActive) startPolling(type, value)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong. Please try again.")
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [fetchOrders, stopPolling, startPolling])
+
+  // Clean up on unmount
+  useEffect(() => () => { stopPolling() }, [stopPolling])
 
   useEffect(() => {
     const orderCode =
@@ -124,6 +173,24 @@ export function TrackOrderForm({ initialOrderNumber }: { initialOrderNumber?: st
 
       {/* Search card */}
       <div className="rounded-2xl border border-neutral-200 bg-white p-5 lg:p-6">
+        {/* Live indicator strip */}
+        {polling && (
+          <div className="flex items-center justify-between mb-4 px-3 py-2 rounded-xl bg-green-50 border border-green-200">
+            <div className="flex items-center gap-2">
+              <span className="relative flex h-2.5 w-2.5">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-500 opacity-75" />
+                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-green-500" />
+              </span>
+              <span className="text-xs font-semibold text-green-700">Live tracking — auto-refreshing every 30s</span>
+            </div>
+            {lastRefreshed && (
+              <span className="text-xs text-green-600 tabular-nums">
+                Updated {lastRefreshed.toLocaleTimeString("en-KE", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+              </span>
+            )}
+          </div>
+        )}
+
         {/* Toggle tabs */}
         <div className="inline-flex rounded-xl p-1 mb-5 bg-neutral-100">
           {([

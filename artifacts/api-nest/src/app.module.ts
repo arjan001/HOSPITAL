@@ -51,6 +51,7 @@ import { EmailModule } from "./modules/email.module"
 import { NotificationsModule } from "./modules/notifications.module"
 import { PipelineModule } from "./modules/pipeline.module"
 import { PartnersModule } from "./modules/partners.module"
+import { PharmacyModule } from "./modules/pharmacy.module"
 import { WhatsAppModule } from "./modules/whatsapp.module"
 import { ErrorReportingModule } from "./modules/error-reporting.module"
 import { StorageModule } from "./modules/storage.module"
@@ -104,6 +105,7 @@ import { PartnerDirectoryModule } from "./modules/partner-directory.module"
     NotificationsModule,
     PipelineModule,
     PartnersModule,
+    PharmacyModule,
     WhatsAppModule,
     ErrorReportingModule,
     StorageModule,

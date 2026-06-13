@@ -254,6 +254,27 @@ export function useSupplierQuotes(enabled = true) {
     () => pFetch<PartnerQuote[]>("/supplier/quotes"),
   )
 }
+
+export type PurchaseOrderSummary = {
+  id: string
+  supplierId: string
+  poNumber: string
+  status: string
+  total: number
+  expectedDate: string | null
+  notes: string | null
+  createdBy: string | null
+  createdAt: string
+  updatedAt: string
+  items: Array<{ id: string; name: string; qty: number; unitPrice: number; total: number }>
+}
+
+export function useSupplierPOs(enabled = true) {
+  return useSWR<PurchaseOrderSummary[]>(
+    enabled ? "partner:supplier:purchase-orders" : null,
+    () => pFetch<PurchaseOrderSummary[]>("/supplier/purchase-orders"),
+  )
+}
 export async function submitSupplierQuote(input: {
   sourcingRequestId?: string | null
   unitPrice: number

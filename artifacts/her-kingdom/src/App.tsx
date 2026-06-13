@@ -28,6 +28,9 @@ import { ServicesPage } from "@/components/store/services-page";
 import { TrackOrderForm } from "@/components/store/track-order-form";
 import { CarePacksPage } from "@/components/store/care-packs-page";
 import { CarePackAssessmentPage } from "@/components/store/care-pack-assessment-page";
+import { CarePackDetailPage } from "@/pages/store/care-pack-detail";
+import { AdminPharmacyBranches } from "@/components/admin/pharmacy-branches";
+import { AdminPharmacyPos } from "@/components/admin/pharmacy-pos";
 import FaqPage from "@/pages/faq";
 import ContactPage from "@/pages/contact";
 
@@ -123,6 +126,10 @@ import AccountSettingsPage from "@/pages/account/settings";
 import AccountDashboard from "@/pages/account/dashboard";
 import AccountPrescriptionsPage from "@/pages/account/prescriptions";
 import AccountOrdersPage from "@/pages/account/orders";
+import AccountAddressesPage from "@/pages/account/addresses";
+import AccountWishlistPage from "@/pages/account/wishlist";
+import AccountNotificationsPage from "@/pages/account/notifications";
+import AccountSecurityPage from "@/pages/account/security";
 import AccountLoginPage from "@/pages/account/login";
 import AccountRegisterPage from "@/pages/account/register";
 import AccountSupportPage from "@/pages/account/support";
@@ -136,6 +143,7 @@ import { AdminDoctors } from "@/components/admin/doctors";
 import { AdminPatientDetail } from "@/components/admin/patient-detail";
 import { AdminSupportTickets } from "@/components/admin/support-tickets";
 import { AdminLoginPage } from "@/pages/admin/login";
+import { AdminResetPasswordPage } from "@/pages/admin/reset-password";
 
 // Policy pages
 import PolicyPage from "@/pages/policy";
@@ -152,16 +160,18 @@ const queryClient = new QueryClient();
 
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
 
-const clerkPubKey = publishableKeyFromHost(
-  window.location.hostname,
-  import.meta.env.VITE_CLERK_PUBLISHABLE_KEY,
-);
+const clerkPubKey = (() => {
+  try {
+    return publishableKeyFromHost(
+      window.location.hostname,
+      import.meta.env.VITE_CLERK_PUBLISHABLE_KEY,
+    );
+  } catch {
+    return null;
+  }
+})();
 
 const clerkProxyUrl = import.meta.env.VITE_CLERK_PROXY_URL;
-
-if (!clerkPubKey) {
-  throw new Error("Missing VITE_CLERK_PUBLISHABLE_KEY");
-}
 
 function stripBase(path: string): string {
   return basePath && path.startsWith(basePath)
@@ -292,8 +302,8 @@ function SsoCallbackPage() {
         </p>
       </div>
       <AuthenticateWithRedirectCallback
-        signInFallbackRedirectUrl={`${basePath}/account/dashboard`}
-        signUpFallbackRedirectUrl={`${basePath}/account/dashboard`}
+        signInFallbackRedirectUrl={`${basePath}/account/settings`}
+        signUpFallbackRedirectUrl={`${basePath}/account/settings`}
       />
     </main>
   );
@@ -366,6 +376,7 @@ function Router() {
       </Route>
       <Route path="/search">{() => <SearchPage />}</Route>
       <Route path="/care-packs/assessment" component={CarePackAssessmentPage} />
+      <Route path="/care-packs/:slug" component={CarePackDetailPage} />
       <Route path="/care-packs" component={CarePacksPage} />
       <Route path="/faq" component={FaqPage} />
       <Route path="/contact" component={ContactPage} />
@@ -422,11 +433,23 @@ function Router() {
       <Route path="/account/orders">
         {() => <ProtectedAccount><AccountOrdersPage /></ProtectedAccount>}
       </Route>
+      <Route path="/account/addresses">
+        {() => <ProtectedAccount><AccountAddressesPage /></ProtectedAccount>}
+      </Route>
+      <Route path="/account/wishlist">
+        {() => <ProtectedAccount><AccountWishlistPage /></ProtectedAccount>}
+      </Route>
+      <Route path="/account/notifications">
+        {() => <ProtectedAccount><AccountNotificationsPage /></ProtectedAccount>}
+      </Route>
+      <Route path="/account/security">
+        {() => <ProtectedAccount><AccountSecurityPage /></ProtectedAccount>}
+      </Route>
       <Route path="/dashboard">
         {() => <Redirect to="/account/dashboard" />}
       </Route>
       <Route path="/user">
-        {() => <Redirect to="/account/dashboard" />}
+        {() => <Redirect to="/account" />}
       </Route>
       <Route path="/upload-prescription">
         {() => <ProtectedAccount><UploadPrescriptionPage /></ProtectedAccount>}
@@ -438,8 +461,9 @@ function Router() {
       <Route path="/doctor/patients" component={DoctorPatientsPage} />
       <Route path="/doctor" component={DoctorPanelPage} />
       <Route path="/account/support" component={AccountSupportPage} />
-      {/* Admin login — public, no AdminShell wrapper */}
+      {/* Admin login / password reset — public, no AdminShell wrapper */}
       <Route path="/admin/login" component={AdminLoginPage} />
+      <Route path="/admin/reset-password" component={AdminResetPasswordPage} />
       {/* Admin */}
       <Route path="/admin" component={AdminDashboard} />
       <Route path="/admin/dashboard" component={AdminDashboard} />
@@ -513,6 +537,8 @@ function Router() {
       <Route path="/admin/bulk-import" component={AdminBulkImport} />
       <Route path="/admin/consultations" component={AdminConsultations} />
       <Route path="/admin/inquiries" component={AdminContactInquiries} />
+      <Route path="/admin/pharmacy/branches" component={AdminPharmacyBranches} />
+      <Route path="/admin/pharmacy/pos" component={AdminPharmacyPos} />
       <Route path="/admin/doctors" component={AdminDoctors} />
       <Route path="/admin/patients/:id" component={AdminPatientDetail} />
       <Route path="/admin/support" component={AdminSupportTickets} />
@@ -630,6 +656,31 @@ function SiteHead() {
 function ClerkProviderWithRoutes() {
   const [, setLocation] = useLocation();
 
+  const inner = (
+    <QueryClientProvider client={queryClient}>
+      <ClerkQueryClientCacheInvalidator />
+      <CustomerMirror />
+      <SiteHead />
+      <ScrollToTop />
+      <WishlistProvider>
+        <CartProvider>
+          <ErrorBoundary scope="routes">
+            <MaintenanceGate>
+              <Router />
+            </MaintenanceGate>
+          </ErrorBoundary>
+          <GlobalOverlays />
+          <PageViewTracker />
+        </CartProvider>
+      </WishlistProvider>
+      <Toaster position="top-right" richColors closeButton />
+    </QueryClientProvider>
+  );
+
+  if (!clerkPubKey) {
+    return inner;
+  }
+
   return (
     <ClerkProvider
       publishableKey={clerkPubKey}
@@ -654,24 +705,7 @@ function ClerkProviderWithRoutes() {
       routerPush={(to) => setLocation(stripBase(to))}
       routerReplace={(to) => setLocation(stripBase(to), { replace: true })}
     >
-      <QueryClientProvider client={queryClient}>
-        <ClerkQueryClientCacheInvalidator />
-        <CustomerMirror />
-        <SiteHead />
-        <ScrollToTop />
-        <WishlistProvider>
-          <CartProvider>
-            <ErrorBoundary scope="routes">
-              <MaintenanceGate>
-                <Router />
-              </MaintenanceGate>
-            </ErrorBoundary>
-            <GlobalOverlays />
-            <PageViewTracker />
-          </CartProvider>
-        </WishlistProvider>
-        <Toaster position="top-right" richColors closeButton />
-      </QueryClientProvider>
+      {inner}
     </ClerkProvider>
   );
 }

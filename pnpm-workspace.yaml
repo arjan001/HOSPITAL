@@ -6,6 +6,8 @@ packages:
 
 allowBuilds:
   tesseract.js: true
+  "@clerk/shared": true
+  "@nestjs/core": true
 
 autoInstallPeers: false
 

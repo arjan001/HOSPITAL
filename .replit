@@ -18,26 +18,31 @@ author = "agent"
 
 [[workflows.workflow.tasks]]
 task = "workflow.run"
-args = "test"
+args = "Start application"
 
 [[workflows.workflow]]
-name = "test"
+name = "Start application"
 author = "agent"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "pnpm --filter @workspace/api-nest run test"
+args = "bash start.sh"
+waitForPort = 5000
 
 [workflows.workflow.metadata]
-isValidation = true
+outputType = "webview"
 
 [agent]
-stack = "PNPM_WORKSPACE"
+stack = "BEST_EFFORT_FALLBACK"
 expertMode = true
 
 [postMerge]
 path = "scripts/post-merge.sh"
 timeoutMs = 20000
+
+[[ports]]
+localPort = 5000
+externalPort = 80
 
 [[ports]]
 localPort = 8080
@@ -81,6 +86,10 @@ externalPort = 80
 PAYSTACK_PUBLIC_KEY = "pk_test_29cf9e81fde7d39d097459c2ebd74af8135d274e"
 
 [userenv.production]
+
+[userenv.development]
+PORT = "8080"
+NODE_ENV = "development"
 
 [nix]
 channel = "stable-25_05"
