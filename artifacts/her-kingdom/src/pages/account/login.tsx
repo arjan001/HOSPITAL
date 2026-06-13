@@ -70,11 +70,11 @@ export default function AccountLoginPage() {
 
   /* Where to land after a successful sign-in. Gated pages (e.g.
      /upload-prescription) send the user here with `?redirect=<path>`; we
-     validate it as a same-origin relative path and fall back to /user. */
+     validate it as a same-origin relative path and fall back to /account/settings. */
   const redirectParam = getSafeRedirect(
     typeof window !== "undefined" ? window.location.search : "",
   )
-  const redirectTo = redirectParam || "/user"
+  const redirectTo = redirectParam || "/account/settings"
   const redirectQuery = buildRedirectQuery(redirectParam)
 
   const [step, setStep]       = useState<Step>("signin")
