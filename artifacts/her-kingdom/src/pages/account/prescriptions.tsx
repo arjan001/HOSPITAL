@@ -13,9 +13,7 @@ import {
   Bell,
   Calendar,
 } from "lucide-react"
-import { TopBar } from "@/components/store/top-bar"
-import { Navbar } from "@/components/store/navbar"
-import { Footer } from "@/components/store/footer"
+import { AccountShell } from "@/components/account/account-shell"
 import { Seo } from "@/components/seo"
 import {
   useMyPrescriptions,
@@ -80,71 +78,67 @@ export default function AccountPrescriptionsPage() {
   )
 
   return (
-    <>
+    <AccountShell
+      title="My Prescriptions"
+      subtitle="Upload, review and refill your prescriptions"
+      user={{ name: me?.fullName || "You", email: me?.email || "", phone: me?.phone }}
+    >
       <Seo
         title="My Prescriptions — Shaniid RX"
         description="View, refill and track the status of your prescriptions on Shaniid RX."
         canonicalPath="/account/prescriptions"
         noindex
       />
-      <TopBar />
-      <Navbar />
-      <div className="min-h-screen" style={{ background: CREAM }}>
-        <div className="mx-auto max-w-5xl space-y-6 px-4 py-8">
-          <div className="flex items-center justify-between gap-3">
-            <Link
-              href="/account"
-              className="inline-flex items-center gap-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground"
+      <div className="space-y-6">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex-1" />
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => { void mutate() }}
+              className="inline-flex h-9 items-center gap-1.5 rounded-md border border-border bg-white px-3 text-xs font-semibold"
+              style={{ color: WINE }}
+              title="Refresh"
             >
-              <ArrowLeft className="h-3.5 w-3.5" /> Back to account
+              <RefreshCw className="h-3.5 w-3.5" /> Refresh
+            </button>
+            <Link
+              href="/upload-prescription"
+              className="inline-flex h-9 items-center gap-1.5 rounded-md px-4 text-xs font-semibold text-white shadow-sm"
+              style={{ background: `linear-gradient(135deg, ${ACCENT} 0%, ${ACCENT_RED} 100%)` }}
+            >
+              <Upload className="h-3.5 w-3.5" /> Upload prescription
             </Link>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => { void mutate() }}
-                className="inline-flex h-9 items-center gap-1.5 rounded-md border border-border bg-white px-3 text-xs font-semibold"
-                style={{ color: WINE }}
-                title="Refresh"
-              >
-                <RefreshCw className="h-3.5 w-3.5" /> Refresh
-              </button>
-              <Link
-                href="/upload-prescription"
-                className="inline-flex h-9 items-center gap-1.5 rounded-md px-4 text-xs font-semibold text-white shadow-sm"
-                style={{ background: `linear-gradient(135deg, ${ACCENT} 0%, ${ACCENT_RED} 100%)` }}
-              >
-                <Upload className="h-3.5 w-3.5" /> Upload prescription
-              </Link>
-            </div>
           </div>
+        </div>
 
-          {/* Hero card with brand language and the trust seal motif. */}
+        {/* Hero card with brand language and the trust seal motif. */}
+        <div
+          className="relative overflow-hidden rounded-2xl p-6 text-white shadow-lg"
+          style={{ background: `linear-gradient(135deg, ${WINE} 0%, #6B0F1A 100%)` }}
+        >
           <div
-            className="relative overflow-hidden rounded-2xl p-6 text-white shadow-lg"
-            style={{ background: `linear-gradient(135deg, ${WINE} 0%, #6B0F1A 100%)` }}
-          >
-            <div
-              aria-hidden
-              className="absolute -right-10 -top-10 h-44 w-44 rounded-full opacity-20"
-              style={{ background: `radial-gradient(circle, ${ACCENT} 0%, transparent 65%)` }}
-            />
-            <div className="relative flex flex-wrap items-end justify-between gap-4">
-              <div>
-                <div className="flex items-center gap-2 text-xs uppercase tracking-widest text-white/70">
-                  <ShieldCheck className="h-3.5 w-3.5" /> Trust seal · Verified care
-                </div>
-                <h1 className="mt-1 text-2xl font-bold">My prescriptions</h1>
-                <p className="mt-1 max-w-xl text-sm text-white/80">
-                  Follow each prescription from upload through verification to delivery. Approved
-                  medication, dosage and pharmacist instructions appear here as soon as your
-                  pharmacist signs off.
-                </p>
+            aria-hidden
+            className="absolute -right-10 -top-10 h-44 w-44 rounded-full opacity-20"
+            style={{ background: `radial-gradient(circle, ${ACCENT} 0%, transparent 65%)` }}
+          />
+          <div className="relative flex flex-wrap items-end justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-2 text-xs uppercase tracking-widest text-white/70">
+                <ShieldCheck className="h-3.5 w-3.5" /> Trust seal · Verified care
               </div>
-              <div className="flex items-center gap-2">
-                <KpiChip label="Total" value={counts.all} tone="rgba(255,255,255,0.95)" />
-                <KpiChip label="Ready / paid" value={counts.verified + counts.accepted + counts.dispensed} tone="#86EFAC" />
-              </div>
+              <h1 className="mt-1 text-2xl font-bold">My prescriptions</h1>
+              <p className="mt-1 max-w-xl text-sm text-white/80">
+                Follow each prescription from upload through verification to delivery. Approved
+                medication, dosage and pharmacist instructions appear here as soon as your
+                pharmacist signs off.
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <KpiChip label="Total" value={counts.all} tone="rgba(255,255,255,0.95)" />
+              <KpiChip label="Ready / paid" value={counts.verified + counts.accepted + counts.dispensed} tone="#86EFAC" />
             </div>
           </div>
+        </div>
 
           {refillPrefOn && (
             <RefillRemindersPanel
@@ -372,9 +366,7 @@ export default function AccountPrescriptionsPage() {
         />
         )
       })()}
-
-      <Footer />
-    </>
+    </AccountShell>
   )
 }
 
