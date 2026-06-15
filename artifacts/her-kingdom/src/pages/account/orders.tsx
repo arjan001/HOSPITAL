@@ -105,7 +105,7 @@ function FeedbackForm({ orderNo, onDone }: { orderNo: string; onDone: () => void
 }
 
 function OrderRow({ order }: { order: AccountOrder }) {
-  const canFeedback = order.status === "fulfilled" || order.status === "delivered"
+  const canFeedback = order.status === "fulfilled"
   const { data: existing, mutate } = useSWR<DeliveryFeedbackDto | null>(
     canFeedback ? `/me/orders/${order.number}/feedback` : null,
     () => apiNest.getOrderFeedback(order.number),

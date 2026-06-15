@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import { useUser, useClerk } from "@clerk/react"
-import { AccountShell } from "@/components/account/account-shell"
+import { AccountShell, useAccountShellUser } from "@/components/account/account-shell"
 import { Seo } from "@/components/seo"
 import { useMe, apiNest } from "@/lib/api-nest"
 import { mutate } from "swr"
@@ -55,6 +55,7 @@ export default function AccountSecurityPage() {
   const { data: me } = useMe()
   const { user: clerkUser } = useUser()
   const { signOut } = useClerk()
+  const user = useAccountShellUser()
 
   const [showPw, setShowPw] = useState(false)
   const [pwData, setPwData] = useState({ current: "", next: "", confirm: "" })
@@ -65,13 +66,6 @@ export default function AccountSecurityPage() {
   const [twoFa, setTwoFa] = useState(securityPrefs.twoFactorEnabled ?? false)
   const [loginAlerts, setLoginAlerts] = useState(securityPrefs.loginAlerts ?? true)
   const [prefSaving, setPrefSaving] = useState(false)
-
-  const user = {
-    name: me?.fullName ?? clerkUser?.fullName ?? "You",
-    email: me?.email ?? clerkUser?.primaryEmailAddress?.emailAddress ?? "",
-    phone: me?.phone,
-    avatarUrl: me?.avatarUrl ?? clerkUser?.imageUrl,
-  }
 
   async function changePassword() {
     if (!pwData.current || !pwData.next) {
@@ -124,7 +118,12 @@ export default function AccountSecurityPage() {
 
   return (
     <AccountShell title="Security" subtitle="Manage your password, two-factor authentication, and account sessions" user={user}>
-      <Seo title="Security — Shaniid RX" />
+      <Seo
+        title="Security — Shaniid RX"
+        description="Manage your password, two-factor authentication, and account sessions on Shaniid RX."
+        canonicalPath="/account/security"
+        noindex
+      />
 
       <div className="space-y-5">
         {/* Change password */}

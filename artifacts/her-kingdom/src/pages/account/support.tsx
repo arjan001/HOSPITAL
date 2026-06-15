@@ -1,12 +1,9 @@
-import { useEffect, useMemo, useState } from "react"
-import { Link } from "wouter"
+import { useMemo, useState } from "react"
 import { useUser } from "@clerk/react"
-import { TopBar } from "@/components/store/top-bar"
-import { Navbar } from "@/components/store/navbar"
-import { Footer } from "@/components/store/footer"
+import { AccountShell, useAccountShellUser } from "@/components/account/account-shell"
 import { Seo } from "@/components/seo"
 import {
-  ArrowLeft, MessageCircle, Plus, Send, ShieldCheck, X, Pencil, Trash2,
+  MessageCircle, Plus, Send, X, Pencil, Trash2,
 } from "lucide-react"
 import {
   useMyTickets,
@@ -20,7 +17,6 @@ import {
 const WINE = "#3D0814"
 const ACCENT = "#F97316"
 const ACCENT_RED = "#B91C1C"
-const CREAM = "#FFFBF5"
 
 const STATUS_META: Record<ClientTicket["status"], { label: string; bg: string; color: string }> = {
   open:     { label: "Open",     bg: "#DBEAFE", color: "#1E40AF" },
@@ -43,6 +39,7 @@ function timeAgo(iso: string) {
 
 export default function AccountSupportPage() {
   const { user } = useUser()
+  const shellUser = useAccountShellUser()
   const { items, refresh, loading } = useMyTickets()
   const [openId, setOpenId] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
@@ -51,45 +48,31 @@ export default function AccountSupportPage() {
   const active = useMemo(() => items.find((t) => t.id === openId) ?? null, [items, openId])
 
   return (
-    <>
+    <AccountShell
+      title="Help & support"
+      subtitle="Open a ticket and our care team will reply — usually within fifteen minutes during working hours"
+      user={shellUser}
+    >
       <Seo
         title="Support — Shaniid RX"
         description="Open a ticket or follow up on existing conversations with the Shaniid RX care team."
         canonicalPath="/account/support"
         noindex
       />
-      <TopBar />
-      <Navbar />
-      <div className="min-h-screen" style={{ background: CREAM }}>
-        <div className="mx-auto max-w-5xl px-4 py-8 space-y-6">
-          <div className="flex items-center justify-between flex-wrap gap-3">
-            <Link href="/account" className="inline-flex items-center gap-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground">
-              <ArrowLeft className="h-3.5 w-3.5" /> Back to account
-            </Link>
-            <button
-              type="button"
-              onClick={() => setCreating(true)}
-              className="inline-flex items-center gap-1.5 h-10 px-4 rounded-full text-sm font-semibold text-white shadow-sm"
-              style={{ background: `linear-gradient(135deg, ${ACCENT}, ${ACCENT_RED})` }}
-            >
-              <Plus className="h-4 w-4" /> New ticket
-            </button>
-          </div>
 
-          <div
-            className="relative overflow-hidden rounded-2xl p-6 text-white shadow-lg"
-            style={{ background: `linear-gradient(135deg, ${WINE} 0%, #6B0F1A 100%)` }}
+      <div className="space-y-4">
+        <div className="flex justify-end">
+          <button
+            type="button"
+            onClick={() => setCreating(true)}
+            className="inline-flex items-center gap-1.5 h-10 px-4 rounded-full text-sm font-semibold text-white shadow-sm"
+            style={{ background: `linear-gradient(135deg, ${ACCENT}, ${ACCENT_RED})` }}
           >
-            <div className="flex items-center gap-2 text-xs uppercase tracking-widest text-white/70">
-              <ShieldCheck className="h-3.5 w-3.5" /> Calm, professional support
-            </div>
-            <h1 className="mt-1 text-2xl font-bold">Help & support</h1>
-            <p className="mt-1 max-w-xl text-sm text-white/80">
-              Open a ticket and a real pharmacist or our care team will reply. Your past conversations stay here so you can pick up where you left off.
-            </p>
-          </div>
+            <Plus className="h-4 w-4" /> New ticket
+          </button>
+        </div>
 
-          <div className="rounded-2xl border border-border bg-white shadow-sm">
+        <div className="rounded-2xl border border-border bg-white shadow-sm">
             {loading ? (
               <div className="px-6 py-14 text-center text-sm text-muted-foreground">Loading your tickets…</div>
             ) : items.length === 0 ? (
@@ -148,7 +131,6 @@ export default function AccountSupportPage() {
               </ul>
             )}
           </div>
-        </div>
       </div>
 
       {creating && (
@@ -189,9 +171,7 @@ export default function AccountSupportPage() {
           }}
         />
       )}
-
-      <Footer />
-    </>
+    </AccountShell>
   )
 }
 

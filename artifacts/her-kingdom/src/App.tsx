@@ -460,7 +460,9 @@ function Router() {
       <Route path="/doctor/accept" component={DoctorAcceptPage} />
       <Route path="/doctor/patients" component={DoctorPatientsPage} />
       <Route path="/doctor" component={DoctorPanelPage} />
-      <Route path="/account/support" component={AccountSupportPage} />
+      <Route path="/account/support">
+        {() => <ProtectedAccount><AccountSupportPage /></ProtectedAccount>}
+      </Route>
       {/* Admin login / password reset — public, no AdminShell wrapper */}
       <Route path="/admin/login" component={AdminLoginPage} />
       <Route path="/admin/reset-password" component={AdminResetPasswordPage} />

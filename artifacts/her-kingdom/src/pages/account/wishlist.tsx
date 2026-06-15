@@ -3,9 +3,9 @@
 import { useState } from "react"
 import { Link } from "wouter"
 import useSWR from "swr"
-import { AccountShell } from "@/components/account/account-shell"
+import { AccountShell, useAccountShellUser } from "@/components/account/account-shell"
 import { Seo } from "@/components/seo"
-import { useMe, useWishlistRemote, apiNest, type AccountWishlistItem } from "@/lib/api-nest"
+import { useWishlistRemote, apiNest, type AccountWishlistItem } from "@/lib/api-nest"
 import { mutate } from "swr"
 import {
   Heart, Trash2, ShoppingCart, Loader2, Package, ArrowRight, Eye,
@@ -55,7 +55,13 @@ function ProductCard({ item }: { item: AccountWishlistItem }) {
       slug: product.slug,
       name: product.name,
       price: product.price,
-      image: product.images?.[0],
+      images: product.images ?? [],
+      category: product.category ?? "",
+      categorySlug: product.category ?? "",
+      description: "",
+      tags: [],
+      inStock: product.inStock ?? true,
+      createdAt: new Date().toISOString(),
     })
     setAddedToCart(true)
     setTimeout(() => setAddedToCart(false), 2000)
@@ -156,16 +162,9 @@ function ProductCard({ item }: { item: AccountWishlistItem }) {
 }
 
 export default function AccountWishlistPage() {
-  const { data: me } = useMe()
+  const user = useAccountShellUser()
   const { data, isLoading, error } = useWishlistRemote()
   const items = data ?? []
-
-  const user = {
-    name: me?.fullName ?? "You",
-    email: me?.email ?? "",
-    phone: me?.phone,
-    avatarUrl: me?.avatarUrl,
-  }
 
   return (
     <AccountShell
@@ -173,7 +172,12 @@ export default function AccountWishlistPage() {
       subtitle="Products you've saved — ready to add to your cart anytime"
       user={user}
     >
-      <Seo title="My Wishlist — Shaniid RX" />
+      <Seo
+        title="My Wishlist — Shaniid RX"
+        description="Products you've saved on Shaniid RX — ready to add to your cart anytime."
+        canonicalPath="/account/wishlist"
+        noindex
+      />
 
       {isLoading && (
         <div className="flex items-center justify-center py-16">

@@ -1,8 +1,7 @@
 "use client"
 
-import { AccountShell } from "@/components/account/account-shell"
+import { AccountShell, useAccountShellUser } from "@/components/account/account-shell"
 import { Seo } from "@/components/seo"
-import { useMe } from "@/lib/api-nest"
 import { useMyNotifications } from "@/lib/notifications-client"
 import { Link } from "wouter"
 import {
@@ -42,15 +41,8 @@ function fmtRelative(iso: string) {
 }
 
 export default function AccountNotificationsPage() {
-  const { data: me } = useMe()
+  const user = useAccountShellUser()
   const { items, unread, loading, markAllRead, clearAll, refresh } = useMyNotifications(10_000)
-
-  const user = {
-    name: me?.fullName ?? "You",
-    email: me?.email ?? "",
-    phone: me?.phone,
-    avatarUrl: me?.avatarUrl,
-  }
 
   const unreadItems = items.filter((n) => !n.read)
   const readItems   = items.filter((n) => n.read)
@@ -101,7 +93,12 @@ export default function AccountNotificationsPage() {
 
   return (
     <AccountShell title="Notifications" subtitle="Stay up to date with your orders, prescriptions and messages" user={user}>
-      <Seo title="Notifications — Shaniid RX" />
+      <Seo
+        title="Notifications — Shaniid RX"
+        description="Stay up to date with your orders, prescriptions and messages on Shaniid RX."
+        canonicalPath="/account/notifications"
+        noindex
+      />
 
       <div className="space-y-4">
         {/* Header actions */}

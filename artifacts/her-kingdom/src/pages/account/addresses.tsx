@@ -1,9 +1,9 @@
 "use client"
 
 import { useState } from "react"
-import { AccountShell } from "@/components/account/account-shell"
+import { AccountShell, useAccountShellUser } from "@/components/account/account-shell"
 import { Seo } from "@/components/seo"
-import { useAddresses, useMe, apiNest, type AccountAddress } from "@/lib/api-nest"
+import { useAddresses, apiNest, type AccountAddress } from "@/lib/api-nest"
 import { mutate } from "swr"
 import {
   MapPin, Plus, Pencil, Trash2, Star, X, Save, Loader2, Home, Building2,
@@ -225,19 +225,12 @@ function AddressModal({
 }
 
 export default function AccountAddressesPage() {
-  const { data: me } = useMe()
+  const user = useAccountShellUser()
   const { data, isLoading, error } = useAddresses()
   const addresses = data ?? []
   const [showModal, setShowModal] = useState(false)
   const [editing, setEditing] = useState<AccountAddress | null>(null)
   const [deleting, setDeleting] = useState<string | null>(null)
-
-  const user = {
-    name: me?.fullName ?? "You",
-    email: me?.email ?? "",
-    phone: me?.phone,
-    avatarUrl: me?.avatarUrl,
-  }
 
   async function handleDelete(id: string) {
     if (!confirm("Remove this address?")) return
@@ -263,7 +256,12 @@ export default function AccountAddressesPage() {
 
   return (
     <AccountShell title="Addresses" subtitle="Manage your saved delivery addresses" user={user}>
-      <Seo title="My Addresses — Shaniid RX" />
+      <Seo
+        title="My Addresses — Shaniid RX"
+        description="Manage your saved delivery addresses for faster checkout on Shaniid RX."
+        canonicalPath="/account/addresses"
+        noindex
+      />
 
       <div className="space-y-4">
         {/* Add button */}

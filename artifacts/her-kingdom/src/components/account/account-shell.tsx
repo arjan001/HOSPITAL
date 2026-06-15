@@ -2,12 +2,15 @@
 
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react"
 import { Link, useLocation } from "wouter"
+import { useUser, useClerk } from "@clerk/react"
 import { TopBar } from "@/components/store/top-bar"
 import { Navbar } from "@/components/store/navbar"
 import { Footer } from "@/components/store/footer"
 import { AccountNotificationBell } from "@/components/account/account-notification-bell"
 import { useMyNotifications } from "@/lib/notifications-client"
+import { useMe } from "@/lib/api-nest"
 import {
+  LayoutDashboard,
   UserCircle,
   MapPin,
   Heart,
@@ -20,6 +23,7 @@ import {
   ChevronRight,
   MessagesSquare,
   History,
+  LifeBuoy,
 } from "lucide-react"
 
 const WINE = "#3D0814"
@@ -27,6 +31,7 @@ const CREAM = "#FFFBF5"
 const PEACH_BORDER = "#F2DCC8"
 
 const NAV: Array<{ href: string; label: string; icon: typeof UserCircle; hint?: string }> = [
+  { href: "/account",               label: "Dashboard",          icon: LayoutDashboard, hint: "Overview" },
   { href: "/account/settings",      label: "Profile & Settings", icon: UserCircle, hint: "Personal info" },
   { href: "/account/orders",        label: "Orders",             icon: Receipt },
   { href: "/account/chat",          label: "Talk to Pharmacist", icon: MessagesSquare, hint: "Live chat" },
@@ -34,9 +39,36 @@ const NAV: Array<{ href: string; label: string; icon: typeof UserCircle; hint?: 
   { href: "/account/prescriptions", label: "Prescriptions",      icon: Pill },
   { href: "/account/addresses",     label: "Addresses",          icon: MapPin },
   { href: "/account/wishlist",      label: "Wishlist",           icon: Heart },
-  { href: "/account/notifications", label: "Notifications",      icon: Bell },
+  { href: "/account/notifications", label: "Notifications",    icon: Bell },
+  { href: "/account/support",       label: "Help & Support",     icon: LifeBuoy },
   { href: "/account/security",      label: "Security",           icon: ShieldCheck },
 ]
+
+export type AccountShellUser = {
+  name: string
+  email: string
+  phone?: string
+  avatarUrl?: string
+}
+
+/** Standard signed-in user payload for every account page. */
+export function useAccountShellUser(): AccountShellUser {
+  const { data: me } = useMe()
+  const { user } = useUser()
+  return {
+    name: me?.fullName || user?.fullName || user?.firstName || "You",
+    email: me?.email || user?.primaryEmailAddress?.emailAddress || "",
+    phone: me?.phone || user?.primaryPhoneNumber?.phoneNumber || "",
+    avatarUrl: user?.imageUrl,
+  }
+}
+
+function isNavActive(pathname: string, href: string): boolean {
+  if (href === "/account") {
+    return pathname === "/account" || pathname === "/account/dashboard"
+  }
+  return pathname === href
+}
 
 export function AccountShell({
   title,
@@ -46,10 +78,11 @@ export function AccountShell({
 }: {
   title: string
   subtitle?: string
-  user: { name: string; email: string; phone?: string; avatarUrl?: string }
+  user: AccountShellUser
   children: ReactNode
 }) {
   const [pathname] = useLocation()
+  const { signOut } = useClerk()
   const { items, unread, markAllRead, clearAll, refresh } = useMyNotifications()
 
   // Unread count per nav item — an unread notification badges the tab whose
@@ -158,7 +191,7 @@ export function AccountShell({
           <aside className="lg:sticky lg:top-6 self-start space-y-3">
             <nav className="rounded-xl bg-white border overflow-hidden" style={{ borderColor: PEACH_BORDER }}>
               {NAV.map((item) => {
-                const isActive = pathname === item.href
+                const isActive = isNavActive(pathname, item.href)
                 return (
                   <Link
                     key={item.href}
@@ -198,9 +231,7 @@ export function AccountShell({
             </nav>
             <button
               type="button"
-              onClick={() => {
-                if (typeof window !== "undefined") window.location.href = "/"
-              }}
+              onClick={() => void signOut(() => { window.location.href = "/" })}
               className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border bg-white text-sm font-medium text-[#3D0814] hover:bg-[#FFFBF5] transition-colors"
               style={{ borderColor: PEACH_BORDER }}
             >

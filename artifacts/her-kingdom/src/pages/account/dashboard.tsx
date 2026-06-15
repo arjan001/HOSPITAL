@@ -1,14 +1,18 @@
 import { useState } from "react"
 import { Link } from "wouter"
-import { Heart, MapPin, Package, User as UserIcon, Mail, Phone, Settings, ShieldCheck, ClipboardList, Pill, Clock, CheckCheck, ChevronRight, Upload, FileText, Eye, LifeBuoy, Bell } from "lucide-react"
+import {
+  Heart, MapPin, Package, User as UserIcon, Mail, Phone, ClipboardList, Pill, Clock, CheckCheck,
+  ChevronRight, Upload, FileText, Eye, LifeBuoy, Bell, MessagesSquare, Truck, Stethoscope,
+} from "lucide-react"
 import { useMe, useAddresses, useOrders, useWishlistRemote, useMyPrescriptions, apiPrescriptions, type RxStatus } from "@/lib/api-nest"
 import { STATUS_META, RxDetailModal } from "@/components/account/rx-detail-modal"
 import { RxBuyModal } from "@/components/account/rx-buy-modal"
+import { AccountShell, useAccountShellUser } from "@/components/account/account-shell"
 import { Seo } from "@/components/seo"
 
 const WINE = "#3D0814"
 const ACCENT = "#F97316"
-const CREAM = "#FFFBF5"
+const ACCENT_RED = "#B91C1C"
 
 const STATUS_TONES: Record<RxStatus, { label: string; color: string; bg: string }> = Object.fromEntries(
   (Object.keys(STATUS_META) as RxStatus[]).map((k) => [
@@ -16,6 +20,16 @@ const STATUS_TONES: Record<RxStatus, { label: string; color: string; bg: string 
     { label: STATUS_META[k].label, color: STATUS_META[k].color, bg: STATUS_META[k].bg },
   ]),
 ) as Record<RxStatus, { label: string; color: string; bg: string }>
+
+const ORDER_STATUS_LABELS: Record<string, string> = {
+  pending: "Pending",
+  paid: "Confirmed",
+  confirmed: "Confirmed",
+  dispatched: "Dispatched",
+  fulfilled: "Delivered",
+  delivered: "Delivered",
+  cancelled: "Cancelled",
+}
 
 function MiniRxStat({ icon: Icon, label, value, tone, bg }: {
   icon: typeof Heart; label: string; value: number; tone: string; bg: string
@@ -65,7 +79,39 @@ function StatCard({
   )
 }
 
+function QuickAction({
+  href,
+  icon: Icon,
+  label,
+  desc,
+}: {
+  href: string
+  icon: typeof Upload
+  label: string
+  desc: string
+}) {
+  return (
+    <Link
+      href={href}
+      className="flex items-center gap-3 rounded-xl border border-border bg-white p-4 transition hover:shadow-md"
+    >
+      <div
+        className="grid h-10 w-10 flex-shrink-0 place-items-center rounded-lg"
+        style={{ background: `${ACCENT}1a`, color: ACCENT }}
+      >
+        <Icon className="h-5 w-5" />
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="text-sm font-semibold" style={{ color: WINE }}>{label}</div>
+        <div className="text-[11px] text-muted-foreground">{desc}</div>
+      </div>
+      <ChevronRight className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
+    </Link>
+  )
+}
+
 export default function AccountDashboard() {
+  const user = useAccountShellUser()
   const { data: me } = useMe()
   const { data: addresses } = useAddresses()
   const { data: orders } = useOrders()
@@ -83,42 +129,21 @@ export default function AccountDashboard() {
   const rxVerified = rxRows.filter((r) => r.status === "verified").length
   const rxAccepted = rxRows.filter((r) => r.status === "accepted").length
 
-  const firstName = me?.fullName ? me.fullName.split(" ")[0] : ""
-
   return (
-    <div className="min-h-screen" style={{ background: CREAM }}>
+    <AccountShell
+      title="Dashboard"
+      subtitle="Your orders, prescriptions and account at a glance"
+      user={user}
+    >
       <Seo
         title="My Account — Shaniid RX"
         description="Manage your Shaniid RX orders, prescriptions, addresses and wishlist."
         canonicalPath="/account"
         noindex
       />
-      <div className="mx-auto max-w-5xl space-y-6 px-4 py-8">
-        <div
-          className="flex flex-wrap items-center justify-between gap-4 rounded-2xl p-6 text-white shadow-lg"
-          style={{ background: `linear-gradient(135deg, ${WINE} 0%, #6B0F1A 100%)` }}
-        >
-          <div>
-            <div className="flex items-center gap-2 text-xs uppercase tracking-widest text-white/70">
-              <ShieldCheck className="h-3.5 w-3.5" /> Verified account
-            </div>
-            <h1 className="mt-1 text-2xl font-bold">
-              Welcome back{firstName ? `, ${firstName}` : ""}
-            </h1>
-            <p className="mt-1 text-sm text-white/80">
-              Manage your profile, delivery addresses, orders and saved items.
-            </p>
-          </div>
-          <Link
-            href="/account/settings"
-            className="inline-flex h-10 items-center gap-2 rounded-md px-4 text-sm font-semibold text-white"
-            style={{ background: ACCENT }}
-          >
-            <Settings className="h-4 w-4" /> Account settings
-          </Link>
-        </div>
 
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+      <div className="space-y-6">
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
           <StatCard icon={Package} label="Orders" value={orders?.length ?? 0} href="/account/orders" />
           <StatCard icon={ClipboardList} label="Prescriptions" value={rxRows.length} href="/account/prescriptions" />
           <StatCard icon={MapPin} label="Addresses" value={addresses?.length ?? 0} href="/account/addresses" />
@@ -127,8 +152,13 @@ export default function AccountDashboard() {
           <StatCard icon={LifeBuoy} label="Support" value="Get help" href="/account/support" />
         </div>
 
-        {/* Always-visible prescriptions panel — the click target the user expects
-            even before they have any uploads. */}
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <QuickAction href="/upload-prescription" icon={Upload} label="Upload prescription" desc="Send a new Rx for review" />
+          <QuickAction href="/account/chat" icon={MessagesSquare} label="Talk to pharmacist" desc="Live chat with our team" />
+          <QuickAction href="/speak-to-a-doctor" icon={Stethoscope} label="Speak to a doctor" desc="Book a consultation" />
+          <QuickAction href="/track-order" icon={Truck} label="Track an order" desc="Check delivery status" />
+        </div>
+
         <div className="overflow-hidden rounded-2xl border border-border bg-white shadow-sm">
           <div
             className="flex flex-wrap items-center justify-between gap-3 px-5 py-4"
@@ -158,10 +188,10 @@ export default function AccountDashboard() {
           </div>
 
           <div className="grid grid-cols-2 gap-2 px-5 pt-4 md:grid-cols-4">
-            <MiniRxStat icon={Clock}      label="Awaiting"             value={rxPending}              tone="#92400E" bg="#FEF3C7" />
-            <MiniRxStat icon={CheckCheck} label="Quotation / paid"       value={rxVerifiedOrDispensed}  tone="#166534" bg="#DCFCE7" />
-            <MiniRxStat icon={Pill}       label="Approved meds"        value={rxApprovedMeds}         tone="#1E40AF" bg="#DBEAFE" />
-            <MiniRxStat icon={ShieldCheck} label="Action required"     value={rxAttention}            tone="#991B1B" bg="#FEE2E2" />
+            <MiniRxStat icon={Clock} label="Awaiting" value={rxPending} tone="#92400E" bg="#FEF3C7" />
+            <MiniRxStat icon={CheckCheck} label="Quotation / paid" value={rxVerifiedOrDispensed} tone="#166534" bg="#DCFCE7" />
+            <MiniRxStat icon={Pill} label="Approved meds" value={rxApprovedMeds} tone="#1E40AF" bg="#DBEAFE" />
+            <MiniRxStat icon={LifeBuoy} label="Action required" value={rxAttention} tone="#991B1B" bg="#FEE2E2" />
           </div>
 
           {(rxVerified > 0 || rxAccepted > 0) && (
@@ -175,9 +205,7 @@ export default function AccountDashboard() {
                     ? `${rxVerified} quotation${rxVerified === 1 ? "" : "s"} ready to review`
                     : `${rxAccepted} prescription${rxAccepted === 1 ? "" : "s"} ready to pay`}
                 </p>
-                <p className="mt-0.5 text-xs">
-                  Open a prescription below to accept and pay.
-                </p>
+                <p className="mt-0.5 text-xs">Open a prescription below to accept and pay.</p>
               </div>
               <Link href="/account/prescriptions" className="text-xs font-semibold underline">
                 View all
@@ -202,7 +230,7 @@ export default function AccountDashboard() {
                 <Link
                   href="/upload-prescription"
                   className="inline-flex h-9 items-center gap-1.5 rounded-md px-4 text-xs font-semibold text-white"
-                  style={{ background: `linear-gradient(135deg, ${ACCENT} 0%, #B91C1C 100%)` }}
+                  style={{ background: `linear-gradient(135deg, ${ACCENT} 0%, ${ACCENT_RED} 100%)` }}
                 >
                   <Upload className="h-3.5 w-3.5" /> Upload prescription
                 </Link>
@@ -231,11 +259,6 @@ export default function AccountDashboard() {
                             >
                               {meta.label}
                             </span>
-                            {r.approvedDrugs.length > 0 && (
-                              <span className="inline-flex items-center gap-1 text-[10px] font-semibold" style={{ color: ACCENT }}>
-                                <Pill className="h-2.5 w-2.5" /> {r.approvedDrugs.length}
-                              </span>
-                            )}
                           </div>
                           <div className="truncate text-[11px] text-muted-foreground">
                             For {r.recipient} · {r.files[0]?.name || "Prescription"}
@@ -245,8 +268,8 @@ export default function AccountDashboard() {
                           type="button"
                           onClick={() => setOpenRxId(r.id)}
                           aria-label={`View prescription Rx-${r.rxNumber}`}
-                          className="inline-flex h-9 items-center gap-1.5 rounded-md px-3 text-xs font-bold text-white shadow-sm transition hover:shadow active:scale-[0.98]"
-                          style={{ background: `linear-gradient(135deg, ${ACCENT} 0%, #B91C1C 100%)` }}
+                          className="inline-flex h-9 items-center gap-1.5 rounded-md px-3 text-xs font-bold text-white shadow-sm transition hover:shadow"
+                          style={{ background: `linear-gradient(135deg, ${ACCENT} 0%, ${ACCENT_RED} 100%)` }}
                         >
                           <Eye className="h-3.5 w-3.5" /> View
                         </button>
@@ -274,20 +297,27 @@ export default function AccountDashboard() {
             ) : (
               <ul className="divide-y divide-border">
                 {orders.slice(0, 5).map((o) => (
-                  <li key={o.id} className="flex items-center justify-between py-3">
-                    <div>
+                  <li key={o.id} className="flex items-center justify-between gap-3 py-3">
+                    <div className="min-w-0">
                       <div className="text-sm font-medium" style={{ color: WINE }}>{o.number}</div>
                       <div className="text-xs text-muted-foreground">
                         {new Date(o.createdAt).toLocaleString()}
                       </div>
                     </div>
-                    <div className="text-right">
+                    <div className="text-right flex-shrink-0">
                       <div className="text-sm font-semibold" style={{ color: WINE }}>
                         {o.currency} {o.total.toLocaleString()}
                       </div>
-                      <div className="text-[11px] uppercase tracking-wider text-muted-foreground">
-                        {o.status}
+                      <div className="text-[11px] font-medium" style={{ color: ACCENT }}>
+                        {ORDER_STATUS_LABELS[o.status] ?? o.status}
                       </div>
+                      <Link
+                        href={`/track-order/${encodeURIComponent(o.number)}`}
+                        className="text-[10px] font-semibold underline"
+                        style={{ color: WINE }}
+                      >
+                        Track
+                      </Link>
                     </div>
                   </li>
                 ))}
@@ -318,11 +348,8 @@ export default function AccountDashboard() {
             </div>
           </div>
         </div>
-
-        <div className="rounded-xl border border-dashed border-border bg-white/60 p-4 text-center text-xs text-muted-foreground">
-          Account data is served by the Shaniid RX backend. Sign in with Clerk to sync prescriptions across devices.
-        </div>
       </div>
+
       {openRx && (
         <RxDetailModal
           rx={openRx}
@@ -352,6 +379,6 @@ export default function AccountDashboard() {
           }}
         />
       )}
-    </div>
+    </AccountShell>
   )
 }
