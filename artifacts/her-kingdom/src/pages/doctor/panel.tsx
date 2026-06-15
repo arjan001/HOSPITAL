@@ -28,6 +28,17 @@ const PEACH_BORDER = "#F2DCC8"
 
 type DoctorTab = "home" | "schedule" | "appointments" | "consultations" | "patients" | "prescriptions" | "messages" | "earnings" | "profile"
 
+/** Row shape for the doctor consultations list (wired when /doctors/me/consultations lands). */
+type DoctorConsult = {
+  id: string
+  patientName: string
+  phone: string
+  doctorName?: string
+  status: string
+  topic?: string
+  startedAt: string
+}
+
 const TABS: { id: DoctorTab; label: string; icon: typeof Stethoscope; perm?: string }[] = [
   { id: "home",          label: "Home",          icon: Home },
   { id: "schedule",      label: "Schedule",      icon: Calendar,       perm: "consult.handle" },
@@ -67,8 +78,11 @@ export default function DoctorPanelPage() {
     completedToday: myPatients?.length ?? 0,
   }), [unread, myPatients])
 
-  const myConsults = useMemo(() =>
-    consults.filter((c) => !me || c.doctorName === me.name),
+  // Consultation inbox — populated when doctor-scoped consultation API is available.
+  const consults: DoctorConsult[] = useMemo(() => [], [])
+
+  const myConsults = useMemo(
+    () => consults.filter((c) => !me || c.doctorName === me.name),
     [consults, me],
   )
   const upcoming = useMemo(() => myConsults.filter((c) => c.status === "queued" || c.status === "live"), [myConsults])
@@ -426,7 +440,7 @@ export default function DoctorPanelPage() {
 
               {(() => {
                 const seen = new Set<string>()
-                const patients: Consultation[] = []
+                const patients: DoctorConsult[] = []
                 for (const c of myConsults) {
                   const key = c.phone || c.patientName || c.id
                   if (!seen.has(key)) { seen.add(key); patients.push(c) }
@@ -760,7 +774,7 @@ function PanelCard({ icon: Icon, title, desc, href, onAction, actionLabel }: {
   return href ? <Link href={href}>{inner}</Link> : inner
 }
 
-function ConsultRow({ consult: c }: { consult: Consultation }) {
+function ConsultRow({ consult: c }: { consult: DoctorConsult }) {
   const STATUS_COLORS: Record<string, string> = {
     queued: "#F97316",
     live: "#10B981",

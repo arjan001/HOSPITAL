@@ -65,6 +65,16 @@ const isPriced = (d: RxDrug) => typeof d.price === "number" && d.price >= 0
 const drugUnitPrice = (d: RxDrug) => (isPriced(d) ? (d.price as number) : DEFAULT_DRUG_PRICE)
 const drugQty = (d: RxDrug) => (typeof d.quantity === "number" && d.quantity >= 1 ? d.quantity : 1)
 
+/** Priced line items exist but status may lag behind after admin sends quotation. */
+export function hasQuotationContent(rx: AccountPrescription): boolean {
+  return rx.approvedDrugs.length > 0 && rx.approvedDrugs.some(isPriced)
+}
+
+export function effectiveRxStatus(rx: AccountPrescription): RxStatus {
+  if (rx.status === "pending" && hasQuotationContent(rx)) return "verified"
+  return rx.status
+}
+
 export function fmtTime(iso: string): string {
   const d = new Date(iso)
   const now = Date.now()
@@ -89,9 +99,14 @@ export function RxDetailModal({
   onDecline?: () => void | Promise<void>
   onPay?: () => void
 }) {
-  const meta = STATUS_META[rx.status]
+  const displayStatus = effectiveRxStatus(rx)
+  const meta = STATUS_META[displayStatus]
+  const statusLag = rx.status === "pending" && hasQuotationContent(rx)
   const showQuotation =
-    rx.status === "verified" || rx.status === "accepted" || rx.status === "dispensed"
+    rx.status === "verified" ||
+    rx.status === "accepted" ||
+    rx.status === "dispensed" ||
+    statusLag
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose() }
     window.addEventListener("keydown", onKey)
@@ -102,6 +117,9 @@ export function RxDetailModal({
       document.body.style.overflow = prevOverflow
     }
   }, [onClose])
+  useEffect(() => {
+    if (statusLag) void refreshMyPrescriptions()
+  }, [rx.id, statusLag])
   return (
     <div
       className="fixed inset-0 z-[60] flex items-end justify-center bg-black/50 p-0 sm:items-center sm:p-4"
@@ -127,7 +145,14 @@ export function RxDetailModal({
             <div>
               <div className="text-[10px] uppercase tracking-widest text-white/70">Prescription</div>
               <div id="rx-detail-title" className="mt-0.5 text-xl font-bold">Rx-{rx.rxNumber}</div>
-              <div className="mt-2"><StatusPill k={rx.status} size="md" /></div>
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <StatusPill k={displayStatus} size="md" />
+                {statusLag && (
+                  <span className="text-[10px] font-medium text-white/80">
+                    Status updating — use Refresh if actions are unavailable.
+                  </span>
+                )}
+              </div>
             </div>
             <button
               onClick={onClose}
@@ -356,7 +381,7 @@ export function RxDetailModal({
             <RefreshCw className="h-3.5 w-3.5" /> Refresh
           </button>
           <div className="flex flex-wrap items-center justify-end gap-2">
-            {rx.status === "verified" && rx.approvedDrugs.length > 0 && onAccept && (
+            {displayStatus === "verified" && rx.approvedDrugs.length > 0 && onAccept && (
               <button
                 type="button"
                 onClick={() => void onAccept()}
@@ -366,7 +391,7 @@ export function RxDetailModal({
                 Accept quotation
               </button>
             )}
-            {rx.status === "verified" && onDecline && (
+            {displayStatus === "verified" && onDecline && (
               <button
                 type="button"
                 onClick={() => void onDecline()}
@@ -376,7 +401,7 @@ export function RxDetailModal({
                 Decline
               </button>
             )}
-            {rx.status === "accepted" && rx.approvedDrugs.length > 0 && onPay && (
+            {displayStatus === "accepted" && rx.approvedDrugs.length > 0 && onPay && (
               <button
                 type="button"
                 onClick={onPay}

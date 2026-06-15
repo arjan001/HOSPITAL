@@ -1,7 +1,7 @@
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest"
-import { inArray } from "drizzle-orm"
-import { db, adminOrders } from "@workspace/db"
-import { AdminOrdersService, type AdminOrderStatus } from "./admin-orders.module"
+import { eq, inArray } from "drizzle-orm"
+import { db, adminOrders, orders as customerOrders } from "@workspace/db"
+import { AdminOrdersService, adminToCustomerOrderStatus, type AdminOrderStatus } from "./admin-orders.module"
 import type {
   PatientNotificationsService,
   PatientNotificationEvent,
@@ -19,6 +19,7 @@ const ORDER_NOS = Array.from({ length: 10 }, (_, i) => `ORD-${i + 1}`)
 
 async function cleanup() {
   await db.delete(adminOrders).where(inArray(adminOrders.orderNo, ORDER_NOS))
+  await db.delete(customerOrders).where(inArray(customerOrders.orderNumber, ORDER_NOS))
 }
 
 function makeService() {
@@ -150,5 +151,51 @@ describe("AdminOrdersService notifications", () => {
     const results = await Promise.allSettled([place(), place()])
     expect(results.every((r) => r.status === "fulfilled")).toBe(true)
     expect(ctx.adminNotify.push).toHaveBeenCalledTimes(1)
+  })
+
+  it("maps admin status to customer order status", () => {
+    expect(adminToCustomerOrderStatus("confirmed")).toBe("paid")
+    expect(adminToCustomerOrderStatus("dispatched")).toBe("dispatched")
+    expect(adminToCustomerOrderStatus("delivered")).toBe("fulfilled")
+  })
+
+  it("patchStatus mirrors into the customer orders table for tracking", async () => {
+    const orderNo = "ORD-7"
+    await db.insert(customerOrders).values({
+      id: "cust_ord_7",
+      orderNumber: orderNo,
+      userId: null,
+      status: "paid",
+      paymentMethod: "mpesa",
+      paymentStatus: "paid",
+      customerName: "Test Patient",
+      customerPhone: "0712345678",
+      customerEmail: null,
+      shippingLine1: "Line 1",
+      shippingLine2: null,
+      shippingCity: "Nairobi",
+      shippingRegion: "Nairobi",
+      subtotal: 1000,
+      deliveryFee: 200,
+      total: 1200,
+    })
+
+    const adminOrder = await ctx.svc.upsert({
+      orderNo,
+      status: "confirmed",
+      phone: "0712345678",
+      customer: "Test Patient",
+      total: 1200,
+      paymentMethod: "mpesa",
+    })
+
+    await ctx.svc.patchStatus(adminOrder.id, "dispatched")
+
+    const [customerRow] = await db
+      .select()
+      .from(customerOrders)
+      .where(eq(customerOrders.orderNumber, orderNo))
+      .limit(1)
+    expect(customerRow?.status).toBe("dispatched")
   })
 })

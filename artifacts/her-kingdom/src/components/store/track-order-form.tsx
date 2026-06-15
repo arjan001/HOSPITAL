@@ -69,7 +69,7 @@ function getStepIndex(status: OrderStatus) {
   return statusSteps.findIndex(s => s.key === status)
 }
 
-const POLL_INTERVAL_MS = 30_000
+const POLL_INTERVAL_MS = 15_000
 
 function isTerminal(status: OrderStatus) {
   return status === "delivered" || status === "cancelled"

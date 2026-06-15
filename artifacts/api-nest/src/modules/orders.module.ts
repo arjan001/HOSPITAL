@@ -47,7 +47,7 @@ export type OrderLine = {
   quantity: number
 }
 
-export type OrderStatus = "pending" | "paid" | "fulfilled" | "cancelled"
+export type OrderStatus = "pending" | "paid" | "dispatched" | "fulfilled" | "cancelled"
 export type PaymentMethod = "mpesa" | "card" | "cod" | "unknown"
 
 export type Order = {

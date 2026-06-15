@@ -113,7 +113,7 @@ export type AccountOrder = {
   deliveryFee: number
   total: number
   currency: "KSH"
-  status: "pending" | "paid" | "fulfilled" | "cancelled"
+  status: "pending" | "paid" | "dispatched" | "fulfilled" | "cancelled"
   paymentMethod: "mpesa" | "card" | "cod" | "unknown"
   customer: { fullName: string; phone: string; email: string }
   shippingAddress: { line1: string; line2?: string; city: string; region: string }
@@ -240,7 +240,10 @@ export function useWishlistRemote() {
   return useSWR<AccountWishlistItem[]>("/me/wishlist", swrFetcher)
 }
 export function useOrders() {
-  return useSWR<AccountOrder[]>("/me/orders", swrFetcher)
+  return useSWR<AccountOrder[]>("/me/orders", swrFetcher, {
+    refreshInterval: 20_000,
+    revalidateOnFocus: true,
+  })
 }
 
 export function useAdminCrm(stage?: string) {
@@ -935,7 +938,8 @@ export const apiUploads = {
 
 export function useMyPrescriptions() {
   return useSWR<AccountPrescription[]>("/me/prescriptions", swrFetcher, {
-    refreshInterval: 20_000, // pick up pharmacist updates without manual refresh
+    refreshInterval: 20_000,
+    revalidateOnFocus: true,
   })
 }
 

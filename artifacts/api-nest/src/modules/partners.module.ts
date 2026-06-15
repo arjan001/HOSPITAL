@@ -60,6 +60,11 @@ import { verifyClerkBearer } from "../common/clerk-auth"
 import { EmailModule, EmailService } from "./email.module"
 import { AdminCmsModule, AdminCmsService } from "./admin-cms.module"
 import { WhatsAppModule, WhatsAppService } from "./whatsapp.module"
+import {
+  PartnerDirectoryModule,
+  PartnerDirectoryService,
+  type DirectoryKey,
+} from "./partner-directory.module"
 import { AdminGuard } from "../common/admin-guard"
 
 /** Generate a human-readable temporary password: e.g. "SHNRX-AB3X7F" */
@@ -142,6 +147,8 @@ export class PartnerAuthService {
   constructor(
     @Inject(EmailService) private readonly email: EmailService,
     @Inject(AdminCmsService) private readonly cms: AdminCmsService,
+    @Inject(PartnerDirectoryService) private readonly directory: PartnerDirectoryService,
+    @Inject(WhatsAppService) private readonly whatsapp: WhatsAppService,
   ) {}
 
   /** Partner profile list from Postgres `partner_directory`. */
@@ -1242,7 +1249,7 @@ class PartnerWelcomeController {
 }
 
 @Module({
-  imports: [EmailModule, AdminCmsModule],
+  imports: [EmailModule, AdminCmsModule, PartnerDirectoryModule, WhatsAppModule],
   controllers: [
     PartnerAuthController,
     PartnerSupplierController,

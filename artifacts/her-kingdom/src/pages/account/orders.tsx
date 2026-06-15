@@ -11,7 +11,8 @@ import {
   type DeliveryFeedbackDto,
 } from "@/lib/api-nest"
 import useSWR from "swr"
-import { Package, Star, Loader2, CheckCircle2 } from "lucide-react"
+import { Package, Star, Loader2, CheckCircle2, Truck, ExternalLink } from "lucide-react"
+import { Link } from "wouter"
 
 const WINE = "#3D0814"
 const ACCENT = "#F97316"
@@ -20,8 +21,21 @@ const PEACH_BORDER = "#F2DCC8"
 const STATUS_COLORS: Record<string, { bg: string; fg: string }> = {
   pending: { bg: "#FEF3C7", fg: "#92400E" },
   paid: { bg: "#DCFCE7", fg: "#166534" },
+  confirmed: { bg: "#DCFCE7", fg: "#166534" },
+  dispatched: { bg: "#EDE9FE", fg: "#6D28D9" },
   fulfilled: { bg: "#DBEAFE", fg: "#1E40AF" },
+  delivered: { bg: "#DBEAFE", fg: "#1E40AF" },
   cancelled: { bg: "#FEE2E2", fg: "#991B1B" },
+}
+
+const STATUS_LABELS: Record<string, string> = {
+  pending: "Pending",
+  paid: "Confirmed",
+  confirmed: "Confirmed",
+  dispatched: "Dispatched",
+  fulfilled: "Delivered",
+  delivered: "Delivered",
+  cancelled: "Cancelled",
 }
 
 function FeedbackForm({ orderNo, onDone }: { orderNo: string; onDone: () => void }) {
@@ -91,7 +105,7 @@ function FeedbackForm({ orderNo, onDone }: { orderNo: string; onDone: () => void
 }
 
 function OrderRow({ order }: { order: AccountOrder }) {
-  const canFeedback = order.status === "fulfilled"
+  const canFeedback = order.status === "fulfilled" || order.status === "delivered"
   const { data: existing, mutate } = useSWR<DeliveryFeedbackDto | null>(
     canFeedback ? `/me/orders/${order.number}/feedback` : null,
     () => apiNest.getOrderFeedback(order.number),
@@ -99,6 +113,7 @@ function OrderRow({ order }: { order: AccountOrder }) {
   const [showForm, setShowForm] = useState(false)
 
   const meta = STATUS_COLORS[order.status] ?? { bg: "#F1F5F9", fg: "#475569" }
+  const statusLabel = STATUS_LABELS[order.status] ?? order.status
 
   return (
     <li className="rounded-2xl border bg-white p-5" style={{ borderColor: PEACH_BORDER }}>
@@ -111,12 +126,19 @@ function OrderRow({ order }: { order: AccountOrder }) {
               className="rounded-full px-2 py-0.5 text-[10px] font-bold uppercase"
               style={{ background: meta.bg, color: meta.fg }}
             >
-              {order.status}
+              {statusLabel}
             </span>
           </div>
           <p className="text-xs text-muted-foreground mt-1">
             {new Date(order.createdAt).toLocaleString()} · {order.items.length} item{order.items.length !== 1 ? "s" : ""}
           </p>
+          <Link
+            href={`/track-order/${encodeURIComponent(order.number)}`}
+            className="mt-2 inline-flex items-center gap-1 text-xs font-semibold"
+            style={{ color: ACCENT }}
+          >
+            <Truck className="h-3.5 w-3.5" /> Track delivery <ExternalLink className="h-3 w-3" />
+          </Link>
         </div>
         <div className="text-right">
           <p className="font-bold text-sm" style={{ color: WINE }}>

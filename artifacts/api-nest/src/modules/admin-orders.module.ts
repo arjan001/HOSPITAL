@@ -40,7 +40,7 @@ import {
   UseGuards,
 } from "@nestjs/common"
 import { desc, eq, inArray, sql, getTableColumns } from "drizzle-orm"
-import { db, adminOrders as adminOrdersTable } from "@workspace/db"
+import { db, adminOrders as adminOrdersTable, orders as customerOrdersTable } from "@workspace/db"
 import { AdminGuard, RequirePerm } from "../common/admin-guard"
 import {
   PatientNotificationsModule,
@@ -95,6 +95,22 @@ export const SALE_STATUSES: AdminOrderStatus[] = [
   "dispatched",
   "delivered",
 ]
+
+/** Map admin fulfilment status → customer `orders.status` (used by /orders/track). */
+export function adminToCustomerOrderStatus(status: AdminOrderStatus): string {
+  switch (status) {
+    case "pending":
+      return "pending"
+    case "confirmed":
+      return "paid"
+    case "dispatched":
+      return "dispatched"
+    case "delivered":
+      return "fulfilled"
+    case "cancelled":
+      return "cancelled"
+  }
+}
 
 function newOrderId(): string {
   return `ord_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`
@@ -179,6 +195,47 @@ class AdminOrdersService {
         payment_method: order.paymentMethod,
       },
     })
+  }
+
+  /**
+   * Mirror admin fulfilment status into the customer `orders` row so
+   * `/orders/track` and `/me/orders` reflect admin panel updates.
+   */
+  private async mirrorStatusToCustomerOrder(
+    orderNo: string,
+    status: AdminOrderStatus,
+  ): Promise<void> {
+    const mapped = adminToCustomerOrderStatus(status)
+    try {
+      await db
+        .update(customerOrdersTable)
+        .set({ status: mapped, updatedAt: new Date() })
+        .where(eq(customerOrdersTable.orderNumber, orderNo))
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn("[admin-orders] customer orders mirror failed", { orderNo, status, err })
+    }
+  }
+
+  /**
+   * Mirror admin fulfilment status into the customer `orders` row so public
+   * tracking (`GET /orders/track`) and `/me/orders` stay in sync when staff
+   * advance an order from the admin panel.
+   */
+  private async mirrorStatusToCustomerOrder(
+    orderNo: string,
+    status: AdminOrderStatus,
+  ): Promise<void> {
+    const mapped = adminToCustomerOrderStatus(status)
+    try {
+      await db
+        .update(customerOrdersTable)
+        .set({ status: mapped, updatedAt: new Date() })
+        .where(eq(customerOrdersTable.orderNumber, orderNo))
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn("[admin-orders] customer orders mirror failed", { orderNo, status, err })
+    }
   }
 
   async list(): Promise<AdminOrderRecord[]> {
@@ -364,6 +421,7 @@ class AdminOrdersService {
     const prevStatus = existing?.status ?? "pending"
     if (effectiveStatus !== prevStatus) {
       this.notifyStatusChange(saved, effectiveStatus)
+      await this.mirrorStatusToCustomerOrder(saved.orderNo, effectiveStatus)
     }
 
     if (wasInserted) {
@@ -401,6 +459,7 @@ class AdminOrdersService {
     const saved = toRecord(row)
     if (status !== target.status) {
       if (opts?.notify !== false) this.notifyStatusChange(saved, status)
+      await this.mirrorStatusToCustomerOrder(saved.orderNo, status)
       void this.audit.record({
         module: "Orders",
         action: "status",

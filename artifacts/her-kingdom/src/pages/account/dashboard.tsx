@@ -1,9 +1,9 @@
 import { useState } from "react"
 import { Link } from "wouter"
-import { Heart, MapPin, Package, User as UserIcon, Mail, Phone, Settings, ShieldCheck, ClipboardList, Pill, Clock, CheckCheck, ChevronRight, Upload, FileText, Eye, LifeBuoy } from "lucide-react"
-import { useMe, useAddresses, useOrders, useWishlistRemote, useMyPrescriptions, type RxStatus } from "@/lib/api-nest"
-import { STATUS_META } from "@/components/account/rx-detail-modal"
-import { RxDetailModal } from "@/components/account/rx-detail-modal"
+import { Heart, MapPin, Package, User as UserIcon, Mail, Phone, Settings, ShieldCheck, ClipboardList, Pill, Clock, CheckCheck, ChevronRight, Upload, FileText, Eye, LifeBuoy, Bell } from "lucide-react"
+import { useMe, useAddresses, useOrders, useWishlistRemote, useMyPrescriptions, apiPrescriptions, type RxStatus } from "@/lib/api-nest"
+import { STATUS_META, RxDetailModal } from "@/components/account/rx-detail-modal"
+import { RxBuyModal } from "@/components/account/rx-buy-modal"
 import { Seo } from "@/components/seo"
 
 const WINE = "#3D0814"
@@ -70,14 +70,18 @@ export default function AccountDashboard() {
   const { data: addresses } = useAddresses()
   const { data: orders } = useOrders()
   const { data: wishlist } = useWishlistRemote()
-  const { data: rxList } = useMyPrescriptions()
+  const { data: rxList, mutate: mutateRx } = useMyPrescriptions()
   const rxRows = rxList ?? []
   const [openRxId, setOpenRxId] = useState<string | null>(null)
+  const [buyRxId, setBuyRxId] = useState<string | null>(null)
   const openRx = openRxId ? rxRows.find((r) => r.id === openRxId) ?? null : null
+  const buyRx = buyRxId ? rxRows.find((r) => r.id === buyRxId) ?? null : null
   const rxPending = rxRows.filter((r) => r.status === "pending").length
-  const rxVerifiedOrDispensed = rxRows.filter((r) => r.status === "verified" || r.status === "dispensed").length
+  const rxVerifiedOrDispensed = rxRows.filter((r) => r.status === "verified" || r.status === "accepted" || r.status === "dispensed").length
   const rxApprovedMeds = rxRows.reduce((s, r) => s + r.approvedDrugs.length, 0)
   const rxAttention = rxRows.filter((r) => r.status === "rejected").length
+  const rxVerified = rxRows.filter((r) => r.status === "verified").length
+  const rxAccepted = rxRows.filter((r) => r.status === "accepted").length
 
   const firstName = me?.fullName ? me.fullName.split(" ")[0] : ""
 
@@ -155,10 +159,31 @@ export default function AccountDashboard() {
 
           <div className="grid grid-cols-2 gap-2 px-5 pt-4 md:grid-cols-4">
             <MiniRxStat icon={Clock}      label="Awaiting"             value={rxPending}              tone="#92400E" bg="#FEF3C7" />
-            <MiniRxStat icon={CheckCheck} label="Verified · Dispensed" value={rxVerifiedOrDispensed}  tone="#166534" bg="#DCFCE7" />
+            <MiniRxStat icon={CheckCheck} label="Quotation / paid"       value={rxVerifiedOrDispensed}  tone="#166534" bg="#DCFCE7" />
             <MiniRxStat icon={Pill}       label="Approved meds"        value={rxApprovedMeds}         tone="#1E40AF" bg="#DBEAFE" />
             <MiniRxStat icon={ShieldCheck} label="Action required"     value={rxAttention}            tone="#991B1B" bg="#FEE2E2" />
           </div>
+
+          {(rxVerified > 0 || rxAccepted > 0) && (
+            <div className="mx-5 mt-3 flex items-center gap-3 rounded-xl border-2 px-4 py-3" style={{ background: "#ECFDF5", borderColor: "#6EE7B7", color: "#065F46" }}>
+              <div className="grid h-8 w-8 flex-shrink-0 place-items-center rounded-lg" style={{ background: "#6EE7B7" }}>
+                <Bell className="h-4 w-4 text-white" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-bold">
+                  {rxVerified > 0
+                    ? `${rxVerified} quotation${rxVerified === 1 ? "" : "s"} ready to review`
+                    : `${rxAccepted} prescription${rxAccepted === 1 ? "" : "s"} ready to pay`}
+                </p>
+                <p className="mt-0.5 text-xs">
+                  Open a prescription below to accept and pay.
+                </p>
+              </div>
+              <Link href="/account/prescriptions" className="text-xs font-semibold underline">
+                View all
+              </Link>
+            </div>
+          )}
 
           <div className="px-5 pb-5 pt-4">
             {rxRows.length === 0 ? (
@@ -295,11 +320,38 @@ export default function AccountDashboard() {
         </div>
 
         <div className="rounded-xl border border-dashed border-border bg-white/60 p-4 text-center text-xs text-muted-foreground">
-          Account data is served by the new Shaniid RX backend (NestJS, in-memory today,
-          Postgres-ready). Sign-in with Clerk arrives in a future release.
+          Account data is served by the Shaniid RX backend. Sign in with Clerk to sync prescriptions across devices.
         </div>
       </div>
-      {openRx && <RxDetailModal rx={openRx} onClose={() => setOpenRxId(null)} />}
+      {openRx && (
+        <RxDetailModal
+          rx={openRx}
+          onClose={() => setOpenRxId(null)}
+          onAccept={async () => {
+            await apiPrescriptions.acceptQuotation(openRx.id)
+            await mutateRx()
+          }}
+          onDecline={async () => {
+            await apiPrescriptions.declineQuotation(openRx.id)
+            await mutateRx()
+            setOpenRxId(null)
+          }}
+          onPay={() => {
+            setBuyRxId(openRx.id)
+            setOpenRxId(null)
+          }}
+        />
+      )}
+      {buyRx && (
+        <RxBuyModal
+          rx={buyRx}
+          onClose={() => setBuyRxId(null)}
+          onPaid={() => {
+            setBuyRxId(null)
+            void mutateRx()
+          }}
+        />
+      )}
     </div>
   )
 }
