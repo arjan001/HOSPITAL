@@ -1,8 +1,7 @@
 "use client"
 
-import { AccountShell, useAccountShellUser } from "@/components/account/account-shell"
+import { AccountShell, useAccountNotifications, useAccountShellUser } from "@/components/account/account-shell"
 import { Seo } from "@/components/seo"
-import { useMyNotifications } from "@/lib/notifications-client"
 import { Link } from "wouter"
 import {
   Bell, CheckCheck, Trash2, Loader2, Info, CheckCircle2, AlertTriangle, AlertCircle,
@@ -42,7 +41,7 @@ function fmtRelative(iso: string) {
 
 export default function AccountNotificationsPage() {
   const user = useAccountShellUser()
-  const { items, unread, loading, markAllRead, clearAll, refresh } = useMyNotifications(10_000)
+  const { items, unread, loading, markAllRead, clearAll, refresh } = useAccountNotifications()
 
   const unreadItems = items.filter((n) => !n.read)
   const readItems   = items.filter((n) => n.read)
@@ -63,9 +62,9 @@ export default function AccountNotificationsPage() {
         >
           <LevelIcon className="h-5 w-5" />
         </div>
-        <div className="flex-1 min-w-0">
+        <div className="flex-1 min-w-0 overflow-hidden">
           <div className="flex items-start justify-between gap-2">
-            <p className="text-sm font-semibold leading-snug" style={{ color: WINE }}>{n.title}</p>
+            <p className="text-sm font-semibold leading-snug break-words" style={{ color: WINE }}>{n.title}</p>
             {!n.read && (
               <span
                 className="h-2 w-2 rounded-full flex-shrink-0 mt-1"
@@ -73,7 +72,11 @@ export default function AccountNotificationsPage() {
               />
             )}
           </div>
-          {n.body && <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">{n.body}</p>}
+          {n.body && (
+            <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed break-words whitespace-pre-wrap">
+              {n.body}
+            </p>
+          )}
           <div className="flex items-center gap-2 mt-1.5">
             <ModIcon className="h-3 w-3 text-muted-foreground" />
             <span className="text-[10px] uppercase tracking-wider text-muted-foreground capitalize">{n.module}</span>
@@ -86,7 +89,11 @@ export default function AccountNotificationsPage() {
     )
 
     if (n.href) {
-      return <Link href={n.href}>{inner}</Link>
+      return (
+        <Link href={n.href} className="block">
+          {inner}
+        </Link>
+      )
     }
     return inner
   }

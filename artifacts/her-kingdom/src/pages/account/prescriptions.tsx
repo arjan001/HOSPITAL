@@ -254,38 +254,40 @@ export default function AccountPrescriptionsPage() {
               <ul className="divide-y divide-border">
                 {filtered.map((rx) => (
                   <li key={rx.id}>
-                    <div className="flex items-center gap-3 px-5 py-4">
-                      <div
-                        className="grid h-11 w-11 flex-shrink-0 place-items-center rounded-xl"
-                        style={{ background: STATUS_META[rx.status].bg, color: STATUS_META[rx.status].color }}
-                      >
-                        <FileText className="h-5 w-5" />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="text-sm font-bold" style={{ color: WINE }}>
-                            Rx-{rx.rxNumber}
-                          </span>
-                          <StatusPill k={rx.status} />
-                          {rx.approvedDrugs.length > 0 && (
-                            <span
-                              className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider"
-                              style={{ background: `${ACCENT}1a`, color: ACCENT }}
-                            >
-                              <Pill className="h-2.5 w-2.5" />
-                              {rx.approvedDrugs.length} medication{rx.approvedDrugs.length === 1 ? "" : "s"}
+                    <div className="flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-start sm:gap-3 sm:px-5">
+                      <div className="flex items-start gap-3 min-w-0 flex-1">
+                        <div
+                          className="grid h-11 w-11 flex-shrink-0 place-items-center rounded-xl"
+                          style={{ background: STATUS_META[rx.status].bg, color: STATUS_META[rx.status].color }}
+                        >
+                          <FileText className="h-5 w-5" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="text-sm font-bold break-words" style={{ color: WINE }}>
+                              Rx-{rx.rxNumber}
                             </span>
-                          )}
-                        </div>
-                        <div className="mt-1 truncate text-xs text-muted-foreground">
-                          For {rx.recipient} · {rx.files[0]?.name || "Prescription"}
-                          {rx.files.length > 1 ? ` +${rx.files.length - 1}` : ""}
-                        </div>
-                        <div className="mt-1 text-[11px] text-muted-foreground">
-                          Updated {fmtTime(rx.updatedAt)}
+                            <StatusPill k={rx.status} />
+                            {rx.approvedDrugs.length > 0 && (
+                              <span
+                                className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider"
+                                style={{ background: `${ACCENT}1a`, color: ACCENT }}
+                              >
+                                <Pill className="h-2.5 w-2.5" />
+                                {rx.approvedDrugs.length} medication{rx.approvedDrugs.length === 1 ? "" : "s"}
+                              </span>
+                            )}
+                          </div>
+                          <div className="mt-1 text-xs text-muted-foreground break-words leading-relaxed">
+                            For {rx.recipient} · {rx.files[0]?.name || "Prescription"}
+                            {rx.files.length > 1 ? ` +${rx.files.length - 1}` : ""}
+                          </div>
+                          <div className="mt-1 text-[11px] text-muted-foreground">
+                            Updated {fmtTime(rx.updatedAt)}
+                          </div>
                         </div>
                       </div>
-                      <div className="flex flex-shrink-0 items-center gap-2">
+                      <div className="flex flex-shrink-0 flex-wrap items-center gap-2 pl-14 sm:pl-0">
                         {(rx.status === "verified" || rx.status === "accepted") && rx.approvedDrugs.length > 0 && (
                           <button
                             type="button"

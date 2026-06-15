@@ -1,11 +1,18 @@
 "use client"
 
-import { type ReactNode, useEffect, useMemo, useRef, useState } from "react"
+import {
+  createContext,
+  type ReactNode,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react"
 import { Link, useLocation } from "wouter"
 import { useUser, useClerk } from "@clerk/react"
 import { TopBar } from "@/components/store/top-bar"
 import { Navbar } from "@/components/store/navbar"
-import { Footer } from "@/components/store/footer"
 import { AccountNotificationBell } from "@/components/account/account-notification-bell"
 import { useMyNotifications } from "@/lib/notifications-client"
 import { useMe } from "@/lib/api-nest"
@@ -18,7 +25,6 @@ import {
   ShieldCheck,
   Pill,
   Receipt,
-  Sparkles,
   LogOut,
   ChevronRight,
   MessagesSquare,
@@ -30,18 +36,18 @@ const WINE = "#3D0814"
 const CREAM = "#FFFBF5"
 const PEACH_BORDER = "#F2DCC8"
 
-const NAV: Array<{ href: string; label: string; icon: typeof UserCircle; hint?: string }> = [
-  { href: "/account",               label: "Dashboard",          icon: LayoutDashboard, hint: "Overview" },
-  { href: "/account/settings",      label: "Profile & Settings", icon: UserCircle, hint: "Personal info" },
-  { href: "/account/orders",        label: "Orders",             icon: Receipt },
-  { href: "/account/chat",          label: "Talk to Pharmacist", icon: MessagesSquare, hint: "Live chat" },
-  { href: "/account/consultations", label: "Past Consultations", icon: History, hint: "Saved chats" },
-  { href: "/account/prescriptions", label: "Prescriptions",      icon: Pill },
-  { href: "/account/addresses",     label: "Addresses",          icon: MapPin },
-  { href: "/account/wishlist",      label: "Wishlist",           icon: Heart },
-  { href: "/account/notifications", label: "Notifications",    icon: Bell },
-  { href: "/account/support",       label: "Help & Support",     icon: LifeBuoy },
-  { href: "/account/security",      label: "Security",           icon: ShieldCheck },
+const NAV: Array<{ href: string; label: string; icon: typeof UserCircle; short?: string }> = [
+  { href: "/account", label: "Dashboard", short: "Home", icon: LayoutDashboard },
+  { href: "/account/settings", label: "Profile & Settings", short: "Profile", icon: UserCircle },
+  { href: "/account/orders", label: "Orders", short: "Orders", icon: Receipt },
+  { href: "/account/chat", label: "Talk to Pharmacist", short: "Chat", icon: MessagesSquare },
+  { href: "/account/consultations", label: "Past Consultations", short: "History", icon: History },
+  { href: "/account/prescriptions", label: "Prescriptions", short: "Rx", icon: Pill },
+  { href: "/account/addresses", label: "Addresses", short: "Address", icon: MapPin },
+  { href: "/account/wishlist", label: "Wishlist", short: "Saved", icon: Heart },
+  { href: "/account/notifications", label: "Notifications", short: "Alerts", icon: Bell },
+  { href: "/account/support", label: "Help & Support", short: "Help", icon: LifeBuoy },
+  { href: "/account/security", label: "Security", short: "Security", icon: ShieldCheck },
 ]
 
 export type AccountShellUser = {
@@ -51,7 +57,25 @@ export type AccountShellUser = {
   avatarUrl?: string
 }
 
-/** Standard signed-in user payload for every account page. */
+type NotificationsCtx = ReturnType<typeof useMyNotifications>
+
+const AccountNotificationsContext = createContext<NotificationsCtx | null>(null)
+
+/** Keeps one notification poll alive across account page switches. Mount once in App. */
+export function AccountNotificationsProvider({ children }: { children: ReactNode }) {
+  const notifications = useMyNotifications(45_000)
+  return (
+    <AccountNotificationsContext.Provider value={notifications}>
+      {children}
+    </AccountNotificationsContext.Provider>
+  )
+}
+
+export function useAccountNotifications() {
+  const ctx = useContext(AccountNotificationsContext)
+  return ctx ?? useMyNotifications(45_000)
+}
+
 export function useAccountShellUser(): AccountShellUser {
   const { data: me } = useMe()
   const { user } = useUser()
@@ -70,6 +94,55 @@ function isNavActive(pathname: string, href: string): boolean {
   return pathname === href
 }
 
+function NavLink({
+  item,
+  isActive,
+  badge,
+  pulse,
+  compact,
+}: {
+  item: (typeof NAV)[number]
+  isActive: boolean
+  badge: number
+  pulse: boolean
+  compact?: boolean
+}) {
+  return (
+    <Link
+      href={item.href}
+      className={`flex items-center gap-2 rounded-lg transition-colors flex-shrink-0 ${
+        compact
+          ? `px-3 py-2 text-xs font-semibold ${isActive ? "text-white" : "text-[#3D0814] bg-white border"}`
+          : `px-4 py-3 text-sm border-b last:border-b-0 ${isActive ? "text-white font-medium" : "text-[#3D0814] hover:bg-[#FFFBF5]"}`
+      }`}
+      style={{
+        background: isActive ? WINE : compact ? (isActive ? WINE : "white") : "transparent",
+        borderColor: PEACH_BORDER,
+      }}
+    >
+      <item.icon className={compact ? "h-3.5 w-3.5" : "h-4 w-4 flex-shrink-0"} />
+      <span className={compact ? "" : "flex-1 truncate"}>{compact ? item.short ?? item.label : item.label}</span>
+      {badge > 0 && (
+        <span className="relative flex">
+          {pulse && (
+            <span
+              className="absolute inline-flex h-full w-full rounded-full opacity-75 animate-ping"
+              style={{ background: "#F97316" }}
+            />
+          )}
+          <span
+            className="relative min-w-[16px] h-4 px-1 rounded-full text-[9px] font-bold flex items-center justify-center text-white"
+            style={{ background: "#B91C1C" }}
+          >
+            {badge > 9 ? "9+" : badge}
+          </span>
+        </span>
+      )}
+      {!compact && <ChevronRight className={`h-3 w-3 ${isActive ? "text-white/70" : "text-muted-foreground"}`} />}
+    </Link>
+  )
+}
+
 export function AccountShell({
   title,
   subtitle,
@@ -83,10 +156,9 @@ export function AccountShell({
 }) {
   const [pathname] = useLocation()
   const { signOut } = useClerk()
-  const { items, unread, markAllRead, clearAll, refresh } = useMyNotifications()
+  const workspaceRef = useRef<HTMLDivElement>(null)
+  const { items, unread, markAllRead, clearAll, refresh } = useAccountNotifications()
 
-  // Unread count per nav item — an unread notification badges the tab whose
-  // href it points to (chat, prescriptions, orders, etc.).
   const navBadges = useMemo(() => {
     const out: Record<string, number> = {}
     for (const n of items) {
@@ -97,8 +169,6 @@ export function AccountShell({
     return out
   }, [items])
 
-  // Pulse a tab for a few seconds whenever its badge count climbs (a process
-  // moved stage-to-stage), so the change is noticeable without sound.
   const prevBadges = useRef<Record<string, number>>({})
   const [pulsing, setPulsing] = useState<Record<string, boolean>>({})
   useEffect(() => {
@@ -125,32 +195,39 @@ export function AccountShell({
     return undefined
   }, [navBadges])
 
+  // Jump to workspace top when switching modules (store nav scrolls away; workspace stays pinned).
+  useEffect(() => {
+    workspaceRef.current?.scrollIntoView({ block: "start", behavior: "instant" in window ? "instant" as ScrollBehavior : "auto" })
+    window.scrollTo({ top: 0, behavior: "auto" })
+  }, [pathname])
+
+  const firstName = user.name?.split(" ")[0] || "there"
+
   return (
     <div className="min-h-screen flex flex-col" style={{ background: CREAM }}>
-      <TopBar />
-      <Navbar />
+      {/* Store chrome — scrolls away with the page */}
+      <div className="flex-shrink-0">
+        <TopBar />
+        <Navbar />
+      </div>
 
-      {/* Hero */}
-      <header
-        className="relative overflow-hidden"
-        style={{ background: `linear-gradient(135deg, ${WINE} 0%, #6B0F1A 100%)` }}
+      {/* Account workspace — sticks below viewport top once store nav scrolls off */}
+      <div
+        id="account-workspace"
+        ref={workspaceRef}
+        className="sticky top-0 z-40 flex flex-col min-h-0"
+        style={{ background: CREAM }}
       >
+        {/* Compact account bar */}
         <div
-          className="absolute inset-0 opacity-30 pointer-events-none"
-          style={{
-            backgroundImage:
-              "radial-gradient(circle at 20% 0%, rgba(249,115,22,0.35) 0%, transparent 45%), radial-gradient(circle at 90% 100%, rgba(255,251,245,0.18) 0%, transparent 50%)",
-          }}
-        />
-        <div className="relative max-w-6xl mx-auto px-4 py-10 lg:py-14">
-          <p className="text-[11px] uppercase tracking-[0.18em] text-white/70 mb-2 inline-flex items-center gap-1.5">
-            <Sparkles className="h-3 w-3" /> Your account
-          </p>
-          <div className="flex items-end justify-between gap-6 flex-wrap">
-            <div className="flex items-center gap-4">
+          className="border-b border-white/10 shadow-sm"
+          style={{ background: `linear-gradient(135deg, ${WINE} 0%, #6B0F1A 100%)` }}
+        >
+          <div className="max-w-6xl mx-auto px-4 py-2.5 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2.5 min-w-0">
               <div
-                className="h-16 w-16 rounded-full grid place-items-center text-2xl font-bold text-white border-2"
-                style={{ background: "rgba(255,255,255,0.1)", borderColor: "rgba(255,255,255,0.25)" }}
+                className="h-9 w-9 rounded-full grid place-items-center text-sm font-bold text-white border flex-shrink-0"
+                style={{ background: "rgba(255,255,255,0.12)", borderColor: "rgba(255,255,255,0.25)" }}
               >
                 {user.avatarUrl ? (
                   <img src={user.avatarUrl} alt="" className="h-full w-full rounded-full object-cover" />
@@ -158,14 +235,12 @@ export function AccountShell({
                   user.name?.charAt(0)?.toUpperCase() || "U"
                 )}
               </div>
-              <div>
-                <h1 className="font-serif text-2xl lg:text-3xl text-white">
-                  Welcome back, {user.name?.split(" ")[0] || "there"}
-                </h1>
-                <p className="text-white/70 text-sm mt-1">{user.email}</p>
+              <div className="min-w-0 hidden sm:block">
+                <p className="text-sm font-semibold text-white truncate">Hi, {firstName}</p>
+                <p className="text-[10px] text-white/65 truncate">{user.email}</p>
               </div>
             </div>
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2 flex-shrink-0">
               <AccountNotificationBell
                 items={items}
                 unread={unread}
@@ -175,59 +250,58 @@ export function AccountShell({
               />
               <Link
                 href="/"
-                className="inline-flex items-center gap-1.5 text-xs text-white/80 hover:text-white transition-colors"
+                className="hidden sm:inline-flex h-9 items-center rounded-lg border px-3 text-[11px] font-semibold text-white/90 hover:bg-white/10"
+                style={{ borderColor: "rgba(255,255,255,0.25)" }}
               >
-                ← Back to store
+                Store
               </Link>
             </div>
           </div>
         </div>
-      </header>
 
-      {/* Body */}
-      <main className="flex-1">
-        <div className="max-w-6xl mx-auto px-4 py-8 lg:py-10 grid grid-cols-1 lg:grid-cols-[260px_1fr] gap-6">
-          {/* Sidebar */}
-          <aside className="lg:sticky lg:top-6 self-start space-y-3">
+        {/* Current page context */}
+        <div className="bg-white border-b px-4 py-3" style={{ borderColor: PEACH_BORDER }}>
+          <div className="max-w-6xl mx-auto">
+            <h1 className="font-serif text-lg sm:text-xl text-[#3D0814] leading-tight">{title}</h1>
+            {subtitle && (
+              <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{subtitle}</p>
+            )}
+          </div>
+        </div>
+
+        {/* Mobile module tabs */}
+        <div
+          className="lg:hidden bg-white border-b overflow-x-auto overscroll-x-contain"
+          style={{ borderColor: PEACH_BORDER, WebkitOverflowScrolling: "touch" }}
+        >
+          <div className="max-w-6xl mx-auto px-3 py-2 flex gap-1.5 w-max min-w-full">
+            {NAV.map((item) => (
+              <NavLink
+                key={item.href}
+                item={item}
+                isActive={isNavActive(pathname, item.href)}
+                badge={navBadges[item.href] || 0}
+                pulse={!!pulsing[item.href]}
+                compact
+              />
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <main className="flex-1 pb-10">
+        <div className="max-w-6xl mx-auto px-4 py-5 lg:py-6 grid grid-cols-1 lg:grid-cols-[220px_1fr] gap-5 lg:gap-6">
+          <aside className="hidden lg:block sticky top-[7.5rem] self-start space-y-2 max-h-[calc(100vh-8rem)] overflow-y-auto">
             <nav className="rounded-xl bg-white border overflow-hidden" style={{ borderColor: PEACH_BORDER }}>
-              {NAV.map((item) => {
-                const isActive = isNavActive(pathname, item.href)
-                return (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    className={`flex items-center gap-3 px-4 py-3 text-sm border-b last:border-b-0 transition-colors ${
-                      isActive
-                        ? "text-white font-medium"
-                        : "text-[#3D0814] hover:bg-[#FFFBF5]"
-                    }`}
-                    style={{
-                      background: isActive ? WINE : "transparent",
-                      borderColor: PEACH_BORDER,
-                    }}
-                  >
-                    <item.icon className="h-4 w-4 flex-shrink-0" />
-                    <span className="flex-1 truncate">{item.label}</span>
-                    {(navBadges[item.href] || 0) > 0 && (
-                      <span className="relative flex">
-                        {pulsing[item.href] && (
-                          <span
-                            className="absolute inline-flex h-full w-full rounded-full opacity-75 animate-ping"
-                            style={{ background: "#F97316" }}
-                          />
-                        )}
-                        <span
-                          className="relative min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-bold flex items-center justify-center text-white"
-                          style={{ background: "#B91C1C" }}
-                        >
-                          {navBadges[item.href] > 9 ? "9+" : navBadges[item.href]}
-                        </span>
-                      </span>
-                    )}
-                    <ChevronRight className={`h-3 w-3 ${isActive ? "text-white/70" : "text-muted-foreground"}`} />
-                  </Link>
-                )
-              })}
+              {NAV.map((item) => (
+                <NavLink
+                  key={item.href}
+                  item={item}
+                  isActive={isNavActive(pathname, item.href)}
+                  badge={navBadges[item.href] || 0}
+                  pulse={!!pulsing[item.href]}
+                />
+              ))}
             </nav>
             <button
               type="button"
@@ -239,20 +313,9 @@ export function AccountShell({
             </button>
           </aside>
 
-          {/* Content */}
-          <section className="min-w-0">
-            <div className="flex items-baseline justify-between flex-wrap gap-2 mb-4">
-              <div>
-                <h2 className="font-serif text-2xl text-[#3D0814]">{title}</h2>
-                {subtitle && <p className="text-sm text-muted-foreground mt-1">{subtitle}</p>}
-              </div>
-            </div>
-            {children}
-          </section>
+          <section className="min-w-0">{children}</section>
         </div>
       </main>
-
-      <Footer />
     </div>
   )
 }

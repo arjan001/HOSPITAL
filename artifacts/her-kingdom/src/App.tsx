@@ -133,6 +133,7 @@ import AccountSecurityPage from "@/pages/account/security";
 import AccountLoginPage from "@/pages/account/login";
 import AccountRegisterPage from "@/pages/account/register";
 import AccountSupportPage from "@/pages/account/support";
+import { AccountNotificationsProvider } from "@/components/account/account-shell";
 import UploadPrescriptionPage from "@/pages/upload-prescription";
 import SpeakToADoctorPage from "@/pages/speak-to-a-doctor";
 import DoctorPanelPage from "@/pages/doctor/panel";
@@ -322,6 +323,14 @@ function ProtectedAccount({ children }: { children: React.ReactNode }) {
   );
 }
 
+function ProtectedAccountRoute({ children }: { children: React.ReactNode }) {
+  return (
+    <ProtectedAccount>
+      <AccountNotificationsProvider>{children}</AccountNotificationsProvider>
+    </ProtectedAccount>
+  );
+}
+
 function CustomerMirror() {
   useCustomerMirror();
   return null;
@@ -330,6 +339,13 @@ function CustomerMirror() {
 function ScrollToTop() {
   const [location] = useLocation();
   useEffect(() => {
+    const accountWorkspace =
+      location === "/account" ||
+      (location.startsWith("/account/") &&
+        !location.startsWith("/account/login") &&
+        !location.startsWith("/account/register") &&
+        !location.startsWith("/account/sso-callback"));
+    if (accountWorkspace) return;
     window.scrollTo({ top: 0, left: 0, behavior: "instant" });
   }, [location]);
   return null;
@@ -419,31 +435,31 @@ function Router() {
       <Route path="/account/email-verified">{() => <Redirect to="/account/login" />}</Route>
       {/* Account (signed-in only — guests must sign in to view orders) */}
       <Route path="/account/settings">
-        {() => <ProtectedAccount><AccountSettingsPage /></ProtectedAccount>}
+        {() => <ProtectedAccountRoute><AccountSettingsPage /></ProtectedAccountRoute>}
       </Route>
       <Route path="/account">
-        {() => <ProtectedAccount><AccountDashboard /></ProtectedAccount>}
+        {() => <ProtectedAccountRoute><AccountDashboard /></ProtectedAccountRoute>}
       </Route>
       <Route path="/account/dashboard">
-        {() => <ProtectedAccount><AccountDashboard /></ProtectedAccount>}
+        {() => <ProtectedAccountRoute><AccountDashboard /></ProtectedAccountRoute>}
       </Route>
       <Route path="/account/prescriptions">
-        {() => <ProtectedAccount><AccountPrescriptionsPage /></ProtectedAccount>}
+        {() => <ProtectedAccountRoute><AccountPrescriptionsPage /></ProtectedAccountRoute>}
       </Route>
       <Route path="/account/orders">
-        {() => <ProtectedAccount><AccountOrdersPage /></ProtectedAccount>}
+        {() => <ProtectedAccountRoute><AccountOrdersPage /></ProtectedAccountRoute>}
       </Route>
       <Route path="/account/addresses">
-        {() => <ProtectedAccount><AccountAddressesPage /></ProtectedAccount>}
+        {() => <ProtectedAccountRoute><AccountAddressesPage /></ProtectedAccountRoute>}
       </Route>
       <Route path="/account/wishlist">
-        {() => <ProtectedAccount><AccountWishlistPage /></ProtectedAccount>}
+        {() => <ProtectedAccountRoute><AccountWishlistPage /></ProtectedAccountRoute>}
       </Route>
       <Route path="/account/notifications">
-        {() => <ProtectedAccount><AccountNotificationsPage /></ProtectedAccount>}
+        {() => <ProtectedAccountRoute><AccountNotificationsPage /></ProtectedAccountRoute>}
       </Route>
       <Route path="/account/security">
-        {() => <ProtectedAccount><AccountSecurityPage /></ProtectedAccount>}
+        {() => <ProtectedAccountRoute><AccountSecurityPage /></ProtectedAccountRoute>}
       </Route>
       <Route path="/dashboard">
         {() => <Redirect to="/account/dashboard" />}
@@ -452,7 +468,7 @@ function Router() {
         {() => <Redirect to="/account" />}
       </Route>
       <Route path="/upload-prescription">
-        {() => <ProtectedAccount><UploadPrescriptionPage /></ProtectedAccount>}
+        {() => <ProtectedAccountRoute><UploadPrescriptionPage /></ProtectedAccountRoute>}
       </Route>
       <Route path="/speak-to-a-doctor" component={SpeakToADoctorPage} />
       <Route path="/speak-to-a-doctor/:cid" component={SpeakToADoctorPage} />
@@ -461,7 +477,7 @@ function Router() {
       <Route path="/doctor/patients" component={DoctorPatientsPage} />
       <Route path="/doctor" component={DoctorPanelPage} />
       <Route path="/account/support">
-        {() => <ProtectedAccount><AccountSupportPage /></ProtectedAccount>}
+        {() => <ProtectedAccountRoute><AccountSupportPage /></ProtectedAccountRoute>}
       </Route>
       {/* Admin login / password reset — public, no AdminShell wrapper */}
       <Route path="/admin/login" component={AdminLoginPage} />
@@ -528,10 +544,10 @@ function Router() {
       <Route path="/admin/operations/fulfillment" component={AdminFulfillmentWorkflow} />
       <Route path="/admin/chat" component={AdminChat} />
       <Route path="/account/chat">
-        {() => <ProtectedAccount><AccountChatPage /></ProtectedAccount>}
+        {() => <ProtectedAccountRoute><AccountChatPage /></ProtectedAccountRoute>}
       </Route>
       <Route path="/account/consultations">
-        {() => <ProtectedAccount><AccountConsultationsPage /></ProtectedAccount>}
+        {() => <ProtectedAccountRoute><AccountConsultationsPage /></ProtectedAccountRoute>}
       </Route>
       <Route path="/admin/roles" component={AdminRolesPermissions} />
       <Route path="/admin/audit-log" component={AdminAuditLog} />

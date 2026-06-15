@@ -1,8 +1,9 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useLayoutEffect, useRef, useState } from "react"
+import { createPortal } from "react-dom"
 import { Link } from "wouter"
-import { Bell, Check, Trash2 } from "lucide-react"
+import { Bell, Check, Trash2, X } from "lucide-react"
 import type { ClientNotification } from "@/lib/notifications-client"
 
 const WINE = "#3D0814"
@@ -22,11 +23,6 @@ function timeAgo(iso: string) {
   return `${Math.floor(d / 86400)}d ago`
 }
 
-/**
- * Patient-facing notification bell for the account shell. Presentational —
- * notifications are fetched once in the shell and passed down so the bell and
- * the nav badges share a single poll.
- */
 export function AccountNotificationBell({
   items,
   unread,
@@ -41,11 +37,44 @@ export function AccountNotificationBell({
   onRefresh: () => void
 }) {
   const [open, setOpen] = useState(false)
-  const ref = useRef<HTMLDivElement | null>(null)
+  const btnRef = useRef<HTMLButtonElement | null>(null)
+  const panelRef = useRef<HTMLDivElement | null>(null)
   const prevUnread = useRef(unread)
   const [pulse, setPulse] = useState(false)
+  const [panelPos, setPanelPos] = useState({ top: 0, right: 0, maxHeight: 400, flip: false })
 
-  // Pulse the bell briefly whenever the unread count climbs (stage change).
+  const updatePanelPos = () => {
+    const btn = btnRef.current
+    if (!btn) return
+    const r = btn.getBoundingClientRect()
+    const gap = 8
+    const panelW = Math.min(360, window.innerWidth - 16)
+    const right = Math.max(8, window.innerWidth - r.right)
+    const spaceBelow = window.innerHeight - r.bottom - gap - 12
+    const spaceAbove = r.top - gap - 12
+    const flip = spaceBelow < 220 && spaceAbove > spaceBelow
+    const maxHeight = Math.max(160, Math.min(0.7 * window.innerHeight, flip ? spaceAbove : spaceBelow))
+    const top = flip ? Math.max(8, r.top - gap - maxHeight) : r.bottom + gap
+    setPanelPos({ top, right, maxHeight, flip })
+    const panel = panelRef.current
+    if (panel) panel.style.width = `${panelW}px`
+  }
+
+  useLayoutEffect(() => {
+    if (!open) return
+    updatePanelPos()
+  }, [open])
+
+  useEffect(() => {
+    if (!open) return
+    window.addEventListener("resize", updatePanelPos)
+    window.addEventListener("scroll", updatePanelPos, true)
+    return () => {
+      window.removeEventListener("resize", updatePanelPos)
+      window.removeEventListener("scroll", updatePanelPos, true)
+    }
+  }, [open])
+
   useEffect(() => {
     if (unread > prevUnread.current) {
       setPulse(true)
@@ -59,21 +88,135 @@ export function AccountNotificationBell({
 
   useEffect(() => {
     if (!open) return
-    const onDoc = (e: MouseEvent) => {
-      if (!ref.current?.contains(e.target as Node)) setOpen(false)
-    }
-    document.addEventListener("mousedown", onDoc)
-    return () => document.removeEventListener("mousedown", onDoc)
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false) }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
   }, [open])
 
-  return (
-    <div className="relative" ref={ref}>
+  const panel = open && typeof document !== "undefined" ? (
+    <>
       <button
         type="button"
+        className="fixed inset-0 z-[500] bg-black/25"
+        aria-label="Close notifications"
+        onClick={() => setOpen(false)}
+      />
+      <div
+        ref={panelRef}
+        role="dialog"
+        aria-label="Notifications"
+        className="fixed z-[510] flex flex-col rounded-xl border bg-white shadow-2xl overflow-hidden"
+        style={{
+          top: panelPos.top,
+          right: panelPos.right,
+          borderColor: "#F2DCC8",
+          maxHeight: panelPos.maxHeight,
+        }}
+      >
+        <div className="flex items-start justify-between gap-2 px-4 py-3 border-b flex-shrink-0" style={{ borderColor: "#F2DCC8" }}>
+          <div className="min-w-0">
+            <p className="text-sm font-bold" style={{ color: WINE }}>Notifications</p>
+            <p className="text-[11px] text-muted-foreground">
+              {unread > 0 ? `${unread} unread` : "All caught up"}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setOpen(false)}
+            className="grid h-8 w-8 place-items-center rounded-md hover:bg-muted flex-shrink-0"
+            aria-label="Close"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        {(unread > 0 || items.length > 0) && (
+          <div className="flex flex-wrap items-center gap-2 px-4 py-2 border-b flex-shrink-0" style={{ borderColor: "#F2DCC8" }}>
+            {unread > 0 && (
+              <button
+                type="button"
+                onClick={onMarkAllRead}
+                className="inline-flex items-center gap-1 text-[11px] font-semibold text-muted-foreground hover:text-foreground"
+              >
+                <Check className="h-3 w-3" /> Mark all read
+              </button>
+            )}
+            {items.length > 0 && (
+              <button
+                type="button"
+                onClick={onClearAll}
+                className="inline-flex items-center gap-1 text-[11px] font-semibold text-muted-foreground hover:text-[#B91C1C]"
+              >
+                <Trash2 className="h-3 w-3" /> Clear all
+              </button>
+            )}
+            <Link
+              href="/account/notifications"
+              onClick={() => setOpen(false)}
+              className="ml-auto text-[11px] font-semibold"
+              style={{ color: WINE }}
+            >
+              View all
+            </Link>
+          </div>
+        )}
+
+        <div className="flex-1 overflow-y-auto overscroll-contain min-h-0">
+          {items.length === 0 ? (
+            <div className="px-4 py-10 text-center text-xs text-muted-foreground">
+              You have no notifications yet.
+            </div>
+          ) : (
+            <ul className="divide-y" style={{ borderColor: "#F2DCC8" }}>
+              {items.map((n) => {
+                const row = (
+                  <div className={`px-4 py-3 hover:bg-muted/40 transition-colors ${n.read ? "opacity-75" : ""}`}>
+                    <div className="flex items-start gap-2">
+                      <span
+                        className="mt-1.5 inline-block w-1.5 h-1.5 rounded-full flex-shrink-0"
+                        style={{ background: LEVEL_DOT[n.level] || LEVEL_DOT.info }}
+                      />
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs font-bold break-words" style={{ color: WINE }}>{n.title}</p>
+                        {n.body && (
+                          <p className="mt-0.5 text-[11px] text-muted-foreground leading-relaxed break-words whitespace-pre-wrap">
+                            {n.body}
+                          </p>
+                        )}
+                        <p className="mt-1 text-[10px] uppercase tracking-wider text-muted-foreground">
+                          {n.module} · {timeAgo(n.createdAt)}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )
+                return (
+                  <li key={n.id}>
+                    {n.href ? (
+                      <Link href={n.href} onClick={() => setOpen(false)} className="block">
+                        {row}
+                      </Link>
+                    ) : row}
+                  </li>
+                )
+              })}
+            </ul>
+          )}
+        </div>
+      </div>
+    </>
+  ) : null
+
+  return (
+    <>
+      <button
+        ref={btnRef}
+        type="button"
         onClick={() => { setOpen((o) => !o); onRefresh() }}
-        className="relative h-10 w-10 rounded-full grid place-items-center text-white border-2 transition-colors hover:bg-white/10"
+        className="relative h-9 w-9 rounded-full grid place-items-center text-white border transition-colors hover:bg-white/10"
         style={{ background: "rgba(255,255,255,0.1)", borderColor: "rgba(255,255,255,0.25)" }}
         aria-label={`Notifications${unread ? `, ${unread} unread` : ""}`}
+        aria-expanded={open}
       >
         <Bell className="h-4 w-4" />
         {unread > 0 && (
@@ -93,77 +236,7 @@ export function AccountNotificationBell({
           </span>
         )}
       </button>
-
-      {open && (
-        <div
-          className="absolute right-0 mt-2 w-[340px] max-h-[460px] flex flex-col rounded-xl border bg-white shadow-2xl z-50"
-          style={{ borderColor: "#F2DCC8" }}
-          role="menu"
-        >
-          <div className="flex items-center justify-between px-4 py-3 border-b" style={{ borderColor: "#F2DCC8" }}>
-            <div>
-              <p className="text-sm font-bold" style={{ color: WINE }}>Notifications</p>
-              <p className="text-[11px] text-muted-foreground">
-                {unread > 0 ? `${unread} unread` : "All caught up"}
-              </p>
-            </div>
-            <div className="flex items-center gap-3">
-              {unread > 0 && (
-                <button
-                  onClick={onMarkAllRead}
-                  className="inline-flex items-center gap-1 text-[11px] font-semibold text-muted-foreground hover:text-foreground"
-                >
-                  <Check className="h-3 w-3" /> Mark all read
-                </button>
-              )}
-              {items.length > 0 && (
-                <button
-                  onClick={onClearAll}
-                  className="inline-flex items-center gap-1 text-[11px] font-semibold text-muted-foreground hover:text-[#B91C1C]"
-                >
-                  <Trash2 className="h-3 w-3" /> Clear all
-                </button>
-              )}
-            </div>
-          </div>
-          <div className="flex-1 overflow-y-auto">
-            {items.length === 0 ? (
-              <div className="px-4 py-10 text-center text-xs text-muted-foreground">
-                You have no notifications yet.
-              </div>
-            ) : (
-              <ul className="divide-y" style={{ borderColor: "#F2DCC8" }}>
-                {items.map((n) => {
-                  const inner = (
-                    <div className={`px-4 py-3 hover:bg-muted/40 transition-colors ${n.read ? "opacity-70" : ""}`}>
-                      <div className="flex items-start gap-2">
-                        <span
-                          className="mt-1.5 inline-block w-1.5 h-1.5 rounded-full flex-shrink-0"
-                          style={{ background: LEVEL_DOT[n.level] || LEVEL_DOT.info }}
-                        />
-                        <div className="min-w-0 flex-1">
-                          <p className="text-xs font-bold truncate" style={{ color: WINE }}>{n.title}</p>
-                          {n.body && <p className="mt-0.5 text-[11px] text-muted-foreground line-clamp-2">{n.body}</p>}
-                          <p className="mt-1 text-[10px] uppercase tracking-wider text-muted-foreground">
-                            {n.module} · {timeAgo(n.createdAt)}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  )
-                  return (
-                    <li key={n.id}>
-                      {n.href ? (
-                        <Link href={n.href} onClick={() => setOpen(false)}>{inner}</Link>
-                      ) : inner}
-                    </li>
-                  )
-                })}
-              </ul>
-            )}
-          </div>
-        </div>
-      )}
-    </div>
+      {panel && createPortal(panel, document.body)}
+    </>
   )
 }
