@@ -119,7 +119,7 @@ function AuthScreen() {
       type="logistics"
       redirectPath="/portal/logistics"
       title="Logistics portal"
-      subtitle="Sign in with Clerk and register your delivery company. Portal access is granted after Shaniid RX approves your registration."
+      subtitle="Sign in with your Clerk account. New partners are approved by Shaniid RX before portal access."
       brandPanel={<BrandPanel subtitle="Logistics Partner Portal" />}
     />
   )

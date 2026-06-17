@@ -68,6 +68,8 @@ export function PartnerPortalAuthScreen({ type, redirectPath, title, subtitle, b
     type === "supplier" ? "Supplier" : type === "clinic" ? "Clinic" : "Logistics"
 
   const registerQuery = buildRedirectQuery(redirectPath)
+  const activeOrg = organization ?? userMemberships?.data?.[0]?.organization
+  const showOrgSetup = isSignedIn && !activeOrg
 
   const clerkToken = async () => {
     const org = organization ?? userMemberships?.data?.[0]?.organization
@@ -180,8 +182,6 @@ export function PartnerPortalAuthScreen({ type, redirectPath, title, subtitle, b
     }
   }
 
-  const activeOrg = organization ?? userMemberships?.data?.[0]?.organization
-
   return (
     <div className="min-h-screen flex" style={{ background: "#faf9f8" }}>
       {brandPanel}
@@ -266,53 +266,38 @@ export function PartnerPortalAuthScreen({ type, redirectPath, title, subtitle, b
               </Button>
 
               <p className="text-xs text-gray-500 text-center">
-                New here?{" "}
+                Don&apos;t have a Clerk account?{" "}
                 <Link href={`/account/register${registerQuery}`} className="underline" style={{ color: WINE }}>
-                  Create a Clerk account
+                  Create one here
                 </Link>
-                , then register your organization below.
               </p>
             </div>
-          ) : (
+          ) : showOrgSetup ? (
             <div className="space-y-4">
               <p className="text-sm text-gray-600">
                 Signed in as <span className="font-semibold">{user?.primaryEmailAddress?.emailAddress}</span>
               </p>
-
-              {needsOrgSetup && !activeOrg && (
-                <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 space-y-2">
-                  <p className="text-xs text-amber-900">
-                    First time? Enter your company name to register your {portalLabel.toLowerCase()}{" "}
-                    organization. Shaniid RX will review your registration before granting portal access.
-                  </p>
-                  <div>
-                    <Label htmlFor="partner-org-name" className="text-xs">
-                      Company / organization name
-                    </Label>
-                    <Input
-                      id="partner-org-name"
-                      value={orgName}
-                      onChange={(e) => setOrgName(e.target.value)}
-                      placeholder="e.g. SwiftMed Logistics Ltd"
-                      className="mt-1 h-9"
-                    />
-                  </div>
-                </div>
-              )}
-
-              {activeOrg && (
-                <p className="text-[11px] text-muted-foreground text-center">
-                  Active org: <span className="font-semibold">{activeOrg.name}</span>
+              <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 space-y-2">
+                <p className="text-xs text-amber-900">
+                  Link your {portalLabel.toLowerCase()} company to Clerk. Shaniid RX will review before
+                  granting portal access.
                 </p>
-              )}
-
+                <div>
+                  <Label htmlFor="partner-org-name" className="text-xs">
+                    Company / organization name
+                  </Label>
+                  <Input
+                    id="partner-org-name"
+                    value={orgName}
+                    onChange={(e) => setOrgName(e.target.value)}
+                    placeholder="e.g. SwiftMed Logistics Ltd"
+                    className="mt-1 h-9"
+                  />
+                </div>
+              </div>
               <Button
                 type="button"
-                disabled={
-                  orgLoading ||
-                  !orgsLoaded ||
-                  (needsOrgSetup && !orgName.trim() && !activeOrg)
-                }
+                disabled={orgLoading || !orgsLoaded || !orgName.trim()}
                 onClick={() => void continueToPortal()}
                 className="w-full h-11 text-white font-semibold gap-2"
                 style={{ background: WINE }}
@@ -321,8 +306,33 @@ export function PartnerPortalAuthScreen({ type, redirectPath, title, subtitle, b
                   <Loader2 className="h-4 w-4 animate-spin" />
                 ) : (
                   <>
-                    {activeOrg ? "Continue to portal" : "Register organization"}
-                    <ArrowRight className="h-4 w-4" />
+                    Submit for approval <ArrowRight className="h-4 w-4" />
+                  </>
+                )}
+              </Button>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <p className="text-sm text-gray-600">
+                Signed in as <span className="font-semibold">{user?.primaryEmailAddress?.emailAddress}</span>
+              </p>
+              {activeOrg && (
+                <p className="text-[11px] text-muted-foreground text-center">
+                  Active org: <span className="font-semibold">{activeOrg.name}</span>
+                </p>
+              )}
+              <Button
+                type="button"
+                disabled={orgLoading || !orgsLoaded}
+                onClick={() => void continueToPortal()}
+                className="w-full h-11 text-white font-semibold gap-2"
+                style={{ background: WINE }}
+              >
+                {orgLoading ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <>
+                    Continue to portal <ArrowRight className="h-4 w-4" />
                   </>
                 )}
               </Button>

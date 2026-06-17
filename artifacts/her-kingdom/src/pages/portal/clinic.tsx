@@ -5,8 +5,7 @@
  *
  * Backed by the real partner API via partners-client.ts. Auth is a server-side
  * signed token in an HttpOnly cookie — there is no client-held token and no
- * localStorage auth. Clinics either sign in, apply to join, or accept an invite
- * (set password) when arriving from an invite link.
+ * Auth is Clerk-only. Accept-invite at /portal/clinic/accept remains for legacy admin invites.
  */
 
 import { useMemo, useState } from "react"
@@ -86,7 +85,7 @@ function ClinicAuthScreen() {
       type="clinic"
       redirectPath="/portal/clinic"
       title="Clinic portal"
-      subtitle="Sign in with Clerk and register your facility organization. Portal access is granted after Shaniid RX approves your registration."
+      subtitle="Sign in with your Clerk account. New facilities are approved by Shaniid RX before portal access."
       brandPanel={<BrandPanel />}
     />
   )
