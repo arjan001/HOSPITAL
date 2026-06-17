@@ -1,6 +1,7 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useMemo, useState, useRef, useLayoutEffect } from "react"
+import { createPortal } from "react-dom"
 import { AdminShell } from "./admin-shell"
 import {
   Search,
@@ -146,78 +147,109 @@ type ActionMenuProps = {
 
 function ActionMenu({ row, onView, onEdit, onToggleDisable, onDelete }: ActionMenuProps) {
   const [open, setOpen] = useState(false)
+  const [menuPos, setMenuPos] = useState({ top: 0, left: 0 })
+  const btnRef = useRef<HTMLButtonElement>(null)
   const disabled = row.status === "disabled"
+
+  useLayoutEffect(() => {
+    if (!open || !btnRef.current) return
+    const rect = btnRef.current.getBoundingClientRect()
+    const menuWidth = 192
+    const menuHeight = 180
+    const left = Math.min(Math.max(8, rect.right - menuWidth), window.innerWidth - menuWidth - 8)
+    const top = Math.max(8, rect.top - menuHeight - 6)
+    setMenuPos({ top, left })
+  }, [open])
+
+  const menu =
+    open && typeof document !== "undefined"
+      ? createPortal(
+          <>
+            <div
+              className="fixed inset-0 z-[180]"
+              onClick={() => setOpen(false)}
+              aria-hidden="true"
+            />
+            <div
+              role="menu"
+              className="fixed z-[190] w-48 rounded-lg border bg-white shadow-xl py-1 text-sm"
+              style={{ top: menuPos.top, left: menuPos.left, borderColor: PEACH }}
+            >
+              <button
+                type="button"
+                role="menuitem"
+                className="w-full px-3 py-2 text-left hover:bg-gray-50 flex items-center gap-2"
+                onClick={() => {
+                  setOpen(false)
+                  onView()
+                }}
+              >
+                <Eye className="h-3.5 w-3.5" /> View details
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                className="w-full px-3 py-2 text-left hover:bg-gray-50 flex items-center gap-2"
+                onClick={() => {
+                  setOpen(false)
+                  onEdit()
+                }}
+              >
+                <Pencil className="h-3.5 w-3.5" /> Edit info
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                className="w-full px-3 py-2 text-left hover:bg-gray-50 flex items-center gap-2"
+                onClick={() => {
+                  setOpen(false)
+                  onToggleDisable()
+                }}
+              >
+                {disabled ? (
+                  <>
+                    <CheckCircle2 className="h-3.5 w-3.5 text-green-700" /> Enable account
+                  </>
+                ) : (
+                  <>
+                    <Ban className="h-3.5 w-3.5 text-amber-700" /> Disable account
+                  </>
+                )}
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                className="w-full px-3 py-2 text-left hover:bg-red-50 text-red-700 flex items-center gap-2 border-t mt-1"
+                style={{ borderColor: "rgba(0,0,0,0.06)" }}
+                onClick={() => {
+                  setOpen(false)
+                  onDelete()
+                }}
+              >
+                <Trash2 className="h-3.5 w-3.5" /> Remove from list
+              </button>
+            </div>
+          </>,
+          document.body,
+        )
+      : null
+
   return (
-    <div className="relative inline-block text-left">
+    <>
       <button
+        ref={btnRef}
         type="button"
         onClick={() => setOpen((o) => !o)}
         className="inline-flex items-center justify-center h-8 w-8 rounded-md border hover:bg-gray-50"
         style={{ borderColor: PEACH }}
         aria-label="Actions"
+        aria-expanded={open}
+        aria-haspopup="menu"
       >
         <MoreHorizontal className="h-4 w-4" />
       </button>
-      {open && (
-        <>
-          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-          <div
-            className="absolute right-0 z-50 mt-1 w-48 rounded-lg border bg-white shadow-lg py-1 text-sm"
-            style={{ borderColor: PEACH }}
-          >
-            <button
-              type="button"
-              className="w-full px-3 py-2 text-left hover:bg-gray-50 flex items-center gap-2"
-              onClick={() => {
-                setOpen(false)
-                onView()
-              }}
-            >
-              <Eye className="h-3.5 w-3.5" /> View details
-            </button>
-            <button
-              type="button"
-              className="w-full px-3 py-2 text-left hover:bg-gray-50 flex items-center gap-2"
-              onClick={() => {
-                setOpen(false)
-                onEdit()
-              }}
-            >
-              <Pencil className="h-3.5 w-3.5" /> Edit info
-            </button>
-            <button
-              type="button"
-              className="w-full px-3 py-2 text-left hover:bg-gray-50 flex items-center gap-2"
-              onClick={() => {
-                setOpen(false)
-                onToggleDisable()
-              }}
-            >
-              {disabled ? (
-                <>
-                  <CheckCircle2 className="h-3.5 w-3.5 text-green-700" /> Enable account
-                </>
-              ) : (
-                <>
-                  <Ban className="h-3.5 w-3.5 text-amber-700" /> Disable account
-                </>
-              )}
-            </button>
-            <button
-              type="button"
-              className="w-full px-3 py-2 text-left hover:bg-red-50 text-red-700 flex items-center gap-2 border-t mt-1"
-              style={{ borderColor: "rgba(0,0,0,0.06)" }}
-              onClick={() => {
-                setOpen(false)
-                onDelete()
-              }}
-            >
-              <Trash2 className="h-3.5 w-3.5" /> Remove from list
-            </button>
-          </div>
-        </>
-      )}
-    </div>
+      {menu}
+    </>
   )
 }
 
@@ -719,17 +751,22 @@ function Modal({
   children: React.ReactNode
   onClose: () => void
 }) {
-  return (
+  if (typeof document === "undefined") return null
+
+  return createPortal(
     <div
-      className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
+      className="fixed inset-0 z-[200] bg-black/60 backdrop-blur-sm flex items-start justify-center p-4 pt-[10vh] sm:items-center sm:pt-4"
       onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="admin-user-modal-title"
     >
       <div
-        className="bg-white rounded-2xl shadow-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto p-6"
+        className="bg-white rounded-2xl shadow-2xl max-w-lg w-full max-h-[85vh] overflow-y-auto p-6"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-bold" style={{ color: WINE }}>
+          <h3 id="admin-user-modal-title" className="text-lg font-bold" style={{ color: WINE }}>
             {title}
           </h3>
           <button type="button" onClick={onClose} className="text-muted-foreground hover:text-foreground">
@@ -738,7 +775,8 @@ function Modal({
         </div>
         {children}
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }
 
