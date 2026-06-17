@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import { Link } from "wouter"
-import { useAuth, useOrganization, useOrganizationList, useUser } from "@clerk/react"
+import { useAuth, useUser } from "@clerk/react"
 import { useSignIn } from "@clerk/react/legacy"
 import { AlertTriangle, ArrowRight, Eye, EyeOff, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -47,11 +47,9 @@ function PendingBanner({ message }: { message: string }) {
 
 /** Clerk-only partner portal sign-in + organization registration. */
 export function PartnerPortalAuthScreen({ type, redirectPath, title, subtitle, brandPanel }: Props) {
-  const { isSignedIn, getToken } = useAuth()
+  const { isSignedIn, getToken, orgId, orgSlug, isLoaded: authLoaded } = useAuth()
   const { user } = useUser()
   const { isLoaded, signIn, setActive } = useSignIn()
-  const { organization } = useOrganization()
-  const { userMemberships, isLoaded: orgsLoaded } = useOrganizationList({ userMemberships: true })
 
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
@@ -68,13 +66,13 @@ export function PartnerPortalAuthScreen({ type, redirectPath, title, subtitle, b
     type === "supplier" ? "Supplier" : type === "clinic" ? "Clinic" : "Logistics"
 
   const registerQuery = buildRedirectQuery(redirectPath)
-  const activeOrg = organization ?? userMemberships?.data?.[0]?.organization
+  /** Active Clerk org from session (no useOrganizationList — avoids Clerk “enable Organizations” gate). */
+  const activeOrg = orgId ? { id: orgId, name: orgSlug ?? "" } : null
   const showOrgSetup = isSignedIn && !activeOrg
 
   const clerkToken = async () => {
-    const org = organization ?? userMemberships?.data?.[0]?.organization
-    if (org?.id) {
-      return (await getToken({ organizationId: org.id })) ?? (await getToken())
+    if (orgId) {
+      return (await getToken({ organizationId: orgId })) ?? (await getToken())
     }
     return getToken()
   }
@@ -170,8 +168,8 @@ export function PartnerPortalAuthScreen({ type, redirectPath, title, subtitle, b
     try {
       const name =
         orgName.trim() ||
-        organization?.name ||
-        userMemberships?.data?.[0]?.organization?.name ||
+        activeOrg?.name ||
+        orgSlug ||
         ""
       await exchangeSession(name || undefined)
       setNeedsOrgSetup(false)
@@ -297,7 +295,7 @@ export function PartnerPortalAuthScreen({ type, redirectPath, title, subtitle, b
               </div>
               <Button
                 type="button"
-                disabled={orgLoading || !orgsLoaded || !orgName.trim()}
+                disabled={orgLoading || !authLoaded || !orgName.trim()}
                 onClick={() => void continueToPortal()}
                 className="w-full h-11 text-white font-semibold gap-2"
                 style={{ background: WINE }}
@@ -316,14 +314,14 @@ export function PartnerPortalAuthScreen({ type, redirectPath, title, subtitle, b
               <p className="text-sm text-gray-600">
                 Signed in as <span className="font-semibold">{user?.primaryEmailAddress?.emailAddress}</span>
               </p>
-              {activeOrg && (
+              {activeOrg && activeOrg.name && (
                 <p className="text-[11px] text-muted-foreground text-center">
                   Active org: <span className="font-semibold">{activeOrg.name}</span>
                 </p>
               )}
               <Button
                 type="button"
-                disabled={orgLoading || !orgsLoaded}
+                disabled={orgLoading || !authLoaded}
                 onClick={() => void continueToPortal()}
                 className="w-full h-11 text-white font-semibold gap-2"
                 style={{ background: WINE }}
