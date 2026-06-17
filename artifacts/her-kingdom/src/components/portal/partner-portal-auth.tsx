@@ -15,6 +15,7 @@ import {
   type PartnerType,
 } from "@/lib/partners-client"
 import { buildRedirectQuery } from "@/lib/auth-redirect"
+import { GoogleSignInButton } from "@/components/auth/google-sign-in-button"
 
 const BASE_PATH = import.meta.env.BASE_URL.replace(/\/$/, "")
 const WINE = "#3D0814"
@@ -247,21 +248,18 @@ export function PartnerPortalAuthScreen({ type, redirectPath, title, subtitle, b
                     <Loader2 className="h-4 w-4 animate-spin" />
                   ) : (
                     <>
-                      Sign in with Clerk <ArrowRight className="h-4 w-4" />
+                      Sign in <ArrowRight className="h-4 w-4" />
                     </>
                   )}
                 </Button>
               </form>
 
-              <Button
-                type="button"
-                variant="outline"
-                disabled={googleLoading || !isLoaded}
+              <GoogleSignInButton
+                label="Continue with Google"
                 onClick={() => void handleGoogle()}
-                className="w-full h-11 font-semibold"
-              >
-                {googleLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Continue with Google"}
-              </Button>
+                disabled={!isLoaded}
+                loading={googleLoading}
+              />
 
               <p className="text-xs text-gray-500 text-center">
                 Don&apos;t have a Clerk account?{" "}
