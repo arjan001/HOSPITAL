@@ -19,6 +19,7 @@ import {
   type PartnerAccount, type DeliveryJob,
 } from "@/lib/partners-client"
 import { PartnerClerkDivider, PartnerClerkSignIn } from "@/components/portal/partner-clerk-signin"
+import { PartnerTeamPanel } from "@/components/portal/partner-team-panel"
 import {
   Truck, LogOut, Package, MapPin, BarChart3, User,
   AlertTriangle, CheckCircle2, ArrowRight, Eye, EyeOff,
@@ -567,8 +568,8 @@ const LOG_TABS: { id: LogTab; label: string; icon: typeof Truck }[] = [
   { id: "profile",  label: "Profile",           icon: User         },
 ]
 
-function LogisticsDashboard({ partner, onLogout }: {
-  partner: PartnerAccount; onLogout: () => void
+function LogisticsDashboard({ partner, memberRole, onLogout }: {
+  partner: PartnerAccount; memberRole?: string; onLogout: () => void
 }) {
   const [tab, setTab] = useState<LogTab>("overview")
   const [collapsed, setCollapsed] = useState(() => {
@@ -993,6 +994,8 @@ function LogisticsDashboard({ partner, onLogout }: {
                 </div>
               </div>
 
+              <PartnerTeamPanel type={PARTNER_TYPE} memberRole={memberRole} />
+
               <div className="bg-white rounded-xl border border-gray-100 p-5 flex items-center justify-between">
                 <div>
                   <p className="font-semibold text-gray-800 text-sm">Sign out</p>
@@ -1042,5 +1045,11 @@ export default function LogisticsPortal() {
     return <AuthScreen />
   }
 
-  return <LogisticsDashboard partner={me.data.partner} onLogout={handleLogout} />
+  return (
+    <LogisticsDashboard
+      partner={me.data.partner}
+      memberRole={me.data.memberRole}
+      onLogout={handleLogout}
+    />
+  )
 }

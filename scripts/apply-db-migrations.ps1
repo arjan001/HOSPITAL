@@ -17,7 +17,10 @@ $files = @(
   "20250604_procurement.sql",
   "20250604_procurement_sourcing_link.sql",
   "20250604_sourcing_requests.sql",
-  "20250604_fulfillment.sql"
+  "20250604_fulfillment.sql",
+  "20250611_partner_directory.sql",
+  "20250615_partner_organizations.sql",
+  "20250616_pharmacies.sql"
 )
 
 $manualDir = Join-Path $root "lib\db\migrations\manual"

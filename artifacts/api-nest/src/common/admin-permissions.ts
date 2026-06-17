@@ -9,6 +9,7 @@
 
 export const ADMIN_ROLES = [
   "super_admin",
+  "pharmacy_admin",
   "pharmacist",
   "doctor",
   "fulfillment",
@@ -60,6 +61,9 @@ export const PERMISSION_CATALOG = [
   "roles.manage",
   "integrations.manage",
   "analytics.view",
+  // Internal pharmacy network
+  "pharmacy.manage",
+  "pharmacy.staff",
 ] as const
 
 /**
@@ -72,6 +76,18 @@ export const PERMISSION_CATALOG = [
  */
 export const ROLE_DEFAULT_PERMISSIONS: Record<string, string[]> = {
   super_admin: ["*"],
+  pharmacy_admin: [
+    "pharmacy.manage",
+    "pharmacy.staff",
+    "rx.view",
+    "rx.verify",
+    "orders.view",
+    "orders.update",
+    "products.view",
+    "inventory.view",
+    "delivery.manage",
+    "chat.respond",
+  ],
   pharmacist: [
     "rx.view",
     "rx.verify",

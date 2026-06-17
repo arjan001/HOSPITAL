@@ -25,6 +25,7 @@ import {
   type PurchaseOrderSummary,
 } from "@/lib/partners-client"
 import { PartnerClerkDivider, PartnerClerkSignIn } from "@/components/portal/partner-clerk-signin"
+import { PartnerTeamPanel } from "@/components/portal/partner-team-panel"
 import {
   ShieldCheck, LogOut, ClipboardList, BarChart3, User, AlertTriangle,
   CheckCircle2, XCircle, Eye, EyeOff, ArrowRight, Star, TrendingUp,
@@ -1271,6 +1272,7 @@ function SupplierDashboard({ partner, onLogout }: {
                 </div>
                 <p className="text-xs text-gray-400 mt-4">To update your profile details, contact your account manager at <span className="underline">suppliers@shaniidrx.com</span></p>
               </div>
+              <PartnerTeamPanel type="supplier" />
             </div>
           )}
         </div>

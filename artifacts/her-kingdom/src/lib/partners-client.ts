@@ -50,7 +50,28 @@ export type PartnerAccount = {
   updatedAt: string
 }
 
-export type PartnerMe = { ok: true; partner: PartnerAccount; profile: Record<string, unknown> | null }
+export type PartnerMe = {
+  ok: true
+  partner: PartnerAccount
+  profile: Record<string, unknown> | null
+  memberRole?: string
+  member?: PartnerMember | null
+}
+
+export type PartnerMember = {
+  id: string
+  partnerId: string
+  partnerType: PartnerType
+  clerkOrgId: string
+  clerkUserId: string | null
+  email: string
+  displayName: string
+  role: string
+  status: string
+  invitedAt: string | null
+  joinedAt: string | null
+  createdAt: string
+}
 
 export type SupplierProduct = {
   id: string
@@ -176,6 +197,52 @@ export function partnerClerkSession(type: PartnerType, clerkToken: string) {
     method: "POST",
     headers: { Authorization: `Bearer ${clerkToken}` },
   })
+}
+
+export function partnerRegisterOrg(type: PartnerType, clerkToken: string, orgName: string) {
+  return pFetch<{ ok: true; partner: PartnerAccount; partnerId: string; clerkOrgId: string }>(
+    `/${type}/register-org`,
+    {
+      method: "POST",
+      headers: { Authorization: `Bearer ${clerkToken}` },
+      body: JSON.stringify({ orgName }),
+    },
+  )
+}
+
+export function usePartnerMembers(type: PartnerType, enabled = true) {
+  return useSWR<PartnerMember[]>(
+    enabled ? `partner:${type}:members` : null,
+    () => pFetch<PartnerMember[]>(`/${type}/members`),
+  )
+}
+
+export async function invitePartnerMember(
+  type: PartnerType,
+  input: { email: string; displayName?: string; role?: string },
+) {
+  const r = await pFetch<PartnerMember>(`/${type}/members/invite`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  })
+  await globalMutate(`partner:${type}:members`)
+  return r
+}
+
+export function useLogisticsCouriers(enabled = true) {
+  return useSWR<PartnerMember[]>(
+    enabled ? "partner:logistics:couriers" : null,
+    () => pFetch<PartnerMember[]>("/logistics/couriers"),
+  )
+}
+
+export async function assignLogisticsJob(jobId: string, memberId: string) {
+  const r = await pFetch<DeliveryJob>(`/logistics/jobs/${jobId}/assign`, {
+    method: "POST",
+    body: JSON.stringify({ memberId }),
+  })
+  await globalMutate("partner:logistics:jobs")
+  return r
 }
 
 export function partnerLogin(type: PartnerType, email: string, password: string) {

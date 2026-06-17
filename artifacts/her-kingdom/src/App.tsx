@@ -578,10 +578,16 @@ function Router() {
 }
 
 function GlobalOverlays() {
+  const [location] = useLocation();
+  const hideWhatsApp =
+    location.startsWith("/admin") ||
+    location.startsWith("/portal") ||
+    location.startsWith("/doctor");
+
   return (
     <>
       <PopupOffer />
-      <FloatingWhatsApp />
+      {!hideWhatsApp && <FloatingWhatsApp />}
       <BackToTop />
     </>
   );

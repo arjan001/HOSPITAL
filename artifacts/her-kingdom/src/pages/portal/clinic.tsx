@@ -18,6 +18,7 @@ import {
   type PartnerAccount, type ClinicProduct, type ClinicOrderLine,
 } from "@/lib/partners-client"
 import { PartnerClerkDivider, PartnerClerkSignIn } from "@/components/portal/partner-clerk-signin"
+import { PartnerTeamPanel } from "@/components/portal/partner-team-panel"
 import {
   Stethoscope, LogOut, ShoppingCart, ClipboardList, CreditCard,
   AlertTriangle, CheckCircle2, Eye, EyeOff, ArrowRight,
@@ -1031,6 +1032,7 @@ function ClinicDashboard({ partner, onLogout }: { partner: PartnerAccount; onLog
                 </div>
                 <p className="text-xs text-gray-400 mt-4">Contact <span className="underline">clinics@shaniidrx.com</span> to update facility details.</p>
               </div>
+              <PartnerTeamPanel type="clinic" />
             </div>
           )}
         </div>

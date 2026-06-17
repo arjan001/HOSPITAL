@@ -1,4 +1,4 @@
-import { boolean, integer, jsonb, pgTable, text, timestamp, index } from "drizzle-orm/pg-core"
+import { boolean, integer, jsonb, pgTable, text, timestamp, index, uniqueIndex } from "drizzle-orm/pg-core"
 import { createInsertSchema, createSelectSchema } from "drizzle-zod"
 import { z } from "zod/v4"
 
@@ -179,6 +179,8 @@ export const deliveryJobs = pgTable("delivery_jobs", {
   // orderType values: storefront | clinic
   assignedRiderId: text("assigned_rider_id"),
   assignedRiderName: text("assigned_rider_name"),
+  /** Clerk org member (courier) assigned to this job — partner_members.id */
+  assignedMemberId: text("assigned_member_id"),
   logisticsPartnerId: text("logistics_partner_id"),
   pickupAddress: text("pickup_address").notNull(),
   deliveryAddress: text("delivery_address").notNull(),
@@ -254,6 +256,8 @@ export const partnerDirectory = pgTable(
     id: text("id").primaryKey(),
     partnerType: text("partner_type").notNull(),
     // partnerType values: supplier | clinic | logistics
+    /** Clerk Organization id — tenant boundary for this partner company */
+    clerkOrgId: text("clerk_org_id"),
     payload: jsonb("payload").$type<Record<string, unknown>>().notNull(),
     email: text("email").notNull().default(""),
     displayName: text("display_name").notNull().default(""),
@@ -264,6 +268,38 @@ export const partnerDirectory = pgTable(
   },
   (t) => ({
     typeIdx: index("partner_directory_type_idx").on(t.partnerType),
+    clerkOrgIdx: uniqueIndex("partner_directory_clerk_org_idx").on(t.clerkOrgId),
+  }),
+)
+
+/**
+ * partner_members — employees onboarded via Clerk Organization invitations.
+ * All portal data is scoped by partner_id (directory row); members never cross orgs.
+ */
+export const partnerMembers = pgTable(
+  "partner_members",
+  {
+    id: text("id").primaryKey(),
+    partnerId: text("partner_id").notNull(),
+    partnerType: text("partner_type").notNull(),
+    clerkOrgId: text("clerk_org_id").notNull(),
+    clerkUserId: text("clerk_user_id"),
+    email: text("email").notNull(),
+    displayName: text("display_name").notNull().default(""),
+    role: text("role").notNull().default("member"),
+    // owner | admin | member | rider | dispatcher
+    status: text("status").notNull().default("active"),
+    // invited | active | suspended
+    clerkInviteId: text("clerk_invite_id"),
+    invitedAt: timestamp("invited_at"),
+    joinedAt: timestamp("joined_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (t) => ({
+    partnerIdx: index("partner_members_partner_idx").on(t.partnerId),
+    orgUserIdx: index("partner_members_org_user_idx").on(t.clerkOrgId, t.clerkUserId),
+    emailOrgIdx: uniqueIndex("partner_members_email_org_idx").on(t.clerkOrgId, t.email),
   }),
 )
 
@@ -438,6 +474,14 @@ export const selectPartnerApplicationSchema = createSelectSchema(partnerApplicat
 export type InsertPartnerApplication = z.infer<typeof insertPartnerApplicationSchema>
 export type PartnerApplication = typeof partnerApplications.$inferSelect
 
+export const insertPartnerMemberSchema = createInsertSchema(partnerMembers).omit({
+  createdAt: true,
+  updatedAt: true,
+})
+export const selectPartnerMemberSchema = createSelectSchema(partnerMembers)
+export type InsertPartnerMember = z.infer<typeof insertPartnerMemberSchema>
+export type PartnerMember = typeof partnerMembers.$inferSelect
+
 export const insertSupplierProductSchema = createInsertSchema(supplierProducts).omit({
   createdAt: true,
   updatedAt: true,
@@ -462,8 +506,31 @@ export type ClinicTransaction = typeof clinicTransactions.$inferSelect
 
 // ─── Pharmacy Branches ───────────────────────────────────────────────────────
 
+// ─── Internal pharmacy network (legal entity → branches → staff) ─────────────
+
+export const pharmacies = pgTable("pharmacies", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  legalName: text("legal_name").notNull().default(""),
+  licenseNumber: text("license_number").notNull().default(""),
+  email: text("email").notNull().default(""),
+  phone: text("phone"),
+  address: text("address").notNull().default(""),
+  city: text("city").notNull().default(""),
+  status: text("status").notNull().default("pending"),
+  // pending | active | suspended
+  /** Optional Clerk org for internal staff invitations (not a public partner portal). */
+  clerkOrgId: text("clerk_org_id"),
+  /** Primary pharmacy administrator — admin_users.id */
+  adminUserId: text("admin_user_id"),
+  kyc: jsonb("kyc").$type<Record<string, unknown>>().default({}),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+})
+
 export const pharmacyBranches = pgTable("pharmacy_branches", {
   id: text("id").primaryKey(),
+  pharmacyId: text("pharmacy_id").references(() => pharmacies.id, { onDelete: "cascade" }),
   branchCode: text("branch_code").unique().notNull(),
   name: text("name").notNull(),
   address: text("address").notNull(),
@@ -498,6 +565,9 @@ export const pharmacyShifts = pgTable("pharmacy_shifts", {
 
 export const pharmacyEmployees = pgTable("pharmacy_employees", {
   id: text("id").primaryKey(),
+  pharmacyId: text("pharmacy_id").references(() => pharmacies.id, { onDelete: "cascade" }),
+  clerkUserId: text("clerk_user_id"),
+  clerkInviteId: text("clerk_invite_id"),
   userId: text("user_id"),
   adminUserId: text("admin_user_id"),
   branchId: text("branch_id").notNull().references(() => pharmacyBranches.id, { onDelete: "cascade" }),
@@ -533,6 +603,7 @@ export const posTransactions = pgTable("pos_transactions", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 })
 
+export type Pharmacy = typeof pharmacies.$inferSelect
 export type PharmacyBranch = typeof pharmacyBranches.$inferSelect
 export type PharmacyShift = typeof pharmacyShifts.$inferSelect
 export type PharmacyEmployee = typeof pharmacyEmployees.$inferSelect

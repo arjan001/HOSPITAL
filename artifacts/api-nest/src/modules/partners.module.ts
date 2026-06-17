@@ -43,6 +43,7 @@ import {
   db,
   partnerAccounts,
   partnerApplications,
+  partnerMembers,
   supplierProducts,
   sourcingRequests,
   partnerQuotes,
@@ -66,6 +67,7 @@ import {
   type DirectoryKey,
 } from "./partner-directory.module"
 import { AdminGuard } from "../common/admin-guard"
+import { PartnerOrgService, type PartnerAuthContext } from "./partner-org.service"
 
 /** Generate a human-readable temporary password: e.g. "SHNRX-AB3X7F" */
 function generateTempPassword(): string {
@@ -149,6 +151,7 @@ export class PartnerAuthService {
     @Inject(AdminCmsService) private readonly cms: AdminCmsService,
     @Inject(PartnerDirectoryService) private readonly directory: PartnerDirectoryService,
     @Inject(WhatsAppService) private readonly whatsapp: WhatsAppService,
+    @Inject(PartnerOrgService) private readonly org: PartnerOrgService,
   ) {}
 
   /** Partner profile list from Postgres `partner_directory`. */
@@ -168,6 +171,22 @@ export class PartnerAuthService {
       return ((entry?.value as T) ?? fallback)
     } catch {
       return fallback
+    }
+  }
+
+  /** Resolve signed token or Clerk org session; returns account + member role for RBAC. */
+  async requirePartnerContext(req: Request, expectedType?: PartnerType): Promise<PartnerAuthContext> {
+    const acc = await this.requirePartner(req, expectedType)
+    const memberId = String((acc.metadata as Record<string, unknown> | null)?.memberId ?? "")
+    let member = null
+    if (memberId) {
+      const [row] = await db.select().from(partnerMembers).where(eq(partnerMembers.id, memberId)).limit(1)
+      member = row ?? null
+    }
+    return {
+      account: acc,
+      member,
+      memberRole: this.org.memberRoleFromAccount(acc),
     }
   }
 
@@ -198,11 +217,12 @@ export class PartnerAuthService {
 
     const clerk = await verifyClerkBearer(req.header("authorization"))
     if (clerk?.email) {
-      const metaType = clerk.publicMetadata?.partnerType
       const partnerType =
         expectedType ||
-        (metaType === "supplier" || metaType === "clinic" || metaType === "logistics"
-          ? (metaType as PartnerType)
+        (clerk.publicMetadata?.partnerType === "supplier" ||
+        clerk.publicMetadata?.partnerType === "clinic" ||
+        clerk.publicMetadata?.partnerType === "logistics"
+          ? (clerk.publicMetadata.partnerType as PartnerType)
           : null)
       if (!partnerType) {
         throw new HttpException(
@@ -210,6 +230,12 @@ export class PartnerAuthService {
           HttpStatus.FORBIDDEN,
         )
       }
+
+      if (clerk.orgId || clerk.publicMetadata?.clerkOrgId) {
+        const ctx = await this.org.resolveFromClerk(clerk, partnerType)
+        if (ctx) return ctx.account
+      }
+
       let [acc] = await db
         .select()
         .from(partnerAccounts)
@@ -373,6 +399,41 @@ export class PartnerAuthService {
     return { ok: true, token, partner: publicAccount(acc) }
   }
 
+  /** Register a new partner company via Clerk Organization (self-service). */
+  async registerClerkOrg(
+    res: Response,
+    type: string,
+    authHeader: string | undefined,
+    orgName: string,
+  ) {
+    const partnerType = assertType(type)
+    const clerk = await verifyClerkBearer(authHeader)
+    if (!clerk?.email) {
+      throw new HttpException("Valid Clerk session token required", HttpStatus.UNAUTHORIZED)
+    }
+    const { partnerId, clerkOrgId } = await this.org.registerOrganization(clerk, partnerType, orgName)
+    const req = { header: (n: string) => (n.toLowerCase() === "authorization" ? authHeader ?? "" : "") } as Request
+    const acc = await this.requirePartner(req, partnerType)
+    const token = this.issue(res, acc)
+    return { ok: true, token, partnerId, clerkOrgId, partner: publicAccount(acc) }
+  }
+
+  async listOrgMembers(req: Request, expectedType: PartnerType) {
+    const ctx = await this.requirePartnerContext(req, expectedType)
+    return this.org.listMembers(ctx.account.partnerId)
+  }
+
+  async inviteOrgMember(req: Request, expectedType: PartnerType, body: Record<string, unknown>) {
+    const ctx = await this.requirePartnerContext(req, expectedType)
+    return this.org.inviteMember(ctx, body)
+  }
+
+  async listOrgCouriers(req: Request) {
+    const ctx = await this.requirePartnerContext(req, "logistics")
+    this.org.assertCanManageTeam(ctx.memberRole)
+    return this.org.listCouriers(ctx.account.partnerId)
+  }
+
   signOut(res: Response): { ok: true } {
     res.clearCookie(PARTNER_TOKEN_COOKIE, {
       httpOnly: true,
@@ -473,11 +534,23 @@ export class PartnerAuthService {
     return { ok: true, token: newToken, partner: publicAccount(updated) }
   }
 
-  async me(req: Request): Promise<{ ok: true; partner: ReturnType<typeof publicAccount>; profile: unknown }> {
-    const acc = await this.requirePartner(req)
-    const recs = await this.partnerRecords(acc.partnerType as PartnerType)
-    const profile = recs.find((r: CmsPartnerRecord) => r.id === acc.partnerId) ?? null
-    return { ok: true, partner: publicAccount(acc), profile }
+  async me(req: Request): Promise<{
+    ok: true
+    partner: ReturnType<typeof publicAccount>
+    profile: unknown
+    memberRole: string
+    member: typeof partnerMembers.$inferSelect | null
+  }> {
+    const ctx = await this.requirePartnerContext(req)
+    const recs = await this.partnerRecords(ctx.account.partnerType as PartnerType)
+    const profile = recs.find((r: CmsPartnerRecord) => r.id === ctx.account.partnerId) ?? null
+    return {
+      ok: true,
+      partner: publicAccount(ctx.account),
+      profile,
+      memberRole: ctx.memberRole,
+      member: ctx.member,
+    }
   }
 
   // ── admin: invites + accounts + applications ──
@@ -650,9 +723,10 @@ export class PartnerAuthService {
           .where(eq(partnerAccounts.email, row.email.toLowerCase()))
           .limit(1)
         if (!existing.length) {
+          const partnerId = await this.org.provisionDirectoryFromApplication(row)
           invited = await this.invite({
             partnerType: row.partnerType,
-            partnerId: row.id,
+            partnerId,
             email: row.email,
             displayName: row.orgName || row.contactName || row.email,
             metadata: {
@@ -674,7 +748,10 @@ export class PartnerAuthService {
 // ─────────────────────────────── portal service ───────────────────────────────
 @Injectable()
 export class PartnerPortalService {
-  constructor(@Inject(PartnerAuthService) public readonly auth: PartnerAuthService) {}
+  constructor(
+    @Inject(PartnerAuthService) public readonly auth: PartnerAuthService,
+    @Inject(PartnerOrgService) private readonly org: PartnerOrgService,
+  ) {}
 
   // ---- supplier ----
   async listCatalog(partnerId: string) {
@@ -975,12 +1052,53 @@ export class PartnerPortalService {
   }
 
   // ---- logistics ----
-  async listJobs(partnerId: string) {
-    return db
+  async listJobs(ctx: PartnerAuthContext) {
+    const partnerId = ctx.account.partnerId
+    const rows = await db
       .select()
       .from(deliveryJobs)
       .where(eq(deliveryJobs.logisticsPartnerId, partnerId))
       .orderBy(desc(deliveryJobs.createdAt))
+
+    const memberId = ctx.member?.id
+    if (memberId && this.org.isCourierRole(ctx.memberRole)) {
+      return rows.filter((j) => j.assignedMemberId === memberId || !j.assignedMemberId)
+    }
+    return rows
+  }
+
+  async assignJobToMember(
+    ctx: PartnerAuthContext,
+    jobId: string,
+    memberId: string,
+  ) {
+    this.org.assertCanManageTeam(ctx.memberRole)
+    const [member] = await db
+      .select()
+      .from(partnerMembers)
+      .where(
+        and(eq(partnerMembers.id, memberId), eq(partnerMembers.partnerId, ctx.account.partnerId)),
+      )
+      .limit(1)
+    if (!member || member.status !== "active") {
+      throw new HttpException("Courier not found on your team", HttpStatus.NOT_FOUND)
+    }
+    const [row] = await db
+      .update(deliveryJobs)
+      .set({
+        assignedMemberId: member.id,
+        assignedRiderId: member.id,
+        assignedRiderName: member.displayName || member.email,
+        status: "assigned",
+        assignedAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(
+        and(eq(deliveryJobs.id, jobId), eq(deliveryJobs.logisticsPartnerId, ctx.account.partnerId)),
+      )
+      .returning()
+    if (!row) throw new HttpException("Delivery job not found", HttpStatus.NOT_FOUND)
+    return row
   }
 
   async updateJobStatus(partnerId: string, id: string, status: string) {
@@ -1071,6 +1189,30 @@ class PartnerAuthController {
     @Param("type") type: string,
   ) {
     return this.svc.clerkSession(res, type, req.header("authorization"))
+  }
+
+  @Post(":type/register-org")
+  registerOrg(
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+    @Param("type") type: string,
+    @Body() body: { orgName?: string },
+  ) {
+    return this.svc.registerClerkOrg(res, type, req.header("authorization"), body?.orgName ?? "")
+  }
+
+  @Get(":type/members")
+  members(@Req() req: Request, @Param("type") type: string) {
+    return this.svc.listOrgMembers(req, assertType(type))
+  }
+
+  @Post(":type/members/invite")
+  inviteMember(
+    @Req() req: Request,
+    @Param("type") type: string,
+    @Body() body: Record<string, unknown>,
+  ) {
+    return this.svc.inviteOrgMember(req, assertType(type), body)
   }
 
   @Post(":type/signout")
@@ -1176,8 +1318,21 @@ class PartnerLogisticsController {
 
   @Get("jobs")
   async jobs(@Req() req: Request) {
-    const acc = await this.svc.auth.requirePartner(req, "logistics")
-    return this.svc.listJobs(acc.partnerId)
+    const ctx = await this.svc.auth.requirePartnerContext(req, "logistics")
+    return this.svc.listJobs(ctx)
+  }
+  @Get("couriers")
+  async couriers(@Req() req: Request) {
+    return this.svc.auth.listOrgCouriers(req)
+  }
+  @Post("jobs/:id/assign")
+  async assignJob(
+    @Req() req: Request,
+    @Param("id") id: string,
+    @Body() body: { memberId?: string },
+  ) {
+    const ctx = await this.svc.auth.requirePartnerContext(req, "logistics")
+    return this.svc.assignJobToMember(ctx, id, String(body?.memberId ?? ""))
   }
   @Patch("jobs/:id/status")
   async status(@Req() req: Request, @Param("id") id: string, @Body() body: { status?: string }) {
@@ -1258,6 +1413,6 @@ class PartnerWelcomeController {
     PartnerAdminController,
     PartnerWelcomeController,
   ],
-  providers: [PartnerAuthService, PartnerPortalService],
+  providers: [PartnerAuthService, PartnerPortalService, PartnerOrgService],
 })
 export class PartnersModule {}

@@ -27,8 +27,25 @@ const PEACH_BG = "#FFF6EE"
 const PEACH_BORDER = "#F2DCC8"
 const BASE = "/api/v2/pharmacy"
 
+type PharmacyEntity = {
+  id: string
+  name: string
+  legalName: string
+  licenseNumber: string
+  email: string
+  phone?: string
+  address: string
+  city: string
+  status: string
+  clerkOrgId?: string | null
+  adminUserId?: string | null
+  kyc?: Record<string, unknown>
+  createdAt: string
+}
+
 type Branch = {
   id: string
+  pharmacyId?: string | null
   branchCode: string
   name: string
   address: string
@@ -93,15 +110,150 @@ async function apiFetch(path: string, method: string, body?: unknown) {
   return r.json()
 }
 
+function PharmacyFormModal({ initial, onClose, onSaved }: {
+  initial?: Partial<PharmacyEntity>
+  onClose: () => void
+  onSaved: () => void
+}) {
+  const isEdit = !!initial?.id
+  const kyc = (initial?.kyc ?? {}) as Record<string, string>
+  const [form, setForm] = useState({
+    name: initial?.name ?? "",
+    legalName: initial?.legalName ?? "",
+    licenseNumber: initial?.licenseNumber ?? "",
+    email: initial?.email ?? "",
+    phone: initial?.phone ?? "",
+    address: initial?.address ?? "",
+    city: initial?.city ?? "",
+    status: initial?.status ?? "pending",
+    clerkOrgId: initial?.clerkOrgId ?? "",
+    ppbContact: kyc.ppbContact ?? "",
+    premisesLicense: kyc.premisesLicense ?? "",
+    superintendent: kyc.superintendent ?? "",
+    notes: kyc.notes ?? "",
+  })
+  const [saving, setSaving] = useState(false)
+  const [err, setErr] = useState("")
+
+  async function save() {
+    setSaving(true)
+    setErr("")
+    try {
+      const payload = {
+        name: form.name,
+        legalName: form.legalName || form.name,
+        licenseNumber: form.licenseNumber,
+        email: form.email,
+        phone: form.phone,
+        address: form.address,
+        city: form.city,
+        status: form.status,
+        clerkOrgId: form.clerkOrgId || undefined,
+        kyc: {
+          ppbContact: form.ppbContact,
+          premisesLicense: form.premisesLicense,
+          superintendent: form.superintendent,
+          notes: form.notes,
+        },
+      }
+      if (isEdit) {
+        await apiFetch(`/pharmacies/${initial!.id}`, "PATCH", payload)
+      } else {
+        await apiFetch("/pharmacies", "POST", payload)
+      }
+      onSaved()
+    } catch (e: unknown) {
+      setErr(e instanceof Error ? e.message : "Failed to save")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
+      <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full p-6 max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between mb-2">
+          <h2 className="text-base font-bold" style={{ color: WINE }}>
+            {isEdit ? "Edit pharmacy" : "Register pharmacy"}
+          </h2>
+          <button type="button" onClick={onClose}><X className="h-5 w-5 opacity-50" /></button>
+        </div>
+        <p className="text-xs text-muted-foreground mb-4">
+          Internal pharmacy legal entity. Super admin creates the pharmacy, assigns a Pharmacy Admin account,
+          then staff are invited via Clerk (optional org ID below).
+        </p>
+        <div className="space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <div className="col-span-2">
+              <label className="text-xs font-semibold text-muted-foreground mb-1 block">Trading name *</label>
+              <Input value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} placeholder="e.g. Shaniid RX Westlands" />
+            </div>
+            <div className="col-span-2">
+              <label className="text-xs font-semibold text-muted-foreground mb-1 block">Registered legal name</label>
+              <Input value={form.legalName} onChange={(e) => setForm((f) => ({ ...f, legalName: e.target.value }))} />
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-muted-foreground mb-1 block">PPB license no.</label>
+              <Input value={form.licenseNumber} onChange={(e) => setForm((f) => ({ ...f, licenseNumber: e.target.value }))} placeholder="PPB/RX/..." />
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-muted-foreground mb-1 block">Status</label>
+              <select value={form.status} onChange={(e) => setForm((f) => ({ ...f, status: e.target.value }))} className="w-full h-9 rounded-md border border-input px-3 text-sm">
+                <option value="pending">Pending KYC</option>
+                <option value="active">Active</option>
+                <option value="suspended">Suspended</option>
+              </select>
+            </div>
+          </div>
+          <div className="rounded-lg border p-3 space-y-2" style={{ borderColor: PEACH_BORDER, background: PEACH_BG }}>
+            <p className="text-xs font-bold" style={{ color: WINE }}>KYC & compliance (update anytime)</p>
+            <Input value={form.premisesLicense} onChange={(e) => setForm((f) => ({ ...f, premisesLicense: e.target.value }))} placeholder="Premises license ref" />
+            <Input value={form.superintendent} onChange={(e) => setForm((f) => ({ ...f, superintendent: e.target.value }))} placeholder="Superintendent pharmacist" />
+            <Input value={form.ppbContact} onChange={(e) => setForm((f) => ({ ...f, ppbContact: e.target.value }))} placeholder="PPB contact / inspection notes" />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-semibold text-muted-foreground mb-1 block">Contact email</label>
+              <Input value={form.email} onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))} />
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-muted-foreground mb-1 block">Phone</label>
+              <Input value={form.phone} onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))} />
+            </div>
+          </div>
+          <div>
+            <label className="text-xs font-semibold text-muted-foreground mb-1 block">Head office address</label>
+            <Input value={form.address} onChange={(e) => setForm((f) => ({ ...f, address: e.target.value }))} />
+          </div>
+          <div>
+            <label className="text-xs font-semibold text-muted-foreground mb-1 block">Clerk org ID (staff invites)</label>
+            <Input value={form.clerkOrgId} onChange={(e) => setForm((f) => ({ ...f, clerkOrgId: e.target.value }))} placeholder="org_… (internal staff only)" />
+            <p className="text-[10px] text-muted-foreground mt-1">Optional. Enables Clerk email invitations for pharmacists & couriers tied to this pharmacy.</p>
+          </div>
+          {err && <p className="text-xs text-destructive">{err}</p>}
+        </div>
+        <div className="flex gap-2 mt-5">
+          <Button variant="outline" onClick={onClose} className="flex-1">Cancel</Button>
+          <Button onClick={save} disabled={saving || !form.name} className="flex-1">
+            {saving ? "Saving…" : isEdit ? "Save pharmacy" : "Create pharmacy"}
+          </Button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ─── Branch Form Modal ────────────────────────────────────────────────────
 
-function BranchFormModal({ initial, onClose, onSaved }: {
+function BranchFormModal({ initial, pharmacies, onClose, onSaved }: {
   initial?: Partial<Branch>
+  pharmacies: PharmacyEntity[]
   onClose: () => void
   onSaved: () => void
 }) {
   const isEdit = !!initial?.id
   const [form, setForm] = useState({
+    pharmacyId: initial?.pharmacyId ?? "",
     branchCode: initial?.branchCode ?? "",
     name: initial?.name ?? "",
     address: initial?.address ?? "",
@@ -143,6 +295,19 @@ function BranchFormModal({ initial, onClose, onSaved }: {
           <button type="button" onClick={onClose}><X className="h-5 w-5 opacity-50" /></button>
         </div>
         <div className="space-y-3">
+          <div>
+            <label className="text-xs font-semibold text-muted-foreground mb-1 block">Parent pharmacy *</label>
+            <select
+              value={form.pharmacyId}
+              onChange={(e) => setForm((f) => ({ ...f, pharmacyId: e.target.value }))}
+              className="w-full h-9 rounded-md border border-input px-3 text-sm"
+            >
+              <option value="">Select pharmacy…</option>
+              {pharmacies.map((p) => (
+                <option key={p.id} value={p.id}>{p.name}</option>
+              ))}
+            </select>
+          </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-xs font-semibold text-muted-foreground mb-1 block">Branch Code</label>
@@ -213,7 +378,7 @@ function BranchFormModal({ initial, onClose, onSaved }: {
         </div>
         <div className="flex gap-2 mt-5">
           <Button variant="outline" onClick={onClose} className="flex-1">Cancel</Button>
-          <Button onClick={save} disabled={saving || !form.name} className="flex-1">
+          <Button onClick={save} disabled={saving || !form.name || !form.pharmacyId} className="flex-1">
             {saving ? "Saving…" : isEdit ? "Save changes" : "Create branch"}
           </Button>
         </div>
@@ -605,8 +770,12 @@ function BranchDetailPanel({ branch, onClose, onEdit }: {
 // ─── Main Component ───────────────────────────────────────────────────────
 
 export function AdminPharmacyBranches() {
+  const { data: pharmacyList = [], mutate: mutPharmacies } = useSWR<PharmacyEntity[]>(`${BASE}/pharmacies`, authFetcher)
   const { data: branches = [], mutate: mutBranches } = useSWR<Branch[]>(`${BASE}/branches`, authFetcher)
+  const [section, setSection] = useState<"pharmacies" | "branches">("pharmacies")
   const [search, setSearch] = useState("")
+  const [showPharmForm, setShowPharmForm] = useState(false)
+  const [editPharmacy, setEditPharmacy] = useState<PharmacyEntity | null>(null)
   const [showForm, setShowForm] = useState(false)
   const [editBranch, setEditBranch] = useState<Branch | null>(null)
   const [activeBranch, setActiveBranch] = useState<Branch | null>(null)
@@ -634,10 +803,18 @@ export function AdminPharmacyBranches() {
   }, [branches])
 
   return (
-    <AdminShell title="Branches & Shifts">
+    <AdminShell title="Pharmacy Network">
+      {(showPharmForm || editPharmacy) && (
+        <PharmacyFormModal
+          initial={editPharmacy ?? undefined}
+          onClose={() => { setShowPharmForm(false); setEditPharmacy(null) }}
+          onSaved={() => { setShowPharmForm(false); setEditPharmacy(null); void mutPharmacies() }}
+        />
+      )}
       {(showForm || editBranch) && (
         <BranchFormModal
           initial={editBranch ?? undefined}
+          pharmacies={pharmacyList}
           onClose={() => { setShowForm(false); setEditBranch(null) }}
           onSaved={() => { setShowForm(false); setEditBranch(null); void mutBranches() }}
         />
@@ -651,6 +828,53 @@ export function AdminPharmacyBranches() {
       )}
 
       <div className="p-4 md:p-6 max-w-5xl mx-auto space-y-5">
+        <div className="rounded-xl border p-4 md:p-5" style={{ borderColor: PEACH_BORDER, background: PEACH_BG }}>
+          <h2 className="text-sm font-bold" style={{ color: WINE }}>How this module works</h2>
+          <ol className="mt-2 space-y-1.5 text-xs text-muted-foreground list-decimal list-inside">
+            <li><strong className="text-foreground">Pharmacies</strong> — legal entities & KYC (super admin registers, assigns Pharmacy Admin).</li>
+            <li><strong className="text-foreground">Branches</strong> — physical stores under a pharmacy, with shifts and local managers.</li>
+            <li><strong className="text-foreground">Staff</strong> — invite via Clerk email (when org ID is set) or assign manually per branch.</li>
+          </ol>
+          <p className="text-[11px] text-muted-foreground mt-2">
+            Pharmacy Admins see only modules their role allows (dispensing, POS, logistics, etc.). This is internal — not a public partner portal.
+          </p>
+        </div>
+
+        <Tabs value={section} onValueChange={(v) => setSection(v as "pharmacies" | "branches")}>
+          <TabsList>
+            <TabsTrigger value="pharmacies">Pharmacies & KYC</TabsTrigger>
+            <TabsTrigger value="branches">Branches & Shifts</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="pharmacies" className="space-y-4 mt-4">
+            <div className="flex justify-end">
+              <Button onClick={() => setShowPharmForm(true)}>
+                <Plus className="h-4 w-4 mr-1.5" /> Register pharmacy
+              </Button>
+            </div>
+            {pharmacyList.length === 0 ? (
+              <div className="text-center py-12 text-muted-foreground text-sm">
+                No pharmacies yet. Register your first legal pharmacy entity before adding branches.
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {pharmacyList.map((p) => (
+                  <div key={p.id} className="flex items-center gap-4 p-4 rounded-xl border bg-white" style={{ borderColor: PEACH_BORDER }}>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold" style={{ color: WINE }}>{p.name}</p>
+                      <p className="text-xs text-muted-foreground">{p.licenseNumber || "License pending"} · {p.city || "—"}</p>
+                      <p className="text-[10px] text-muted-foreground mt-0.5 capitalize">Status: {p.status.replace("_", " ")}</p>
+                    </div>
+                    <Button variant="ghost" size="sm" onClick={() => setEditPharmacy(p)}>
+                      <Pencil className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </TabsContent>
+
+          <TabsContent value="branches" className="mt-4">
         {/* Stats */}
         <div className="grid grid-cols-3 gap-3">
           {[
@@ -743,6 +967,8 @@ export function AdminPharmacyBranches() {
             ))}
           </div>
         )}
+          </TabsContent>
+        </Tabs>
       </div>
     </AdminShell>
   )

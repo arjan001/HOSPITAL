@@ -37,6 +37,7 @@ type AdminAccount = {
 
 const ROLES: { value: string; label: string; hint: string }[] = [
   { value: "super_admin", label: "Super Admin", hint: "Full access to everything" },
+  { value: "pharmacy_admin", label: "Pharmacy Admin", hint: "Own pharmacy network, staff, POS & logistics" },
   { value: "pharmacist", label: "Pharmacist", hint: "Catalog, orders, prescriptions" },
   { value: "doctor", label: "Doctor", hint: "Consultations & prescription review" },
   { value: "fulfillment", label: "Fulfillment", hint: "Orders & dispatch" },

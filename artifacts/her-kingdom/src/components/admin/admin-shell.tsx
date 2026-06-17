@@ -149,8 +149,8 @@ const NAV_GROUPS: NavGroup[] = [
       { label: "Doctors",               href: "/admin/doctors",                icon: Stethoscope,   perm: "consult.handle" },
       { label: "Consultation Settings", href: "/admin/consultation-settings",  icon: Timer,         perm: "consult.handle" },
       { label: "Support Tickets",       href: "/admin/support",                icon: MessageSquare, perm: "chat.respond" },
-      { label: "Branches & Shifts",     href: "/admin/pharmacy/branches",      icon: Building2,     perm: "products.view" },
-      { label: "Point of Sale (POS)",   href: "/admin/pharmacy/pos",           icon: ShoppingCart,  perm: "products.view" },
+      { label: "Pharmacy Network",      href: "/admin/pharmacy/branches",      icon: Building2,     perm: ["pharmacy.manage", "products.view"] },
+      { label: "Branch Point of Sale",    href: "/admin/pharmacy/pos",           icon: ShoppingCart,  perm: ["pharmacy.manage", "products.view"] },
     ],
   },
   {

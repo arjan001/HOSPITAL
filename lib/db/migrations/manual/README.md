@@ -39,3 +39,5 @@ pnpm --filter @workspace/db run push
 | `20250604_fulfillment.sql` | `inventory_allocations`, `care_pack_assembly_jobs`, `care_pack_assembly_lines` (BL #8–9) |
 | `20250604_qa_logistics.sql` | QA inventory, dispatch checks, settings; logistics zones through settings |
 | `20250605_doctors.sql` | `doctors` (extended profile), `doctor_accounts` (portal login) |
+| `20250615_partner_organizations.sql` | `partner_members`, `partner_directory.clerk_org_id`, `delivery_jobs.assigned_member_id` |
+| `20250616_pharmacies.sql` | `pharmacies` table, `pharmacy_branches.pharmacy_id`, staff Clerk fields |

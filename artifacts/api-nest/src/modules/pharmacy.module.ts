@@ -15,14 +15,109 @@
 import { Injectable, Controller, Get, Post, Patch, Delete, Param, Body, Req, Inject, Module, UseGuards, HttpException, HttpStatus } from "@nestjs/common"
 import type { Request } from "express"
 import { eq, desc, and } from "drizzle-orm"
-import { db, pharmacyBranches, pharmacyShifts, pharmacyEmployees, posTransactions } from "@workspace/db"
+import { db, pharmacies, pharmacyBranches, pharmacyShifts, pharmacyEmployees, posTransactions } from "@workspace/db"
 import { newId } from "../common/repository"
-import { AdminGuard } from "../common/admin-guard"
+import { AdminGuard, RequirePerm } from "../common/admin-guard"
+import {
+  clerkPartnerOrgEnabled,
+  createClerkOrganization,
+  createClerkOrgInvitation,
+} from "../common/clerk-partner-org"
 
 // ─── Service ────────────────────────────────────────────────────────────────
 
 @Injectable()
 class PharmacyService {
+  // ── Pharmacies (legal entity / internal network) ──
+  async listPharmacies() {
+    return db.select().from(pharmacies).orderBy(desc(pharmacies.createdAt))
+  }
+
+  async getPharmacy(id: string) {
+    const [row] = await db.select().from(pharmacies).where(eq(pharmacies.id, id)).limit(1)
+    if (!row) throw new HttpException("Pharmacy not found", HttpStatus.NOT_FOUND)
+    return row
+  }
+
+  async createPharmacy(body: Record<string, unknown>) {
+    const name = String(body?.name ?? "").trim()
+    if (!name) throw new HttpException("Pharmacy name is required", HttpStatus.BAD_REQUEST)
+    const id = newId("phrx")
+    let clerkOrgId = String(body?.clerkOrgId ?? "").trim() || null
+    const clerkCreatorUserId = String(body?.clerkCreatorUserId ?? "").trim()
+    if (!clerkOrgId && clerkPartnerOrgEnabled() && clerkCreatorUserId) {
+      const org = await createClerkOrganization(name, clerkCreatorUserId)
+      clerkOrgId = org.id
+    }
+    const [row] = await db.insert(pharmacies).values({
+      id,
+      name,
+      legalName: String(body?.legalName ?? name).trim(),
+      licenseNumber: String(body?.licenseNumber ?? "").trim(),
+      email: String(body?.email ?? "").trim().toLowerCase(),
+      phone: String(body?.phone ?? "").trim() || undefined,
+      address: String(body?.address ?? "").trim(),
+      city: String(body?.city ?? "").trim(),
+      status: String(body?.status ?? "pending"),
+      clerkOrgId,
+      adminUserId: String(body?.adminUserId ?? "").trim() || undefined,
+      kyc: (body?.kyc as Record<string, unknown>) ?? {},
+    }).returning()
+    return row
+  }
+
+  async updatePharmacy(id: string, body: Record<string, unknown>) {
+    const set: Partial<typeof pharmacies.$inferInsert> = { updatedAt: new Date() }
+    if (body.name !== undefined) set.name = String(body.name).trim()
+    if (body.legalName !== undefined) set.legalName = String(body.legalName).trim()
+    if (body.licenseNumber !== undefined) set.licenseNumber = String(body.licenseNumber).trim()
+    if (body.email !== undefined) set.email = String(body.email).trim().toLowerCase()
+    if (body.phone !== undefined) set.phone = String(body.phone).trim() || undefined
+    if (body.address !== undefined) set.address = String(body.address).trim()
+    if (body.city !== undefined) set.city = String(body.city).trim()
+    if (body.status !== undefined) set.status = String(body.status)
+    if (body.adminUserId !== undefined) set.adminUserId = String(body.adminUserId).trim() || undefined
+    if (body.kyc !== undefined) set.kyc = body.kyc as Record<string, unknown>
+    const [row] = await db.update(pharmacies).set(set).where(eq(pharmacies.id, id)).returning()
+    if (!row) throw new HttpException("Pharmacy not found", HttpStatus.NOT_FOUND)
+    return row
+  }
+
+  async invitePharmacyStaff(pharmacyId: string, body: Record<string, unknown>) {
+    const pharmacy = await this.getPharmacy(pharmacyId)
+    const email = String(body?.email ?? "").trim().toLowerCase()
+    const displayName = String(body?.displayName ?? "").trim() || email
+    const branchId = String(body?.branchId ?? "").trim()
+    const role = String(body?.role ?? "pharmacist").trim()
+    if (!email) throw new HttpException("Employee email is required", HttpStatus.BAD_REQUEST)
+    if (!branchId) throw new HttpException("branchId is required", HttpStatus.BAD_REQUEST)
+    if (!pharmacy.clerkOrgId) {
+      throw new HttpException(
+        "This pharmacy has no Clerk organization yet. Super admin must enable staff invites when creating the pharmacy.",
+        HttpStatus.BAD_REQUEST,
+      )
+    }
+    let inviteId: string | null = null
+    try {
+      const inv = await createClerkOrgInvitation(pharmacy.clerkOrgId, email, "member")
+      inviteId = inv.id
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Invitation failed"
+      throw new HttpException(`Could not send Clerk invitation: ${msg}`, HttpStatus.BAD_GATEWAY)
+    }
+    const [row] = await db.insert(pharmacyEmployees).values({
+      id: newId("phep"),
+      pharmacyId,
+      branchId,
+      displayName,
+      email,
+      role,
+      status: "invited",
+      clerkInviteId: inviteId,
+    }).returning()
+    return row
+  }
+
   // ── Branches ──
   async listBranches() {
     return db.select().from(pharmacyBranches).orderBy(desc(pharmacyBranches.createdAt))
@@ -40,6 +135,7 @@ class PharmacyService {
     const branchCode = String(body?.branchCode ?? `BR-${Date.now().toString(36).toUpperCase()}`).trim()
     const [b] = await db.insert(pharmacyBranches).values({
       id: newId("phbr"),
+      pharmacyId: String(body?.pharmacyId ?? "").trim() || undefined,
       branchCode,
       name,
       address: String(body?.address ?? "").trim(),
@@ -122,6 +218,7 @@ class PharmacyService {
     if (!displayName) throw new HttpException("displayName is required", HttpStatus.BAD_REQUEST)
     const [e] = await db.insert(pharmacyEmployees).values({
       id: newId("phep"),
+      pharmacyId: String(body?.pharmacyId ?? "").trim() || undefined,
       branchId,
       userId: String(body?.userId ?? "").trim() || undefined,
       adminUserId: String(body?.adminUserId ?? "").trim() || undefined,
@@ -198,8 +295,24 @@ class PharmacyService {
 
 // ─── Controllers ────────────────────────────────────────────────────────────
 
+@Controller("pharmacy/pharmacies")
+@UseGuards(AdminGuard)
+@RequirePerm("pharmacy.manage", "pharmacy.staff")
+class PharmacyNetworkController {
+  constructor(@Inject(PharmacyService) private readonly svc: PharmacyService) {}
+
+  @Get() list() { return this.svc.listPharmacies() }
+  @Post() create(@Body() body: Record<string, unknown>) { return this.svc.createPharmacy(body) }
+  @Get(":id") get(@Param("id") id: string) { return this.svc.getPharmacy(id) }
+  @Patch(":id") update(@Param("id") id: string, @Body() body: Record<string, unknown>) { return this.svc.updatePharmacy(id, body) }
+  @Post(":id/staff/invite") invite(@Param("id") id: string, @Body() body: Record<string, unknown>) {
+    return this.svc.invitePharmacyStaff(id, body)
+  }
+}
+
 @Controller("pharmacy/branches")
 @UseGuards(AdminGuard)
+@RequirePerm("pharmacy.manage", "pharmacy.staff", "products.view")
 class PharmacyBranchesController {
   constructor(@Inject(PharmacyService) private readonly svc: PharmacyService) {}
 
@@ -245,6 +358,7 @@ class PharmacyPosController {
 
 @Module({
   controllers: [
+    PharmacyNetworkController,
     PharmacyBranchesController,
     PharmacyShiftsController,
     PharmacyEmployeesController,
