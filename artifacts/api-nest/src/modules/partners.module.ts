@@ -689,6 +689,58 @@ export class PartnerAuthService {
     return publicAccount(acc)
   }
 
+  async listAdminMembers(type?: string, partnerId?: string) {
+    const conditions: SQL[] = []
+    if (type) conditions.push(eq(partnerMembers.partnerType, assertType(type)))
+    if (partnerId) conditions.push(eq(partnerMembers.partnerId, String(partnerId).trim()))
+    const where = conditions.length ? and(...conditions) : undefined
+    const rows = await db
+      .select()
+      .from(partnerMembers)
+      .where(where)
+      .orderBy(desc(partnerMembers.createdAt))
+    return rows.map((m) => ({
+      id: m.id,
+      partnerId: m.partnerId,
+      partnerType: m.partnerType,
+      clerkOrgId: m.clerkOrgId,
+      clerkUserId: m.clerkUserId,
+      email: m.email,
+      displayName: m.displayName,
+      role: m.role,
+      status: m.status,
+      invitedAt: m.invitedAt,
+      joinedAt: m.joinedAt,
+      createdAt: m.createdAt,
+    }))
+  }
+
+  async updateAdminMember(id: string, body: Record<string, unknown>) {
+    const set: Partial<typeof partnerMembers.$inferInsert> = { updatedAt: new Date() }
+    if (body?.status !== undefined) {
+      const status = String(body.status)
+      if (!["invited", "active", "suspended"].includes(status)) {
+        throw new HttpException("Invalid member status", HttpStatus.BAD_REQUEST)
+      }
+      set.status = status
+    }
+    if (body?.displayName) set.displayName = String(body.displayName).trim()
+    if (body?.role) {
+      const role = String(body.role)
+      if (!["owner", "admin", "member", "rider", "dispatcher"].includes(role)) {
+        throw new HttpException("Invalid member role", HttpStatus.BAD_REQUEST)
+      }
+      set.role = role
+    }
+    const [row] = await db
+      .update(partnerMembers)
+      .set(set)
+      .where(eq(partnerMembers.id, id))
+      .returning()
+    if (!row) throw new HttpException("Member not found", HttpStatus.NOT_FOUND)
+    return row
+  }
+
   async resendInvite(id: string): Promise<ReturnType<typeof publicAccount>> {
     const [acc] = await db.select().from(partnerAccounts).where(eq(partnerAccounts.id, id)).limit(1)
     if (!acc) throw new HttpException("Account not found", HttpStatus.NOT_FOUND)
@@ -1430,6 +1482,14 @@ class PartnerAdminController {
   @Patch("accounts/:id")
   updateAccount(@Param("id") id: string, @Body() body: Record<string, unknown>) {
     return this.svc.updateAccount(id, body)
+  }
+  @Get("members")
+  members(@Query("type") type?: string, @Query("partnerId") partnerId?: string) {
+    return this.svc.listAdminMembers(type, partnerId)
+  }
+  @Patch("members/:id")
+  updateMember(@Param("id") id: string, @Body() body: Record<string, unknown>) {
+    return this.svc.updateAdminMember(id, body)
   }
   @Post("accounts/:id/resend-invite")
   resend(@Param("id") id: string) {

@@ -6,7 +6,7 @@ import { Eye, EyeOff, ArrowRight, Info, Check, Mail, Loader2 } from "lucide-reac
 import { Seo } from "@/components/seo"
 import { GoogleSignInButton } from "@/components/auth/google-sign-in-button"
 import { upsertCustomer } from "@/lib/use-customer-mirror"
-import { getSafeRedirect, buildRedirectQuery } from "@/lib/auth-redirect"
+import { resolvePostAuthRedirect, buildRedirectQuery, isPartnerPortalPath, clearPartnerPortalRedirect } from "@/lib/auth-redirect"
 
 const WINE          = "#3D0814"
 const WINE_SOFT     = "#6B0F1A"
@@ -69,11 +69,12 @@ export default function AccountRegisterPage() {
   /* Where to land after a successful sign-up. Gated pages (e.g.
      /upload-prescription) send the user here with `?redirect=<path>`; we
      validate it as a same-origin relative path and fall back to /account/settings. */
-  const redirectParam = getSafeRedirect(
+  const redirectParam = resolvePostAuthRedirect(
     typeof window !== "undefined" ? window.location.search : "",
   )
   const redirectTo = redirectParam || "/account/settings"
   const redirectQuery = buildRedirectQuery(redirectParam)
+  const isPartnerSignup = isPartnerPortalPath(redirectTo)
 
   const [step, setStep] = useState<"form" | "verify">("form")
   const [sendingCode, setSendingCode] = useState(false)
@@ -97,7 +98,10 @@ export default function AccountRegisterPage() {
   const [code, setCode]               = useState("")
 
   useEffect(() => {
-    if (isSignedIn) navigate(redirectTo)
+    if (isSignedIn) {
+      if (isPartnerPortalPath(redirectTo)) clearPartnerPortalRedirect()
+      navigate(redirectTo)
+    }
   }, [isSignedIn, navigate, redirectTo])
 
   if (isSignedIn) return null
@@ -153,7 +157,7 @@ export default function AccountRegisterPage() {
 
       if (signUp.status === "complete") {
         await setActive({ session: signUp.createdSessionId })
-        if (signUp.createdUserId) {
+        if (signUp.createdUserId && !isPartnerSignup) {
           upsertCustomer({
             id: signUp.createdUserId,
             firstName,
@@ -164,6 +168,7 @@ export default function AccountRegisterPage() {
             source: "email",
           })
         }
+        if (isPartnerSignup) clearPartnerPortalRedirect()
         navigate(redirectTo)
         return
       }
@@ -193,7 +198,7 @@ export default function AccountRegisterPage() {
       const attempt = await signUp.attemptEmailAddressVerification({ code: code.trim() })
       if (attempt.status === "complete") {
         await setActive({ session: attempt.createdSessionId })
-        if (attempt.createdUserId) {
+        if (attempt.createdUserId && !isPartnerSignup) {
           upsertCustomer({
             id: attempt.createdUserId,
             firstName: form.firstName.trim(),
@@ -204,6 +209,7 @@ export default function AccountRegisterPage() {
             source: "email",
           })
         }
+        if (isPartnerSignup) clearPartnerPortalRedirect()
         navigate(redirectTo)
       } else {
         setTopError("Verification incomplete. Please double-check the code and try again.")
@@ -233,9 +239,10 @@ export default function AccountRegisterPage() {
     setTopError("")
     setGoogleLoading(true)
     try {
+      const oauthCallback = `${BASE_PATH}/account/sso-callback${buildRedirectQuery(redirectParam)}`
       await signUp.authenticateWithRedirect({
         strategy: "oauth_google",
-        redirectUrl: `${BASE_PATH}/account/sso-callback`,
+        redirectUrl: oauthCallback,
         redirectUrlComplete: `${BASE_PATH}${redirectTo}`,
       })
     } catch (err) {
@@ -291,7 +298,11 @@ export default function AccountRegisterPage() {
       >
         <div className="px-8 pt-10 pb-2 text-center">
           <h1 className="text-2xl font-bold" style={{ color: WINE, fontFamily: "var(--font-serif, ui-serif, Georgia, serif)" }}>
-            {step === "form" ? "Create Account" : "Verify Your Email"}
+            {step === "form"
+              ? isPartnerSignup
+                ? "Create Partner Account"
+                : "Create Account"
+              : "Verify Your Email"}
           </h1>
         </div>
 

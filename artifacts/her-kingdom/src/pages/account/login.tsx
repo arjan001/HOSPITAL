@@ -34,7 +34,7 @@
 import { useEffect, useState } from "react"
 import { Link, useLocation } from "wouter"
 import { useUser } from "@clerk/react"
-import { getSafeRedirect, buildRedirectQuery } from "@/lib/auth-redirect"
+import { buildRedirectQuery, resolvePostAuthRedirect, isPartnerPortalPath, clearPartnerPortalRedirect } from "@/lib/auth-redirect"
 /* The default `@clerk/react` `useSignIn` returns the new "signals" API
    (no `isLoaded` / `authenticateWithRedirect` / `setActive`). This page
    uses the legacy resource API which still ships at `/legacy`. */
@@ -71,7 +71,7 @@ export default function AccountLoginPage() {
   /* Where to land after a successful sign-in. Gated pages (e.g.
      /upload-prescription) send the user here with `?redirect=<path>`; we
      validate it as a same-origin relative path and fall back to /account/settings. */
-  const redirectParam = getSafeRedirect(
+  const redirectParam = resolvePostAuthRedirect(
     typeof window !== "undefined" ? window.location.search : "",
   )
   const redirectTo = redirectParam || "/account/settings"
@@ -124,6 +124,7 @@ export default function AccountLoginPage() {
       })
       if (attempt.status === "complete") {
         await setActive({ session: attempt.createdSessionId })
+        if (isPartnerPortalPath(redirectTo)) clearPartnerPortalRedirect()
         navigate(redirectTo)
       } else {
         setError("Reset needs another step. Please try signing in normally.")
@@ -143,7 +144,10 @@ export default function AccountLoginPage() {
   }
 
   useEffect(() => {
-    if (isSignedIn) navigate(redirectTo)
+    if (isSignedIn) {
+      if (isPartnerPortalPath(redirectTo)) clearPartnerPortalRedirect()
+      navigate(redirectTo)
+    }
   }, [isSignedIn, navigate, redirectTo])
 
   if (isSignedIn) return null
@@ -158,6 +162,7 @@ export default function AccountLoginPage() {
       const attempt = await signIn.create({ identifier, password })
       if (attempt.status === "complete") {
         await setActive({ session: attempt.createdSessionId })
+        if (isPartnerPortalPath(redirectTo)) clearPartnerPortalRedirect()
         navigate(redirectTo)
       } else {
         setError("Additional verification required. Please check your email or try Google sign-in below.")
@@ -182,9 +187,10 @@ export default function AccountLoginPage() {
     setError("")
     setGoogleLoading(true)
     try {
+      const oauthCallback = `${BASE_PATH}/account/sso-callback${buildRedirectQuery(redirectParam)}`
       await signIn.authenticateWithRedirect({
         strategy: "oauth_google",
-        redirectUrl: `${BASE_PATH}/account/sso-callback`,
+        redirectUrl: oauthCallback,
         redirectUrlComplete: `${BASE_PATH}${redirectTo}`,
       })
     } catch (err) {

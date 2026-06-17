@@ -7,9 +7,12 @@ import { useState } from "react"
 import {
   useAdminPartnerApplications,
   useAdminPartnerAccounts,
+  useAdminPartnerMembers,
   adminApproveApplication,
   adminRejectApplication,
   adminInvitePartner,
+  adminUpdatePartnerAccount,
+  adminUpdatePartnerMember,
   type PartnerType,
 } from "@/lib/partners-client"
 import { Button } from "@/components/ui/button"
@@ -22,7 +25,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog"
-import { Inbox, UserPlus, CheckCircle2, XCircle, Mail, Clock, Loader2 } from "lucide-react"
+import { Inbox, UserPlus, CheckCircle2, XCircle, Mail, Clock, Loader2, Users, Ban } from "lucide-react"
 
 const WINE = "#3D0814"
 const ORANGE = "#F97316"
@@ -39,6 +42,7 @@ function fmt(ts: string | null): string {
 export function PartnerPortalPanel({ type }: { type: PartnerType }) {
   const apps = useAdminPartnerApplications(type, "pending")
   const accounts = useAdminPartnerAccounts(type)
+  const members = useAdminPartnerMembers(type)
 
   const [busyId, setBusyId] = useState<string | null>(null)
   const [rejecting, setRejecting] = useState<string | null>(null)
@@ -101,6 +105,34 @@ export function PartnerPortalPanel({ type }: { type: PartnerType }) {
       setErr(e instanceof Error ? e.message : "Failed to send invite")
     } finally {
       setInviting(false)
+    }
+  }
+
+  const toggleAccountStatus = async (accountId: string, current: string) => {
+    setErr("")
+    setBusyId(accountId)
+    try {
+      await adminUpdatePartnerAccount(type, accountId, {
+        status: current === "suspended" ? "active" : "suspended",
+      })
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Failed to update account")
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  const toggleMemberStatus = async (memberId: string, current: string) => {
+    setErr("")
+    setBusyId(memberId)
+    try {
+      await adminUpdatePartnerMember(memberId, {
+        status: current === "suspended" ? "active" : "suspended",
+      })
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Failed to update member")
+    } finally {
+      setBusyId(null)
     }
   }
 
@@ -241,6 +273,7 @@ export function PartnerPortalPanel({ type }: { type: PartnerType }) {
                 <th className="text-left py-2.5 px-5 hidden md:table-cell">Status</th>
                 <th className="text-left py-2.5 px-5 hidden lg:table-cell">Last login</th>
                 <th className="text-left py-2.5 px-5 hidden lg:table-cell">Created</th>
+                <th className="text-right py-2.5 px-5">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -249,6 +282,7 @@ export function PartnerPortalPanel({ type }: { type: PartnerType }) {
                   <td className="py-3 px-5">
                     <p className="font-semibold text-gray-800">{acc.displayName}</p>
                     <p className="text-xs text-gray-400">{acc.email}</p>
+                    <p className="text-[10px] text-gray-400 font-mono mt-0.5">Partner: {acc.partnerId}</p>
                   </td>
                   <td className="py-3 px-5 hidden md:table-cell">
                     <div className="flex items-center gap-2">
@@ -262,6 +296,104 @@ export function PartnerPortalPanel({ type }: { type: PartnerType }) {
                   </td>
                   <td className="py-3 px-5 hidden lg:table-cell text-gray-500">{fmt(acc.lastLoginAt)}</td>
                   <td className="py-3 px-5 hidden lg:table-cell text-gray-500">{fmt(acc.createdAt)}</td>
+                  <td className="py-3 px-5 text-right">
+                    {acc.status !== "invited" && acc.status !== "pending" && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={busyId === acc.id}
+                        onClick={() => void toggleAccountStatus(acc.id, acc.status)}
+                        className="gap-1 text-xs"
+                      >
+                        {busyId === acc.id ? (
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                        ) : acc.status === "suspended" ? (
+                          <>
+                            <CheckCircle2 className="h-3 w-3" /> Activate
+                          </>
+                        ) : (
+                          <>
+                            <Ban className="h-3 w-3" /> Suspend
+                          </>
+                        )}
+                      </Button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </section>
+
+      {/* Organization team members (Clerk org employees) */}
+      <section className="bg-white border border-gray-100 rounded-xl shadow-sm overflow-hidden">
+        <div className="px-5 py-3.5 border-b border-gray-100">
+          <h3 className="font-semibold text-gray-800 flex items-center gap-2">
+            <Users className="h-4 w-4" style={{ color: WINE }} />
+            Organization users
+            {members.data && members.data.length > 0 && (
+              <span className="ml-1 px-2 py-0.5 rounded-full text-xs font-bold text-white" style={{ background: ORANGE }}>
+                {members.data.length}
+              </span>
+            )}
+          </h3>
+          <p className="text-xs text-gray-500 mt-1">
+            Staff onboarded by partners via Clerk Organizations (couriers, dispatchers, admins).
+          </p>
+        </div>
+        {members.isLoading ? (
+          <div className="py-10 text-center text-gray-400">
+            <Loader2 className="h-5 w-5 mx-auto animate-spin" />
+          </div>
+        ) : members.error ? (
+          <div className="py-10 text-center text-sm text-red-600">Could not load organization users.</div>
+        ) : !members.data || members.data.length === 0 ? (
+          <div className="py-10 text-center text-gray-400">
+            <Users className="h-8 w-8 mx-auto mb-2 opacity-20" />
+            <p className="text-sm font-medium">No organization members yet</p>
+            <p className="text-xs mt-1">Partners invite team members from their portal after Clerk org setup.</p>
+          </div>
+        ) : (
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b text-xs text-gray-400 font-semibold uppercase tracking-wider">
+                <th className="text-left py-2.5 px-5">Member</th>
+                <th className="text-left py-2.5 px-5 hidden md:table-cell">Role</th>
+                <th className="text-left py-2.5 px-5 hidden lg:table-cell">Partner org</th>
+                <th className="text-left py-2.5 px-5 hidden md:table-cell">Status</th>
+                <th className="text-right py-2.5 px-5">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {members.data.map((m) => (
+                <tr key={m.id} className="border-b last:border-0 hover:bg-gray-50">
+                  <td className="py-3 px-5">
+                    <p className="font-semibold text-gray-800">{m.displayName || m.email}</p>
+                    <p className="text-xs text-gray-400">{m.email}</p>
+                  </td>
+                  <td className="py-3 px-5 hidden md:table-cell capitalize text-gray-600">{m.role}</td>
+                  <td className="py-3 px-5 hidden lg:table-cell font-mono text-xs text-gray-500">{m.partnerId}</td>
+                  <td className="py-3 px-5 hidden md:table-cell">{statusBadge(m.status)}</td>
+                  <td className="py-3 px-5 text-right">
+                    {m.status !== "invited" && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={busyId === m.id}
+                        onClick={() => void toggleMemberStatus(m.id, m.status)}
+                        className="gap-1 text-xs"
+                      >
+                        {busyId === m.id ? (
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                        ) : m.status === "suspended" ? (
+                          "Activate"
+                        ) : (
+                          "Suspend"
+                        )}
+                      </Button>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>

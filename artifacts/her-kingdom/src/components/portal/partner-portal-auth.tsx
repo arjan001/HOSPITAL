@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Link } from "wouter"
 import { useAuth, useUser } from "@clerk/react"
 import { useSignIn } from "@clerk/react/legacy"
@@ -14,7 +14,7 @@ import {
   refreshPartnerMe,
   type PartnerType,
 } from "@/lib/partners-client"
-import { buildRedirectQuery } from "@/lib/auth-redirect"
+import { buildRedirectQuery, rememberPartnerPortalRedirect } from "@/lib/auth-redirect"
 import { GoogleSignInButton } from "@/components/auth/google-sign-in-button"
 
 const BASE_PATH = import.meta.env.BASE_URL.replace(/\/$/, "")
@@ -67,6 +67,12 @@ export function PartnerPortalAuthScreen({ type, redirectPath, title, subtitle, b
     type === "supplier" ? "Supplier" : type === "clinic" ? "Clinic" : "Logistics"
 
   const registerQuery = buildRedirectQuery(redirectPath)
+  const loginQuery = buildRedirectQuery(redirectPath)
+
+  useEffect(() => {
+    rememberPartnerPortalRedirect(redirectPath)
+  }, [redirectPath])
+
   /** Active Clerk org from session (no useOrganizationList — avoids Clerk “enable Organizations” gate). */
   const activeOrg = orgId ? { id: orgId, name: orgSlug ?? "" } : null
   const showOrgSetup = isSignedIn && !activeOrg
@@ -146,9 +152,11 @@ export function PartnerPortalAuthScreen({ type, redirectPath, title, subtitle, b
     setError("")
     setGoogleLoading(true)
     try {
+      rememberPartnerPortalRedirect(redirectPath)
+      const oauthCallback = `${BASE_PATH}/account/sso-callback${buildRedirectQuery(redirectPath)}`
       await signIn.authenticateWithRedirect({
         strategy: "oauth_google",
-        redirectUrl: `${BASE_PATH}/account/sso-callback`,
+        redirectUrl: oauthCallback,
         redirectUrlComplete: `${BASE_PATH}${redirectPath}`,
       })
     } catch (err) {
@@ -262,9 +270,13 @@ export function PartnerPortalAuthScreen({ type, redirectPath, title, subtitle, b
               />
 
               <p className="text-xs text-gray-500 text-center">
-                Don&apos;t have a Clerk account?{" "}
+                Don&apos;t have an account?{" "}
                 <Link href={`/account/register${registerQuery}`} className="underline" style={{ color: WINE }}>
                   Create one here
+                </Link>
+                {" · "}
+                <Link href={`/account/login${loginQuery}`} className="underline" style={{ color: WINE }}>
+                  Sign in
                 </Link>
               </p>
             </div>

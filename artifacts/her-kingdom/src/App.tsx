@@ -11,6 +11,11 @@ import { WishlistProvider } from "@/lib/wishlist-context";
 import { PageViewTracker } from "@/components/page-view-tracker";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { BackToTop } from "@/components/store/back-to-top";
+import {
+  resolvePostAuthRedirect,
+  isPartnerPortalPath,
+  clearPartnerPortalRedirect,
+} from "@/lib/auth-redirect";
 
 // Store pages
 import { LandingPage } from "@/components/store/landing-page";
@@ -278,6 +283,16 @@ function TrackOrderByCodePage({ orderNumber }: { orderNumber: string }) {
  * session and forwards the user to their dashboard.
  */
 function SsoCallbackPage() {
+  const fallback =
+    resolvePostAuthRedirect(
+      typeof window !== "undefined" ? window.location.search : "",
+    ) || "/account/settings";
+  const fallbackUrl = `${basePath}${fallback}`;
+
+  useEffect(() => {
+    if (isPartnerPortalPath(fallback)) clearPartnerPortalRedirect();
+  }, [fallback]);
+
   return (
     <main
       className="min-h-screen flex items-center justify-center px-4 py-14 bg-white"
@@ -294,8 +309,8 @@ function SsoCallbackPage() {
         </p>
       </div>
       <AuthenticateWithRedirectCallback
-        signInFallbackRedirectUrl={`${basePath}/account/settings`}
-        signUpFallbackRedirectUrl={`${basePath}/account/settings`}
+        signInFallbackRedirectUrl={fallbackUrl}
+        signUpFallbackRedirectUrl={fallbackUrl}
       />
     </main>
   );

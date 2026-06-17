@@ -535,3 +535,65 @@ export async function adminRejectApplication(
   await globalMutate(["partner:admin:applications", type, "pending"])
   return r
 }
+
+export type AdminPartnerMember = {
+  id: string
+  partnerId: string
+  partnerType: PartnerType
+  clerkOrgId: string
+  clerkUserId: string | null
+  email: string
+  displayName: string
+  role: string
+  status: string
+  invitedAt: string | null
+  joinedAt: string | null
+  createdAt: string
+}
+
+export function useAdminPartnerMembers(type?: PartnerType, partnerId?: string) {
+  const key =
+    type || partnerId
+      ? ["partner:admin:members", type ?? "all", partnerId ?? "all"]
+      : ["partner:admin:members", "all"]
+  return useSWR<AdminPartnerMember[]>(key, () => {
+    const q = new URLSearchParams()
+    if (type) q.set("type", type)
+    if (partnerId) q.set("partnerId", partnerId)
+    const qs = q.toString()
+    return adminPFetch<AdminPartnerMember[]>(`/admin/members${qs ? `?${qs}` : ""}`)
+  })
+}
+
+export async function adminUpdatePartnerAccount(
+  type: PartnerType,
+  id: string,
+  body: { status?: string; displayName?: string; metadata?: Record<string, unknown> },
+) {
+  const r = await adminPFetch<PartnerAccount>(`/admin/accounts/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  })
+  await globalMutate(["partner:admin:accounts", type])
+  return r
+}
+
+export async function adminUpdatePartnerMember(
+  id: string,
+  body: { status?: string; displayName?: string; role?: string },
+) {
+  const r = await adminPFetch<AdminPartnerMember>(`/admin/members/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  })
+  await globalMutate((k) => Array.isArray(k) && k[0] === "partner:admin:members")
+  return r
+}
+
+export async function fetchAllAdminPartnerAccounts(): Promise<PartnerAccount[]> {
+  const types: PartnerType[] = ["supplier", "clinic", "logistics"]
+  const batches = await Promise.all(
+    types.map((t) => adminPFetch<PartnerAccount[]>(`/admin/accounts?type=${encodeURIComponent(t)}`)),
+  )
+  return batches.flat()
+}
