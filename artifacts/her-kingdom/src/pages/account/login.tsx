@@ -27,9 +27,8 @@
  *
  * Session persistence:
  *   Clerk stores the session as a signed JWT in a first-party cookie.
- *   The ClerkProvider in App.tsx proxies Clerk API calls through /api/__clerk
- *   to avoid subdomain issues on Replit. The NestJS backend separately issues
- *   a shaniidrx_sid cookie via SessionMiddleware (guest session scoping).
+ *   Configure VITE_CLERK_PUBLISHABLE_KEY (frontend) and CLERK_SECRET_KEY
+ *   (api-server / api-nest) from the same Clerk application in your Dashboard.
  */
 
 import { useEffect, useState } from "react"

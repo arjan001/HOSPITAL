@@ -3,7 +3,6 @@ import { Switch, Route, Redirect, useLocation, Router as WouterRouter } from "wo
 import useSWR from "swr";
 import { QueryClient, QueryClientProvider, useQueryClient } from "@tanstack/react-query";
 import { ClerkProvider, AuthenticateWithRedirectCallback, Show, useClerk } from "@clerk/react";
-import { publishableKeyFromHost } from "@clerk/react/internal";
 import { shadcn } from "@clerk/themes";
 import { Toaster } from "@/components/ui/sonner";
 import NotFound from "@/pages/not-found";
@@ -161,20 +160,10 @@ const queryClient = new QueryClient();
 
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
 
-const clerkPubKey = (() => {
-  const envKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY?.trim()
-  if (envKey) return envKey
-  try {
-    return publishableKeyFromHost(
-      window.location.hostname,
-      import.meta.env.VITE_CLERK_PUBLISHABLE_KEY,
-    );
-  } catch {
-    return null;
-  }
-})();
-
-const clerkProxyUrl = import.meta.env.VITE_CLERK_PROXY_URL;
+/** Standard Clerk — publishable key from Clerk Dashboard (VITE_ prefix for Vite). */
+const clerkPubKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY?.trim() || null;
+/** Optional: only for satellite / custom-domain Clerk proxy setups. */
+const clerkProxyUrl = import.meta.env.VITE_CLERK_PROXY_URL?.trim() || undefined;
 
 function stripBase(path: string): string {
   return basePath && path.startsWith(basePath)
@@ -710,7 +699,7 @@ function ClerkProviderWithRoutes() {
   return (
     <ClerkProvider
       publishableKey={clerkPubKey}
-      proxyUrl={clerkProxyUrl}
+      {...(clerkProxyUrl ? { proxyUrl: clerkProxyUrl } : {})}
       appearance={clerkAppearance}
       signInUrl={`${basePath}/account/login`}
       signUpUrl={`${basePath}/account/register`}

@@ -7,8 +7,8 @@
  *
  * Middleware stack (in order):
  *   1. pino-http       — structured request/response logging
- *   2. clerkProxyMiddleware — forwards /api/__clerk/* to Clerk's cluster so
- *                         the browser treats auth as first-party (no CORS)
+ *   2. clerkProxyMiddleware (optional) — only when CLERK_PROXY_URL is set
+ *                         for satellite / custom-domain Clerk setups
  *   3. cors            — allows credentials from the Vite SPA origin
  *   4. express.json / urlencoded — request body parsing
  *   5. clerkMiddleware — attaches Clerk auth context to every request so
@@ -27,12 +27,11 @@ import express, { type Express, type NextFunction, type Request, type Response }
 import cors from "cors";
 import pinoHttp from "pino-http";
 import { clerkMiddleware } from "@clerk/express";
-import { publishableKeyFromHost } from "@clerk/shared/keys";
 import {
   CLERK_PROXY_PATH,
   clerkProxyMiddleware,
-  getClerkProxyHost,
 } from "./middlewares/clerkProxyMiddleware";
+import { clerkConfigured, clerkProxyUrl, clerkPublishableKey } from "./lib/clerk-env";
 import router from "./routes";
 import { logger } from "./lib/logger";
 import { UPLOAD_DISK_ROOT, UPLOAD_URL_PREFIX } from "./lib/storage";
@@ -58,20 +57,24 @@ app.use(
     },
   }),
 );
-app.use(CLERK_PROXY_PATH, clerkProxyMiddleware());
+if (clerkProxyUrl()) {
+  app.use(CLERK_PROXY_PATH, clerkProxyMiddleware());
+}
 
 app.use(cors({ credentials: true, origin: true }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-app.use(
-  clerkMiddleware((req) => ({
-    publishableKey: publishableKeyFromHost(
-      getClerkProxyHost(req) ?? "",
-      process.env.CLERK_PUBLISHABLE_KEY,
-    ),
-  })),
-);
+const clerkPk = clerkPublishableKey();
+if (clerkConfigured() && clerkPk) {
+  // Standard Clerk: keys from env (Clerk Dashboard). No Replit host lookup.
+  if (!process.env.CLERK_PUBLISHABLE_KEY?.trim()) {
+    process.env.CLERK_PUBLISHABLE_KEY = clerkPk;
+  }
+  app.use(clerkMiddleware());
+} else if (clerkPk) {
+  app.use(clerkMiddleware({ publishableKey: clerkPk }));
+}
 
 // Serve uploaded files from the local-disk Storage backend. When we swap
 // `lib/storage.ts` over to S3, this static mount can be removed — S3 URLs
