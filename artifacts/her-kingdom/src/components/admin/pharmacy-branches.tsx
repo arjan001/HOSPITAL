@@ -148,7 +148,6 @@ function PharmacyFormModal({ initial, onClose, onSaved }: {
         address: form.address,
         city: form.city,
         status: form.status,
-        clerkOrgId: form.clerkOrgId || undefined,
         kyc: {
           ppbContact: form.ppbContact,
           premisesLicense: form.premisesLicense,
@@ -179,8 +178,8 @@ function PharmacyFormModal({ initial, onClose, onSaved }: {
           <button type="button" onClick={onClose}><X className="h-5 w-5 opacity-50" /></button>
         </div>
         <p className="text-xs text-muted-foreground mb-4">
-          Internal pharmacy legal entity. Super admin creates the pharmacy, assigns a Pharmacy Admin account,
-          then staff are invited via Clerk (optional org ID below).
+          Internal pharmacy legal entity. Super admin registers the pharmacy and assigns a Pharmacy Admin.
+          A Clerk organization is created automatically for staff invitations when Clerk is configured.
         </p>
         <div className="space-y-3">
           <div className="grid grid-cols-2 gap-3">
@@ -225,11 +224,11 @@ function PharmacyFormModal({ initial, onClose, onSaved }: {
             <label className="text-xs font-semibold text-muted-foreground mb-1 block">Head office address</label>
             <Input value={form.address} onChange={(e) => setForm((f) => ({ ...f, address: e.target.value }))} />
           </div>
-          <div>
-            <label className="text-xs font-semibold text-muted-foreground mb-1 block">Clerk org ID (staff invites)</label>
-            <Input value={form.clerkOrgId} onChange={(e) => setForm((f) => ({ ...f, clerkOrgId: e.target.value }))} placeholder="org_… (internal staff only)" />
-            <p className="text-[10px] text-muted-foreground mt-1">Optional. Enables Clerk email invitations for pharmacists & couriers tied to this pharmacy.</p>
-          </div>
+          {isEdit && initial?.clerkOrgId && (
+            <div className="rounded-lg border border-dashed px-3 py-2 text-xs text-muted-foreground">
+              Clerk org (staff invites): <span className="font-mono">{initial.clerkOrgId}</span>
+            </div>
+          )}
           {err && <p className="text-xs text-destructive">{err}</p>}
         </div>
         <div className="flex gap-2 mt-5">

@@ -108,6 +108,7 @@ export function PartnerPortalPanel({ type }: { type: PartnerType }) {
     const map: Record<string, { bg: string; fg: string; label: string }> = {
       active: { bg: "#DCFCE7", fg: "#15803D", label: "Active" },
       invited: { bg: "#FEF3C7", fg: "#B45309", label: "Invited" },
+      pending: { bg: "#FEF3C7", fg: "#B45309", label: "Pending approval" },
       suspended: { bg: "#FEE2E2", fg: "#B91C1C", label: "Suspended" },
     }
     const v = map[s] ?? { bg: "#F3F4F6", fg: "#6B7280", label: s }

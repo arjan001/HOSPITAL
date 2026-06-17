@@ -7,6 +7,7 @@ import { and, desc, eq } from "drizzle-orm"
 import {
   db,
   partnerAccounts,
+  partnerApplications,
   partnerDirectory,
   partnerMembers,
   type PartnerAccount,
@@ -101,6 +102,12 @@ export class PartnerOrgService {
     if (!dir) {
       throw new HttpException(
         `No ${partnerType} partner is registered for this Clerk organization. Complete organization setup first.`,
+        HttpStatus.FORBIDDEN,
+      )
+    }
+    if (dir.status !== "active") {
+      throw new HttpException(
+        "Your organization registration is pending approval by Shaniid RX. You will receive portal access once an administrator reviews your application.",
         HttpStatus.FORBIDDEN,
       )
     }
@@ -278,10 +285,30 @@ export class PartnerOrgService {
           partnerType,
           partnerId,
           displayName: name,
-          status: "active",
+          status: "pending",
           metadata: { clerkUserId: clerk.userId, clerkOrgId, memberId, memberRole: "owner" },
         })
+      } else {
+        await tx
+          .update(partnerAccounts)
+          .set({
+            partnerId,
+            status: "pending",
+            metadata: { clerkUserId: clerk.userId, clerkOrgId, memberId, memberRole: "owner" },
+            updatedAt: now,
+          })
+          .where(eq(partnerAccounts.email, clerk.email!))
       }
+
+      await tx.insert(partnerApplications).values({
+        id: newId("papp"),
+        partnerType,
+        orgName: name,
+        contactName: clerk.email!,
+        email: clerk.email!,
+        message: `Clerk organization self-registration (org: ${clerkOrgId})`,
+        status: "pending",
+      })
     })
 
     void setClerkUserPartnerMetadata(clerk.userId, {

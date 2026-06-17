@@ -6,9 +6,8 @@
  * Backed by the real partner API via partners-client.ts. Auth is a server-side
  * signed token in an HttpOnly cookie (no localStorage, no portal codes).
  *
- * Auth screen has two modes: Sign in and Apply to join. The accept-invite mode
- * is mounted at /portal/supplier/accept?token=… and lets an invited supplier set
- * their password.
+ * Auth is Clerk-only (sign in + org registration). Admin pre-approves new orgs.
+ * Accept-invite at /portal/supplier/accept?token=… remains for legacy admin invites.
  *
  * Tabs: Overview · Catalog · Opportunities · Quotes · KYC · Profile
  */
@@ -16,7 +15,7 @@
 import { useMemo, useState } from "react"
 import { Link, useLocation } from "wouter"
 import {
-  partnerLogin, partnerApply, partnerAcceptInvite, partnerSignout,
+  partnerAcceptInvite, partnerSignout,
   usePartnerMe, refreshPartnerMe,
   useSupplierCatalog, addSupplierProduct, updateSupplierProduct, deleteSupplierProduct,
   useSupplierOpportunities, useSupplierQuotes, submitSupplierQuote,
@@ -24,7 +23,7 @@ import {
   type PartnerAccount, type SupplierProduct, type SourcingOpportunity, type PartnerQuote,
   type PurchaseOrderSummary,
 } from "@/lib/partners-client"
-import { PartnerClerkDivider, PartnerClerkSignIn } from "@/components/portal/partner-clerk-signin"
+import { PartnerPortalAuthScreen } from "@/components/portal/partner-portal-auth"
 import { PartnerTeamPanel } from "@/components/portal/partner-team-panel"
 import {
   ShieldCheck, LogOut, ClipboardList, BarChart3, User, AlertTriangle,
@@ -52,7 +51,7 @@ function fmtMoney(amount: number, currency = CURRENCY_DEFAULT): string {
   return `${currency} ${Number(amount || 0).toLocaleString()}`
 }
 
-/* ─── Auth screen (Sign in / Apply to join) ──────────────────── */
+/* ─── Auth screen (Clerk only) ─────────────────────────────── */
 
 const AUTH_FEATURES: { icon: typeof Boxes; title: string; desc: string }[] = [
   { icon: Boxes,         title: "Manage your catalog",      desc: "List, price and update the products you supply to the Shaniid RX network." },
@@ -101,194 +100,14 @@ function ErrorBanner({ message }: { message: string }) {
 }
 
 function SupplierAuthScreen() {
-  const [mode, setMode] = useState<"signin" | "apply">("signin")
-
-  // Sign in state
-  const [email, setEmail] = useState("")
-  const [password, setPassword] = useState("")
-  const [showPwd, setShowPwd] = useState(false)
-  const [signinErr, setSigninErr] = useState("")
-  const [signingIn, setSigningIn] = useState(false)
-
-  // Apply state
-  const [orgName, setOrgName] = useState("")
-  const [contactName, setContactName] = useState("")
-  const [applyEmail, setApplyEmail] = useState("")
-  const [phone, setPhone] = useState("")
-  const [message, setMessage] = useState("")
-  const [applyErr, setApplyErr] = useState("")
-  const [applying, setApplying] = useState(false)
-  const [applied, setApplied] = useState(false)
-
-  const submitSignin = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setSigninErr("")
-    setSigningIn(true)
-    try {
-      await partnerLogin("supplier", email.trim().toLowerCase(), password)
-      await refreshPartnerMe()
-    } catch (err) {
-      setSigninErr(err instanceof Error ? err.message : "Sign in failed. Please try again.")
-    } finally {
-      setSigningIn(false)
-    }
-  }
-
-  const submitApply = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setApplyErr("")
-    setApplying(true)
-    try {
-      await partnerApply({
-        partnerType: "supplier",
-        orgName: orgName.trim(),
-        contactName: contactName.trim(),
-        email: applyEmail.trim().toLowerCase(),
-        phone: phone.trim() || undefined,
-        message: message.trim() || undefined,
-      })
-      setApplied(true)
-    } catch (err) {
-      setApplyErr(err instanceof Error ? err.message : "Could not submit your application. Please try again.")
-    } finally {
-      setApplying(false)
-    }
-  }
-
   return (
-    <div className="min-h-screen flex" style={{ background: "#faf9f8" }}>
-      <BrandPanel />
-
-      <div className="flex-1 flex items-center justify-center p-6">
-        <div className="w-full max-w-md">
-          <div className="lg:hidden flex items-center gap-2 mb-8">
-            <img src="/logo-rx.png" alt="Shaniid RX" className="h-14 w-auto object-contain" />
-          </div>
-
-          {/* Mode toggle */}
-          <div className="flex gap-1 p-1 mb-6 rounded-xl bg-gray-100 w-full">
-            {([
-              { id: "signin" as const, label: "Sign in" },
-              { id: "apply" as const, label: "Apply to join" },
-            ]).map(t => (
-              <button
-                key={t.id}
-                type="button"
-                onClick={() => setMode(t.id)}
-                className="flex-1 text-sm font-semibold py-2 rounded-lg transition-all"
-                style={mode === t.id ? { background: "#fff", color: WINE, boxShadow: "0 1px 2px rgba(0,0,0,0.06)" } : { color: "#6B7280" }}
-              >
-                {t.label}
-              </button>
-            ))}
-          </div>
-
-          {mode === "signin" ? (
-            <>
-              <h1 className="text-2xl font-bold text-gray-800 mb-1">Supplier sign in</h1>
-              <p className="text-gray-500 text-sm mb-2">Enter the email and password for your supplier account.</p>
-              <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-6">
-                First time? Enter your supplier email and use the <span className="font-semibold">portal code</span> shared by the Shaniid RX team as your password.
-              </p>
-
-              {signinErr && <ErrorBanner message={signinErr} />}
-
-              <form onSubmit={submitSignin} className="space-y-4">
-                <div>
-                  <Label className="text-sm font-medium text-gray-700">Email address</Label>
-                  <Input
-                    type="email" required value={email} onChange={e => setEmail(e.target.value)}
-                    placeholder="you@company.co.ke" className="mt-1 h-11"
-                  />
-                </div>
-                <div>
-                  <Label className="text-sm font-medium text-gray-700">Password</Label>
-                  <div className="relative mt-1">
-                    <Input
-                      type={showPwd ? "text" : "password"} required
-                      value={password} onChange={e => setPassword(e.target.value)}
-                      placeholder="Your password" className="h-11 pr-10"
-                    />
-                    <button type="button" onClick={() => setShowPwd(s => !s)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
-                      {showPwd ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                    </button>
-                  </div>
-                </div>
-                <Button type="submit" disabled={signingIn} className="w-full h-11 text-white font-semibold gap-2" style={{ background: WINE }}>
-                  {signingIn ? <Loader2 className="h-4 w-4 animate-spin" /> : <>Sign in to your portal <ArrowRight className="h-4 w-4" /></>}
-                </Button>
-              </form>
-
-              <PartnerClerkDivider />
-              <PartnerClerkSignIn
-                type="supplier"
-                redirectPath="/portal/supplier"
-                onError={setSigninErr}
-              />
-
-              <p className="text-xs text-gray-400 text-center mt-6">
-                New supplier? <button type="button" onClick={() => setMode("apply")} className="underline" style={{ color: WINE }}>Apply to join</button>
-              </p>
-            </>
-          ) : applied ? (
-            <div className="text-center py-6">
-              <div className="h-14 w-14 rounded-2xl flex items-center justify-center mx-auto mb-4" style={{ background: `${GREEN}15` }}>
-                <CheckCircle2 className="h-7 w-7" style={{ color: GREEN }} />
-              </div>
-              <h1 className="text-2xl font-bold text-gray-800 mb-2">Thanks — we'll review your application</h1>
-              <p className="text-gray-500 text-sm">
-                Our partnerships team will review your details and reach out by email. Once approved you'll receive an invite to set your password and access the portal.
-              </p>
-              <Button onClick={() => { setMode("signin"); setApplied(false) }} variant="outline" className="mt-6">
-                Back to sign in
-              </Button>
-            </div>
-          ) : (
-            <>
-              <h1 className="text-2xl font-bold text-gray-800 mb-1">Apply to join</h1>
-              <p className="text-gray-500 text-sm mb-8">Tell us about your business and we'll get back to you.</p>
-
-              {applyErr && <ErrorBanner message={applyErr} />}
-
-              <form onSubmit={submitApply} className="space-y-4">
-                <div>
-                  <Label className="text-sm font-medium text-gray-700">Company name <span className="text-red-500">*</span></Label>
-                  <Input required value={orgName} onChange={e => setOrgName(e.target.value)} placeholder="Acme Pharmaceuticals Ltd" className="mt-1 h-11" />
-                </div>
-                <div>
-                  <Label className="text-sm font-medium text-gray-700">Contact person <span className="text-red-500">*</span></Label>
-                  <Input required value={contactName} onChange={e => setContactName(e.target.value)} placeholder="Full name" className="mt-1 h-11" />
-                </div>
-                <div>
-                  <Label className="text-sm font-medium text-gray-700">Email address <span className="text-red-500">*</span></Label>
-                  <Input type="email" required value={applyEmail} onChange={e => setApplyEmail(e.target.value)} placeholder="you@company.co.ke" className="mt-1 h-11" />
-                </div>
-                <div>
-                  <Label className="text-sm font-medium text-gray-700">Phone</Label>
-                  <Input value={phone} onChange={e => setPhone(e.target.value)} placeholder="+254…" className="mt-1 h-11" />
-                </div>
-                <div>
-                  <Label className="text-sm font-medium text-gray-700">Message</Label>
-                  <Textarea value={message} onChange={e => setMessage(e.target.value)} placeholder="What do you supply? Categories, certifications, scale…" className="mt-1" rows={3} />
-                </div>
-                <Button type="submit" disabled={applying} className="w-full h-11 text-white font-semibold gap-2" style={{ background: ORANGE }}>
-                  {applying ? <Loader2 className="h-4 w-4 animate-spin" /> : <>Submit application <ArrowRight className="h-4 w-4" /></>}
-                </Button>
-              </form>
-
-              <p className="text-xs text-gray-400 text-center mt-6">
-                Already a partner? <button type="button" onClick={() => setMode("signin")} className="underline" style={{ color: WINE }}>Sign in</button>
-              </p>
-            </>
-          )}
-
-          <p className="text-xs text-gray-300 text-center mt-3">
-            <Link href="/admin" className="hover:text-gray-500 transition-colors">Admin portal →</Link>
-          </p>
-        </div>
-      </div>
-    </div>
+    <PartnerPortalAuthScreen
+      type="supplier"
+      redirectPath="/portal/supplier"
+      title="Supplier portal"
+      subtitle="Sign in with Clerk and register your organization. Portal access is granted after Shaniid RX approves your registration."
+      brandPanel={<BrandPanel />}
+    />
   )
 }
 

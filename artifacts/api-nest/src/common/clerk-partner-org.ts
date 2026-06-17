@@ -82,3 +82,48 @@ export async function getClerkOrganizationMembership(organizationId: string, use
     return null
   }
 }
+
+/** Look up a Clerk user id by primary email (for org creation bootstrap). */
+export async function findClerkUserIdByEmail(email: string): Promise<string | null> {
+  const normalized = email.trim().toLowerCase()
+  if (!normalized || !clerkPartnerOrgEnabled()) return null
+  const client = clerk()
+  const list = await client.users.getUserList({ emailAddress: [normalized], limit: 1 })
+  return list.data[0]?.id ?? null
+}
+
+/**
+ * Resolve who should be recorded as Clerk org creator when auto-provisioning
+ * internal pharmacy organizations.
+ */
+export async function resolveClerkOrgCreatorUserId(opts: {
+  clerkCreatorUserId?: string
+  adminUserId?: string
+  contactEmail?: string
+}): Promise<string | null> {
+  const explicit = opts.clerkCreatorUserId?.trim()
+  if (explicit) return explicit
+
+  const env = process.env.CLERK_ORG_CREATOR_USER_ID?.trim()
+  if (env) return env
+
+  if (opts.adminUserId?.trim()) {
+    const { db, adminUsers } = await import("@workspace/db")
+    const { eq } = await import("drizzle-orm")
+    const [admin] = await db
+      .select({ email: adminUsers.email })
+      .from(adminUsers)
+      .where(eq(adminUsers.id, opts.adminUserId.trim()))
+      .limit(1)
+    if (admin?.email) {
+      const uid = await findClerkUserIdByEmail(admin.email)
+      if (uid) return uid
+    }
+  }
+
+  if (opts.contactEmail?.trim()) {
+    return findClerkUserIdByEmail(opts.contactEmail)
+  }
+
+  return null
+}

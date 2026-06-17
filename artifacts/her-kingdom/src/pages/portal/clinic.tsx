@@ -13,11 +13,11 @@ import { useMemo, useState } from "react"
 import { Link, useLocation } from "wouter"
 import {
   usePartnerMe, refreshPartnerMe,
-  partnerLogin, partnerApply, partnerAcceptInvite, partnerSignout,
+  partnerAcceptInvite, partnerSignout,
   useClinicProductLookup, useClinicOrders, useClinicLedger, placeClinicOrder,
   type PartnerAccount, type ClinicProduct, type ClinicOrderLine,
 } from "@/lib/partners-client"
-import { PartnerClerkDivider, PartnerClerkSignIn } from "@/components/portal/partner-clerk-signin"
+import { PartnerPortalAuthScreen } from "@/components/portal/partner-portal-auth"
 import { PartnerTeamPanel } from "@/components/portal/partner-team-panel"
 import {
   Stethoscope, LogOut, ShoppingCart, ClipboardList, CreditCard,
@@ -78,184 +78,17 @@ function BrandPanel() {
   )
 }
 
-/* ─── Auth screen (sign in / apply) ──────────────────────────── */
-
-type AuthMode = "signin" | "apply"
+/* ─── Auth screen (Clerk only) ───────────────────────────────── */
 
 function ClinicAuthScreen() {
-  const [mode, setMode] = useState<AuthMode>("signin")
-
-  // sign in
-  const [email, setEmail] = useState("")
-  const [password, setPassword] = useState("")
-  const [showPw, setShowPw] = useState(false)
-
-  // apply
-  const [orgName, setOrgName] = useState("")
-  const [contactName, setContactName] = useState("")
-  const [applyEmail, setApplyEmail] = useState("")
-  const [phone, setPhone] = useState("")
-  const [message, setMessage] = useState("")
-  const [applied, setApplied] = useState(false)
-
-  const [error, setError] = useState("")
-  const [busy, setBusy] = useState(false)
-
-  const doSignIn = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setError(""); setBusy(true)
-    try {
-      await partnerLogin("clinic", email.trim().toLowerCase(), password)
-      await refreshPartnerMe()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Sign in failed. Check your details and try again.")
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  const doApply = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setError(""); setBusy(true)
-    try {
-      await partnerApply({
-        partnerType: "clinic",
-        orgName: orgName.trim(),
-        contactName: contactName.trim(),
-        email: applyEmail.trim().toLowerCase(),
-        phone: phone.trim() || undefined,
-        message: message.trim() || undefined,
-      })
-      setApplied(true)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not submit your application. Try again.")
-    } finally {
-      setBusy(false)
-    }
-  }
-
   return (
-    <div className="min-h-screen flex" style={{ background: "#faf9f8" }}>
-      <BrandPanel />
-
-      <div className="flex-1 flex items-center justify-center p-6">
-        <div className="w-full max-w-md">
-          <div className="lg:hidden flex items-center gap-2 mb-8">
-            <img src="/logo-rx.png" alt="Shaniid RX" className="h-14 w-auto object-contain" />
-          </div>
-
-          {/* Mode tabs */}
-          <div className="inline-flex p-1 rounded-xl bg-gray-100 mb-6">
-            <button
-              onClick={() => { setMode("signin"); setError("") }}
-              className="px-4 py-1.5 rounded-lg text-sm font-semibold transition-all"
-              style={mode === "signin" ? { background: "#fff", color: WINE, boxShadow: "0 1px 2px rgba(0,0,0,0.06)" } : { color: "#6b7280" }}
-            >
-              Sign in
-            </button>
-            <button
-              onClick={() => { setMode("apply"); setError("") }}
-              className="px-4 py-1.5 rounded-lg text-sm font-semibold transition-all"
-              style={mode === "apply" ? { background: "#fff", color: WINE, boxShadow: "0 1px 2px rgba(0,0,0,0.06)" } : { color: "#6b7280" }}
-            >
-              Apply to join
-            </button>
-          </div>
-
-          {error && (
-            <div className="mb-5 flex items-center gap-2.5 p-3.5 rounded-xl bg-red-50 border border-red-200 text-sm text-red-700">
-              <AlertTriangle className="h-4 w-4 flex-shrink-0" />{error}
-            </div>
-          )}
-
-          {mode === "signin" && (
-            <>
-              <h1 className="text-2xl font-bold text-gray-800 mb-1">Clinic sign in</h1>
-              <p className="text-gray-500 text-sm mb-2">Use the email and password for your facility account.</p>
-              <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-6">
-                First time? Enter your facility email and use the <span className="font-semibold">portal code</span> (e.g. <span className="font-mono">CLN-XXXX-XXXX</span>) as your password.
-              </p>
-              <form onSubmit={doSignIn} className="space-y-4">
-                <div>
-                  <Label className="text-sm font-medium text-gray-700">Facility email</Label>
-                  <Input type="email" required value={email} onChange={e => setEmail(e.target.value)} placeholder="procurement@yourclinic.co.ke" className="mt-1 h-11" />
-                </div>
-                <div>
-                  <Label className="text-sm font-medium text-gray-700">Password</Label>
-                  <div className="relative mt-1">
-                    <Input type={showPw ? "text" : "password"} required value={password}
-                      onChange={e => setPassword(e.target.value)} placeholder="••••••••" className="h-11 pr-10" />
-                    <button type="button" onClick={() => setShowPw(s => !s)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
-                      {showPw ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                    </button>
-                  </div>
-                </div>
-                <Button type="submit" disabled={busy} className="w-full h-11 text-white font-semibold gap-2" style={{ background: WINE }}>
-                  {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <>Sign in to your portal <ArrowRight className="h-4 w-4" /></>}
-                </Button>
-              </form>
-              <PartnerClerkDivider />
-              <PartnerClerkSignIn type="clinic" redirectPath="/portal/clinic" onError={setError} />
-              <p className="text-xs text-gray-400 text-center mt-6">
-                New facility? <button onClick={() => { setMode("apply"); setError("") }} className="underline" style={{ color: WINE }}>Apply to join</button>
-              </p>
-            </>
-          )}
-
-          {mode === "apply" && (
-            applied ? (
-              <div className="text-center py-10">
-                <div className="h-16 w-16 rounded-full flex items-center justify-center mx-auto mb-4" style={{ background: `${GREEN}15` }}>
-                  <CheckCircle2 className="h-8 w-8" style={{ color: GREEN }} />
-                </div>
-                <h2 className="text-xl font-bold text-gray-800">Thanks — we'll review your application</h2>
-                <p className="text-gray-500 text-sm mt-2">
-                  Our partnerships team will review your facility and email you next steps. This usually takes 1–2 business days.
-                </p>
-                <Button className="mt-6 text-white" style={{ background: WINE }} onClick={() => { setApplied(false); setMode("signin") }}>
-                  Back to sign in
-                </Button>
-              </div>
-            ) : (
-              <>
-                <h1 className="text-2xl font-bold text-gray-800 mb-1">Apply to join</h1>
-                <p className="text-gray-500 text-sm mb-8">Tell us about your facility and we'll get you set up.</p>
-                <form onSubmit={doApply} className="space-y-4">
-                  <div>
-                    <Label className="text-sm font-medium text-gray-700">Facility / organisation name</Label>
-                    <Input required value={orgName} onChange={e => setOrgName(e.target.value)} placeholder="Westlands Medical Centre" className="mt-1 h-11" />
-                  </div>
-                  <div>
-                    <Label className="text-sm font-medium text-gray-700">Contact name</Label>
-                    <Input required value={contactName} onChange={e => setContactName(e.target.value)} placeholder="Dr. Jane Doe" className="mt-1 h-11" />
-                  </div>
-                  <div>
-                    <Label className="text-sm font-medium text-gray-700">Email</Label>
-                    <Input type="email" required value={applyEmail} onChange={e => setApplyEmail(e.target.value)} placeholder="procurement@yourclinic.co.ke" className="mt-1 h-11" />
-                  </div>
-                  <div>
-                    <Label className="text-sm font-medium text-gray-700">Phone <span className="text-gray-400 font-normal">(optional)</span></Label>
-                    <Input value={phone} onChange={e => setPhone(e.target.value)} placeholder="+254 7XX XXX XXX" className="mt-1 h-11" />
-                  </div>
-                  <div>
-                    <Label className="text-sm font-medium text-gray-700">Message <span className="text-gray-400 font-normal">(optional)</span></Label>
-                    <Textarea value={message} onChange={e => setMessage(e.target.value)} rows={3} className="mt-1" placeholder="Tell us about your facility, monthly volumes, specialties…" />
-                  </div>
-                  <Button type="submit" disabled={busy} className="w-full h-11 text-white font-semibold gap-2" style={{ background: ORANGE }}>
-                    {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <>Submit application <ArrowRight className="h-4 w-4" /></>}
-                  </Button>
-                </form>
-              </>
-            )
-          )}
-
-          <p className="text-xs text-gray-300 text-center mt-6">
-            <Link href="/admin" className="hover:text-gray-500 transition-colors">Admin portal →</Link>
-          </p>
-        </div>
-      </div>
-    </div>
+    <PartnerPortalAuthScreen
+      type="clinic"
+      redirectPath="/portal/clinic"
+      title="Clinic portal"
+      subtitle="Sign in with Clerk and register your facility organization. Portal access is granted after Shaniid RX approves your registration."
+      brandPanel={<BrandPanel />}
+    />
   )
 }
 

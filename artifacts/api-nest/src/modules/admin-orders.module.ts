@@ -222,22 +222,6 @@ class AdminOrdersService {
    * tracking (`GET /orders/track`) and `/me/orders` stay in sync when staff
    * advance an order from the admin panel.
    */
-  private async mirrorStatusToCustomerOrder(
-    orderNo: string,
-    status: AdminOrderStatus,
-  ): Promise<void> {
-    const mapped = adminToCustomerOrderStatus(status)
-    try {
-      await db
-        .update(customerOrdersTable)
-        .set({ status: mapped, updatedAt: new Date() })
-        .where(eq(customerOrdersTable.orderNumber, orderNo))
-    } catch (err) {
-      // eslint-disable-next-line no-console
-      console.warn("[admin-orders] customer orders mirror failed", { orderNo, status, err })
-    }
-  }
-
   async list(): Promise<AdminOrderRecord[]> {
     const rows = await db
       .select()

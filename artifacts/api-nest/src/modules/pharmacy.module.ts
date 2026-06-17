@@ -14,7 +14,7 @@
 
 import { Injectable, Controller, Get, Post, Patch, Delete, Param, Body, Req, Inject, Module, UseGuards, HttpException, HttpStatus } from "@nestjs/common"
 import type { Request } from "express"
-import { eq, desc, and } from "drizzle-orm"
+import { eq, desc, inArray } from "drizzle-orm"
 import { db, pharmacies, pharmacyBranches, pharmacyShifts, pharmacyEmployees, posTransactions } from "@workspace/db"
 import { newId } from "../common/repository"
 import { AdminGuard, RequirePerm } from "../common/admin-guard"
@@ -22,51 +22,77 @@ import {
   clerkPartnerOrgEnabled,
   createClerkOrganization,
   createClerkOrgInvitation,
+  resolveClerkOrgCreatorUserId,
 } from "../common/clerk-partner-org"
+import {
+  type PharmacyScope,
+  resolvePharmacyScope,
+  assertPharmacyAccess,
+  requireAllPharmacyScope,
+  assertBranchAccess,
+  assertEmployeeAccess,
+  assertTransactionAccess,
+  scopedPharmacyId,
+} from "../common/pharmacy-scope"
 
 // ─── Service ────────────────────────────────────────────────────────────────
 
 @Injectable()
 class PharmacyService {
   // ── Pharmacies (legal entity / internal network) ──
-  async listPharmacies() {
+  async listPharmacies(scope: PharmacyScope) {
+    const pid = scopedPharmacyId(scope)
+    if (pid) {
+      return db.select().from(pharmacies).where(eq(pharmacies.id, pid)).orderBy(desc(pharmacies.createdAt))
+    }
     return db.select().from(pharmacies).orderBy(desc(pharmacies.createdAt))
   }
 
-  async getPharmacy(id: string) {
+  async getPharmacy(scope: PharmacyScope, id: string) {
     const [row] = await db.select().from(pharmacies).where(eq(pharmacies.id, id)).limit(1)
     if (!row) throw new HttpException("Pharmacy not found", HttpStatus.NOT_FOUND)
+    assertPharmacyAccess(scope, row.id)
     return row
   }
 
-  async createPharmacy(body: Record<string, unknown>) {
+  async createPharmacy(scope: PharmacyScope, body: Record<string, unknown>) {
+    requireAllPharmacyScope(scope, "register pharmacies")
     const name = String(body?.name ?? "").trim()
     if (!name) throw new HttpException("Pharmacy name is required", HttpStatus.BAD_REQUEST)
     const id = newId("phrx")
     let clerkOrgId = String(body?.clerkOrgId ?? "").trim() || null
-    const clerkCreatorUserId = String(body?.clerkCreatorUserId ?? "").trim()
-    if (!clerkOrgId && clerkPartnerOrgEnabled() && clerkCreatorUserId) {
-      const org = await createClerkOrganization(name, clerkCreatorUserId)
-      clerkOrgId = org.id
+    const adminUserId = String(body?.adminUserId ?? "").trim() || undefined
+    const contactEmail = String(body?.email ?? "").trim().toLowerCase()
+    if (!clerkOrgId && clerkPartnerOrgEnabled()) {
+      const creatorId = await resolveClerkOrgCreatorUserId({
+        clerkCreatorUserId: String(body?.clerkCreatorUserId ?? "").trim(),
+        adminUserId,
+        contactEmail,
+      })
+      if (creatorId) {
+        const org = await createClerkOrganization(name, creatorId)
+        clerkOrgId = org.id
+      }
     }
     const [row] = await db.insert(pharmacies).values({
       id,
       name,
       legalName: String(body?.legalName ?? name).trim(),
       licenseNumber: String(body?.licenseNumber ?? "").trim(),
-      email: String(body?.email ?? "").trim().toLowerCase(),
+      email: contactEmail,
       phone: String(body?.phone ?? "").trim() || undefined,
       address: String(body?.address ?? "").trim(),
       city: String(body?.city ?? "").trim(),
       status: String(body?.status ?? "pending"),
       clerkOrgId,
-      adminUserId: String(body?.adminUserId ?? "").trim() || undefined,
+      adminUserId,
       kyc: (body?.kyc as Record<string, unknown>) ?? {},
     }).returning()
     return row
   }
 
-  async updatePharmacy(id: string, body: Record<string, unknown>) {
+  async updatePharmacy(scope: PharmacyScope, id: string, body: Record<string, unknown>) {
+    await this.getPharmacy(scope, id)
     const set: Partial<typeof pharmacies.$inferInsert> = { updatedAt: new Date() }
     if (body.name !== undefined) set.name = String(body.name).trim()
     if (body.legalName !== undefined) set.legalName = String(body.legalName).trim()
@@ -76,15 +102,18 @@ class PharmacyService {
     if (body.address !== undefined) set.address = String(body.address).trim()
     if (body.city !== undefined) set.city = String(body.city).trim()
     if (body.status !== undefined) set.status = String(body.status)
-    if (body.adminUserId !== undefined) set.adminUserId = String(body.adminUserId).trim() || undefined
+    if (body.adminUserId !== undefined) {
+      requireAllPharmacyScope(scope, "reassign pharmacy administrators")
+      set.adminUserId = String(body.adminUserId).trim() || undefined
+    }
     if (body.kyc !== undefined) set.kyc = body.kyc as Record<string, unknown>
     const [row] = await db.update(pharmacies).set(set).where(eq(pharmacies.id, id)).returning()
     if (!row) throw new HttpException("Pharmacy not found", HttpStatus.NOT_FOUND)
     return row
   }
 
-  async invitePharmacyStaff(pharmacyId: string, body: Record<string, unknown>) {
-    const pharmacy = await this.getPharmacy(pharmacyId)
+  async invitePharmacyStaff(scope: PharmacyScope, pharmacyId: string, body: Record<string, unknown>) {
+    const pharmacy = await this.getPharmacy(scope, pharmacyId)
     const email = String(body?.email ?? "").trim().toLowerCase()
     const displayName = String(body?.displayName ?? "").trim() || email
     const branchId = String(body?.branchId ?? "").trim()
@@ -119,23 +148,35 @@ class PharmacyService {
   }
 
   // ── Branches ──
-  async listBranches() {
+  async listBranches(scope: PharmacyScope) {
+    const pid = scopedPharmacyId(scope)
+    if (pid) {
+      return db.select().from(pharmacyBranches)
+        .where(eq(pharmacyBranches.pharmacyId, pid))
+        .orderBy(desc(pharmacyBranches.createdAt))
+    }
     return db.select().from(pharmacyBranches).orderBy(desc(pharmacyBranches.createdAt))
   }
 
-  async getBranch(id: string) {
+  async getBranch(scope: PharmacyScope, id: string) {
     const [b] = await db.select().from(pharmacyBranches).where(eq(pharmacyBranches.id, id)).limit(1)
     if (!b) throw new HttpException("Branch not found", HttpStatus.NOT_FOUND)
+    assertPharmacyAccess(scope, b.pharmacyId)
     return b
   }
 
-  async createBranch(body: Record<string, unknown>) {
+  async createBranch(scope: PharmacyScope, body: Record<string, unknown>) {
     const name = String(body?.name ?? "").trim()
     if (!name) throw new HttpException("name is required", HttpStatus.BAD_REQUEST)
+    let pharmacyId = String(body?.pharmacyId ?? "").trim() || undefined
+    const scoped = scopedPharmacyId(scope)
+    if (scoped) pharmacyId = scoped
+    if (!pharmacyId) throw new HttpException("pharmacyId is required", HttpStatus.BAD_REQUEST)
+    assertPharmacyAccess(scope, pharmacyId)
     const branchCode = String(body?.branchCode ?? `BR-${Date.now().toString(36).toUpperCase()}`).trim()
     const [b] = await db.insert(pharmacyBranches).values({
       id: newId("phbr"),
-      pharmacyId: String(body?.pharmacyId ?? "").trim() || undefined,
+      pharmacyId,
       branchCode,
       name,
       address: String(body?.address ?? "").trim(),
@@ -154,7 +195,8 @@ class PharmacyService {
     return b
   }
 
-  async updateBranch(id: string, body: Record<string, unknown>) {
+  async updateBranch(scope: PharmacyScope, id: string, body: Record<string, unknown>) {
+    await this.getBranch(scope, id)
     const set: Partial<typeof pharmacyBranches.$inferInsert> = { updatedAt: new Date() }
     if (body.name !== undefined) set.name = String(body.name)
     if (body.address !== undefined) set.address = String(body.address)
@@ -173,17 +215,20 @@ class PharmacyService {
     return b
   }
 
-  async deleteBranch(id: string) {
+  async deleteBranch(scope: PharmacyScope, id: string) {
+    await this.getBranch(scope, id)
     await db.delete(pharmacyBranches).where(eq(pharmacyBranches.id, id))
     return { ok: true }
   }
 
   // ── Shifts ──
-  async listShifts(branchId: string) {
+  async listShifts(scope: PharmacyScope, branchId: string) {
+    await assertBranchAccess(scope, branchId)
     return db.select().from(pharmacyShifts).where(eq(pharmacyShifts.branchId, branchId)).orderBy(pharmacyShifts.name)
   }
 
-  async createShift(branchId: string, body: Record<string, unknown>) {
+  async createShift(scope: PharmacyScope, branchId: string, body: Record<string, unknown>) {
+    await assertBranchAccess(scope, branchId)
     const name = String(body?.name ?? "").trim()
     if (!name) throw new HttpException("name is required", HttpStatus.BAD_REQUEST)
     const [s] = await db.insert(pharmacyShifts).values({
@@ -199,26 +244,37 @@ class PharmacyService {
     return s
   }
 
-  async deleteShift(id: string) {
+  async deleteShift(scope: PharmacyScope, id: string) {
+    const [shift] = await db.select().from(pharmacyShifts).where(eq(pharmacyShifts.id, id)).limit(1)
+    if (!shift) throw new HttpException("Shift not found", HttpStatus.NOT_FOUND)
+    await assertBranchAccess(scope, shift.branchId)
     await db.delete(pharmacyShifts).where(eq(pharmacyShifts.id, id))
     return { ok: true }
   }
 
   // ── Employees ──
-  async listEmployees(branchId: string) {
+  async listEmployees(scope: PharmacyScope, branchId: string) {
+    await assertBranchAccess(scope, branchId)
     return db.select().from(pharmacyEmployees).where(eq(pharmacyEmployees.branchId, branchId)).orderBy(pharmacyEmployees.displayName)
   }
 
-  async allEmployees() {
+  async allEmployees(scope: PharmacyScope) {
+    const pid = scopedPharmacyId(scope)
+    if (pid) {
+      return db.select().from(pharmacyEmployees)
+        .where(eq(pharmacyEmployees.pharmacyId, pid))
+        .orderBy(pharmacyEmployees.branchId, pharmacyEmployees.displayName)
+    }
     return db.select().from(pharmacyEmployees).orderBy(pharmacyEmployees.branchId, pharmacyEmployees.displayName)
   }
 
-  async assignEmployee(branchId: string, body: Record<string, unknown>) {
+  async assignEmployee(scope: PharmacyScope, branchId: string, body: Record<string, unknown>) {
+    const branch = await assertBranchAccess(scope, branchId)
     const displayName = String(body?.displayName ?? "").trim()
     if (!displayName) throw new HttpException("displayName is required", HttpStatus.BAD_REQUEST)
     const [e] = await db.insert(pharmacyEmployees).values({
       id: newId("phep"),
-      pharmacyId: String(body?.pharmacyId ?? "").trim() || undefined,
+      pharmacyId: branch.pharmacyId ?? (String(body?.pharmacyId ?? "").trim() || undefined),
       branchId,
       userId: String(body?.userId ?? "").trim() || undefined,
       adminUserId: String(body?.adminUserId ?? "").trim() || undefined,
@@ -232,7 +288,8 @@ class PharmacyService {
     return e
   }
 
-  async updateEmployee(id: string, body: Record<string, unknown>) {
+  async updateEmployee(scope: PharmacyScope, id: string, body: Record<string, unknown>) {
+    await assertEmployeeAccess(scope, id)
     const set: Partial<typeof pharmacyEmployees.$inferInsert> = { updatedAt: new Date() }
     if (body.shiftId !== undefined) set.shiftId = String(body.shiftId) || undefined
     if (body.role !== undefined) set.role = String(body.role)
@@ -244,25 +301,40 @@ class PharmacyService {
     return e
   }
 
-  async removeEmployee(id: string) {
+  async removeEmployee(scope: PharmacyScope, id: string) {
+    await assertEmployeeAccess(scope, id)
     await db.delete(pharmacyEmployees).where(eq(pharmacyEmployees.id, id))
     return { ok: true }
   }
 
   // ── POS Transactions ──
-  async listTransactions(branchId?: string) {
+  async listTransactions(scope: PharmacyScope, branchId?: string) {
     if (branchId) {
+      await assertBranchAccess(scope, branchId)
       return db.select().from(posTransactions)
         .where(eq(posTransactions.branchId, branchId))
+        .orderBy(desc(posTransactions.createdAt))
+        .limit(200)
+    }
+    const pid = scopedPharmacyId(scope)
+    if (pid) {
+      const branches = await db.select({ id: pharmacyBranches.id })
+        .from(pharmacyBranches)
+        .where(eq(pharmacyBranches.pharmacyId, pid))
+      const ids = branches.map((b) => b.id)
+      if (!ids.length) return []
+      return db.select().from(posTransactions)
+        .where(inArray(posTransactions.branchId, ids))
         .orderBy(desc(posTransactions.createdAt))
         .limit(200)
     }
     return db.select().from(posTransactions).orderBy(desc(posTransactions.createdAt)).limit(200)
   }
 
-  async createTransaction(body: Record<string, unknown>) {
+  async createTransaction(scope: PharmacyScope, body: Record<string, unknown>) {
     const branchId = String(body?.branchId ?? "").trim()
     if (!branchId) throw new HttpException("branchId is required", HttpStatus.BAD_REQUEST)
+    await assertBranchAccess(scope, branchId)
     const receiptNo = `POS-${Date.now().toString(36).toUpperCase()}`
     const [t] = await db.insert(posTransactions).values({
       id: newId("pos"),
@@ -283,7 +355,8 @@ class PharmacyService {
     return t
   }
 
-  async updateTransaction(id: string, body: Record<string, unknown>) {
+  async updateTransaction(scope: PharmacyScope, id: string, body: Record<string, unknown>) {
+    await assertTransactionAccess(scope, id)
     const set: Partial<typeof posTransactions.$inferInsert> = { updatedAt: new Date() }
     if (body.status !== undefined) set.status = String(body.status)
     if (body.paystackRef !== undefined) set.paystackRef = String(body.paystackRef)
@@ -301,12 +374,20 @@ class PharmacyService {
 class PharmacyNetworkController {
   constructor(@Inject(PharmacyService) private readonly svc: PharmacyService) {}
 
-  @Get() list() { return this.svc.listPharmacies() }
-  @Post() create(@Body() body: Record<string, unknown>) { return this.svc.createPharmacy(body) }
-  @Get(":id") get(@Param("id") id: string) { return this.svc.getPharmacy(id) }
-  @Patch(":id") update(@Param("id") id: string, @Body() body: Record<string, unknown>) { return this.svc.updatePharmacy(id, body) }
-  @Post(":id/staff/invite") invite(@Param("id") id: string, @Body() body: Record<string, unknown>) {
-    return this.svc.invitePharmacyStaff(id, body)
+  @Get() async list(@Req() req: Request) {
+    return this.svc.listPharmacies(await resolvePharmacyScope(req))
+  }
+  @Post() async create(@Req() req: Request, @Body() body: Record<string, unknown>) {
+    return this.svc.createPharmacy(await resolvePharmacyScope(req), body)
+  }
+  @Get(":id") async get(@Req() req: Request, @Param("id") id: string) {
+    return this.svc.getPharmacy(await resolvePharmacyScope(req), id)
+  }
+  @Patch(":id") async update(@Req() req: Request, @Param("id") id: string, @Body() body: Record<string, unknown>) {
+    return this.svc.updatePharmacy(await resolvePharmacyScope(req), id, body)
+  }
+  @Post(":id/staff/invite") async invite(@Req() req: Request, @Param("id") id: string, @Body() body: Record<string, unknown>) {
+    return this.svc.invitePharmacyStaff(await resolvePharmacyScope(req), id, body)
   }
 }
 
@@ -316,42 +397,74 @@ class PharmacyNetworkController {
 class PharmacyBranchesController {
   constructor(@Inject(PharmacyService) private readonly svc: PharmacyService) {}
 
-  @Get() list() { return this.svc.listBranches() }
-  @Post() create(@Body() body: Record<string, unknown>) { return this.svc.createBranch(body) }
-  @Get(":id") get(@Param("id") id: string) { return this.svc.getBranch(id) }
-  @Patch(":id") update(@Param("id") id: string, @Body() body: Record<string, unknown>) { return this.svc.updateBranch(id, body) }
-  @Delete(":id") remove(@Param("id") id: string) { return this.svc.deleteBranch(id) }
+  @Get() async list(@Req() req: Request) {
+    return this.svc.listBranches(await resolvePharmacyScope(req))
+  }
+  @Post() async create(@Req() req: Request, @Body() body: Record<string, unknown>) {
+    return this.svc.createBranch(await resolvePharmacyScope(req), body)
+  }
+  @Get(":id") async get(@Req() req: Request, @Param("id") id: string) {
+    return this.svc.getBranch(await resolvePharmacyScope(req), id)
+  }
+  @Patch(":id") async update(@Req() req: Request, @Param("id") id: string, @Body() body: Record<string, unknown>) {
+    return this.svc.updateBranch(await resolvePharmacyScope(req), id, body)
+  }
+  @Delete(":id") async remove(@Req() req: Request, @Param("id") id: string) {
+    return this.svc.deleteBranch(await resolvePharmacyScope(req), id)
+  }
 
-  @Get(":branchId/shifts") listShifts(@Param("branchId") branchId: string) { return this.svc.listShifts(branchId) }
-  @Post(":branchId/shifts") createShift(@Param("branchId") branchId: string, @Body() body: Record<string, unknown>) { return this.svc.createShift(branchId, body) }
+  @Get(":branchId/shifts") async listShifts(@Req() req: Request, @Param("branchId") branchId: string) {
+    return this.svc.listShifts(await resolvePharmacyScope(req), branchId)
+  }
+  @Post(":branchId/shifts") async createShift(@Req() req: Request, @Param("branchId") branchId: string, @Body() body: Record<string, unknown>) {
+    return this.svc.createShift(await resolvePharmacyScope(req), branchId, body)
+  }
 
-  @Get(":branchId/employees") listEmployees(@Param("branchId") branchId: string) { return this.svc.listEmployees(branchId) }
-  @Post(":branchId/employees") assignEmployee(@Param("branchId") branchId: string, @Body() body: Record<string, unknown>) { return this.svc.assignEmployee(branchId, body) }
+  @Get(":branchId/employees") async listEmployees(@Req() req: Request, @Param("branchId") branchId: string) {
+    return this.svc.listEmployees(await resolvePharmacyScope(req), branchId)
+  }
+  @Post(":branchId/employees") async assignEmployee(@Req() req: Request, @Param("branchId") branchId: string, @Body() body: Record<string, unknown>) {
+    return this.svc.assignEmployee(await resolvePharmacyScope(req), branchId, body)
+  }
 }
 
 @Controller("pharmacy/shifts")
 @UseGuards(AdminGuard)
 class PharmacyShiftsController {
   constructor(@Inject(PharmacyService) private readonly svc: PharmacyService) {}
-  @Delete(":id") remove(@Param("id") id: string) { return this.svc.deleteShift(id) }
+  @Delete(":id") async remove(@Req() req: Request, @Param("id") id: string) {
+    return this.svc.deleteShift(await resolvePharmacyScope(req), id)
+  }
 }
 
 @Controller("pharmacy/employees")
 @UseGuards(AdminGuard)
 class PharmacyEmployeesController {
   constructor(@Inject(PharmacyService) private readonly svc: PharmacyService) {}
-  @Get() all() { return this.svc.allEmployees() }
-  @Patch(":id") update(@Param("id") id: string, @Body() body: Record<string, unknown>) { return this.svc.updateEmployee(id, body) }
-  @Delete(":id") remove(@Param("id") id: string) { return this.svc.removeEmployee(id) }
+  @Get() async all(@Req() req: Request) {
+    return this.svc.allEmployees(await resolvePharmacyScope(req))
+  }
+  @Patch(":id") async update(@Req() req: Request, @Param("id") id: string, @Body() body: Record<string, unknown>) {
+    return this.svc.updateEmployee(await resolvePharmacyScope(req), id, body)
+  }
+  @Delete(":id") async remove(@Req() req: Request, @Param("id") id: string) {
+    return this.svc.removeEmployee(await resolvePharmacyScope(req), id)
+  }
 }
 
 @Controller("pharmacy/pos")
 @UseGuards(AdminGuard)
 class PharmacyPosController {
   constructor(@Inject(PharmacyService) private readonly svc: PharmacyService) {}
-  @Get("transactions") list(@Req() req: Request) { return this.svc.listTransactions(req.query?.branchId as string | undefined) }
-  @Post("transactions") create(@Body() body: Record<string, unknown>) { return this.svc.createTransaction(body) }
-  @Patch("transactions/:id") update(@Param("id") id: string, @Body() body: Record<string, unknown>) { return this.svc.updateTransaction(id, body) }
+  @Get("transactions") async list(@Req() req: Request) {
+    return this.svc.listTransactions(await resolvePharmacyScope(req), req.query?.branchId as string | undefined)
+  }
+  @Post("transactions") async create(@Req() req: Request, @Body() body: Record<string, unknown>) {
+    return this.svc.createTransaction(await resolvePharmacyScope(req), body)
+  }
+  @Patch("transactions/:id") async update(@Req() req: Request, @Param("id") id: string, @Body() body: Record<string, unknown>) {
+    return this.svc.updateTransaction(await resolvePharmacyScope(req), id, body)
+  }
 }
 
 // ─── Module ─────────────────────────────────────────────────────────────────

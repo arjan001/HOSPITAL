@@ -200,7 +200,14 @@ export function partnerClerkSession(type: PartnerType, clerkToken: string) {
 }
 
 export function partnerRegisterOrg(type: PartnerType, clerkToken: string, orgName: string) {
-  return pFetch<{ ok: true; partner: PartnerAccount; partnerId: string; clerkOrgId: string }>(
+  return pFetch<{
+    ok: true
+    pendingApproval?: boolean
+    message?: string
+    partner?: PartnerAccount
+    partnerId: string
+    clerkOrgId: string
+  }>(
     `/${type}/register-org`,
     {
       method: "POST",

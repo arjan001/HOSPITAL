@@ -43,6 +43,7 @@ import {
   db,
   partnerAccounts,
   partnerApplications,
+  partnerDirectory,
   partnerMembers,
   supplierProducts,
   sourcingRequests,
@@ -386,8 +387,20 @@ export class PartnerAuthService {
   ): Promise<{ ok: true; token: string; partner: ReturnType<typeof publicAccount> }> {
     const partnerType = assertType(type)
     const clerk = await verifyClerkBearer(authHeader)
-    if (!clerk?.email) {
-      throw new HttpException("Valid Clerk session token required", HttpStatus.UNAUTHORIZED)
+    if (!clerk) {
+      const hasSecret = Boolean(process.env.CLERK_SECRET_KEY?.trim())
+      throw new HttpException(
+        hasSecret
+          ? "Valid Clerk session token required. Ensure CLERK_SECRET_KEY matches your Clerk application (same instance as VITE_CLERK_PUBLISHABLE_KEY)."
+          : "Clerk is not configured on the server (CLERK_SECRET_KEY missing).",
+        HttpStatus.UNAUTHORIZED,
+      )
+    }
+    if (!clerk.email) {
+      throw new HttpException(
+        "Clerk session is valid but has no email. Complete your Clerk profile and try again.",
+        HttpStatus.UNAUTHORIZED,
+      )
     }
     const req = { header: (n: string) => (n.toLowerCase() === "authorization" ? authHeader ?? "" : "") } as Request
     const acc = await this.requirePartner(req, partnerType)
@@ -408,14 +421,30 @@ export class PartnerAuthService {
   ) {
     const partnerType = assertType(type)
     const clerk = await verifyClerkBearer(authHeader)
-    if (!clerk?.email) {
-      throw new HttpException("Valid Clerk session token required", HttpStatus.UNAUTHORIZED)
+    if (!clerk) {
+      const hasSecret = Boolean(process.env.CLERK_SECRET_KEY?.trim())
+      throw new HttpException(
+        hasSecret
+          ? "Valid Clerk session token required. Ensure CLERK_SECRET_KEY matches your Clerk application (same instance as VITE_CLERK_PUBLISHABLE_KEY)."
+          : "Clerk is not configured on the server (CLERK_SECRET_KEY missing).",
+        HttpStatus.UNAUTHORIZED,
+      )
+    }
+    if (!clerk.email) {
+      throw new HttpException(
+        "Clerk session is valid but has no email. Complete your Clerk profile and try again.",
+        HttpStatus.UNAUTHORIZED,
+      )
     }
     const { partnerId, clerkOrgId } = await this.org.registerOrganization(clerk, partnerType, orgName)
-    const req = { header: (n: string) => (n.toLowerCase() === "authorization" ? authHeader ?? "" : "") } as Request
-    const acc = await this.requirePartner(req, partnerType)
-    const token = this.issue(res, acc)
-    return { ok: true, token, partnerId, clerkOrgId, partner: publicAccount(acc) }
+    return {
+      ok: true,
+      pendingApproval: true,
+      partnerId,
+      clerkOrgId,
+      message:
+        "Your organization has been registered and is pending approval by Shaniid RX. You can sign in once an administrator approves your application.",
+    }
   }
 
   async listOrgMembers(req: Request, expectedType: PartnerType) {
@@ -644,7 +673,7 @@ export class PartnerAuthService {
     const set: Partial<typeof partnerAccounts.$inferInsert> = { updatedAt: new Date() }
     if (body?.status !== undefined) {
       const status = String(body.status)
-      if (!["invited", "active", "suspended"].includes(status)) {
+      if (!["invited", "active", "suspended", "pending"].includes(status)) {
         throw new HttpException("Invalid status", HttpStatus.BAD_REQUEST)
       }
       set.status = status
@@ -717,25 +746,55 @@ export class PartnerAuthService {
     let invited: ReturnType<typeof publicAccount> | null = null
     if (decision === "approved") {
       try {
-        const existing = await db
-          .select()
-          .from(partnerAccounts)
-          .where(eq(partnerAccounts.email, row.email.toLowerCase()))
-          .limit(1)
-        if (!existing.length) {
-          const partnerId = await this.org.provisionDirectoryFromApplication(row)
-          invited = await this.invite({
-            partnerType: row.partnerType,
-            partnerId,
-            email: row.email,
-            displayName: row.orgName || row.contactName || row.email,
-            metadata: {
-              orgName: row.orgName,
-              contactName: row.contactName,
-              phone: row.phone,
-              fromApplication: row.id,
-            },
-          })
+        const isClerkOrgApp = /clerk organization self-registration/i.test(row.message ?? "")
+        if (isClerkOrgApp) {
+          const [dir] = await db
+            .select()
+            .from(partnerDirectory)
+            .where(
+              and(
+                eq(partnerDirectory.email, row.email.toLowerCase()),
+                eq(partnerDirectory.partnerType, row.partnerType),
+              ),
+            )
+            .orderBy(desc(partnerDirectory.createdAt))
+            .limit(1)
+          if (dir) {
+            await db
+              .update(partnerDirectory)
+              .set({ status: "active", updatedAt: new Date() })
+              .where(eq(partnerDirectory.id, dir.id))
+            await db
+              .update(partnerAccounts)
+              .set({ status: "active", updatedAt: new Date() })
+              .where(
+                and(
+                  eq(partnerAccounts.email, row.email.toLowerCase()),
+                  eq(partnerAccounts.partnerType, row.partnerType),
+                ),
+              )
+          }
+        } else {
+          const existing = await db
+            .select()
+            .from(partnerAccounts)
+            .where(eq(partnerAccounts.email, row.email.toLowerCase()))
+            .limit(1)
+          if (!existing.length) {
+            const partnerId = await this.org.provisionDirectoryFromApplication(row)
+            invited = await this.invite({
+              partnerType: row.partnerType,
+              partnerId,
+              email: row.email,
+              displayName: row.orgName || row.contactName || row.email,
+              metadata: {
+                orgName: row.orgName,
+                contactName: row.contactName,
+                phone: row.phone,
+                fromApplication: row.id,
+              },
+            })
+          }
         }
       } catch {
         /* account provisioning failed — application remains approved */

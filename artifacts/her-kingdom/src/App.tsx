@@ -162,6 +162,8 @@ const queryClient = new QueryClient();
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
 
 const clerkPubKey = (() => {
+  const envKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY?.trim()
+  if (envKey) return envKey
   try {
     return publishableKeyFromHost(
       window.location.hostname,
