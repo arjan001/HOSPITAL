@@ -72,12 +72,7 @@ import {
 
 const COLLAPSE_KEY = "shaniidrx.admin.sidebarCollapsed"
 const EXPANDED_KEY = "shaniidrx.admin.sidebarExpanded"
-const WIDTH_KEY = "shaniidrx.admin.sidebarWidth"
 const SCROLL_KEY = "shaniidrx.admin.sidebarScrollTop"
-const MIN_SIDEBAR_W = 200
-const MAX_SIDEBAR_W = 420
-const DEFAULT_SIDEBAR_W = 240
-const COLLAPSED_SIDEBAR_W = 64
 /** localStorage key: when the admin last viewed the newsletter list. */
 export const NEWSLETTER_SEEN_KEY = "shaniidrx.admin.newsletter.lastSeenAt"
 /** localStorage key: when the admin last viewed the Sales & Orders list. Drives
@@ -687,14 +682,6 @@ export function AdminShell({ children, title }: { children: ReactNode; title: st
     if (typeof window === "undefined") return false
     return window.localStorage.getItem(COLLAPSE_KEY) === "1"
   })
-  const [sidebarPx, setSidebarPx] = useState<number>(() => {
-    if (typeof window === "undefined") return DEFAULT_SIDEBAR_W
-    const n = Number(window.localStorage.getItem(WIDTH_KEY))
-    return Number.isFinite(n) && n >= MIN_SIDEBAR_W && n <= MAX_SIDEBAR_W ? n : DEFAULT_SIDEBAR_W
-  })
-  const sidebarPxRef = useRef(sidebarPx)
-  const sidebarDragging = useRef(false)
-  sidebarPxRef.current = sidebarPx
   const [expanded, setExpanded] = useState<Record<string, boolean>>(() => {
     const seed = { Sourcing: true, Trading: true, "Quality & Assurance": true, Logistics: true, Integrations: true }
     if (typeof window === "undefined") return seed
@@ -715,16 +702,6 @@ export function AdminShell({ children, title }: { children: ReactNode; title: st
   const [fullscreen, setFullscreen] = useState(false)
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null)
   const [loggingOut, setLoggingOut] = useState(false)
-  const [isDesktop, setIsDesktop] = useState(false)
-  useEffect(() => {
-    if (typeof window === "undefined") return
-    const mq = window.matchMedia("(min-width: 1024px)")
-    const update = () => setIsDesktop(mq.matches)
-    update()
-    mq.addEventListener("change", update)
-    return () => mq.removeEventListener("change", update)
-  }, [])
-
   const { items: ordersList } = useAdminOrders()
   const dispatchReady = ordersList.filter((o) => o.status === "confirmed").length
 
@@ -838,27 +815,6 @@ export function AdminShell({ children, title }: { children: ReactNode; title: st
   }, [collapsed])
 
   useEffect(() => {
-    const onMove = (e: MouseEvent) => {
-      if (!sidebarDragging.current || collapsed) return
-      const w = Math.min(MAX_SIDEBAR_W, Math.max(MIN_SIDEBAR_W, e.clientX))
-      setSidebarPx(w)
-    }
-    const onUp = () => {
-      if (!sidebarDragging.current) return
-      sidebarDragging.current = false
-      if (typeof window !== "undefined") {
-        window.localStorage.setItem(WIDTH_KEY, String(sidebarPxRef.current))
-      }
-    }
-    window.addEventListener("mousemove", onMove)
-    window.addEventListener("mouseup", onUp)
-    return () => {
-      window.removeEventListener("mousemove", onMove)
-      window.removeEventListener("mouseup", onUp)
-    }
-  }, [collapsed])
-
-  useEffect(() => {
     const onChange = () => setFullscreen(!!document.fullscreenElement)
     document.addEventListener("fullscreenchange", onChange)
     return () => document.removeEventListener("fullscreenchange", onChange)
@@ -943,7 +899,8 @@ export function AdminShell({ children, title }: { children: ReactNode; title: st
         ? "Viewer"
         : "Admin"
 
-  const activeSidebarW = collapsed ? COLLAPSED_SIDEBAR_W : sidebarPx
+  const sidebarWidth = collapsed ? "w-16" : "w-60"
+  const mainOffset = collapsed ? "lg:ml-16" : "lg:ml-60"
 
   return (
     <div className="min-h-screen text-foreground" style={{ background: "#FFFBF5" }}>
@@ -965,26 +922,12 @@ export function AdminShell({ children, title }: { children: ReactNode; title: st
 
         {/* ── Desktop sidebar ───────────────────────────────────────────── */}
         <aside
-          className="hidden lg:flex flex-col h-screen fixed inset-y-0 left-0 transition-[width] duration-200 relative"
+          className={`hidden lg:flex flex-col ${sidebarWidth} h-screen fixed inset-y-0 left-0 transition-[width] duration-200`}
           style={{
-            width: activeSidebarW,
             background: `linear-gradient(180deg, ${S_BG_TOP} 0%, ${S_BG} 100%)`,
             borderRight: `1px solid ${S_BORDER}`,
           }}
         >
-          {!collapsed && (
-            <div
-              role="separator"
-              aria-orientation="vertical"
-              aria-label="Resize sidebar"
-              title="Drag to resize sidebar"
-              onMouseDown={(e) => {
-                e.preventDefault()
-                sidebarDragging.current = true
-              }}
-              className="absolute top-0 right-0 z-20 h-full w-1.5 cursor-col-resize hover:bg-white/15 active:bg-white/25"
-            />
-          )}
           {/* Logo / brand header */}
           <div
             className={`flex items-center ${collapsed ? "justify-center p-3" : "px-5 py-4"}`}
@@ -1222,10 +1165,7 @@ export function AdminShell({ children, title }: { children: ReactNode; title: st
         )}
 
         {/* ── Main content area ─────────────────────────────────────────── */}
-        <main
-          className="flex-1 min-w-0 max-w-full transition-[margin] duration-200"
-          style={{ marginLeft: isDesktop ? activeSidebarW : 0 }}
-        >
+        <main className={`flex-1 min-w-0 max-w-full ${mainOffset} transition-[margin] duration-200`}>
           <div
             className="hidden lg:flex flex-col sticky top-0 z-30"
             style={{ background: "#FFFBF5" }}
