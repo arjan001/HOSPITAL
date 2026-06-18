@@ -199,7 +199,12 @@ export function partnerClerkSession(type: PartnerType, clerkToken: string) {
   })
 }
 
-export function partnerRegisterOrg(type: PartnerType, clerkToken: string, orgName: string) {
+export function partnerRegisterOrg(
+  type: PartnerType,
+  clerkToken: string,
+  orgName: string,
+  profile: Record<string, unknown> = {},
+) {
   return pFetch<{
     ok: true
     pendingApproval?: boolean
@@ -212,7 +217,7 @@ export function partnerRegisterOrg(type: PartnerType, clerkToken: string, orgNam
     {
       method: "POST",
       headers: { Authorization: `Bearer ${clerkToken}` },
-      body: JSON.stringify({ orgName }),
+      body: JSON.stringify({ orgName, profile }),
     },
   )
 }

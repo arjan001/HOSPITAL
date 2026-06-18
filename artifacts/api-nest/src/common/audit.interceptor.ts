@@ -42,6 +42,9 @@ const SKIP_PATH_PREFIXES = [
   "/api/v2/notifications/whatsapp/webhook",
 ]
 
+/** Exact paths that should never run audit actor resolution (probes). */
+const SKIP_PATH_EXACT = new Set(["/api/v2", "/api/v2/"])
+
 @Injectable()
 export class AuditInterceptor implements NestInterceptor {
   constructor(
@@ -64,6 +67,9 @@ export class AuditInterceptor implements NestInterceptor {
     const method = (req.method || "GET").toUpperCase()
     const path = req.originalUrl || req.url || ""
     const body = req.body
+    const pathOnly = path.split("?")[0] ?? path
+    if (SKIP_PATH_EXACT.has(pathOnly)) return next.handle()
+
     const shouldRecord =
       MUTATING.has(method) && !SKIP_PATH_PREFIXES.some((p) => path.startsWith(p))
 

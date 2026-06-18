@@ -22,6 +22,7 @@ import {
   setClerkUserPartnerMetadata,
   type PartnerMemberRole,
 } from "../common/clerk-partner-org"
+import { indexPartnerPayload } from "../common/partner-payload"
 
 export type PartnerType = "supplier" | "clinic" | "logistics"
 
@@ -214,6 +215,7 @@ export class PartnerOrgService {
     clerk: ClerkIdentity,
     partnerType: PartnerType,
     orgName: string,
+    profile: Record<string, unknown> = {},
   ): Promise<{ partnerId: string; clerkOrgId: string }> {
     if (!clerkPartnerOrgEnabled()) {
       throw new HttpException("Clerk organizations are not configured on this server", HttpStatus.SERVICE_UNAVAILABLE)
@@ -241,7 +243,14 @@ export class PartnerOrgService {
     }
 
     const partnerId = newId("ptr")
-    const payload = { ...defaultPayload(partnerType, name, clerk.email), id: partnerId }
+    const payload = {
+      ...defaultPayload(partnerType, name, clerk.email),
+      ...profile,
+      id: partnerId,
+      email: String(profile.email ?? clerk.email).trim().toLowerCase(),
+      status: "pending",
+    }
+    const idx = indexPartnerPayload(partnerType, payload)
     const now = new Date()
 
     await db.transaction(async (tx) => {
@@ -250,10 +259,11 @@ export class PartnerOrgService {
         partnerType,
         clerkOrgId,
         payload,
-        email: clerk.email!,
-        displayName: displayNameForType(partnerType, name),
-        status: "pending",
-        portalCode: "",
+        email: idx.email,
+        displayName: idx.displayName,
+        status: idx.status,
+        portalCode: idx.portalCode,
+        kyc: idx.kyc,
         createdAt: now,
         updatedAt: now,
       })
@@ -304,9 +314,12 @@ export class PartnerOrgService {
         id: newId("papp"),
         partnerType,
         orgName: name,
-        contactName: clerk.email!,
-        email: clerk.email!,
-        message: `Clerk organization self-registration (org: ${clerkOrgId})`,
+        contactName: String(profile.contactPerson ?? profile.contactName ?? clerk.email).trim(),
+        email: idx.email,
+        phone: String(profile.phone ?? profile.contactPhone ?? "").trim() || null,
+        message:
+          String(profile.kycNotes ?? "").trim() ||
+          `Clerk organization self-registration (org: ${clerkOrgId})`,
         status: "pending",
       })
     })

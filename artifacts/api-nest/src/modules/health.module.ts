@@ -1,9 +1,12 @@
 /**
  * Health module — liveness probe.
  *
+ * GET /api/v2
+ *   Lightweight liveness for Replit `previewPath` probes.
+ *
  * GET /api/v2/healthz
  *   Returns { ok: true, service: "api-nest", ts: <epoch-ms> }.
- *   Used by the Replit workflow health-check and any upstream load balancer.
+ *   Used by the Replit artifact startup health-check and load balancers.
  *   Deliberately minimal — no database ping, no external calls — so it is
  *   fast and cannot cascade-fail when dependencies are down.
  *
@@ -14,6 +17,11 @@ import { Controller, Get, Module } from "@nestjs/common"
 
 @Controller()
 class HealthController {
+  @Get()
+  root() {
+    return { ok: true, service: "api-nest", ts: Date.now() }
+  }
+
   @Get("healthz")
   healthz() {
     return { ok: true, service: "api-nest", ts: Date.now() }

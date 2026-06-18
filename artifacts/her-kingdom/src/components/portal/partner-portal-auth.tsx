@@ -16,6 +16,7 @@ import {
 } from "@/lib/partners-client"
 import { buildRedirectQuery, rememberPartnerPortalRedirect } from "@/lib/auth-redirect"
 import { GoogleSignInButton } from "@/components/auth/google-sign-in-button"
+import { PartnerOnboardingModal } from "@/components/portal/partner-onboarding-modal"
 
 const BASE_PATH = import.meta.env.BASE_URL.replace(/\/$/, "")
 const WINE = "#3D0814"
@@ -62,6 +63,7 @@ export function PartnerPortalAuthScreen({ type, redirectPath, title, subtitle, b
   const [pendingMsg, setPendingMsg] = useState("")
   const [orgName, setOrgName] = useState("")
   const [needsOrgSetup, setNeedsOrgSetup] = useState(false)
+  const [onboardingOpen, setOnboardingOpen] = useState(false)
 
   const portalLabel =
     type === "supplier" ? "Supplier" : type === "clinic" ? "Clinic" : "Logistics"
@@ -77,6 +79,12 @@ export function PartnerPortalAuthScreen({ type, redirectPath, title, subtitle, b
   const activeOrg = orgId ? { id: orgId, name: orgSlug ?? "" } : null
   const showOrgSetup = isSignedIn && !activeOrg
 
+  /** After Google OAuth redirect, open onboarding when Clerk session exists but no org. */
+  useEffect(() => {
+    if (!authLoaded || !isSignedIn || activeOrg || pendingMsg) return
+    setOnboardingOpen(true)
+  }, [authLoaded, isSignedIn, activeOrg, pendingMsg])
+
   const clerkToken = async () => {
     if (orgId) {
       return (await getToken({ organizationId: orgId })) ?? (await getToken())
@@ -84,7 +92,7 @@ export function PartnerPortalAuthScreen({ type, redirectPath, title, subtitle, b
     return getToken()
   }
 
-  const exchangeSession = async (registerName?: string) => {
+  const exchangeSession = async (registerName?: string, profile?: Record<string, unknown>) => {
     const token = await clerkToken()
     if (!token) throw new Error("Could not read Clerk session. Sign in again.")
 
@@ -97,17 +105,19 @@ export function PartnerPortalAuthScreen({ type, redirectPath, title, subtitle, b
         /missing partnerType/i.test(msg) ||
         /complete organization setup/i.test(msg)
       if (needsSetup && registerName?.trim()) {
-        const reg = await partnerRegisterOrg(type, token, registerName.trim())
+        const reg = await partnerRegisterOrg(type, token, registerName.trim(), profile ?? {})
         if (reg.pendingApproval) {
           setPendingMsg(
             reg.message ??
               "Your organization is pending admin approval. You will receive portal access once approved.",
           )
           setNeedsOrgSetup(false)
+          setOnboardingOpen(false)
           return
         }
       } else if (needsSetup) {
         setNeedsOrgSetup(true)
+        setOnboardingOpen(true)
         throw new Error(`Register your ${portalLabel.toLowerCase()} company to continue.`)
       } else if (/pending approval/i.test(msg)) {
         setPendingMsg(msg)
@@ -167,6 +177,19 @@ export function PartnerPortalAuthScreen({ type, redirectPath, title, subtitle, b
         (err as { errors?: Array<{ message?: string }> })?.errors?.[0]?.message ||
         "Could not start Google sign-in."
       setError(msg)
+    }
+  }
+
+  const handleOnboardingSubmit = async (name: string, profile: Record<string, unknown>) => {
+    setOrgLoading(true)
+    setError("")
+    setPendingMsg("")
+    try {
+      await exchangeSession(name, profile)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Registration failed")
+    } finally {
+      setOrgLoading(false)
     }
   }
 
@@ -285,28 +308,17 @@ export function PartnerPortalAuthScreen({ type, redirectPath, title, subtitle, b
               <p className="text-sm text-gray-600">
                 Signed in as <span className="font-semibold">{user?.primaryEmailAddress?.emailAddress}</span>
               </p>
-              <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 space-y-2">
-                <p className="text-xs text-amber-900">
-                  Link your {portalLabel.toLowerCase()} company to Clerk. Shaniid RX will review before
-                  granting portal access.
+              <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 space-y-2">
+                <p className="text-sm text-amber-900 font-medium">Complete your company profile</p>
+                <p className="text-xs text-amber-800">
+                  Tell us about your {portalLabel.toLowerCase()} organisation. Shaniid RX will review your
+                  application before granting portal access.
                 </p>
-                <div>
-                  <Label htmlFor="partner-org-name" className="text-xs">
-                    Company / organization name
-                  </Label>
-                  <Input
-                    id="partner-org-name"
-                    value={orgName}
-                    onChange={(e) => setOrgName(e.target.value)}
-                    placeholder="e.g. SwiftMed Logistics Ltd"
-                    className="mt-1 h-9"
-                  />
-                </div>
               </div>
               <Button
                 type="button"
-                disabled={orgLoading || !authLoaded || !orgName.trim()}
-                onClick={() => void continueToPortal()}
+                disabled={orgLoading || !authLoaded}
+                onClick={() => setOnboardingOpen(true)}
                 className="w-full h-11 text-white font-semibold gap-2"
                 style={{ background: WINE }}
               >
@@ -314,7 +326,7 @@ export function PartnerPortalAuthScreen({ type, redirectPath, title, subtitle, b
                   <Loader2 className="h-4 w-4 animate-spin" />
                 ) : (
                   <>
-                    Submit for approval <ArrowRight className="h-4 w-4" />
+                    Complete registration <ArrowRight className="h-4 w-4" />
                   </>
                 )}
               </Button>
@@ -354,6 +366,16 @@ export function PartnerPortalAuthScreen({ type, redirectPath, title, subtitle, b
           </p>
         </div>
       </div>
+
+      <PartnerOnboardingModal
+        open={onboardingOpen}
+        type={type}
+        defaultEmail={user?.primaryEmailAddress?.emailAddress ?? ""}
+        defaultOrgName={orgName || activeOrg?.name || orgSlug || ""}
+        loading={orgLoading}
+        onClose={() => setOnboardingOpen(false)}
+        onSubmit={handleOnboardingSubmit}
+      />
     </div>
   )
 }

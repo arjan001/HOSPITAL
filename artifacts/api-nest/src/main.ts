@@ -3,29 +3,23 @@ import { NestFactory } from "@nestjs/core"
 import type { NestExpressApplication } from "@nestjs/platform-express"
 import express, { type Request, type Response, type NextFunction } from "express"
 import cookieParser from "cookie-parser"
-import { AppModule } from "./app.module"
-import { UPLOAD_DISK_ROOT, UPLOAD_URL_PREFIX } from "./common/storage"
-import { MonitoringService } from "./modules/monitoring.module"
+import { assertBootEnv } from "./boot-env"
 
 // Secret used to HMAC-sign the session cookie. In production it MUST be set so
 // session IDs can't be forged; in dev we fall back to a stable value (matching
 // the ADMIN_API_TOKEN dev-fallback convention).
 const DEV_SESSION_SECRET = "shaniidrx-dev-session-secret-change-me"
 const SESSION_SECRET = process.env["SESSION_SECRET"] || DEV_SESSION_SECRET
-// Fail closed in production: a known/default signing secret means session
-// cookies can be forged, which would break tenant isolation. Refuse to boot
-// rather than run insecurely.
-if (
-  process.env["NODE_ENV"] === "production" &&
-  SESSION_SECRET === DEV_SESSION_SECRET
-) {
-  console.error(
-    "[api-nest] FATAL: SESSION_SECRET must be set to a strong, unique value in production. Refusing to start with the known dev secret.",
-  )
-  process.exit(1)
-}
 
 async function bootstrap() {
+  // Run before AppModule import so Replit deploy logs show a clear fatal reason
+  // instead of an opaque module-load crash when secrets are missing.
+  assertBootEnv({ sessionSecret: SESSION_SECRET, devSessionSecret: DEV_SESSION_SECRET })
+
+  const { AppModule } = await import("./app.module")
+  const { UPLOAD_DISK_ROOT, UPLOAD_URL_PREFIX } = await import("./common/storage")
+  const { MonitoringService } = await import("./modules/monitoring.module")
+
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     cors: { origin: true, credentials: true },
     logger: ["log", "error", "warn"],

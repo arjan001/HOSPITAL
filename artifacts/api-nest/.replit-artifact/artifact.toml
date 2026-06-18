@@ -1,5 +1,5 @@
 kind = "api"
-previewPath = "/api/v2"
+previewPath = "/api/v2/healthz"
 title = "API Nest"
 version = "1.0.0"
 id = "Nx7ApiNestShaniidRx1"

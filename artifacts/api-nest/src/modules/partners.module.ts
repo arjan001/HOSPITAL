@@ -418,6 +418,7 @@ export class PartnerAuthService {
     type: string,
     authHeader: string | undefined,
     orgName: string,
+    profile: Record<string, unknown> = {},
   ) {
     const partnerType = assertType(type)
     const clerk = await verifyClerkBearer(authHeader)
@@ -436,7 +437,12 @@ export class PartnerAuthService {
         HttpStatus.UNAUTHORIZED,
       )
     }
-    const { partnerId, clerkOrgId } = await this.org.registerOrganization(clerk, partnerType, orgName)
+    const { partnerId, clerkOrgId } = await this.org.registerOrganization(
+      clerk,
+      partnerType,
+      orgName,
+      profile,
+    )
     return {
       ok: true,
       pendingApproval: true,
@@ -1307,9 +1313,15 @@ class PartnerAuthController {
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
     @Param("type") type: string,
-    @Body() body: { orgName?: string },
+    @Body() body: { orgName?: string; profile?: Record<string, unknown> },
   ) {
-    return this.svc.registerClerkOrg(res, type, req.header("authorization"), body?.orgName ?? "")
+    return this.svc.registerClerkOrg(
+      res,
+      type,
+      req.header("authorization"),
+      body?.orgName ?? "",
+      body?.profile ?? {},
+    )
   }
 
   @Get(":type/members")
