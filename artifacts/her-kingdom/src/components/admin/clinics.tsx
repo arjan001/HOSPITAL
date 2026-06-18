@@ -786,8 +786,7 @@ export function AdminClinics() {
                             setClinics((prev) => prev.map((x) => (x.id === c.id ? { ...x, ...patch } as Clinic : x)))
                             void refreshClinics()
                           }}
-                          onDeleted={(id) => {
-                            setClinics((prev) => prev.filter((x) => x.id !== id))
+                          onDeleted={() => {
                             void refreshClinics()
                           }}
                         />

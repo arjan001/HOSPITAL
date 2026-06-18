@@ -778,8 +778,7 @@ export function AdminLogisticsPartners() {
                             setPartners((prev) => prev.map((x) => (x.id === p.id ? { ...x, ...patch } as LogisticsPartner : x)))
                             void refreshPartners()
                           }}
-                          onDeleted={(id) => {
-                            setPartners((prev) => prev.filter((x) => x.id !== id))
+                          onDeleted={() => {
                             void refreshPartners()
                           }}
                         />

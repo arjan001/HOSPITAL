@@ -158,6 +158,7 @@ export class AuditService {
     actorEmail?: string
     search?: string
     since?: Date
+    severity?: AuditSeverity
   }): Promise<{ items: AuditEntryDto[]; total: number; page: number; pageSize: number }> {
     const page = Math.max(1, Number(opts.page) || 1)
     const pageSize = Math.min(200, Math.max(1, Number(opts.pageSize) || 50))
@@ -167,6 +168,7 @@ export class AuditService {
     if (opts.module) filters.push(eq(auditLog.module, opts.module))
     if (opts.action) filters.push(eq(auditLog.action, opts.action))
     if (opts.actorType) filters.push(eq(auditLog.actorType, opts.actorType))
+    if (opts.severity) filters.push(eq(auditLog.severity, opts.severity))
     if (opts.actorEmail?.trim()) {
       filters.push(ilike(auditLog.actorEmail, `%${opts.actorEmail.trim()}%`))
     }
@@ -227,6 +229,14 @@ export class AuditService {
       .from(auditLog)
       .orderBy(auditLog.module)
     return rows.map((r) => r.module).filter(Boolean)
+  }
+
+  async listActions(): Promise<string[]> {
+    const rows = await db
+      .selectDistinct({ action: auditLog.action })
+      .from(auditLog)
+      .orderBy(auditLog.action)
+    return rows.map((r) => r.action).filter(Boolean)
   }
 }
 
@@ -300,6 +310,7 @@ class AuditController {
     @Query("actorEmail") actorEmail?: string,
     @Query("search") search?: string,
     @Query("since") since?: string,
+    @Query("severity") severity?: string,
   ) {
     return this.svc.list({
       page: page ? Number(page) : undefined,
@@ -310,12 +321,18 @@ class AuditController {
       actorEmail,
       search,
       since: since ? new Date(since) : undefined,
+      severity: isSeverity(severity) ? severity : undefined,
     })
   }
 
   @Get("modules")
   modules() {
     return this.svc.listModules()
+  }
+
+  @Get("actions")
+  actions() {
+    return this.svc.listActions()
   }
 }
 

@@ -94,21 +94,6 @@ export function logActivity(input: {
   })
 }
 
-/** Audit log is immutable server-side; kept for API compatibility. */
-export function clearAuditLog() {
-  logActivity({
-    module: "Audit Log",
-    action: "clear_requested",
-    severity: "warning",
-    meta: { note: "Audit log is append-only on the server" },
-  })
-}
-
-/** @deprecated Server-backed audit — use useAdminAuditLog from api-nest. */
-export function useAuditLog(): AuditEntry[] {
-  return []
-}
-
 export function prettifyKey(key: string): string {
   return key
     .replace(/[-_]+/g, " ")

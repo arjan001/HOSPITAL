@@ -841,9 +841,7 @@ export type AdminPrescriptionsPage = {
 }
 
 /* ────────────────────────────────────────────────────────────
-   Audit log — server-side append-only activity log for the admin
-   panel (api-nest writes: orders, payments, prescriptions,
-   consultations). Surfaced alongside the local cmsStore entries.
+   Audit log — server-side append-only activity log (Postgres).
 ─────────────────────────────────────────────────────────────*/
 
 export type ServerAuditSeverity = "info" | "warning" | "danger"
@@ -882,6 +880,7 @@ export function useAdminAuditLog(opts: {
   actorEmail?: string
   search?: string
   since?: string
+  severity?: ServerAuditSeverity
 }) {
   const params = new URLSearchParams({
     page: String(opts.page),
@@ -893,11 +892,20 @@ export function useAdminAuditLog(opts: {
   if (opts.actorEmail) params.set("actorEmail", opts.actorEmail)
   if (opts.search) params.set("search", opts.search)
   if (opts.since) params.set("since", opts.since)
+  if (opts.severity) params.set("severity", opts.severity)
   const key = `/admin/audit?${params.toString()}`
   return useSWR<ServerAuditPage>(key, swrFetcher, {
     refreshInterval: 15_000,
     keepPreviousData: true,
   })
+}
+
+export function useAdminAuditModules() {
+  return useSWR<string[]>("/admin/audit/modules", swrFetcher, { revalidateOnFocus: false })
+}
+
+export function useAdminAuditActions() {
+  return useSWR<string[]>("/admin/audit/actions", swrFetcher, { revalidateOnFocus: false })
 }
 
 export const apiAudit = {

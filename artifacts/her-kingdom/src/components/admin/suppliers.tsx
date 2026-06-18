@@ -817,8 +817,7 @@ export function AdminSuppliers() {
     void refreshSuppliers()
   }
 
-  const removeSupplier = (id: string) => {
-    setSuppliers((prev) => prev.filter((s) => s.id !== id))
+  const removeSupplier = (_id: string) => {
     void refreshSuppliers()
   }
 

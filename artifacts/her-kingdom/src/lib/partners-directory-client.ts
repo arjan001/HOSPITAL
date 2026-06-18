@@ -62,9 +62,12 @@ export async function deletePartnerDirectoryItem(
   key: PartnerDirectoryKey,
   id: string,
 ): Promise<{ ok: true }> {
-  return nestFetch<{ ok: true }>(`/admin/partner-directory/${key}/items/${encodeURIComponent(id)}`, {
+  const result = await nestFetch<{ ok: true }>(`/admin/partner-directory/${key}/items/${encodeURIComponent(id)}`, {
     method: "DELETE",
   })
+  const { mutate: globalMutate } = await import("swr")
+  await globalMutate(`partner-directory:${key}`)
+  return result
 }
 
 /** Drop-in replacement for `useCmsDoc<T[]>(key, [])` on partner directory keys. */
