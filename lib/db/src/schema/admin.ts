@@ -263,6 +263,9 @@ export const partnerDirectory = pgTable(
     displayName: text("display_name").notNull().default(""),
     status: text("status").notNull().default("pending"),
     portalCode: text("portal_code").notNull().default(""),
+    /** Structured KYC checklist (mirrors payload KYC fields for querying) */
+    kyc: jsonb("kyc").$type<Record<string, unknown>>().notNull().default({}),
+    deletedAt: timestamp("deleted_at"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },

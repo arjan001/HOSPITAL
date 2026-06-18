@@ -25,6 +25,10 @@ import { usePartnerDirectoryDoc } from "@/lib/partners-directory-client"
 import { adminAuthHeaders } from "@/lib/api-client"
 import { AdminShell } from "./admin-shell"
 import { PartnerPortalPanel } from "./partner-portal-panel"
+import {
+  PartnerOrgActionButton,
+  type PartnerOrgActionConfig,
+} from "./partner-org-action-modal"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -81,6 +85,12 @@ export interface LogisticsPartner {
   hasRegistration: boolean
   hasDriverLicenses: boolean
   hasSafetyTraining: boolean
+  hasVehicleInsurance: boolean
+  hasDriverInsurance: boolean
+  hasGoodsInTransitCover: boolean
+  hasCommercialVehicleCover: boolean
+  vehicleInsuranceExpiry: string
+  vehicleInsuranceProvider: string
   kycNotes: string
   onTimeRate: number
   successRate: number
@@ -93,6 +103,25 @@ export interface LogisticsPartner {
   notes: string
   joinedAt: string
   activatedAt?: string
+}
+
+const LOGISTICS_ORG_ACTIONS: PartnerOrgActionConfig = {
+  directoryKey: "logistics-partners",
+  partnerType: "logistics",
+  entityLabel: "Logistics partner",
+  activeStatus: "active",
+  suspendedStatus: "suspended",
+  getDisplayName: (p) => String(p.companyName ?? p.name ?? p.id),
+  kycFields: [
+    { key: "hasRegistration", label: "Company registration" },
+    { key: "hasInsurance", label: "Public liability insurance" },
+    { key: "hasVehicleInsurance", label: "Vehicle / fleet insurance" },
+    { key: "hasDriverInsurance", label: "Driver personal accident cover" },
+    { key: "hasGoodsInTransitCover", label: "Goods-in-transit cover" },
+    { key: "hasCommercialVehicleCover", label: "Commercial vehicle cover" },
+    { key: "hasDriverLicenses", label: "Valid driver licences (all drivers)" },
+    { key: "hasSafetyTraining", label: "Cold-chain / safety training" },
+  ],
 }
 
 /* ─── Helpers ─────────────────────────────────────────────────── */
@@ -154,7 +183,11 @@ function PartnerModal({ open, onClose, existing, onSave }: {
     contactPerson: "", contactPhone: "", coverageCounties: [] as string[],
     specializations: [] as string[], vehicles: [] as LogisticsVehicle[],
     status: "pending" as PartnerStatus, hasInsurance: false, hasRegistration: false,
-    hasDriverLicenses: false, hasSafetyTraining: false, kycNotes: "",
+    hasDriverLicenses: false, hasSafetyTraining: false,
+    hasVehicleInsurance: false, hasDriverInsurance: false,
+    hasGoodsInTransitCover: false, hasCommercialVehicleCover: false,
+    vehicleInsuranceExpiry: "", vehicleInsuranceProvider: "",
+    kycNotes: "",
     onTimeRate: 100, successRate: 100, slaScore: 5,
     activeDeliveries: 0, totalDeliveries: 0, avgDeliveryTime: 45,
     ratePerKm: 50, ratePerDelivery: 200, notes: "",
@@ -336,12 +369,16 @@ function PartnerModal({ open, onClose, existing, onSave }: {
 
           <div>
             <h4 className="text-xs font-bold uppercase tracking-wider text-gray-400 mb-3">KYC & Compliance</h4>
-            <div className="grid grid-cols-2 gap-2 mb-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-3">
               {[
-                { key: "hasInsurance", label: "Public Liability Insurance" },
-                { key: "hasRegistration", label: "Company Registration" },
-                { key: "hasDriverLicenses", label: "Driver Licenses Verified" },
-                { key: "hasSafetyTraining", label: "Safety / Cold Chain Training" },
+                { key: "hasRegistration", label: "Company registration" },
+                { key: "hasInsurance", label: "Public liability insurance" },
+                { key: "hasVehicleInsurance", label: "Vehicle / fleet insurance" },
+                { key: "hasDriverInsurance", label: "Driver personal accident cover" },
+                { key: "hasGoodsInTransitCover", label: "Goods-in-transit cover" },
+                { key: "hasCommercialVehicleCover", label: "Commercial vehicle cover" },
+                { key: "hasDriverLicenses", label: "Valid driver licences (all drivers)" },
+                { key: "hasSafetyTraining", label: "Cold-chain / safety training" },
               ].map(({ key, label }) => (
                 <label key={key} className="flex items-center gap-2 text-sm cursor-pointer">
                   <input type="checkbox" checked={(form as Record<string, unknown>)[key] as boolean}
@@ -350,7 +387,17 @@ function PartnerModal({ open, onClose, existing, onSave }: {
                 </label>
               ))}
             </div>
-            <Textarea value={form.kycNotes} onChange={e => set("kycNotes", e.target.value)} placeholder="KYC notes…" rows={2} />
+            <div className="grid grid-cols-2 gap-3 mb-3">
+              <div>
+                <Label className="text-xs">Vehicle insurance provider</Label>
+                <Input value={form.vehicleInsuranceProvider} onChange={e => set("vehicleInsuranceProvider", e.target.value)} placeholder="e.g. APA, Jubilee" />
+              </div>
+              <div>
+                <Label className="text-xs">Fleet insurance expiry</Label>
+                <Input type="date" value={form.vehicleInsuranceExpiry?.slice(0, 10) ?? ""} onChange={e => set("vehicleInsuranceExpiry", e.target.value)} />
+              </div>
+            </div>
+            <Textarea value={form.kycNotes} onChange={e => set("kycNotes", e.target.value)} placeholder="KYC notes, policy numbers, licence refs…" rows={2} />
           </div>
 
           <div>
@@ -384,7 +431,10 @@ function PartnerDrawer({ partner, open, onClose, onUpdate }: {
   if (!partner) return null
 
   const setStatus = (s: PartnerStatus) => onUpdate({ ...partner, status: s, activatedAt: s === "active" ? new Date().toISOString() : partner.activatedAt })
-  const kycDocs = ["hasInsurance", "hasRegistration", "hasDriverLicenses", "hasSafetyTraining"]
+  const kycDocs = [
+    "hasRegistration", "hasInsurance", "hasVehicleInsurance", "hasDriverInsurance",
+    "hasGoodsInTransitCover", "hasCommercialVehicleCover", "hasDriverLicenses", "hasSafetyTraining",
+  ]
   const kycPct = kycDocs.filter(k => (partner as unknown as Record<string, unknown>)[k]).length / kycDocs.length * 100
 
   return (
@@ -547,10 +597,14 @@ function PartnerDrawer({ partner, open, onClose, onUpdate }: {
           {tab === "kyc" && (
             <div className="space-y-3">
               {[
-                { key: "hasInsurance", label: "Public Liability Insurance" },
-                { key: "hasRegistration", label: "Company Registration Docs" },
-                { key: "hasDriverLicenses", label: "Driver Licenses (all drivers)" },
-                { key: "hasSafetyTraining", label: "Safety / Cold Chain Training Certs" },
+                { key: "hasRegistration", label: "Company registration" },
+                { key: "hasInsurance", label: "Public liability insurance" },
+                { key: "hasVehicleInsurance", label: "Vehicle / fleet insurance" },
+                { key: "hasDriverInsurance", label: "Driver personal accident cover" },
+                { key: "hasGoodsInTransitCover", label: "Goods-in-transit cover" },
+                { key: "hasCommercialVehicleCover", label: "Commercial vehicle cover" },
+                { key: "hasDriverLicenses", label: "Valid driver licences (all drivers)" },
+                { key: "hasSafetyTraining", label: "Cold-chain / safety training" },
               ].map(({ key, label }) => {
                 const has = (partner as unknown as Record<string, unknown>)[key] as boolean
                 return (
@@ -560,6 +614,15 @@ function PartnerDrawer({ partner, open, onClose, onUpdate }: {
                   </div>
                 )
               })}
+              {partner.vehicleInsuranceProvider && (
+                <div className="p-3 bg-gray-50 rounded-lg text-sm">
+                  <p className="text-xs text-gray-400">Fleet insurance</p>
+                  <p className="font-medium">{partner.vehicleInsuranceProvider}</p>
+                  {partner.vehicleInsuranceExpiry && (
+                    <p className="text-xs text-gray-500 mt-0.5">Expires {partner.vehicleInsuranceExpiry.slice(0, 10)}</p>
+                  )}
+                </div>
+              )}
               {partner.kycNotes && (
                 <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800">
                   <strong>Notes:</strong> {partner.kycNotes}
@@ -580,7 +643,7 @@ function PartnerDrawer({ partner, open, onClose, onUpdate }: {
 /* ─── Main Page ───────────────────────────────────────────────── */
 
 export function AdminLogisticsPartners() {
-  const [partners, setPartners] = usePartnerDirectoryDoc<LogisticsPartner>("logistics-partners", [])
+  const [partners, setPartners, { refresh: refreshPartners }] = usePartnerDirectoryDoc<LogisticsPartner>("logistics-partners", [])
   const [search, setSearch] = useState("")
   const [statusFilter, setStatusFilter] = useState("all")
   const [showAdd, setShowAdd] = useState(false)
@@ -708,7 +771,18 @@ export function AdminLogisticsPartners() {
                       <div className="flex items-center justify-end gap-1">
                         <Button variant="ghost" size="sm" onClick={() => setViewing(p)} className="h-7 w-7 p-0"><Eye className="h-3.5 w-3.5" /></Button>
                         <Button variant="ghost" size="sm" onClick={() => { setEditing(p); setShowAdd(true) }} className="h-7 w-7 p-0"><Pencil className="h-3.5 w-3.5" /></Button>
-                        <Button variant="ghost" size="sm" onClick={() => { if (confirm("Remove this partner?")) setPartners(prev => prev.filter(x => x.id !== p.id)) }} className="h-7 w-7 p-0 text-red-400"><Trash2 className="h-3.5 w-3.5" /></Button>
+                        <PartnerOrgActionButton
+                          partner={p as unknown as Record<string, unknown> & { id: string }}
+                          config={LOGISTICS_ORG_ACTIONS}
+                          onPatched={(patch) => {
+                            setPartners((prev) => prev.map((x) => (x.id === p.id ? { ...x, ...patch } as LogisticsPartner : x)))
+                            void refreshPartners()
+                          }}
+                          onDeleted={(id) => {
+                            setPartners((prev) => prev.filter((x) => x.id !== id))
+                            void refreshPartners()
+                          }}
+                        />
                       </div>
                     </td>
                   </tr>

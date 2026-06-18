@@ -28,6 +28,10 @@ import { adminAuthHeaders } from "@/lib/api-client"
 import { apiSupplierPurchaseOrders, type SupplierPurchaseOrder } from "@/lib/api-nest"
 import { AdminShell } from "./admin-shell"
 import { PartnerPortalPanel } from "./partner-portal-panel"
+import {
+  PartnerOrgActionButton,
+  type PartnerOrgActionConfig,
+} from "./partner-org-action-modal"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -95,6 +99,20 @@ interface PurchaseOrder {
   status: "draft" | "sent" | "confirmed" | "dispatched" | "received" | "disputed"
   expectedDate: string
   createdAt: string
+}
+
+const SUPPLIER_ORG_ACTIONS: PartnerOrgActionConfig = {
+  directoryKey: "suppliers",
+  partnerType: "supplier",
+  entityLabel: "Supplier",
+  activeStatus: "verified",
+  suspendedStatus: "suspended",
+  getDisplayName: (p) => String(p.companyName ?? p.tradingName ?? p.id),
+  kycFields: [
+    { key: "hasLicense", label: "Pharmacy / wholesale license" },
+    { key: "hasFdaCert", label: "PPB / regulatory certification" },
+    { key: "hasInsurance", label: "Product liability insurance" },
+  ],
 }
 
 /* ─── Helpers ─────────────────────────────────────────────────── */
@@ -752,7 +770,7 @@ function SupplierDrawer({ supplier, open, onClose, onUpdate }: {
 /* ─── Main Page ───────────────────────────────────────────────── */
 
 export function AdminSuppliers() {
-  const [suppliers, setSuppliers] = usePartnerDirectoryDoc<Supplier>("suppliers", [])
+  const [suppliers, setSuppliers, { refresh: refreshSuppliers }] = usePartnerDirectoryDoc<Supplier>("suppliers", [])
   const [search, setSearch] = useState("")
   const [statusFilter, setStatusFilter] = useState("all")
   const [catFilter, setCatFilter] = useState("all")
@@ -794,9 +812,14 @@ export function AdminSuppliers() {
     }
   }
 
-  const deleteSupplier = (id: string) => {
-    if (!confirm("Remove this supplier?")) return
-    setSuppliers(prev => prev.filter(s => s.id !== id))
+  const patchSupplier = (id: string, patch: Record<string, unknown>) => {
+    setSuppliers((prev) => prev.map((s) => (s.id === id ? { ...s, ...patch } as Supplier : s)))
+    void refreshSuppliers()
+  }
+
+  const removeSupplier = (id: string) => {
+    setSuppliers((prev) => prev.filter((s) => s.id !== id))
+    void refreshSuppliers()
   }
 
   return (
@@ -912,9 +935,12 @@ export function AdminSuppliers() {
                           <Button variant="ghost" size="sm" onClick={() => { setEditing(s); setShowAdd(true) }} className="h-7 w-7 p-0">
                             <Pencil className="h-3.5 w-3.5" />
                           </Button>
-                          <Button variant="ghost" size="sm" onClick={() => deleteSupplier(s.id)} className="h-7 w-7 p-0 text-red-400 hover:text-red-600">
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </Button>
+                          <PartnerOrgActionButton
+                            partner={s as unknown as Record<string, unknown> & { id: string }}
+                            config={SUPPLIER_ORG_ACTIONS}
+                            onPatched={(patch) => patchSupplier(s.id, patch)}
+                            onDeleted={() => removeSupplier(s.id)}
+                          />
                         </div>
                       </td>
                     </tr>

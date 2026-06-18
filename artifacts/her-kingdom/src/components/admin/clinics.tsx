@@ -27,6 +27,10 @@ import { usePartnerDirectoryDoc } from "@/lib/partners-directory-client"
 import { adminAuthHeaders } from "@/lib/api-client"
 import { AdminShell } from "./admin-shell"
 import { PartnerPortalPanel } from "./partner-portal-panel"
+import {
+  PartnerOrgActionButton,
+  type PartnerOrgActionConfig,
+} from "./partner-org-action-modal"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -91,6 +95,21 @@ interface TradeOrder {
   clinicId: string
   items: { name: string; qty: number; unitPrice: number }[]
   notes: string
+}
+
+const CLINIC_ORG_ACTIONS: PartnerOrgActionConfig = {
+  directoryKey: "clinics",
+  partnerType: "clinic",
+  entityLabel: "Clinic",
+  activeStatus: "approved",
+  suspendedStatus: "on_hold",
+  getDisplayName: (p) => String(p.clinicName ?? p.id),
+  kycFields: [
+    { key: "hasLicense", label: "Facility license" },
+    { key: "hasNhifCert", label: "NHIF / SHIF certificate" },
+    { key: "hasPinCert", label: "KRA PIN certificate" },
+    { key: "hasDirectorId", label: "Director ID verified" },
+  ],
 }
 
 /* ─── Helpers ─────────────────────────────────────────────────── */
@@ -636,7 +655,7 @@ function ClinicDrawer({ clinic, open, onClose, onUpdate, onTrade }: {
 /* ─── Main Page ───────────────────────────────────────────────── */
 
 export function AdminClinics() {
-  const [clinics, setClinics] = usePartnerDirectoryDoc<Clinic>("clinics", [])
+  const [clinics, setClinics, { refresh: refreshClinics }] = usePartnerDirectoryDoc<Clinic>("clinics", [])
   const [search, setSearch] = useState("")
   const [statusFilter, setStatusFilter] = useState("all")
   const [showAdd, setShowAdd] = useState(false)
@@ -760,7 +779,18 @@ export function AdminClinics() {
                         <Button variant="ghost" size="sm" onClick={() => setViewing(c)} className="h-7 w-7 p-0"><Eye className="h-3.5 w-3.5" /></Button>
                         <Button variant="ghost" size="sm" onClick={() => { setEditing(c); setShowAdd(true) }} className="h-7 w-7 p-0"><Pencil className="h-3.5 w-3.5" /></Button>
                         <Button variant="ghost" size="sm" onClick={() => setTradeTarget(c)} className="h-7 w-7 p-0 text-orange-500 hover:text-orange-700"><ShoppingCart className="h-3.5 w-3.5" /></Button>
-                        <Button variant="ghost" size="sm" onClick={() => { if (confirm("Remove this clinic?")) setClinics(prev => prev.filter(x => x.id !== c.id)) }} className="h-7 w-7 p-0 text-red-400 hover:text-red-600"><Trash2 className="h-3.5 w-3.5" /></Button>
+                        <PartnerOrgActionButton
+                          partner={c as unknown as Record<string, unknown> & { id: string }}
+                          config={CLINIC_ORG_ACTIONS}
+                          onPatched={(patch) => {
+                            setClinics((prev) => prev.map((x) => (x.id === c.id ? { ...x, ...patch } as Clinic : x)))
+                            void refreshClinics()
+                          }}
+                          onDeleted={(id) => {
+                            setClinics((prev) => prev.filter((x) => x.id !== id))
+                            void refreshClinics()
+                          }}
+                        />
                       </div>
                     </td>
                   </tr>
