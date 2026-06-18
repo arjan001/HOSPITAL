@@ -6,11 +6,13 @@
  * it to the `imports` array.
  *
  * Middleware:
- *   SessionMiddleware is applied to every route ("*"). It reads or issues a
- *   `shaniidrx_sid` cookie and attaches `req.sessionId` so all downstream
- *   controllers can scope data to the current user/guest without needing to
- *   repeat auth logic. When Clerk JWT auth lands, only this middleware file
- *   changes — controllers and services stay the same.
+ *   1. RateLimitMiddleware — abuse protection per IP/session.
+ *   2. SessionMiddleware — signed `shaniidrx_sid` cookie → req.sessionId.
+ *   3. AuditRequestScopeMiddleware — per-request ALS for audit dedupe.
+ *
+ * Global interceptors:
+ *   AuditInterceptor — auto-logs all successful POST/PUT/PATCH/DELETE for
+ *   every actor type (admin, customer, partner, guest).
  *
  * Module groups:
  *   Customer-facing  — Profile, Addresses, Wishlist, Orders, Paystack
@@ -20,10 +22,12 @@
  */
 
 import { MiddlewareConsumer, Module, NestModule } from "@nestjs/common"
-import { APP_FILTER } from "@nestjs/core"
+import { APP_FILTER, APP_INTERCEPTOR } from "@nestjs/core"
 import { SessionMiddleware } from "./common/session.middleware"
 import { RateLimitMiddleware } from "./common/rate-limit.middleware"
 import { AllExceptionsFilter } from "./common/all-exceptions.filter"
+import { AuditInterceptor } from "./common/audit.interceptor"
+import { AuditRequestScopeMiddleware } from "./common/audit-request-scope.middleware"
 
 // Customer-facing modules
 import { ProfileModule } from "./modules/profile.module"
@@ -132,9 +136,11 @@ import { PartnerDirectoryModule } from "./modules/partner-directory.module"
     PartnerDirectoryModule,
   ],
   providers: [
-    // Global catch-all exception filter: normalises every error response and
-    // records server-side (5xx) failures into the monitoring store.
+    RateLimitMiddleware,
+    SessionMiddleware,
+    AuditInterceptor,
     { provide: APP_FILTER, useClass: AllExceptionsFilter },
+    { provide: APP_INTERCEPTOR, useClass: AuditInterceptor },
   ],
 })
 export class AppModule implements NestModule {
@@ -143,8 +149,11 @@ export class AppModule implements NestModule {
    *   1. RateLimitMiddleware — reject abusive clients before any work is done.
    *   2. SessionMiddleware   — issue/verify the signed session cookie and
    *      attach `req.sessionId` so every controller can scope data per-tenant.
+   *   3. AuditRequestScopeMiddleware — ALS scope for per-request audit dedupe.
    */
   configure(consumer: MiddlewareConsumer) {
-    consumer.apply(RateLimitMiddleware, SessionMiddleware).forRoutes("*")
+    consumer
+      .apply(RateLimitMiddleware, SessionMiddleware, AuditRequestScopeMiddleware)
+      .forRoutes("*")
   }
 }

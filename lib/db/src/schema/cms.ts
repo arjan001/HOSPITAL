@@ -35,6 +35,9 @@ export const cmsDocs = pgTable("cms_docs", {
 export const auditLog = pgTable("audit_log", {
   id: text("id").primaryKey(),
   userId: text("user_id"),
+  actorEmail: text("actor_email"),
+  actorRole: text("actor_role"),
+  actorType: text("actor_type"),
   module: text("module").notNull(),
   action: text("action").notNull(),
   key: text("key"),
@@ -42,6 +45,9 @@ export const auditLog = pgTable("audit_log", {
   severity: text("severity"),
   before: jsonb("before"),
   after: jsonb("after"),
+  httpMethod: text("http_method"),
+  path: text("path"),
+  userAgent: text("user_agent"),
   ip: text("ip"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 })

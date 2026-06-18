@@ -856,6 +856,11 @@ export type ServerAuditEntry = {
   target?: string
   summary?: string
   userId?: string
+  actorEmail?: string
+  actorRole?: string
+  actorType?: "admin" | "customer" | "partner" | "guest" | "system"
+  httpMethod?: string
+  path?: string
   ip?: string
   severity: ServerAuditSeverity
   meta?: Record<string, unknown>
@@ -868,16 +873,46 @@ export type ServerAuditPage = {
   pageSize: number
 }
 
-export function useAdminAuditLog(opts: { page: number; pageSize: number }) {
+export function useAdminAuditLog(opts: {
+  page: number
+  pageSize: number
+  module?: string
+  action?: string
+  actorType?: string
+  actorEmail?: string
+  search?: string
+  since?: string
+}) {
   const params = new URLSearchParams({
     page: String(opts.page),
     pageSize: String(opts.pageSize),
   })
+  if (opts.module) params.set("module", opts.module)
+  if (opts.action) params.set("action", opts.action)
+  if (opts.actorType) params.set("actorType", opts.actorType)
+  if (opts.actorEmail) params.set("actorEmail", opts.actorEmail)
+  if (opts.search) params.set("search", opts.search)
+  if (opts.since) params.set("since", opts.since)
   const key = `/admin/audit?${params.toString()}`
   return useSWR<ServerAuditPage>(key, swrFetcher, {
-    refreshInterval: 20_000,
+    refreshInterval: 15_000,
     keepPreviousData: true,
   })
+}
+
+export const apiAudit = {
+  appendEvent: (input: {
+    module: string
+    action: string
+    target?: string
+    meta?: Record<string, unknown>
+    severity?: ServerAuditSeverity
+    pathname?: string
+  }) =>
+    nestFetch<{ ok: boolean }>("/audit/events", {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
 }
 
 export function useAdminPrescriptionsPaged(opts: {

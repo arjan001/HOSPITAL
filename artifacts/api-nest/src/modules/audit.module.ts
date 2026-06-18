@@ -1,50 +1,62 @@
 /**
- * Audit module — server-side, append-only activity log.
+ * Audit module — server-side, append-only activity log for every actor.
  *
- * Why this exists:
- *   The storefront cmsStore captures CMS writes into a client-side audit log,
- *   but api-nest order/payment/prescription/consultation writes happen on the
- *   server and never touch cmsStore — so they were invisible to the audit page.
- *   This module persists those system actions to the `audit_log` Postgres table
- *   (single source of truth) and exposes them to the admin audit page.
+ * Sources:
+ *   - AuditInterceptor: auto-captures all successful POST/PUT/PATCH/DELETE
+ *   - AuditService.record(): explicit business events (orders, payments, rx)
+ *   - POST /audit/events: client-reported UI actions (admin CMS, exports)
  *
- * Design:
- *   - `@Global` so any service can `@Inject(AuditService)` without importing the
- *     module (mirrors ErrorReportingModule).
- *   - `record()` is fail-soft: an audit write must NEVER break the operation it
- *     is recording. Callers fire-and-forget.
- *   - The table is append-only — there is no delete endpoint here.
+ * The `audit_log` Postgres table is the single source of truth.
  */
 import {
+  Body,
   Controller,
   Get,
   Global,
+  HttpException,
+  HttpStatus,
   Inject,
   Injectable,
   Module,
+  Post,
   Query,
   Req,
   UseGuards,
 } from "@nestjs/common"
 import type { Request } from "express"
-import { and, desc, eq, sql } from "drizzle-orm"
+import { AsyncLocalStorage } from "node:async_hooks"
+import { and, desc, eq, gte, ilike, or, sql } from "drizzle-orm"
 import { db, auditLog } from "@workspace/db"
 import { newId } from "../common/repository"
 import { AdminGuard, AnyAdmin } from "../common/admin-guard"
+import {
+  clientIp,
+  resolveAuditActor,
+  type AuditActor,
+  type AuditActorType,
+} from "../common/audit-actor"
+import { AuditRequestScopeMiddleware } from "../common/audit-request-scope.middleware"
 
 export type AuditSeverity = "info" | "warning" | "danger"
 
 export interface AuditRecordInput {
   module: string
   action: string
-  /** Target entity id or key (order no, payment ref, rx id, thread id). */
   key?: string
   summary?: string
   before?: unknown
   after?: unknown
   userId?: string
+  actorEmail?: string
+  actorRole?: string
+  actorType?: AuditActorType
+  httpMethod?: string
+  path?: string
+  userAgent?: string
   ip?: string
   severity?: AuditSeverity
+  /** internal: marks explicit business audit vs http interceptor */
+  source?: "http" | "business" | "client"
 }
 
 export interface AuditEntryDto {
@@ -55,22 +67,52 @@ export interface AuditEntryDto {
   target?: string
   summary?: string
   userId?: string
+  actorEmail?: string
+  actorRole?: string
+  actorType?: AuditActorType
+  httpMethod?: string
+  path?: string
   ip?: string
   severity: AuditSeverity
   meta?: Record<string, unknown>
 }
 
+const auditAls = new AsyncLocalStorage<{ recorded: boolean; actor?: AuditActor }>()
+
 @Injectable()
 export class AuditService {
-  /**
-   * Persist one audit entry. Fail-soft by contract: swallow every error so a
-   * logging failure can never roll back or block the business operation.
-   */
+  /** Run a handler with per-request audit dedupe scope (used by interceptor). */
+  runInRequestScope<T>(fn: () => void): void {
+    auditAls.run({ recorded: false }, fn)
+  }
+
+  setRequestActor(actor: AuditActor): void {
+    const store = auditAls.getStore()
+    if (store) store.actor = actor
+  }
+
+  getRequestActor(): AuditActor | undefined {
+    return auditAls.getStore()?.actor
+  }
+
+  wasRecordedInRequest(): boolean {
+    return auditAls.getStore()?.recorded === true
+  }
+
+  private markRecorded() {
+    const store = auditAls.getStore()
+    if (store) store.recorded = true
+  }
+
   async record(input: AuditRecordInput): Promise<void> {
+    const ctx = this.getRequestActor()
     try {
       await db.insert(auditLog).values({
         id: newId("aud"),
-        userId: input.userId ?? null,
+        userId: input.userId ?? ctx?.userId ?? null,
+        actorEmail: input.actorEmail ?? ctx?.email ?? null,
+        actorRole: input.actorRole ?? ctx?.role ?? null,
+        actorType: input.actorType ?? ctx?.type ?? null,
         module: input.module,
         action: input.action,
         key: input.key ?? null,
@@ -78,11 +120,33 @@ export class AuditService {
         severity: input.severity ?? deriveSeverity(input.action),
         before: input.before ?? null,
         after: input.after ?? null,
+        httpMethod: input.httpMethod ?? null,
+        path: input.path ?? null,
+        userAgent: input.userAgent ?? null,
         ip: input.ip ?? null,
       })
+      this.markRecorded()
     } catch {
       /* audit must never throw into the caller */
     }
+  }
+
+  async recordFromRequest(
+    req: Request,
+    input: Omit<AuditRecordInput, "userId" | "actorEmail" | "actorRole" | "actorType" | "ip" | "userAgent"> &
+      Partial<Pick<AuditRecordInput, "userId" | "actorEmail" | "actorRole" | "actorType" | "ip" | "userAgent">>,
+  ): Promise<void> {
+    const actor = await resolveAuditActor(req)
+    await this.record({
+      ...input,
+      userId: input.userId ?? actor.userId,
+      actorEmail: input.actorEmail ?? actor.email,
+      actorRole: input.actorRole ?? actor.role,
+      actorType: input.actorType ?? actor.type,
+      ip: input.ip ?? clientIp(req),
+      userAgent: input.userAgent ?? req.header("user-agent") ?? undefined,
+      source: input.source ?? "business",
+    })
   }
 
   async list(opts: {
@@ -90,6 +154,10 @@ export class AuditService {
     pageSize?: number
     module?: string
     action?: string
+    actorType?: string
+    actorEmail?: string
+    search?: string
+    since?: Date
   }): Promise<{ items: AuditEntryDto[]; total: number; page: number; pageSize: number }> {
     const page = Math.max(1, Number(opts.page) || 1)
     const pageSize = Math.min(200, Math.max(1, Number(opts.pageSize) || 50))
@@ -98,6 +166,24 @@ export class AuditService {
     const filters = []
     if (opts.module) filters.push(eq(auditLog.module, opts.module))
     if (opts.action) filters.push(eq(auditLog.action, opts.action))
+    if (opts.actorType) filters.push(eq(auditLog.actorType, opts.actorType))
+    if (opts.actorEmail?.trim()) {
+      filters.push(ilike(auditLog.actorEmail, `%${opts.actorEmail.trim()}%`))
+    }
+    if (opts.since) filters.push(gte(auditLog.createdAt, opts.since))
+    if (opts.search?.trim()) {
+      const q = `%${opts.search.trim()}%`
+      filters.push(
+        or(
+          ilike(auditLog.module, q),
+          ilike(auditLog.action, q),
+          ilike(auditLog.key, q),
+          ilike(auditLog.summary, q),
+          ilike(auditLog.actorEmail, q),
+          ilike(auditLog.path, q),
+        )!,
+      )
+    }
     const where = filters.length ? and(...filters) : undefined
 
     const [rows, countRows] = await Promise.all([
@@ -119,6 +205,11 @@ export class AuditService {
       target: r.key ?? undefined,
       summary: r.summary ?? undefined,
       userId: r.userId ?? undefined,
+      actorEmail: r.actorEmail ?? undefined,
+      actorRole: r.actorRole ?? undefined,
+      actorType: (r.actorType as AuditActorType | null) ?? undefined,
+      httpMethod: r.httpMethod ?? undefined,
+      path: r.path ?? undefined,
       ip: r.ip ?? undefined,
       severity: isSeverity(r.severity) ? r.severity : deriveSeverity(r.action),
       meta:
@@ -129,18 +220,68 @@ export class AuditService {
 
     return { items, total: Number(countRows[0]?.count ?? 0), page, pageSize }
   }
+
+  async listModules(): Promise<string[]> {
+    const rows = await db
+      .selectDistinct({ module: auditLog.module })
+      .from(auditLog)
+      .orderBy(auditLog.module)
+    return rows.map((r) => r.module).filter(Boolean)
+  }
 }
 
 function isSeverity(v: unknown): v is AuditSeverity {
   return v === "info" || v === "warning" || v === "danger"
 }
 
-/** Destructive verbs surface as higher severity in the admin UI. */
 function deriveSeverity(action: string): AuditSeverity {
   const a = action.toLowerCase()
   if (a.includes("delete") || a.includes("refund") || a.includes("reject")) return "danger"
   if (a.includes("update") || a.includes("status") || a.includes("dispatch")) return "warning"
   return "info"
+}
+
+type ClientAuditBody = {
+  module: string
+  action: string
+  target?: string
+  meta?: Record<string, unknown>
+  severity?: AuditSeverity
+  pathname?: string
+}
+
+/** Any authenticated session (admin, customer, partner) may append client events. */
+@Controller("audit")
+class AuditEventsController {
+  constructor(@Inject(AuditService) private readonly svc: AuditService) {}
+
+  @Post("events")
+  async append(@Req() req: Request, @Body() body: ClientAuditBody) {
+    if (!body?.module?.trim() || !body?.action?.trim()) {
+      throw new HttpException("module and action are required", HttpStatus.BAD_REQUEST)
+    }
+    const actor = await resolveAuditActor(req)
+    if (actor.type === "system") {
+      throw new HttpException("Session required", HttpStatus.UNAUTHORIZED)
+    }
+    await this.svc.record({
+      module: body.module.trim(),
+      action: body.action.trim(),
+      key: body.target?.trim() || undefined,
+      summary: body.meta ? JSON.stringify(body.meta).slice(0, 500) : undefined,
+      severity: body.severity,
+      userId: actor.userId,
+      actorEmail: actor.email,
+      actorRole: actor.role,
+      actorType: actor.type,
+      path: body.pathname,
+      ip: clientIp(req),
+      userAgent: req.header("user-agent") ?? undefined,
+      after: body.meta ?? undefined,
+      source: "client",
+    })
+    return { ok: true }
+  }
 }
 
 @UseGuards(AdminGuard)
@@ -151,26 +292,37 @@ class AuditController {
 
   @Get()
   list(
-    @Req() req: Request,
     @Query("page") page?: string,
     @Query("pageSize") pageSize?: string,
     @Query("module") module?: string,
     @Query("action") action?: string,
+    @Query("actorType") actorType?: string,
+    @Query("actorEmail") actorEmail?: string,
+    @Query("search") search?: string,
+    @Query("since") since?: string,
   ) {
-    void req
     return this.svc.list({
       page: page ? Number(page) : undefined,
       pageSize: pageSize ? Number(pageSize) : undefined,
       module,
       action,
+      actorType,
+      actorEmail,
+      search,
+      since: since ? new Date(since) : undefined,
     })
+  }
+
+  @Get("modules")
+  modules() {
+    return this.svc.listModules()
   }
 }
 
 @Global()
 @Module({
-  controllers: [AuditController],
-  providers: [AuditService],
-  exports: [AuditService],
+  controllers: [AuditController, AuditEventsController],
+  providers: [AuditService, AuditRequestScopeMiddleware],
+  exports: [AuditService, AuditRequestScopeMiddleware],
 })
 export class AuditModule {}
