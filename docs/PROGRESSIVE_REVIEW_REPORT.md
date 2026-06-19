@@ -1,184 +1,187 @@
 # Shaniid RX — Progress Update
 
-**Date:** 18 June 2026  
-**Prepared for:** Founders & leadership team  
-**Purpose:** Summary of recent improvements, fixes, and what we still need to go live smoothly
+**June 2026**  
+**For:** Founders, leadership & wider team  
+**From:** Product & engineering  
 
 ---
 
-## At a glance
+## The headline
 
-Over the past few weeks we strengthened three areas that matter for trust and day-to-day operations:
+We spent this cycle making Shaniid RX **more trustworthy, more accountable, and easier to run at scale** — especially around partners, activity tracking, and getting the live site to publish reliably on Replit.
 
-1. **Partner management** — suppliers, clinics, and logistics partners now stay deleted when removed, and new partners can register properly after signing in with Google.
-2. **Activity history (audit log)** — the platform now keeps a proper record of who did what, stored securely on the server (not in the browser).
-3. **Publishing readiness** — we improved how the live site starts up, but the app still needs the correct secrets configured on Replit before publish will succeed.
+Think of it in three words: **fix, record, launch.**
+
+---
+
+## Highlights
+
+✅ **Partners stay deleted** — no more “ghost” suppliers coming back after refresh  
+✅ **Full activity history** — who did what, stored permanently, for admins, customers, and partners  
+✅ **Google partner onboarding** — new suppliers, clinics, and logistics companies can register and wait for approval  
+✅ **Stronger KYC** — licenses and insurance captured in one place for admin review  
+✅ **Smarter publishing** — live site starts faster so Replit stops failing healthy builds  
+✅ **Replit database** — uses your managed Replit database automatically; no need to copy connection strings from your laptop  
 
 ---
 
 ## What’s new
 
-### Partner registration after Google sign-in
+### Partner onboarding after Google sign-in
 
-When a supplier, clinic, or logistics company signs in with Google for the first time, they now see a **registration form** (similar to what admins use when adding a partner manually).
+A supplier, clinic, or logistics company can now:
 
-They can enter:
+1. Sign in with Google  
+2. Fill in a proper company profile (name, contact, email, phone, location)  
+3. Tick what KYC documents they have (licenses, insurance, certifications — depending on type)  
+4. Submit and see: **“Application received — awaiting Shaniid RX approval”**
 
-- Company name  
-- Contact person  
-- Email and phone  
-- Location (county)  
-- KYC checklist (licenses, insurance, certifications — depending on partner type)  
-- Any extra notes for our review team  
-
-After submitting, they see a clear message: **application received — awaiting Shaniid RX approval.** They cannot use the full portal until an admin approves them.
-
-This applies to all three partner types: **Suppliers, Clinics, and Logistics.**
+They **cannot** use the full portal until your admin team approves them.  
+This works the same way across **all three partner types.**
 
 ---
 
-### Stronger partner profiles (KYC)
+### Richer partner profiles for admin
 
-We added structured **KYC (Know Your Customer)** fields for partners so the admin team can see at a glance whether licenses, insurance, and certifications have been declared.
-
-Admins can also use a single **actions menu** (view details, suspend, delete) on supplier, clinic, and logistics lists — making partner management more consistent across the platform.
-
----
-
-### Proper activity log for the whole platform
-
-Previously, some activity history lived only in the browser and could be cleared from the admin screen. That is no longer acceptable for a healthcare platform.
-
-**What changed:**
-
-- Every important change is now saved to our **database** as a permanent record.
-- The log captures **admins, customers, partners, and guests** — not just admin users.
-- The admin **Audit Log** page now loads real data from the server, with search and filters (by module, action, person type, date, severity).
-- The **“Clear log”** option was removed — records cannot be wiped from the admin panel.
-- Old browser-only log data is ignored on load so the screen shows only real server records.
-
-This supports accountability, troubleshooting, and future compliance needs.
+- KYC checklist visible at a glance (supplier, clinic, logistics each have the right fields)  
+- One consistent **actions menu** on every partner list — view details, suspend, or remove  
+- Partner summary view — employees, portal accounts, and compliance status in one place  
 
 ---
 
-### Database stays in sync when we deploy
+### Activity log you can rely on
 
-When we publish an update, the system can now **automatically apply database structure changes** (as long as the database connection is configured). This reduces the risk of the live site running with an outdated database layout.
+Before, some history lived only in the browser and could be cleared from the admin screen.  
+That’s gone.
 
----
+Now:
 
-## Bugs fixed
-
-### Deleted partners coming back
-
-**Problem:** After deleting a supplier, clinic, or logistics partner in admin, the record sometimes **reappeared** after refreshing the page.
-
-**Why it happened:** Old data was being copied back from a legacy storage location, and the screen was saving a filtered list in a way that overwrote the delete.
-
-**Fix:**
-
-- Deletes are now **permanent** on the server.
-- Removed partners are **blocked from being re-imported**.
-- The admin screen **refreshes from the server** after delete instead of trying to save a local list.
-- Linked portal logins are **suspended** when a partner is removed.
-
-**What to test:** Delete a test supplier → refresh the page → confirm it stays gone.
+- Every important action is saved on the **server** — permanent  
+- Covers **everyone**: admins, customers, partners, and guests  
+- Admin Audit Log loads real data with search and filters  
+- **No “clear log” button** — the trail stays for accountability and compliance  
 
 ---
 
-### Live site health check failing on publish
+### Smoother updates when we publish
 
-**Problem:** Build completes, but Replit marks the deployment as failed because `/api` and `/api/v2` return errors in the first second after startup.
-
-**Why it happened:** Replit checks that both APIs are running **immediately** after launch. Our main API (Nest) takes about 1–2 seconds to finish loading all modules. During that window, the health check sees “not ready” and the promotion step fails — even though the app would work fine a moment later.
-
-**Fix applied (code):**
-
-- Both APIs now **open their ports right away** and answer health checks with a simple “starting up, OK” response.
-- Full routes and features load in the background immediately after.
-- Legacy API also responds on `/api` (not only `/api/healthz`), which is what Replit was probing.
-
-**You still need:** `SESSION_SECRET` and Clerk keys in Replit Secrets. The **database URL is automatic** on Replit when the managed database is linked to your deployment — you do not copy it from `.env.local`.
-
-**After you publish again**, deploy logs should show:
-
-- `[api-server] port open (health probe ready)` within ~1 second  
-- `[api-nest] port :8090 open (health probe ready)` within ~1 second  
-- Both ports detected (`expected=2 detected=2`)  
-- Then `[api-nest] ready` and `[api-server] ready`
+When we push a new version live, the platform can **sync database structure automatically** (tables and columns stay up to date with the app).  
+Your **Replit managed database** supplies the connection — you don’t paste database URLs from your local machine.
 
 ---
 
-## Security & trust improvements
+## What we fixed
 
-| Area | Improvement |
-|------|-------------|
-| Activity log | Permanent server-side records; cannot be cleared from admin |
-| Session security | Live site refuses to start with a default/guessable security key |
-| Database | Live site refuses to start without a proper database connection |
-| Partner delete | Removing a partner also suspends their portal access |
-| Sensitive data in logs | Passwords and tokens are not stored in activity records |
-| Who did what | Actions are tied to the signed-in person (admin, partner, customer, or guest) |
+### 1. Deleted partners reappearing
+
+**Before:** Remove a supplier, clinic, or logistics partner → refresh → they’re back.  
+**Now:** Delete is permanent. Old copies can’t sneak back in. Portal access for removed partners is turned off.
 
 ---
 
-## Admin panel updates
+### 2. Live site failing to promote on Replit
 
-- **Audit Log** — real data table with filters, detail view, export; no dummy or local-only data.
-- **Suppliers / Clinics / Logistics** — consistent partner actions menu; reliable delete.
-- **Partner summaries** — view employees, portal accounts, and KYC status from one place.
-
----
-
-## Partner portal updates
-
-- **Google sign-in** → registration form → pending approval flow (all three portal types).
-- Clear **pending approval** message so partners know they must wait for admin review.
-- Registration details flow into the same partner records admins manage.
+**Before:** Build succeeded, but Replit said the app “wasn’t ready” in the first second — and killed the deployment.  
+**Now:** Both APIs answer “I’m starting up” immediately, then finish loading in the background.  
+This matches how Replit checks health during publish.
 
 ---
 
-## Going live on Replit — what you actually need to set
+### 3. Confusion about the database on Replit
 
-| Item | Do you set it manually? | Notes |
-|------|-------------------------|-------|
-| **Replit database** | **No** (usually) | Replit injects `DATABASE_URL` when your managed database is linked. In **Publishing → Production database settings**, make sure production database is enabled/linked. |
-| **SESSION_SECRET** | **Yes** | Add in Replit **Secrets** (Deployments). Not provided by the database — needed for secure logins. |
-| **Clerk keys** | **Yes** | For customer and partner sign-in (including Google). |
-| **Paystack keys** | **Yes** | If checkout is enabled. |
-| **Admin login** | **Yes** | `ADMIN_EMAIL` / `ADMIN_PASSWORD` or admin token. |
-
-**Cursor vs Replit:** You code in Cursor and push to Replit. Your `.env.local` file stays on your machine — it is **not** sent to Replit. Replit uses its own environment (managed database URL + secrets you set in the Replit UI).
-
-**If deploy says “no database”:** The database exists in Replit but may not be **linked to the published app**. Open Publishing → Production database → turn on / link production database, then republish.
+**Before:** Docs implied you had to manually copy `DATABASE_URL` into secrets.  
+**Now:** The app is built for **Replit’s managed database**. Replit injects the connection when the database is linked to your published app.  
+Your `.env.local` on Cursor stays on your laptop — it does **not** travel to Replit when you push code.
 
 ---
 
-## What still needs attention
+### 4. Partner admin experience
 
-| Item | Priority | Notes |
-|------|----------|-------|
-| Configure Replit production secrets | **High** | Blocks successful publish until done |
-| Run partner delete test on live database | Medium | Confirm fix works on production data |
-| Review pending partner applications | Ongoing | New Google registrations will queue for approval |
-| Phase 2 analytics (demand forecasting, etc.) | Low | Not part of this update |
+- Delete no longer fights with the screen “saving” stale data  
+- Same look and feel across Suppliers, Clinics, and Logistics  
+- Suspend and remove behave predictably  
 
 ---
 
-## Suggested checks before sharing with wider team
+## Trust & security (in plain terms)
 
-1. **Partners** — Add a test supplier, delete it, refresh — it should stay deleted.  
-2. **Audit log** — Make a small change in admin, open Audit Log — a new entry should appear.  
-3. **Partner Google sign-in** — Sign in on a portal, complete the registration form — “pending approval” should show.  
-4. **Publish** — After secrets are set, publish and open the live site — storefront and admin should load without API errors.
+| What | Why it matters |
+|------|----------------|
+| Permanent activity log | You can see who changed what, and when |
+| No clearing the log from admin | History can’t be wiped by mistake or misuse |
+| Secure sessions on live | Weak default passwords can’t run in production |
+| Partner removal | Deleted partners lose portal access, not just a line on a list |
+| Sensitive data masked in logs | Passwords and tokens aren’t stored in activity records |
 
 ---
 
-## Summary for founders
+## What your teams will notice
 
-We fixed a frustrating partner-delete bug, moved activity tracking to a proper permanent audit trail, and gave new partners a professional registration experience after Google sign-in. Security around sessions and logging is tighter. The main remaining blocker for going live is **configuring production secrets on Replit** — once that is done, publish should complete successfully.
+**Admin team**
+
+- Audit Log is a real, searchable record — not browser memory  
+- Partner lists are easier to manage with one actions menu  
+- New Google registrations will show up as **pending** until you approve  
+
+**Partner team (suppliers, clinics, logistics)**
+
+- Clear path after Google sign-in: register → wait for approval → get access  
+- Professional first impression aligned with Shaniid RX brand standards  
+
+**Customers**
+
+- No visible change this cycle — storefront and checkout continue as before  
+
+---
+
+## Going live on Replit (simple checklist)
+
+| Item | Action needed? |
+|------|----------------|
+| Replit database | **No manual URL** — link production database in **Publishing → Production database settings** |
+| Session security (`SESSION_SECRET`) | **Yes** — add in Replit Secrets (Deployments) |
+| Sign-in (Clerk / Google) | **Yes** — Clerk keys in Replit Secrets |
+| Payments (Paystack) | **Yes** — if checkout is live |
+| Admin login | **Yes** — admin email/password or token in Secrets |
+
+**Remember:** You code in Cursor and push to Replit. Replit runs its own environment. Only what you set in the Replit UI (secrets + linked database) applies to the live site.
+
+---
+
+## Done vs still to do
+
+### ✅ Delivered this cycle
+
+- Partner delete fix (suppliers, clinics, logistics)  
+- Server-side audit log for all user types  
+- Audit Log admin screen (filters, detail view, no clear button)  
+- Partner KYC fields and unified actions menu  
+- Google sign-in → registration form → pending approval (all portals)  
+- Replit publish startup fix (fast health response)  
+- Auto database URL from Replit managed Postgres  
+- Auto database sync on deploy when DB is linked  
+
+### 🔄 To implement or verify next
+
+| Item | Status | Notes |
+|------|--------|-------|
+| `SESSION_SECRET` + Clerk keys on Replit Deployments | **Ops — high priority** | Required for secure live logins; separate from the database |
+| Production database linked in Publishing | **Ops — verify once** | Should already be set if you use Replit managed DB |
+| Approve pending partner applications | **Ongoing** | New Google registrations will queue for admin |
+| Confirm partner delete on live production data | **Verify** | After next successful publish |
+| Newsletter subscribers screen (admin) | **Fix queued** | Some admin pages still hit missing routes — minor, not a launch blocker |
+| Admin/partner routing mix-up (`partners/admin`) | **Fix queued** | Wrong path in one admin screen — minor |
+| Demand forecasting & advanced analytics | **Phase 2** | Planned later, not in this release |
+
+---
+
+## Closing note for founders
+
+Shaniid RX is moving from “it works in dev” to “it holds up in production.” Partners are managed properly. Activity is recorded properly. New partners get a credible onboarding path. Publishing is less fragile.
+
+The main handoff for go-live is **operational, not code**: link the production database in Replit Publishing (if not already), set **session and sign-in secrets**, then publish again. The engineering work for this cycle is in place and ready to ship.
 
 ---
 
 *Shaniid RX — A Shaniid Group Company*  
-*Questions about this update: share with your technical lead or development team.*
+*Questions? Share this document with your technical lead.*
