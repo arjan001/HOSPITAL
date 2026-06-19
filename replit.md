@@ -10,8 +10,9 @@ The trusted pharmaceutical infrastructure for Africa — a digital storefront an
 - `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks + Zod schemas from the OpenAPI spec
 - `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
 - Apply manual SQL migrations in `lib/db/migrations/manual/` for production (e.g. `20250611_partner_directory.sql`, `20250610_purchase_orders.sql`)
-- Required env: `DATABASE_URL` (Postgres), `SESSION_SECRET` (api-nest fails to boot without it), `CLERK_SECRET_KEY` (partner Clerk JWT bridge)
-- **Replit publish:** set `DATABASE_URL` + `SESSION_SECRET` in **Deployment Secrets** (`.env.local` is not deployed). See `docs/PROGRESSIVE_REVIEW_REPORT.md` §7.
+- Required env: `SESSION_SECRET` (api-nest fails to boot in production without it), `CLERK_SECRET_KEY` (partner Clerk JWT bridge)
+- **Database:** Replit managed Postgres injects `DATABASE_URL` automatically — link it in **Publishing → Production database settings** (no manual paste needed). Cursor/local dev uses `.env.local`.
+- **Replit publish:** set `SESSION_SECRET` in Deployment Secrets. See `docs/PROGRESSIVE_REVIEW_REPORT.md`.
 - Post-build runs `scripts/deploy-post-build.sh` (`pnpm store prune` + `drizzle push` when `DATABASE_URL` is set).
 
 **Legacy Express (`api-server`, port 8080)** is deprecated — not required for local dev. Vite rewrites storefront `/api/products`, `/api/categories`, `/api/site-data`, analytics, video, uploads, etc. to Nest `:8090`. The `artifacts/api-server` package remains in the repo for reference only.

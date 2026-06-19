@@ -50,6 +50,10 @@ import videoDailyRouter from "./api/video/daily.js";
 
 const router: IRouter = Router();
 
+router.get("/", (_req, res) => {
+  res.json({ status: "ok", service: "api-server", ts: Date.now() });
+});
+
 router.use(healthRouter);
 
 // Public routes

@@ -88,22 +88,24 @@ When we publish an update, the system can now **automatically apply database str
 
 ### Live site health check failing on publish
 
-**Problem:** When publishing to Replit, the deployment sometimes fails with errors about the API not responding, even though the build completes successfully.
+**Problem:** Build completes, but Replit marks the deployment as failed because `/api` and `/api/v2` return errors in the first second after startup.
 
-**What we found:**
+**Why it happened:** Replit checks that both APIs are running **immediately** after launch. Our main API (Nest) takes about 1–2 seconds to finish loading all modules. During that window, the health check sees “not ready” and the promotion step fails — even though the app would work fine a moment later.
 
-- The **storefront** and **older API layer** start fine.
-- The **main new API** (which powers prescriptions, partners, payments, audit log, etc.) was **not starting** because required production settings were missing on Replit.
-- `.env.local` on a developer’s machine **does not** carry over to the live published app — secrets must be set separately in Replit.
+**Fix applied (code):**
 
-**What we improved in code:**
+- Both APIs now **open their ports right away** and answer health checks with a simple “starting up, OK” response.
+- Full routes and features load in the background immediately after.
+- Legacy API also responds on `/api` (not only `/api/healthz`), which is what Replit was probing.
 
-- Clearer error messages when something required is missing (so logs are easier to read).
-- A simple **health check** endpoint so Replit can confirm the API is running.
-- Automatic database sync step during deploy.
+**You still need:** `SESSION_SECRET` and Clerk keys in Replit Secrets. The **database URL is automatic** on Replit when the managed database is linked to your deployment — you do not copy it from `.env.local`.
 
-**What still needs to be done (operations, not code):**  
-Someone with Replit access must add the production secrets listed in the section below, then publish again.
+**After you publish again**, deploy logs should show:
+
+- `[api-server] port open (health probe ready)` within ~1 second  
+- `[api-nest] port :8090 open (health probe ready)` within ~1 second  
+- Both ports detected (`expected=2 detected=2`)  
+- Then `[api-nest] ready` and `[api-server] ready`
 
 ---
 
@@ -136,19 +138,19 @@ Someone with Replit access must add the production secrets listed in the section
 
 ---
 
-## Going live on Replit — action needed
+## Going live on Replit — what you actually need to set
 
-For the published (live) app to work, these must be set in **Replit → Secrets** for **Production / Deployments**:
+| Item | Do you set it manually? | Notes |
+|------|-------------------------|-------|
+| **Replit database** | **No** (usually) | Replit injects `DATABASE_URL` when your managed database is linked. In **Publishing → Production database settings**, make sure production database is enabled/linked. |
+| **SESSION_SECRET** | **Yes** | Add in Replit **Secrets** (Deployments). Not provided by the database — needed for secure logins. |
+| **Clerk keys** | **Yes** | For customer and partner sign-in (including Google). |
+| **Paystack keys** | **Yes** | If checkout is enabled. |
+| **Admin login** | **Yes** | `ADMIN_EMAIL` / `ADMIN_PASSWORD` or admin token. |
 
-| Setting | Why it matters |
-|---------|----------------|
-| **Database connection** | Stores orders, partners, prescriptions, audit log, etc. |
-| **Session secret** | Keeps user and partner sessions secure |
-| **Clerk keys** | Powers customer and partner sign-in (including Google) |
-| **Paystack keys** | Powers payments (if checkout is enabled) |
-| **Admin login** | Allows the team to access the admin panel on live |
+**Cursor vs Replit:** You code in Cursor and push to Replit. Your `.env.local` file stays on your machine — it is **not** sent to Replit. Replit uses its own environment (managed database URL + secrets you set in the Replit UI).
 
-After adding these, **publish again** and confirm the deploy logs show the main API as **running** (not exiting immediately).
+**If deploy says “no database”:** The database exists in Replit but may not be **linked to the published app**. Open Publishing → Production database → turn on / link production database, then republish.
 
 ---
 
