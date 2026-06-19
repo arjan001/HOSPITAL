@@ -6,248 +6,178 @@
 
 ---
 
-## The headline
+## Status at a glance
 
-We spent this cycle making Shaniid RX **more trustworthy, more accountable, easier to find online, and easier to run at scale** — especially around partners, search visibility, activity tracking, and getting the live site to publish reliably on Replit.
-
-Think of it in four words: **fix, record, find, launch.**
-
----
-
-## Highlights
-
-✅ **Partners stay deleted** — no more “ghost” suppliers coming back after refresh  
-✅ **Full activity history** — who did what, stored permanently, for admins, customers, and partners  
-✅ **Google partner onboarding** — new suppliers, clinics, and logistics companies can register and wait for approval  
-✅ **Partner org sign-in fixed** — uses real company names from Clerk, not broken slugs  
-✅ **Search & sharing upgraded** — branded social preview image, dynamic sitemap, crawler-friendly product and blog pages  
-✅ **Demand forecasting & analytics** — live SKU projections from orders, Rx, and assessments; admin analytics with real sales from Postgres  
-✅ **Stronger KYC** — licenses and insurance captured in one place for admin review  
-✅ **Smarter publishing** — live site starts faster so Replit stops failing healthy builds  
-✅ **Replit database** — uses your managed Replit database automatically; no need to copy connection strings from your laptop  
-
----
-
-## What’s new
-
-### Partner onboarding after Google sign-in
-
-A supplier, clinic, or logistics company can now:
-
-1. Sign in with Google  
-2. Fill in a proper company profile (name, contact, email, phone, location)  
-3. Tick what KYC documents they have (licenses, insurance, certifications — depending on type)  
-4. Submit and see: **“Application received — awaiting Shaniid RX approval”**
-
-They **cannot** use the full portal until your admin team approves them.  
-This works the same way across **all three partner types.**
-
-**Fix this cycle:** If Clerk already had an organization with a proper name, the portal no longer fails with “Organization name is required.” The system reads the name from Clerk when needed.
-
----
-
-### Search engine & social visibility (SEO)
-
-We audited how Google, Bing, and AI crawlers discover and understand the storefront, then shipped fixes that improve Lighthouse SEO scores and real-world indexing.
-
-**What customers and crawlers get now**
-
-| Area | What changed |
-|------|----------------|
-| **Social sharing** | Branded 1200×630 preview image (`og-default.jpg`) for WhatsApp, Facebook, X, and LinkedIn link previews |
-| **Product pages** | Real product title, description, image, and Product schema after the page loads |
-| **Blog articles** | Real headline, excerpt, cover image, and BlogPosting schema |
-| **FAQ** | Full FAQPage structured data for all help-centre answers |
-| **Sitemap** | Auto-generated from live products and blog posts (not just a static list) |
-| **Prerender** | Key routes get crawler-ready HTML with correct titles and meta — even before JavaScript runs |
-| **robots.txt** | Blocks admin, checkout, portals, and wishlist from indexing |
-| **Footer links** | Visible “Browse by need” pharmacy links — no hidden keyword stuffing |
-
-**Still a SPA (honest note):** The storefront is a modern single-page app. Prerender and structured data close most of the gap, but full server-side rendering would be the next level if we want every crawler to see 100% of content on first fetch.
-
-**After you publish:** Submit `https://shaniidrx.co.ke/sitemap.xml` in [Google Search Console](https://search.google.com/search-console) and run Lighthouse on the live homepage.
-
----
-
-### Demand forecasting & admin analytics
-
-We closed the gap between “traffic charts work” and “sales and procurement numbers are real.”
-
-**Demand forecasting (Sourcing → Forecast)**
-
-| Capability | What it does |
-|------------|--------------|
-| **Live data generation** | One click builds SKU-level forecasts from confirmed orders, verified prescriptions, and care-pack assessments |
-| **Trend projection** | Compares current vs previous window and projects reorder quantities |
-| **Rx → SKU mapping** | Prescription drug names resolve to catalogue SKUs automatically |
-| **Reorder math** | Suggested qty = projected demand + safety stock − on-hand (when inventory is tracked) |
-| **Procurement handoff** | Create sourcing requests directly from forecast rows |
-
-API: `GET /api/v2/admin/demand/forecast?windowDays=30` (requires `sourcing.view` permission).
-
-**Admin Analytics (`/admin/analytics`) — all tabs live**
-
-| Tab | Data source |
-|-----|-------------|
-| **Overview** | Daily views + clicks trend, top pages, cities, referrers, recent visitor sessions |
-| **Live Visitors** | Real-time active count, 10-minute activity chart, city heat map, pages in view |
-| **Website Traffic** | Daily views, page retention, traffic channels, new vs returning, devices, browsers, countries, languages, UTM campaigns |
-| **Searches** | Navbar/shop search queries tracked to Postgres |
-| **Engagement** | Click totals, scroll depth, bounce rate, top clicked elements, clicks by page |
-| **Sales & Orders** | Confirmed revenue timeline, top products, category mix, recent order activity |
-| **Bot Detection** | Human vs bot split, daily bot chart, detection methods reference |
-| **Abandoned Checkouts** | Cart/checkout drop-offs with reasons, steps, and recovery count |
-
-**Production wiring:** Storefront tracking and the admin dashboard now call `/api/v2/track-*` and `/api/v2/admin/analytics` (not legacy `/api/*` paths that only worked in local dev). Admin requests include the signed admin token.
-
-API: `GET /api/v2/admin/analytics?days=30` (requires `analytics.view` permission).
-
-**Where to use it**
-
-- **Marketing / ops:** `/admin/analytics` for store performance and visitor behaviour  
-- **Procurement:** `/admin/sourcing/forecast` or Sourcing → Forecast tab for reorder planning  
-- **Demand roll-up:** `/admin/operations/demand` links through to forecast and procurement  
-
----
-
-### Richer partner profiles for admin
-
-- KYC checklist visible at a glance (supplier, clinic, logistics each have the right fields)  
-- One consistent **actions menu** on every partner list — view details, suspend, or remove  
-- Partner summary view — employees, portal accounts, and compliance status in one place  
-
----
-
-### Activity log you can rely on
-
-Before, some history lived only in the browser and could be cleared from the admin screen.  
-That’s gone.
-
-Now:
-
-- Every important action is saved on the **server** — permanent  
-- Covers **everyone**: admins, customers, partners, and guests  
-- Admin Audit Log loads real data with search and filters  
-- **No “clear log” button** — the trail stays for accountability and compliance  
-
----
-
-### Smoother updates when we publish
-
-When we push a new version live, the platform can **sync database structure automatically** (tables and columns stay up to date with the app).  
-Your **Replit managed database** supplies the connection — you don’t paste database URLs from your local machine.
-
----
-
-## What we fixed
-
-### 1. Deleted partners reappearing
-
-**Before:** Remove a supplier, clinic, or logistics partner → refresh → they’re back.  
-**Now:** Delete is permanent. Old copies can’t sneak back in. Portal access for removed partners is turned off.
-
----
-
-### 2. Live site failing to promote on Replit
-
-**Before:** Build succeeded, but Replit said the app “wasn’t ready” in the first second — and killed the deployment.  
-**Now:** Both APIs answer “I’m starting up” immediately, then finish loading in the background.  
-This matches how Replit checks health during publish.
-
----
-
-### 3. Confusion about the database on Replit
-
-**Before:** Docs implied you had to manually copy `DATABASE_URL` into secrets.  
-**Now:** The app is built for **Replit’s managed database**. Replit injects the connection when the database is linked to your published app.  
-Your `.env.local` on Cursor stays on your laptop — it does **not** travel to Replit when you push code.
-
----
-
-### 4. Partner portal “Organization name is required”
-
-**Before:** User signs in with Google, Clerk creates the org correctly, but “Continue to portal” failed.  
-**Now:** The app uses the real organization name from Clerk, sends the correct session token, and the server can look up the name from Clerk if the client omits it.
-
----
-
-### 5. Partner admin experience
-
-- Delete no longer fights with the screen “saving” stale data  
-- Same look and feel across Suppliers, Clinics, and Logistics  
-- Suspend and remove behave predictably  
-- Admin portal link hidden from partner login screens  
-
----
-
-## Trust & security (in plain terms)
-
-| What | Why it matters |
-|------|----------------|
-| Permanent activity log | You can see who changed what, and when |
-| No clearing the log from admin | History can’t be wiped by mistake or misuse |
-| Secure sessions on live | Weak default passwords can’t run in production |
-| Partner removal | Deleted partners lose portal access, not just a line on a list |
-| Sensitive data masked in logs | Passwords and tokens aren’t stored in activity records |
-| Private routes blocked from Google | Admin, checkout, and partner dashboards stay out of search results |
-
----
-
-## What your teams will notice
-
-**Admin team**
-
-- Audit Log is a real, searchable record — not browser memory  
-- Partner lists are easier to manage with one actions menu  
-- New Google registrations will show up as **pending** until you approve  
-
-**Partner team (suppliers, clinics, logistics)**
-
-- Clear path after Google sign-in: register → wait for approval → get access  
-- No more dead-end “organization name required” errors when Clerk already has the company  
-- Professional first impression aligned with Shaniid RX brand standards  
-
-**Customers & marketing**
-
-- Better link previews when the site is shared on social media  
-- Product and health-article pages are easier for search engines to index  
-- FAQ answers can appear in Google rich results  
-
----
-
-## Done vs still to do
-
-### ✅ Delivered this cycle
-
-- Partner delete fix (suppliers, clinics, logistics)  
-- Server-side audit log for all user types  
-- Audit Log admin screen (filters, detail view, no clear button)  
-- Partner KYC fields and unified actions menu  
-- Google sign-in → registration form → pending approval (all portals)  
-- Partner org name / Clerk session fix (no more false “organization required” errors)  
-- Admin link removed from partner portal login screens  
-- **SEO:** branded OG image, dynamic sitemap, prerender for key routes, Product/Blog/FAQ schema, robots.txt cleanup  
-- **Demand forecasting:** live SKU projections from orders, Rx, and assessments; forecast API + Sourcing UI  
-- **Admin analytics:** all 8 dashboard tabs wired to `/api/v2` with live Postgres data, sales top products, refresh control, and production-safe tracking ingest  
-- Replit publish startup fix (fast health response)  
-- Auto database URL from Replit managed Postgres  
-- Auto database sync on deploy when DB is linked  
-
-### 🔄 To implement or verify next
-
-| Item | Status | Notes |
+| Area | Status | Notes |
 |------|--------|-------|
-| `SESSION_SECRET` + Clerk keys on Replit Deployments | **Ops — high priority** | Required for secure live logins |
-| Production database linked in Publishing | **Ops — verify once** | Should already be set if you use Replit managed DB |
-| Approve pending partner applications | **Ongoing** | New Google registrations will queue for admin |
-| Confirm partner delete on live production data | **Verify** | After next successful publish |
-| Submit sitemap in Google Search Console | **Ops — after publish** | `https://shaniidrx.co.ke/sitemap.xml` |
-| Run Lighthouse SEO on production | **Ops — after publish** | Baseline score for future improvements |
-| Newsletter subscribers screen (admin) | **Fix queued** | Minor admin routing gap |
-| Admin/partner routing mix-up (`partners/admin`) | **Fix queued** | Minor |
-| Full server-side rendering (SSR) | **Phase 2** | Optional next step for maximum crawlability |
-| ML-based demand forecasting | **Phase 2** | Current engine uses trend + Rx/assessment signals; ML optional later |
+| Partner onboarding (Google → pending approval) | **Done** | All three portal types |
+| Partner delete / suspend / KYC | **Done** | Permanent delete; unified actions menu |
+| Partner org sign-in (Clerk name fix) | **Done** | No false “organization required” errors |
+| Server-side audit log | **Done** | All user types; no clear button |
+| SEO (OG, sitemap, prerender, schema) | **Done** | Submit sitemap to Google after publish |
+| Admin analytics (8 tabs) | **Done** | Wired to `/api/v2` + Postgres |
+| Demand forecasting | **Done** | Live API + Sourcing UI |
+| Replit publish / DB auto-sync | **Done** | Fast health check; managed DB |
+| Live production verification | **Not done** | Ops — verify after next publish |
+| Production secrets (session, Clerk, Paystack) | **Not done** | Ops — Replit Deployments |
+| Newsletter subscribers (admin) | **Not done** | Code fix queued |
+| Admin/partner routing (`partners/admin`) | **Not done** | Code fix queued |
+| Full server-side rendering (SSR) | **Not done** | Phase 2 |
+| ML demand forecasting | **Not done** | Phase 2 — trend engine ships today |
+| Clerk admin SSO (replace token auth) | **Not done** | Phase 2 |
+
+**Summary:** Core product, partners, SEO, analytics, and forecasting are **built and merged**. What remains is mostly **live verification**, **deployment secrets**, **two small admin fixes**, and **Phase 2** enhancements.
 
 ---
 
+## ✅ Done this cycle
 
+### Partners & trust
+
+- Permanent partner delete (suppliers, clinics, logistics) — no ghost records after refresh  
+- Google sign-in → registration form → **pending approval** workflow (all portal types)  
+- Real company name from Clerk; session token fix for “Organization name is required”  
+- KYC checklist on partner profiles; unified actions menu on every list  
+- Admin portal link hidden from partner login screens  
+- Server-side audit log for admins, customers, partners, and guests — searchable, permanent  
+- Partner removal turns off portal access, not just list visibility  
+
+### Search & discoverability (SEO)
+
+- Branded social preview image (`og-default.jpg`, 1200×630)  
+- Dynamic sitemap from live products and blog posts  
+- Post-build prerender for `/`, `/shop`, `/faq`, `/blogs`, products, and posts  
+- Product, BlogPosting, and FAQPage structured data  
+- `robots.txt` blocks admin, checkout, portals, wishlist  
+- Visible footer “Browse by need” links (no hidden keyword stuffing)  
+
+### Admin analytics (`/admin/analytics`)
+
+All eight tabs load live data from Postgres via `/api/v2/admin/analytics`:
+
+| Tab | What it shows |
+|-----|----------------|
+| Overview | Daily views + clicks, top pages, cities, referrers, recent sessions |
+| Live Visitors | Active now, 10-min chart, city heat map, pages in view |
+| Website Traffic | Retention, channels, new vs returning, geo, devices, UTM |
+| Searches | Queries from navbar and shop |
+| Engagement | Clicks, scroll depth, bounce rate, top elements |
+| Sales & Orders | Revenue timeline, top products, categories, recent orders |
+| Bot Detection | Human vs bot split and daily chart |
+| Abandoned Checkouts | Drop-offs by reason, step, recovery count |
+
+Storefront tracking uses `/api/v2/track-*` (production-safe). Period selector: 7 / 30 / 90 days.
+
+### Demand forecasting
+
+- `GET /api/v2/admin/demand/forecast` — orders + Rx + assessments → SKU projections  
+- Sourcing → Forecast: **Generate from live data**, reorder math, procurement handoff  
+- Demand roll-up at `/admin/operations/demand` links to forecast and procurement  
+
+### Platform & deploy
+
+- Replit publish startup fix (health responds before full boot)  
+- Managed Replit database — no manual `DATABASE_URL` copy from laptop  
+- Auto Drizzle schema sync on deploy when DB is linked  
+
+---
+
+## ❌ Not done yet
+
+### 1. Operations — do on live (not code)
+
+These block a confident go-live or post-launch SEO; engineering cannot complete them from the repo alone.
+
+| Task | Priority | Owner | What to do |
+|------|----------|-------|------------|
+| Set `SESSION_SECRET` on Replit Deployments | **High** | Ops | Replit Secrets → production deployment |
+| Set Clerk keys (Google sign-in) | **High** | Ops | Same — customer + partner auth |
+| Set Paystack keys (if checkout is live) | **High** | Ops | Same — payments |
+| Set admin API token / admin login | **High** | Ops | Required for `/api/v2/admin/*` in production |
+| Link production database in Publishing | **Verify** | Ops | Replit → Publishing → Production database |
+| Approve pending partner applications | **Ongoing** | Admin team | Queue fills as Google sign-ups arrive |
+| Confirm partner delete on production data | **Verify** | Admin + eng | After next successful publish |
+| Submit sitemap to Google Search Console | **After publish** | Marketing | `https://shaniidrx.co.ke/sitemap.xml` |
+| Run Lighthouse SEO on production | **After publish** | Marketing | Baseline for future improvements |
+| Browse storefront → check Analytics tabs populate | **After publish** | Admin / ops | Confirms tracking ingest on live |
+
+### 2. Engineering — queued fixes (small)
+
+| Item | Impact | Notes |
+|------|--------|-------|
+| Newsletter subscribers admin screen | Admin 404 or routing gap | Minor; subscribers API may exist but UI route broken |
+| `partners/admin` routing mix-up | Wrong screen or 404 | Minor; URL guard / route order |
+
+### 3. Phase 2 — planned, not started
+
+| Item | Why it waits |
+|------|----------------|
+| Full server-side rendering (SSR) | Storefront is SPA + prerender today; SSR is optional crawlability upgrade |
+| ML-based demand forecasting | Current engine uses sales trend + Rx/assessment signals; sufficient for v1 |
+| Clerk admin SSO | Admin still uses token auth; Clerk admin login is the planned replacement |
+| Forecast → automated procurement pipeline | Manual “Create request” from forecast works; full automation is next |
+| Geo from IP when CDN headers absent | Analytics geo is empty unless proxy injects country headers |
+| Legacy `api-server` retirement | `api-nest` owns v2; old Express routes still exist for some legacy paths |
+
+### 4. Honest limitations (working as designed)
+
+| Limitation | Detail |
+|------------|--------|
+| SPA, not SSR | Prerender + schema cover most SEO; some crawlers may still prefer full SSR |
+| Analytics needs traffic | Empty tabs until real visitors browse the storefront (not admin routes) |
+| Inventory in forecast | Reorder suggestions need sourcing inventory CMS data for on-hand / safety stock |
+| Search keywords from Google | Often “encrypted” in referrer; organic terms appear when engines expose them |
+
+---
+
+## What we fixed (before → after)
+
+| # | Problem | Resolution |
+|---|---------|------------|
+| 1 | Deleted partners reappeared on refresh | Delete is permanent; portal access revoked |
+| 2 | Replit killed deploy (“not ready”) | APIs return health immediately, boot in background |
+| 3 | Confusion about `DATABASE_URL` on Replit | Managed DB injects connection; `.env.local` stays local |
+| 4 | Partner “Organization name is required” | Clerk org name + server fallback lookup |
+| 5 | Analytics tabs empty on production | Migrated to `/api/v2` + admin token; all tabs wired |
+| 6 | Sales metrics hard-coded to zero | Revenue, conversion, timeline from `admin_orders` |
+| 7 | Page duration / scroll not updating | `sendBeacon` POST handled on track-view API |
+
+---
+
+## Trust & security
+
+| Control | Status |
+|---------|--------|
+| Permanent activity log | Done |
+| No “clear log” in admin | Done |
+| Partner removal disables portal | Done |
+| Sensitive fields masked in audit | Done |
+| Private routes in `robots.txt` | Done |
+| Production requires `SESSION_SECRET` + admin token | **Ops must configure** |
+
+---
+
+## What each team should do next
+
+**Leadership / ops**  
+Confirm Replit secrets and production DB are set, publish, then verify partner delete and analytics on live data.
+
+**Admin team**  
+Process pending partner applications; use Analytics and Demand Forecast for daily ops; submit sitemap URL to Google Search Console.
+
+**Engineering**  
+Ship newsletter admin route fix and `partners/admin` routing fix; plan Phase 2 (SSR, Clerk admin SSO) when prioritized.
+
+**Marketing**  
+Run Lighthouse on production after publish; monitor Search Console for indexing.
+
+---
+
+## Closing note
+
+Shaniid RX has moved from “works in dev” to a **production-shaped** platform: partners, audit trail, SEO, analytics, and forecasting run on server data. The gap is no longer missing features in the repo — it is **configuration on live**, **two small admin fixes**, and **optional Phase 2** depth.
+
+---
+
+*Shaniid RX — A Shaniid Group Company*  
+*Questions? Share this document with your technical lead.*
