@@ -1313,13 +1313,22 @@ class PartnerAuthController {
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
     @Param("type") type: string,
-    @Body() body: { orgName?: string; profile?: Record<string, unknown> },
+    @Body() body: { orgName?: string; name?: string; profile?: Record<string, unknown> },
   ) {
+    const orgName =
+      String(body?.orgName ?? body?.name ?? "").trim() ||
+      String(
+        body?.profile?.companyName ??
+          body?.profile?.clinicName ??
+          body?.profile?.logisticsName ??
+          body?.profile?.name ??
+          "",
+      ).trim()
     return this.svc.registerClerkOrg(
       res,
       type,
       req.header("authorization"),
-      body?.orgName ?? "",
+      orgName,
       body?.profile ?? {},
     )
   }

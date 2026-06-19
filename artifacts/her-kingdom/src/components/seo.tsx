@@ -1,5 +1,5 @@
 import { useEffect } from "react"
-import { BRAND, TAGLINE as SITE_TAGLINE, SITE_URL as CONFIG_SITE_URL, GLOBAL_KEYWORDS, localBusinessJsonLd } from "@/lib/shaniidrx-seo"
+import { BRAND, TAGLINE as SITE_TAGLINE, SITE_URL as CONFIG_SITE_URL, GLOBAL_KEYWORDS, DEFAULT_OG_IMAGE, localBusinessJsonLd } from "@/lib/shaniidrx-seo"
 
 /* ─────────────────────────────────────────────────────────────
    Shaniid RX — global SEO helper
@@ -18,7 +18,7 @@ import { BRAND, TAGLINE as SITE_TAGLINE, SITE_URL as CONFIG_SITE_URL, GLOBAL_KEY
    (≈120 brand / category / geo / intent terms from shaniidrx-seo.ts).
 ────────────────────────────────────────────────────────────── */
 
-const DEFAULT_IMAGE = "/og-default.jpg"
+const DEFAULT_IMAGE = DEFAULT_OG_IMAGE
 const DEFAULT_LOCALE = "en_KE"
 const SITE_URL = typeof window !== "undefined" ? window.location.origin : CONFIG_SITE_URL
 
@@ -150,7 +150,7 @@ export function Seo({
     upsertMeta("property", "og:url", canonical)
     upsertMeta("property", "og:image", img)
     upsertMeta("property", "og:image:secure_url", img)
-    upsertMeta("property", "og:image:type", "image/jpeg")
+    upsertMeta("property", "og:image:type", img.endsWith(".svg") ? "image/svg+xml" : "image/jpeg")
     upsertMeta("property", "og:image:width", "1200")
     upsertMeta("property", "og:image:height", "630")
     upsertMeta("property", "og:image:alt", `${BRAND} — ${SITE_TAGLINE}`)
@@ -188,7 +188,7 @@ export const organizationJsonLd = {
   name: BRAND,
   legalName: "Shaniid Group of Technologies Ltd",
   url: SITE_URL,
-  logo: `${SITE_URL}${DEFAULT_IMAGE}`,
+  logo: `${SITE_URL}/logo.svg`,
   slogan: "Medicine You Can Trust. Delivered.",
   description:
     "Shaniid RX is the trust layer for medicine distribution in Africa — verified suppliers, transparent pricing, door-to-door delivery.",
@@ -280,5 +280,30 @@ export function faqJsonLd(items: Array<{ q: string; a: string }>) {
       name: it.q,
       acceptedAnswer: { "@type": "Answer", text: it.a },
     })),
+  }
+}
+
+export function blogPostingJsonLd(p: {
+  title: string
+  description: string
+  url: string
+  image?: string
+  datePublished?: string
+  author?: string
+}) {
+  return {
+    "@context": "https://schema.org",
+    "@type": "BlogPosting",
+    headline: p.title,
+    description: p.description,
+    image: p.image ? (p.image.startsWith("http") ? p.image : `${SITE_URL}${p.image}`) : `${SITE_URL}${DEFAULT_IMAGE}`,
+    url: `${SITE_URL}${p.url.startsWith("/") ? "" : "/"}${p.url}`,
+    datePublished: p.datePublished,
+    author: { "@type": "Organization", name: p.author || BRAND },
+    publisher: {
+      "@type": "Organization",
+      name: BRAND,
+      logo: { "@type": "ImageObject", url: `${SITE_URL}${DEFAULT_IMAGE}` },
+    },
   }
 }

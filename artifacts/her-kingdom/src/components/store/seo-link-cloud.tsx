@@ -1,71 +1,40 @@
 "use client"
 
 import { Link } from "wouter"
-import { useLocation } from "wouter"
-import { pickKeywords, keywordToShopHref } from "@/lib/seo-keyword-engine"
 
-/**
- * Footer SEO link cloud — visually hidden, but rendered into the DOM so
- * search-engine crawlers can discover the long-tail keyword cluster.
- * Keywords are seeded off the current pathname so every page surfaces a
- * different slice of the matrix.
- */
-export function SeoLinkCloud({ count = 50 }: { count?: number }) {
-  const [pathname] = useLocation() || "/"
-  const keywords = pickKeywords(count, pathname)
+/** Visible footer links to key storefront categories — crawlable, not hidden. */
+const BROWSE_LINKS = [
+  { href: "/shop?category=medications", label: "Prescription & OTC medicines" },
+  { href: "/shop?category=supplements", label: "Vitamins & supplements" },
+  { href: "/shop?category=devices", label: "Home health devices" },
+  { href: "/shop?category=baby-care", label: "Baby & mother care" },
+  { href: "/care-packs", label: "Care packs & bundles" },
+  { href: "/speak-to-a-doctor", label: "Speak to a doctor" },
+  { href: "/delivery", label: "Delivery zones & fees" },
+  { href: "/faq", label: "Pharmacy FAQ" },
+] as const
 
+export function SeoLinkCloud() {
   return (
-    <section
-      aria-labelledby="seo-cluster-heading"
-      aria-hidden="true"
-      className="sr-only"
-      style={{
-        position: "absolute",
-        width: "1px",
-        height: "1px",
-        padding: 0,
-        margin: "-1px",
-        overflow: "hidden",
-        clip: "rect(0,0,0,0)",
-        whiteSpace: "nowrap",
-        border: 0,
-      }}
+    <nav
+      aria-labelledby="browse-needs-heading"
+      className="border-t border-white/10 pt-6 mt-6"
     >
-      <h2 id="seo-cluster-heading">
-        Shop by Need — Popular Pharmacy Searches on shaniidrx.com
+      <h2
+        id="browse-needs-heading"
+        className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/50 mb-3"
+      >
+        Browse by need
       </h2>
-      <ul>
-        {keywords.map((k) => (
-          <li key={k.slug}>
-            <Link href={keywordToShopHref(k)} title={k.text} tabIndex={-1}>
-              {k.text}
+      <ul className="flex flex-wrap gap-x-4 gap-y-2 text-xs text-white/60">
+        {BROWSE_LINKS.map((item) => (
+          <li key={item.href}>
+            <Link href={item.href} className="hover:text-white/90 transition-colors">
+              {item.label}
             </Link>
           </li>
         ))}
       </ul>
-      <p>
-        Explore the full pharmacy catalogue of{" "}
-        <Link href="/shop?category=medications" tabIndex={-1}>
-          prescription medications Nairobi
-        </Link>
-        ,{" "}
-        <Link href="/shop?category=supplements" tabIndex={-1}>
-          vitamins and supplements Kenya
-        </Link>
-        ,{" "}
-        <Link href="/shop?category=devices" tabIndex={-1}>
-          home health devices delivery
-        </Link>{" "}
-        and{" "}
-        <Link href="/shop?category=baby-care" tabIndex={-1}>
-          baby and mother care essentials
-        </Link>{" "}
-        — with same-day Nairobi delivery and trusted pharmacist support a{" "}
-        <Link href="/shop" tabIndex={-1}>
-          single WhatsApp away
-        </Link>
-        .
-      </p>
-    </section>
+    </nav>
   )
 }

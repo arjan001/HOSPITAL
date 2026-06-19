@@ -9,6 +9,7 @@ import { useAdminOrders } from "@/lib/orders-store"
 import { useAdminPrescriptions, useAdminThreads, useAdminConsultations } from "@/lib/api-nest"
 import { useCmsDoc, cmsStore } from "@/lib/cms-store"
 import { NotificationBell } from "@/components/admin/notification-bell"
+import { Seo } from "@/components/seo"
 import { useNotificationSound } from "@/lib/notification-sound"
 import {
   LayoutDashboard,
@@ -903,6 +904,13 @@ export function AdminShell({ children, title }: { children: ReactNode; title: st
   const mainOffset = collapsed ? "lg:ml-16" : "lg:ml-60"
 
   return (
+    <>
+      <Seo
+        title={`${title} — Admin`}
+        description="Shaniid RX internal administration. Sign-in required."
+        canonicalPath={pathname}
+        noindex
+      />
     <div className="min-h-screen text-foreground" style={{ background: "#FFFBF5" }}>
       {/* Mobile top bar */}
       <header className="lg:hidden flex items-center justify-between h-14 px-4 border-b border-border sticky top-0 z-50" style={{ background: "#FFFBF5" }}>
@@ -1250,5 +1258,6 @@ export function AdminShell({ children, title }: { children: ReactNode; title: st
       </div>
       <NavTipPortal />
     </div>
+    </>
   )
 }

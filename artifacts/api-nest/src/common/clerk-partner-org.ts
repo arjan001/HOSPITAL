@@ -32,6 +32,20 @@ export async function createClerkOrganization(name: string, createdByUserId: str
   })
 }
 
+/** Fetch the human-readable organization name from Clerk (used when JWT has org_id but client omits orgName). */
+export async function getClerkOrganization(organizationId: string): Promise<{ id: string; name: string } | null> {
+  if (!organizationId?.trim() || !clerkPartnerOrgEnabled()) return null
+  try {
+    const client = clerk()
+    const org = await client.organizations.getOrganization({ organizationId })
+    const name = org.name?.trim()
+    if (!name) return null
+    return { id: org.id, name }
+  } catch {
+    return null
+  }
+}
+
 export async function createClerkOrgInvitation(
   organizationId: string,
   emailAddress: string,

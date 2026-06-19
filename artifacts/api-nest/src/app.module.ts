@@ -76,6 +76,7 @@ import { SendyModule } from "./modules/sendy.module"
 import { StorefrontModule } from "./modules/storefront.module"
 import { AnalyticsModule } from "./modules/analytics.module"
 import { BlogsModule } from "./modules/blogs.module"
+import { SeoModule } from "./modules/seo.module"
 import { VideoModule } from "./modules/video.module"
 import { CampaignsAdminModule } from "./modules/campaigns-admin.module"
 import { SupplierPurchaseOrdersModule } from "./modules/supplier-purchase-orders.module"
@@ -130,6 +131,7 @@ import { PartnerDirectoryModule } from "./modules/partner-directory.module"
     StorefrontModule,
     AnalyticsModule,
     BlogsModule,
+    SeoModule,
     VideoModule,
     CampaignsAdminModule,
     SupplierPurchaseOrdersModule,

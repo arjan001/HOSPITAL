@@ -19,6 +19,7 @@ import {
   type PartnerAccount, type DeliveryJob,
 } from "@/lib/partners-client"
 import { PartnerPortalAuthScreen } from "@/components/portal/partner-portal-auth"
+import { PortalSeo } from "@/components/portal/portal-seo"
 import { PartnerTeamPanel } from "@/components/portal/partner-team-panel"
 import {
   Truck, LogOut, Package, MapPin, BarChart3, User,
@@ -849,26 +850,42 @@ export default function LogisticsPortal() {
   }
 
   if (isAcceptRoute && inviteToken) {
-    return <AcceptInviteScreen token={inviteToken} />
+    return (
+      <>
+        <PortalSeo path="/portal/logistics" label="Logistics" />
+        <AcceptInviteScreen token={inviteToken} />
+      </>
+    )
   }
 
   if (me.isLoading) {
     return (
+      <>
+        <PortalSeo path="/portal/logistics" label="Logistics" />
       <div className="min-h-screen flex items-center justify-center" style={{ background: "#faf9f8" }}>
         <Loader2 className="h-8 w-8 animate-spin" style={{ color: WINE }} />
       </div>
+      </>
     )
   }
 
   if (me.error || !me.data?.ok || !me.data.partner) {
-    return <AuthScreen />
+    return (
+      <>
+        <PortalSeo path="/portal/logistics" label="Logistics" />
+        <AuthScreen />
+      </>
+    )
   }
 
   return (
+    <>
+      <PortalSeo path="/portal/logistics" label="Logistics" />
     <LogisticsDashboard
       partner={me.data.partner}
       memberRole={me.data.memberRole}
       onLogout={handleLogout}
     />
+    </>
   )
 }

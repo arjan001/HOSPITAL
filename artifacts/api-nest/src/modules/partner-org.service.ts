@@ -19,6 +19,7 @@ import {
   clerkPartnerOrgEnabled,
   createClerkOrgInvitation,
   createClerkOrganization,
+  getClerkOrganization,
   setClerkUserPartnerMetadata,
   type PartnerMemberRole,
 } from "../common/clerk-partner-org"
@@ -223,12 +224,28 @@ export class PartnerOrgService {
     if (!clerk.email || !clerk.userId) {
       throw new HttpException("Valid Clerk session required", HttpStatus.UNAUTHORIZED)
     }
-    const name = orgName.trim()
+
+    let name = orgName.trim()
+    if (!name) {
+      const fromProfile = String(
+        profile.companyName ?? profile.clinicName ?? profile.logisticsName ?? profile.name ?? "",
+      ).trim()
+      if (fromProfile) name = fromProfile
+    }
+
+    let clerkOrgId =
+      clerk.orgId ||
+      (typeof clerk.publicMetadata?.clerkOrgId === "string" ? clerk.publicMetadata.clerkOrgId : null)
+
+    if (!name && clerkOrgId) {
+      const clerkOrg = await getClerkOrganization(clerkOrgId)
+      if (clerkOrg?.name) name = clerkOrg.name
+    }
+
     if (!name) {
       throw new HttpException("Organization name is required", HttpStatus.BAD_REQUEST)
     }
 
-    let clerkOrgId = clerk.orgId
     if (!clerkOrgId) {
       const org = await createClerkOrganization(name, clerk.userId)
       clerkOrgId = org.id

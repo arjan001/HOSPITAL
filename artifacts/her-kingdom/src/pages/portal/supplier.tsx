@@ -24,6 +24,7 @@ import {
   type PurchaseOrderSummary,
 } from "@/lib/partners-client"
 import { PartnerPortalAuthScreen } from "@/components/portal/partner-portal-auth"
+import { PortalSeo } from "@/components/portal/portal-seo"
 import { PartnerTeamPanel } from "@/components/portal/partner-team-panel"
 import {
   ShieldCheck, LogOut, ClipboardList, BarChart3, User, AlertTriangle,
@@ -1140,21 +1141,39 @@ export default function SupplierPortal() {
   }
 
   if (isAcceptMode && token) {
-    return <AcceptInviteScreen token={token} />
+    return (
+      <>
+        <PortalSeo path="/portal/supplier" label="Supplier" />
+        <AcceptInviteScreen token={token} />
+      </>
+    )
   }
 
   if (me.isLoading) {
     return (
+      <>
+        <PortalSeo path="/portal/supplier" label="Supplier" />
       <div className="min-h-screen flex items-center justify-center" style={{ background: "#faf9f8" }}>
         <Loader2 className="h-8 w-8 animate-spin" style={{ color: WINE }} />
       </div>
+      </>
     )
   }
 
   const partner = me.data?.ok ? me.data.partner : null
   if (!partner || me.error) {
-    return <SupplierAuthScreen />
+    return (
+      <>
+        <PortalSeo path="/portal/supplier" label="Supplier" />
+        <SupplierAuthScreen />
+      </>
+    )
   }
 
-  return <SupplierDashboard partner={partner} onLogout={handleLogout} />
+  return (
+    <>
+      <PortalSeo path="/portal/supplier" label="Supplier" />
+  <SupplierDashboard partner={partner} onLogout={handleLogout} />
+    </>
+  )
 }

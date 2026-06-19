@@ -24,6 +24,9 @@ export const SITE_URL = (() => {
   return (env || fallback).replace(/\/+$/, "")
 })()
 
+/** Default share image — 1200×630 branded card under public/ */
+export const DEFAULT_OG_IMAGE = "/og-default.jpg"
+
 export const CONTACT = {
   phone: "+254780406059",
   phoneDisplay: "0780 406 059",
@@ -283,8 +286,8 @@ export const localBusinessJsonLd = {
   name: BRAND,
   legalName: LEGAL_NAME,
   url: SITE_URL,
-  logo: `${SITE_URL}/logo-rx.png`,
-  image: `${SITE_URL}/og-default.jpg`,
+  logo: `${SITE_URL}/logo.svg`,
+  image: `${SITE_URL}${DEFAULT_OG_IMAGE}`,
   slogan: PROMISE,
   description:
     "Shaniid RX is the trust layer for medicine distribution in Africa — verified suppliers, transparent pricing, door-to-door delivery.",

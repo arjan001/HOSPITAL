@@ -5,7 +5,7 @@ import { TopBar } from "@/components/store/top-bar"
 import { Navbar } from "@/components/store/navbar"
 import { Footer } from "@/components/store/footer"
 import { useStoreContact } from "@/hooks/use-store-contact"
-import { Seo, organizationJsonLd, websiteJsonLd, breadcrumbJsonLd, faqJsonLd, productJsonLd } from "@/components/seo"
+import { Seo, breadcrumbJsonLd, faqJsonLd } from "@/components/seo"
 
 const BRAND = "#3D0814"
 
@@ -80,6 +80,11 @@ export default function FaqPage() {
     [],
   )
 
+  const allFaqItems = useMemo(
+    () => Object.values(ALL_FAQS).flat(),
+    [],
+  )
+
   return (
     <div className="min-h-screen flex flex-col bg-white text-neutral-900">
       <Seo
@@ -87,7 +92,10 @@ export default function FaqPage() {
         description="Clear answers about Shaniid RX deliveries, prescriptions, payments, consultations and product authenticity. Calm, straightforward pharmacy guidance."
         keywords={["Shaniid RX FAQ","pharmacy questions Kenya","medicine delivery help","prescription upload"]}
         canonicalPath="/faq"
-        jsonLd={breadcrumbJsonLd([{ name: "Home", path: "/" }, { name: "FAQ", path: "/faq" }])}
+        jsonLd={[
+          breadcrumbJsonLd([{ name: "Home", path: "/" }, { name: "FAQ", path: "/faq" }]),
+          faqJsonLd(allFaqItems),
+        ]}
       />
       <TopBar />
       <Navbar />

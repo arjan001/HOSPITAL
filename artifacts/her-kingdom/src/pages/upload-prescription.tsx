@@ -29,6 +29,7 @@ function Stepper({ current }: { current: number }) {
         description="Send your prescription to Shaniid RX in seconds. A verified pharmacist will review, prepare and deliver — safely, discreetly and on time."
         keywords={["upload prescription Kenya","online prescription Nairobi","Shaniid RX prescription","secure pharmacy upload"]}
         canonicalPath="/upload-prescription"
+        noindex
       />
       {STEPS.map((label, i) => {
         const idx    = i + 1

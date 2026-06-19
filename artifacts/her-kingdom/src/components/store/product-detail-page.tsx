@@ -224,13 +224,6 @@ interface ProductPageData {
 export function ProductDetailPage({ slug }: { slug: string }) {
   return (
     <QuickViewProvider>
-      <Seo
-        title={`Product Details — ${slug.replace(/-/g, " ")}`}
-        description={`View product details, ingredients, pricing and stock on Shaniid RX. Verified by a licensed pharmacy and delivered to your door across Kenya.`}
-        keywords={["Shaniid RX product", slug, "buy medicine online Kenya", "verified pharmacy"]}
-        canonicalPath={`/product/${slug}`}
-        type="product"
-      />
       <ProductDetailPageInner slug={slug} />
       <QuickViewModal />
     </QuickViewProvider>
@@ -279,9 +272,40 @@ function ProductDetailPageInner({ slug }: { slug: string }) {
     if (product) rememberProduct(product)
   }, [product])
 
+  const productPath = `/product/${slug}`
+  const breadcrumb = breadcrumbJsonLd([
+    { name: "Home", path: "/" },
+    { name: "Shop", path: "/shop" },
+    { name: product?.name || slug.replace(/-/g, " "), path: productPath },
+  ])
+  const structuredData = product
+    ? [
+        breadcrumb,
+        productJsonLd({
+          name: product.name,
+          description: product.description.slice(0, 500),
+          image: product.images?.length ? product.images : undefined,
+          sku: product.id,
+          price: product.price,
+          currency: "KES",
+          inStock: product.inStock,
+          url: productPath,
+        }),
+      ]
+    : [breadcrumb]
+
   if (isLoading) {
     return (
-      <div className="min-h-screen flex flex-col" style={{ background: CREAM }}>
+      <>
+        <Seo
+          title={`Product — ${slug.replace(/-/g, " ")}`}
+          description="View product details, pricing and stock on Shaniid RX. Verified by a licensed pharmacy and delivered across Kenya."
+          keywords={["Shaniid RX product", slug, "buy medicine online Kenya"]}
+          canonicalPath={productPath}
+          type="product"
+          jsonLd={structuredData}
+        />
+        <div className="min-h-screen flex flex-col" style={{ background: CREAM }}>
         <TopBar />
         <Navbar />
         <main className="flex-1 grid place-items-center">
@@ -302,11 +326,19 @@ function ProductDetailPageInner({ slug }: { slug: string }) {
         </main>
         <Footer />
       </div>
+      </>
     )
   }
 
   if (error || !product) {
     return (
+      <>
+        <Seo
+          title="Product Not Found"
+          description="This product may have been removed or the link is incorrect. Browse verified medicines on Shaniid RX."
+          canonicalPath={productPath}
+          noindex
+        />
       <div className="min-h-screen flex flex-col" style={{ background: CREAM }}>
         <TopBar />
         <Navbar />
@@ -329,6 +361,7 @@ function ProductDetailPageInner({ slug }: { slug: string }) {
         </main>
         <Footer />
       </div>
+      </>
     )
   }
 
@@ -354,6 +387,19 @@ function ProductDetailPageInner({ slug }: { slug: string }) {
   const soldLast7 = (seed % 22) + 5
 
   return (
+    <>
+      <Seo
+        title={`${product.name} | Shaniid RX`}
+        description={
+          product.description.slice(0, 160) ||
+          `Buy ${product.name} online from Shaniid RX — verified pharmacy, fair pricing and delivery across Kenya.`
+        }
+        keywords={[product.name, product.category, "buy medicine Kenya", "Shaniid RX"]}
+        canonicalPath={productPath}
+        image={product.images?.[0]}
+        type="product"
+        jsonLd={structuredData}
+      />
     <div className="min-h-screen flex flex-col" style={{ background: CREAM }}>
       <TopBar />
       <Navbar />
@@ -1224,6 +1270,7 @@ function ProductDetailPageInner({ slug }: { slug: string }) {
         />
       )}
     </div>
+    </>
   )
 }
 

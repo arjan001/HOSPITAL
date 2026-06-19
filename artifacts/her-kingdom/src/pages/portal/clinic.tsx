@@ -17,6 +17,7 @@ import {
   type PartnerAccount, type ClinicProduct, type ClinicOrderLine,
 } from "@/lib/partners-client"
 import { PartnerPortalAuthScreen } from "@/components/portal/partner-portal-auth"
+import { PortalSeo } from "@/components/portal/portal-seo"
 import { PartnerTeamPanel } from "@/components/portal/partner-team-panel"
 import {
   Stethoscope, LogOut, ShoppingCart, ClipboardList, CreditCard,
@@ -890,23 +891,41 @@ export default function ClinicPortal() {
   }
 
   if (isAccept && token) {
-    return <AcceptInviteScreen token={token} onDone={() => setLocation("/portal/clinic")} />
+    return (
+      <>
+        <PortalSeo path="/portal/clinic" label="Clinic" />
+        <AcceptInviteScreen token={token} onDone={() => setLocation("/portal/clinic")} />
+      </>
+    )
   }
 
   if (me.isLoading) {
     return (
+      <>
+        <PortalSeo path="/portal/clinic" label="Clinic" />
       <div className="min-h-screen flex items-center justify-center" style={{ background: WINE }}>
         <div className="flex flex-col items-center gap-3 text-white/80">
           <Loader2 className="h-7 w-7 animate-spin" />
           <p className="text-sm">Loading your portal…</p>
         </div>
       </div>
+      </>
     )
   }
 
   if (me.error || !me.data?.ok || me.data.partner.partnerType !== "clinic") {
-    return <ClinicAuthScreen />
+    return (
+      <>
+        <PortalSeo path="/portal/clinic" label="Clinic" />
+        <ClinicAuthScreen />
+      </>
+    )
   }
 
-  return <ClinicDashboard partner={me.data.partner} onLogout={handleLogout} />
+  return (
+    <>
+      <PortalSeo path="/portal/clinic" label="Clinic" />
+  <ClinicDashboard partner={me.data.partner} onLogout={handleLogout} />
+    </>
+  )
 }

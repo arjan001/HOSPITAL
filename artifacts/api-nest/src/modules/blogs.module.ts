@@ -189,5 +189,6 @@ class BlogsController {
   imports: [AdminCmsModule],
   controllers: [BlogsController],
   providers: [BlogsService],
+  exports: [BlogsService],
 })
 export class BlogsModule {}

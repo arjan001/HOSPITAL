@@ -1,5 +1,5 @@
 # Shaniid RX — robots
-# Allow indexing of all public pages; block private areas and APIs.
+# Public storefront: index. Private portals, admin, checkout: noindex via Disallow.
 
 User-agent: *
 Allow: /
@@ -11,32 +11,40 @@ Disallow: /sign-in
 Disallow: /sign-up
 Disallow: /checkout
 Disallow: /cart
+Disallow: /wishlist
+Disallow: /doctor
+Disallow: /doctor/
+Disallow: /portal
+Disallow: /portal/
+Disallow: /upload-prescription
 Disallow: /api/
 Disallow: /*?*utm_
 Disallow: /*?*ref=
 Disallow: /*?*fbclid=
 Disallow: /*?*gclid=
 
-# Allow major AI crawlers explicitly (they sometimes need a separate line)
 User-agent: GPTBot
 Allow: /
 Disallow: /admin/
 Disallow: /account/
+Disallow: /portal/
+Disallow: /doctor/
 
 User-agent: ClaudeBot
 Allow: /
 Disallow: /admin/
 Disallow: /account/
+Disallow: /portal/
+Disallow: /doctor/
 
 User-agent: PerplexityBot
 Allow: /
 Disallow: /admin/
 Disallow: /account/
+Disallow: /portal/
+Disallow: /doctor/
 
 User-agent: Googlebot-Image
 Allow: /
-
-# Crawl politeness
-Crawl-delay: 1
 
 Sitemap: https://shaniidrx.co.ke/sitemap.xml

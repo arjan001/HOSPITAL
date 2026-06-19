@@ -4,7 +4,7 @@ import { Link } from "wouter"
 
 import useSWR, { mutate } from "swr"
 import { useEffect, useMemo, useState } from "react"
-import { Seo, organizationJsonLd, websiteJsonLd, breadcrumbJsonLd, faqJsonLd, productJsonLd } from "@/components/seo"
+import { Seo, breadcrumbJsonLd, blogPostingJsonLd } from "@/components/seo"
 import {
   Clock,
   Star,
@@ -292,6 +292,12 @@ export function BlogDetailPage({ slug }: { slug: string }) {
   if (isLoading || !post) {
     return (
       <div className="min-h-screen flex flex-col bg-[#fdfaf7]">
+        <Seo
+          title={`Health Notes — ${slug.replace(/-/g, " ")}`}
+          description="Read evidence-led pharmacy writing from Shaniid RX — trusted health notes for Kenya."
+          canonicalPath={`/blogs/${slug}`}
+          type="article"
+        />
         <TopBar />
         <Navbar />
         <main className="flex-1 max-w-4xl mx-auto w-full px-4 py-16">
@@ -308,14 +314,36 @@ export function BlogDetailPage({ slug }: { slug: string }) {
     )
   }
 
+  const blogPath = `/blogs/${slug}`
+  const blogJsonLd = [
+    breadcrumbJsonLd([
+      { name: "Home", path: "/" },
+      { name: "Health Notes", path: "/blogs" },
+      { name: post.title, path: blogPath },
+    ]),
+    blogPostingJsonLd({
+      title: post.title,
+      description: post.excerpt || post.title,
+      url: blogPath,
+      image: post.cover_image || undefined,
+      datePublished: post.published_at,
+      author: post.author,
+    }),
+  ]
+
   return (
     <div className="min-h-screen flex flex-col bg-[#fdfaf7]">
       <Seo
-        title={`Health Notes — ${slug.replace(/-/g, " ")}`}
-        description={`Read this Shaniid RX health note: calm, evidence-led pharmacy writing on ${slug.replace(/-/g, " ")}. Trusted advice from Kenya's pharmacy infrastructure.`}
-        keywords={["Shaniid RX article", slug, "health Kenya", "pharmacy advice"]}
-        canonicalPath={`/blogs/${slug}`}
+        title={`${post.title} | Shaniid RX`}
+        description={
+          post.excerpt ||
+          `Read this Shaniid RX health note on ${post.title}. Evidence-led pharmacy writing from Kenya's trusted pharmacy.`
+        }
+        keywords={[...(post.tags || []), post.category || "", "Shaniid RX", "pharmacy Kenya"].filter(Boolean)}
+        canonicalPath={blogPath}
+        image={post.cover_image || undefined}
         type="article"
+        jsonLd={blogJsonLd}
       />
       <ReadProgressBar />
       <TopBar />

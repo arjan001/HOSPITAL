@@ -1,8 +1,8 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { Link } from "wouter"
-import { useAuth, useUser } from "@clerk/react"
+import { useAuth, useOrganization, useUser } from "@clerk/react"
 import { useSignIn } from "@clerk/react/legacy"
 import { AlertTriangle, ArrowRight, Eye, EyeOff, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -47,9 +47,19 @@ function PendingBanner({ message }: { message: string }) {
   )
 }
 
+function needsPartnerSetup(msg: string): boolean {
+  return (
+    /organization setup|not registered for this clerk organization/i.test(msg) ||
+    /missing partnerType/i.test(msg) ||
+    /complete organization setup/i.test(msg) ||
+    /no active partner account/i.test(msg)
+  )
+}
+
 /** Clerk-only partner portal sign-in + organization registration. */
 export function PartnerPortalAuthScreen({ type, redirectPath, title, subtitle, brandPanel }: Props) {
   const { isSignedIn, getToken, orgId, orgSlug, isLoaded: authLoaded } = useAuth()
+  const { organization, isLoaded: orgLoaded } = useOrganization()
   const { user } = useUser()
   const { isLoaded, signIn, setActive } = useSignIn()
 
@@ -61,8 +71,6 @@ export function PartnerPortalAuthScreen({ type, redirectPath, title, subtitle, b
   const [orgLoading, setOrgLoading] = useState(false)
   const [error, setError] = useState("")
   const [pendingMsg, setPendingMsg] = useState("")
-  const [orgName, setOrgName] = useState("")
-  const [needsOrgSetup, setNeedsOrgSetup] = useState(false)
   const [onboardingOpen, setOnboardingOpen] = useState(false)
 
   const portalLabel =
@@ -71,15 +79,23 @@ export function PartnerPortalAuthScreen({ type, redirectPath, title, subtitle, b
   const registerQuery = buildRedirectQuery(redirectPath)
   const loginQuery = buildRedirectQuery(redirectPath)
 
+  /** Human-readable name from Clerk — never use slug as the company name. */
+  const clerkOrgDisplayName = useMemo(() => {
+    const fromOrg = organization?.name?.trim()
+    if (fromOrg) return fromOrg
+    return ""
+  }, [organization?.name])
+
+  const activeOrg = orgId
+    ? { id: orgId, name: clerkOrgDisplayName || orgSlug || "" }
+    : null
+  const showOrgSetup = isSignedIn && !activeOrg
+
   useEffect(() => {
     rememberPartnerPortalRedirect(redirectPath)
   }, [redirectPath])
 
-  /** Active Clerk org from session (no useOrganizationList — avoids Clerk “enable Organizations” gate). */
-  const activeOrg = orgId ? { id: orgId, name: orgSlug ?? "" } : null
-  const showOrgSetup = isSignedIn && !activeOrg
-
-  /** After Google OAuth redirect, open onboarding when Clerk session exists but no org. */
+  /** After OAuth / sign-up, open onboarding when signed in but no Clerk org yet. */
   useEffect(() => {
     if (!authLoaded || !isSignedIn || activeOrg || pendingMsg) return
     setOnboardingOpen(true)
@@ -87,7 +103,11 @@ export function PartnerPortalAuthScreen({ type, redirectPath, title, subtitle, b
 
   const clerkToken = async () => {
     if (orgId) {
-      return (await getToken({ organizationId: orgId })) ?? (await getToken())
+      const orgToken = await getToken({ organizationId: orgId })
+      if (orgToken) return orgToken
+      throw new Error(
+        "Could not read your organization session. Sign out, sign back in, and select your company in Clerk.",
+      )
     }
     return getToken()
   }
@@ -96,29 +116,31 @@ export function PartnerPortalAuthScreen({ type, redirectPath, title, subtitle, b
     const token = await clerkToken()
     if (!token) throw new Error("Could not read Clerk session. Sign in again.")
 
+    const resolvedName =
+      registerName?.trim() ||
+      clerkOrgDisplayName ||
+      String(profile?.companyName ?? profile?.clinicName ?? profile?.logisticsName ?? "").trim() ||
+      ""
+
     try {
       await partnerClerkSession(type, token)
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Clerk sign-in failed"
-      const needsSetup =
-        /organization setup|not registered for this clerk organization/i.test(msg) ||
-        /missing partnerType/i.test(msg) ||
-        /complete organization setup/i.test(msg)
-      if (needsSetup && registerName?.trim()) {
-        const reg = await partnerRegisterOrg(type, token, registerName.trim(), profile ?? {})
+      if (needsPartnerSetup(msg)) {
+        if (!resolvedName && !orgId) {
+          setOnboardingOpen(true)
+          throw new Error(`Enter your ${portalLabel.toLowerCase()} company name to continue.`)
+        }
+        const reg = await partnerRegisterOrg(type, token, resolvedName, profile ?? {})
         if (reg.pendingApproval) {
           setPendingMsg(
             reg.message ??
               "Your organization is pending admin approval. You will receive portal access once approved.",
           )
-          setNeedsOrgSetup(false)
           setOnboardingOpen(false)
           return
         }
-      } else if (needsSetup) {
-        setNeedsOrgSetup(true)
-        setOnboardingOpen(true)
-        throw new Error(`Register your ${portalLabel.toLowerCase()} company to continue.`)
+        await partnerClerkSession(type, token)
       } else if (/pending approval/i.test(msg)) {
         setPendingMsg(msg)
         return
@@ -198,13 +220,10 @@ export function PartnerPortalAuthScreen({ type, redirectPath, title, subtitle, b
     setError("")
     setPendingMsg("")
     try {
-      const name =
-        orgName.trim() ||
-        activeOrg?.name ||
-        orgSlug ||
-        ""
-      await exchangeSession(name || undefined)
-      setNeedsOrgSetup(false)
+      if (orgId && !orgLoaded) {
+        throw new Error("Loading your organization — please wait a moment and try again.")
+      }
+      await exchangeSession(clerkOrgDisplayName || undefined)
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not continue to portal")
     } finally {
@@ -338,12 +357,12 @@ export function PartnerPortalAuthScreen({ type, redirectPath, title, subtitle, b
               </p>
               {activeOrg && activeOrg.name && (
                 <p className="text-[11px] text-muted-foreground text-center">
-                  Active org: <span className="font-semibold">{activeOrg.name}</span>
+                  Organization: <span className="font-semibold">{activeOrg.name}</span>
                 </p>
               )}
               <Button
                 type="button"
-                disabled={orgLoading || !authLoaded}
+                disabled={orgLoading || !authLoaded || (orgId != null && !orgLoaded)}
                 onClick={() => void continueToPortal()}
                 className="w-full h-11 text-white font-semibold gap-2"
                 style={{ background: WINE }}
@@ -356,14 +375,19 @@ export function PartnerPortalAuthScreen({ type, redirectPath, title, subtitle, b
                   </>
                 )}
               </Button>
+              <p className="text-xs text-gray-500 text-center">
+                First time here?{" "}
+                <button
+                  type="button"
+                  className="underline"
+                  style={{ color: WINE }}
+                  onClick={() => setOnboardingOpen(true)}
+                >
+                  Complete company registration
+                </button>
+              </p>
             </div>
           )}
-
-          <p className="text-xs text-gray-300 text-center mt-6">
-            <Link href="/admin" className="hover:text-gray-500 transition-colors">
-              Admin portal →
-            </Link>
-          </p>
         </div>
       </div>
 
@@ -371,7 +395,7 @@ export function PartnerPortalAuthScreen({ type, redirectPath, title, subtitle, b
         open={onboardingOpen}
         type={type}
         defaultEmail={user?.primaryEmailAddress?.emailAddress ?? ""}
-        defaultOrgName={orgName || activeOrg?.name || orgSlug || ""}
+        defaultOrgName={clerkOrgDisplayName}
         loading={orgLoading}
         onClose={() => setOnboardingOpen(false)}
         onSubmit={handleOnboardingSubmit}

@@ -5,8 +5,10 @@
   "type": "module",
   "scripts": {
     "sync-docs": "node -e \"const fs=require('fs'),p=require('path');const src=p.resolve('../../docs'),dst=p.resolve('public/docs');if(!fs.existsSync(src)){process.exit(0)}fs.mkdirSync(dst,{recursive:true});for(const f of fs.readdirSync(src)){if(f.endsWith('.md')){fs.copyFileSync(p.join(src,f),p.join(dst,f))}}console.log('docs synced')\"",
+    "generate-sitemap": "node scripts/generate-sitemap.mjs",
+    "prerender-seo": "node scripts/prerender-seo.mjs",
     "dev": "pnpm run sync-docs && vite --config vite.config.ts --host 0.0.0.0",
-    "build": "pnpm run sync-docs && vite build --config vite.config.ts",
+    "build": "pnpm run sync-docs && pnpm run generate-sitemap && vite build --config vite.config.ts && pnpm run prerender-seo",
     "serve": "vite preview --config vite.config.ts --host 0.0.0.0",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
