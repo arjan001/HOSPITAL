@@ -1,7 +1,8 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { apiFetch, authedFetcher as fetcher } from "@/lib/api-client"
+import { apiFetch, authedFetcher as fetcher, adminAuthHeaders } from "@/lib/api-client"
+import { analyticsUrls } from "@/lib/analytics-track"
 import { AdminShell } from "./admin-shell"
 import { useAdminOrders } from "@/lib/orders-store"
 import { formatPrice } from "@/lib/format"
@@ -11,7 +12,7 @@ import {
   Monitor, Smartphone, Tablet, Activity, MousePointerClick, Clock,
   BarChart3, Bot, ShieldCheck, ScrollText, ShoppingCart, AlertTriangle,
   Search, Share2, Mail, Link2, UserPlus, UserCheck, Megaphone, Languages,
-  Flame, Radar, MapPin
+  Flame, Radar, MapPin, RefreshCw, AlertCircle
 } from "lucide-react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Button } from "@/components/ui/button"
@@ -40,10 +41,14 @@ interface AnalyticsData {
   totalRevenue: number
   prevOrderCount: number
   prevRevenue: number
+  confirmedOrderCount?: number
+  conversionRate?: number
+  revenueChangePct?: number
   topPages: { page: string; count: number }[]
   pageRetention: { page: string; avgDuration: number; views: number }[]
   viewsByDay: { date: string; count: number; human: number; bot: number; clicks: number }[]
   salesTimeline: { date: string; orders: number; revenue: number }[]
+  topProducts?: { name: string; sold: number; revenue: number }[]
   devices: { device: string; count: number; percentage: number }[]
   browsers: { browser: string; count: number; percentage: number }[]
   countries: { country: string; countryName: string; count: number; percentage: number; topCities: { city: string; count: number }[] }[]
@@ -113,12 +118,14 @@ interface AnalyticsData {
 }
 
 export function AdminAnalytics() {
-  // Sales/orders come from the real api-nest admin source (Postgres-durable,
-  // same data as the Orders page) — NOT the legacy /api/admin/orders stub,
-  // which returns sample/empty data and made the Sales figures wrong.
+  const [days, setDays] = useState(30)
   const { items: orders } = useAdminOrders()
   const { data: products = [] } = useSWR<Product[]>("/api/products", fetcher)
-  const { data: analytics } = useSWR<AnalyticsData>("/api/admin/analytics?days=30", fetcher, { refreshInterval: 30000 })
+  const { data: analytics, error: analyticsError, isLoading: analyticsLoading, mutate: refreshAnalytics } = useSWR<AnalyticsData>(
+    analyticsUrls.adminSummary(days),
+    fetcher,
+    { refreshInterval: 30000 },
+  )
   const [realTimeUsers, setRealTimeUsers] = useState(0)
   const [prodPage, setProdPage] = useState(1)
   const [activityPage, setActivityPage] = useState(1)
@@ -126,7 +133,7 @@ export function AdminAnalytics() {
 
   useEffect(() => {
     const fetchRealtime = () => {
-      apiFetch("/api/admin/analytics/realtime")
+      apiFetch(analyticsUrls.adminRealtime, { headers: adminAuthHeaders() })
         .then((r) => r.json())
         .then((data) => setRealTimeUsers(data.activeVisitors ?? data.activeUsers ?? 0))
         .catch(() => setRealTimeUsers(0))
@@ -136,11 +143,20 @@ export function AdminAnalytics() {
     return () => clearInterval(interval)
   }, [])
 
+  useEffect(() => {
+    setProdPage(1)
+    setActivityPage(1)
+    setClickPage(1)
+  }, [days])
+
   const saleStatuses = ["confirmed", "dispatched", "delivered"]
   const salesOrders = orders.filter((o) => saleStatuses.includes(o.status))
-  const totalRevenue = salesOrders.reduce((sum, o) => sum + o.total, 0)
-  const totalOrders = orders.length
-  const totalSales = salesOrders.length
+  const serverRevenue = analytics?.totalRevenue ?? 0
+  const serverConfirmed = analytics?.confirmedOrderCount ?? 0
+  const totalRevenue = serverRevenue > 0 ? serverRevenue : salesOrders.reduce((sum, o) => sum + o.total, 0)
+  const totalSales = serverConfirmed > 0 ? serverConfirmed : salesOrders.length
+  const totalOrders = analytics?.totalOrders ?? orders.length
+  const revenueChange = analytics?.revenueChangePct ?? 0
 
   const viewChange = analytics ? Math.round((((analytics.humanViewCount ?? 0) - (analytics.previousPeriodViews ?? 0)) / Math.max(analytics.previousPeriodViews ?? 0, 1)) * 100) : 0
 
@@ -149,33 +165,48 @@ export function AdminAnalytics() {
     { label: "Unique Sessions", value: (analytics?.uniqueSessions ?? 0).toString(), change: `${analytics?.bounceRate ?? 0}% bounce rate`, up: (analytics?.bounceRate ?? 0) < 50, icon: Eye },
     { label: "Avg. Time on Page", value: formatDuration(analytics?.avgDuration ?? 0), change: `${analytics?.avgScrollDepth ?? 0}% avg scroll depth`, up: (analytics?.avgDuration ?? 0) > 30, icon: Clock },
     { label: "Active Now", value: realTimeUsers.toString(), change: "Real-time visitors", up: realTimeUsers > 0, icon: Activity },
-    { label: "Sales Revenue", value: formatPrice(totalRevenue), change: `${totalSales} confirmed sales`, up: totalSales > 0, icon: DollarSign },
-    { label: "Total Orders", value: totalOrders.toString(), change: `${orders.filter(o => o.status === "pending").length} pending`, up: true, icon: ShoppingBag },
+    { label: "Sales Revenue", value: formatPrice(totalRevenue), change: `${revenueChange >= 0 ? "+" : ""}${revenueChange}% vs prev period`, up: revenueChange >= 0, icon: DollarSign },
+    { label: "Total Orders", value: totalOrders.toString(), change: `${totalSales} confirmed sales`, up: totalSales > 0, icon: ShoppingBag },
+    { label: "Conversion Rate", value: `${analytics?.conversionRate ?? 0}%`, change: "Sessions → confirmed order", up: (analytics?.conversionRate ?? 0) > 1, icon: TrendingUp },
     { label: "Total Clicks", value: (analytics?.totalClicks ?? 0).toString(), change: "Button & link clicks", up: true, icon: MousePointerClick },
     { label: "Bot Traffic", value: `${analytics?.botTraffic?.percentage ?? 0}%`, change: `${analytics?.botViewCount ?? 0} bot visits filtered`, up: (analytics?.botTraffic?.percentage ?? 0) < 20, icon: Bot },
   ]
 
-  // Revenue by month from confirmed sales only
-  const monthMap: Record<string, number> = {}
-  salesOrders.forEach((o) => {
-    const d = new Date(o.date)
-    const key = d.toLocaleString("default", { month: "short", year: "2-digit" })
-    monthMap[key] = (monthMap[key] || 0) + o.total
-  })
-  const revenueByMonth = Object.entries(monthMap).slice(-6).map(([month, value]) => ({ month, value }))
-  if (revenueByMonth.length === 0) revenueByMonth.push({ month: "Now", value: 0 })
+  // Revenue by day from server timeline, fallback to client month rollup
+  const salesTimeline = analytics?.salesTimeline ?? []
+  const revenueByMonth = (() => {
+    if (salesTimeline.length > 0) {
+      return salesTimeline.slice(-14).map((d) => ({
+        month: new Date(d.date).toLocaleDateString("en-GB", { day: "numeric", month: "short" }),
+        value: d.revenue,
+      }))
+    }
+    const monthMap: Record<string, number> = {}
+    salesOrders.forEach((o) => {
+      const d = new Date(o.date)
+      const key = d.toLocaleString("default", { month: "short", year: "2-digit" })
+      monthMap[key] = (monthMap[key] || 0) + o.total
+    })
+    const entries = Object.entries(monthMap).slice(-6).map(([month, value]) => ({ month, value }))
+    return entries.length > 0 ? entries : [{ month: "Now", value: 0 }]
+  })()
   const maxRevenue = Math.max(...revenueByMonth.map((r) => r.value), 1)
 
-  // Top products from confirmed sales only
+  // Top products — server-confirmed sales first, client orders as fallback
+  const serverTopProducts = analytics?.topProducts ?? []
   const productSales: Record<string, { name: string; sold: number; revenue: number }> = {}
-  salesOrders.forEach((o) => {
-    o.items.forEach((item) => {
-      const key = item.name
-      if (!productSales[key]) productSales[key] = { name: key, sold: 0, revenue: 0 }
-      productSales[key].sold += item.qty
-      productSales[key].revenue += item.price * item.qty
+  if (serverTopProducts.length > 0) {
+    for (const p of serverTopProducts) productSales[p.name] = { ...p }
+  } else {
+    salesOrders.forEach((o) => {
+      o.items.forEach((item) => {
+        const key = item.name
+        if (!productSales[key]) productSales[key] = { name: key, sold: 0, revenue: 0 }
+        productSales[key].sold += item.qty
+        productSales[key].revenue += item.price * item.qty
+      })
     })
-  })
+  }
   const topProducts = Object.values(productSales).sort((a, b) => b.revenue - a.revenue)
   const PROD_PER_PAGE = 5
   const prodTotalPages = Math.max(1, Math.ceil(topProducts.length / PROD_PER_PAGE))
@@ -219,10 +250,55 @@ export function AdminAnalytics() {
   return (
     <AdminShell title="Analytics">
       <div className="space-y-8">
-        <div>
-          <h1 className="text-2xl font-serif font-bold">Analytics</h1>
-          <p className="text-sm text-muted-foreground mt-1">Comprehensive store performance &amp; visitor tracking — last 30 days.</p>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h1 className="text-2xl font-serif font-bold">Analytics</h1>
+            <p className="text-sm text-muted-foreground mt-1">
+              Store performance &amp; visitor tracking — last {days} days.
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            {[7, 30, 90].map((d) => (
+              <Button
+                key={d}
+                type="button"
+                size="sm"
+                variant={days === d ? "default" : "outline"}
+                className={days === d ? "bg-[#3D0814] hover:bg-[#6B0F1A] text-white" : "bg-transparent"}
+                onClick={() => setDays(d)}
+              >
+                {d}d
+              </Button>
+            ))}
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="bg-transparent gap-1.5"
+              disabled={analyticsLoading}
+              onClick={() => void refreshAnalytics()}
+            >
+              <RefreshCw className={`h-3.5 w-3.5 ${analyticsLoading ? "animate-spin" : ""}`} />
+              Refresh
+            </Button>
+          </div>
         </div>
+
+        {analyticsError && (
+          <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+            <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+            <div>
+              <p className="font-medium">Could not load analytics</p>
+              <p className="text-xs mt-0.5 opacity-90">
+                {analyticsError instanceof Error ? analyticsError.message : "Check admin login and analytics.view permission."}
+              </p>
+            </div>
+          </div>
+        )}
+
+        {analyticsLoading && !analytics && (
+          <p className="text-sm text-muted-foreground">Loading analytics…</p>
+        )}
 
         {/* Stats Grid */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -255,7 +331,7 @@ export function AdminAnalytics() {
 
           {/* ===== OVERVIEW TAB ===== */}
           <TabsContent value="overview" className="mt-6 space-y-6">
-            <TrafficTrendChart viewsByDay={analytics?.viewsByDay || []} />
+            <TrafficTrendChart days={days} viewsByDay={analytics?.viewsByDay || []} />
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
               <TopPagesCard pages={analytics?.topPagesByEngagement || []} />
@@ -281,7 +357,7 @@ export function AdminAnalytics() {
 
           {/* ===== WEBSITE TRAFFIC TAB ===== */}
           <TabsContent value="traffic" className="mt-6 space-y-6">
-            <DailyViewsChart viewsByDay={analytics?.viewsByDay || []} />
+            <DailyViewsChart days={days} viewsByDay={analytics?.viewsByDay || []} />
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               {/* Top Pages */}
@@ -690,16 +766,24 @@ export function AdminAnalytics() {
           <TabsContent value="sales" className="mt-6 space-y-6">
             {/* Revenue Chart */}
             <div className="border border-border rounded-sm p-6">
-              <h2 className="text-sm font-semibold mb-6">Monthly Revenue</h2>
-              <div className="flex items-end gap-3 h-48">
+              <h2 className="text-sm font-semibold mb-6">Revenue ({days} days)</h2>
+              <div className="flex items-end gap-2 h-48 overflow-x-auto">
                 {revenueByMonth.map((r) => (
-                  <div key={r.month} className="flex-1 flex flex-col items-center gap-2">
+                  <div key={r.month} className="min-w-[40px] flex-1 flex flex-col items-center gap-2">
                     <span className="text-[10px] text-muted-foreground">{formatPrice(r.value)}</span>
-                    <div className="w-full bg-foreground rounded-t-sm transition-all" style={{ height: `${(r.value / maxRevenue) * 100}%` }} />
-                    <span className="text-xs text-muted-foreground">{r.month}</span>
+                    <div
+                      className="w-full bg-foreground rounded-t-sm transition-all"
+                      style={{ height: `${(r.value / maxRevenue) * 100}%`, minHeight: r.value > 0 ? 4 : 0 }}
+                    />
+                    <span className="text-[10px] text-muted-foreground text-center leading-tight">{r.month}</span>
                   </div>
                 ))}
               </div>
+              {salesTimeline.length > 0 && (
+                <p className="text-[11px] text-muted-foreground mt-3">
+                  Daily confirmed revenue from Postgres admin orders.
+                </p>
+              )}
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -816,7 +900,7 @@ export function AdminAnalytics() {
             </div>
 
             {/* Human vs Bot Daily Chart */}
-            <BotVsHumanChart viewsByDay={analytics?.viewsByDay || []} />
+            <BotVsHumanChart days={days} viewsByDay={analytics?.viewsByDay || []} />
 
             <div className="border border-border rounded-sm p-6">
               <h2 className="text-sm font-semibold mb-4">Bot Detection Methods</h2>
@@ -973,7 +1057,7 @@ export function AdminAnalytics() {
 
 // ===== Sub-components =====
 
-function DailyViewsChart({ viewsByDay }: { viewsByDay: { date: string; count: number; human: number; bot: number; clicks: number }[] }) {
+function DailyViewsChart({ days, viewsByDay }: { days: number; viewsByDay: { date: string; count: number; human: number; bot: number; clicks: number }[] }) {
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null)
   const maxViews = Math.max(...viewsByDay.map((v) => v.count), 1)
   const totalViews = viewsByDay.reduce((s, d) => s + d.count, 0)
@@ -982,7 +1066,7 @@ function DailyViewsChart({ viewsByDay }: { viewsByDay: { date: string; count: nu
   if (viewsByDay.length === 0 || totalViews === 0) {
     return (
       <div className="border border-border rounded-sm p-6">
-        <h2 className="text-sm font-semibold mb-6">Daily Page Views (Last 30 Days)</h2>
+        <h2 className="text-sm font-semibold mb-6">Daily Page Views (last {days} days)</h2>
         <div className="h-48 flex items-center justify-center text-sm text-muted-foreground">
           No traffic data yet. Views will appear as visitors browse your site.
         </div>
@@ -995,7 +1079,7 @@ function DailyViewsChart({ viewsByDay }: { viewsByDay: { date: string; count: nu
   return (
     <div className="border border-border rounded-sm p-6">
       <div className="flex items-center justify-between mb-6">
-        <h2 className="text-sm font-semibold">Daily Page Views (Last 30 Days)</h2>
+        <h2 className="text-sm font-semibold">Daily Page Views (last {days} days)</h2>
         <div className="flex items-center gap-4">
           <span className="text-xs text-muted-foreground">{totalHuman} real &middot; {totalViews - totalHuman} bot</span>
         </div>
@@ -1062,7 +1146,7 @@ function DailyViewsChart({ viewsByDay }: { viewsByDay: { date: string; count: nu
   )
 }
 
-function BotVsHumanChart({ viewsByDay }: { viewsByDay: { date: string; count: number; human: number; bot: number; clicks: number }[] }) {
+function BotVsHumanChart({ days, viewsByDay }: { days: number; viewsByDay: { date: string; count: number; human: number; bot: number; clicks: number }[] }) {
   const totalHuman = viewsByDay.reduce((s, d) => s + (d.human || 0), 0)
   const totalBot = viewsByDay.reduce((s, d) => s + (d.bot || 0), 0)
   const total = totalHuman + totalBot || 1
@@ -1071,7 +1155,7 @@ function BotVsHumanChart({ viewsByDay }: { viewsByDay: { date: string; count: nu
 
   return (
     <div className="border border-border rounded-sm p-6">
-      <h2 className="text-sm font-semibold mb-4">Human vs Bot Traffic Distribution</h2>
+      <h2 className="text-sm font-semibold mb-4">Human vs Bot Traffic ({days} days)</h2>
       <div className="h-8 bg-secondary rounded-full overflow-hidden flex">
         <div className="bg-foreground/80 h-full transition-all flex items-center justify-center" style={{ width: `${humanPct}%` }}>
           {humanPct > 10 && <span className="text-[10px] text-background font-medium">{humanPct}% Real</span>}
@@ -1383,7 +1467,7 @@ function SearchAnalytics({ searches }: { searches?: AnalyticsData["searches"] })
 
 // ===== Overview: Daily Traffic Trend (views + clicks) =====
 
-function TrafficTrendChart({ viewsByDay }: { viewsByDay: AnalyticsData["viewsByDay"] }) {
+function TrafficTrendChart({ days, viewsByDay }: { days: number; viewsByDay: AnalyticsData["viewsByDay"] }) {
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null)
   const maxViews = Math.max(1, ...viewsByDay.map((v) => v.human))
   const maxClicks = Math.max(1, ...viewsByDay.map((v) => v.clicks))
@@ -1418,7 +1502,7 @@ function TrafficTrendChart({ viewsByDay }: { viewsByDay: AnalyticsData["viewsByD
       <div className="flex items-start justify-between mb-5 flex-wrap gap-3">
         <div>
           <h2 className="text-sm font-semibold">Daily traffic trend</h2>
-          <p className="text-xs text-muted-foreground mt-0.5">Views &amp; clicks over the last {viewsByDay.length} days</p>
+          <p className="text-xs text-muted-foreground mt-0.5">Views &amp; clicks over the last {days} days</p>
         </div>
         <div className="flex items-center gap-5 text-xs">
           <div className="flex items-center gap-2">

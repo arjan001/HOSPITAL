@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useState, useCallback, useEffect, type ReactNode } from "react"
 import type { CartItem, Product } from "./types"
+import { analyticsUrls } from "./analytics-track"
 
 interface CartContextType {
   items: CartItem[]
@@ -145,7 +146,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
       reason: "closed_with_items",
     }
     const t = setTimeout(() => {
-      fetch("/api/track-abandoned", {
+      fetch(analyticsUrls.trackAbandoned, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -169,9 +170,9 @@ export function CartProvider({ children }: { children: ReactNode }) {
         reason: "closed_with_items",
       })
       if (navigator.sendBeacon) {
-        navigator.sendBeacon("/api/track-abandoned", new Blob([body], { type: "application/json" }))
+        navigator.sendBeacon(analyticsUrls.trackAbandoned, new Blob([body], { type: "application/json" }))
       } else {
-        fetch("/api/track-abandoned", { method: "POST", headers: { "Content-Type": "application/json" }, body, keepalive: true }).catch(() => {})
+        fetch(analyticsUrls.trackAbandoned, { method: "POST", headers: { "Content-Type": "application/json" }, body, keepalive: true }).catch(() => {})
       }
     }
     const onVisibility = () => {

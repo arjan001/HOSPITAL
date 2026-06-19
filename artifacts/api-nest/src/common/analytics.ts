@@ -6,7 +6,9 @@
  */
 import type { Request } from "express"
 import { and, desc, gte, lt, sql } from "drizzle-orm"
-import { db, analyticsEvents, abandonedCheckouts } from "@workspace/db"
+import { db, analyticsEvents, abandonedCheckouts, adminOrders } from "@workspace/db"
+
+const SALE_STATUSES = new Set(["confirmed", "dispatched", "delivered"])
 
 const BOT_RE =
   /bot|crawl|spider|scraper|curl|wget|python|java|go-http|headless|phantom|puppeteer|selenium|playwright|facebookexternalhit|slurp|bingpreview|lighthouse|pingdom|uptimerobot/i
@@ -102,6 +104,23 @@ export function hostOf(url: string): string {
   }
 }
 
+/** Extract organic search query from referrer URL when present. */
+export function searchTermFromReferrer(referrer: string): string {
+  if (!referrer) return ""
+  try {
+    const u = new URL(referrer)
+    const q =
+      u.searchParams.get("q") ||
+      u.searchParams.get("p") ||
+      u.searchParams.get("query") ||
+      u.searchParams.get("text") ||
+      ""
+    return q.trim().slice(0, 200)
+  } catch {
+    return ""
+  }
+}
+
 const SEARCH_ENGINES = ["google", "bing", "yahoo", "duckduckgo", "yandex", "baidu", "ecosia", "brave"]
 const SOCIAL = ["facebook", "instagram", "twitter", "x.com", "t.co", "tiktok", "linkedin", "youtube", "whatsapp", "pinterest", "reddit", "telegram"]
 
@@ -122,6 +141,61 @@ function pct(part: number, total: number): number {
   return Math.round((part / total) * 1000) / 10
 }
 
+async function buildSalesMetrics(days: number, start: Date, prevStart: Date, now: Date) {
+  const rows = await db.select().from(adminOrders).where(gte(adminOrders.createdAt, prevStart))
+
+  const confirmed = (from: Date, to?: Date) =>
+    rows.filter(
+      (o) =>
+        o.createdAt >= from &&
+        (!to || o.createdAt < to) &&
+        SALE_STATUSES.has(String(o.status || "")),
+    )
+
+  const inWindow = confirmed(start)
+  const prevWindow = confirmed(prevStart, start)
+  const allInWindow = rows.filter((o) => o.createdAt >= start)
+
+  const totalRevenue = inWindow.reduce((s, o) => s + (o.total || 0), 0)
+  const prevRevenue = prevWindow.reduce((s, o) => s + (o.total || 0), 0)
+
+  const dayMap = new Map<string, { orders: number; revenue: number }>()
+  const productMap = new Map<string, { name: string; sold: number; revenue: number }>()
+  for (let i = days - 1; i >= 0; i--) {
+    const d = new Date(now.getTime() - i * 86400000).toISOString().slice(0, 10)
+    dayMap.set(d, { orders: 0, revenue: 0 })
+  }
+  for (const o of inWindow) {
+    const d = o.createdAt.toISOString().slice(0, 10)
+    const slot = dayMap.get(d)
+    if (!slot) continue
+    slot.orders += 1
+    slot.revenue += o.total || 0
+    for (const item of o.items ?? []) {
+      const name = String(item.name || "").trim()
+      if (!name) continue
+      const qty = Math.max(0, Number(item.qty) || 0)
+      const price = Math.max(0, Number(item.price) || 0)
+      const row = productMap.get(name) ?? { name, sold: 0, revenue: 0 }
+      row.sold += qty
+      row.revenue += price * qty
+      productMap.set(name, row)
+    }
+  }
+
+  const topProducts = [...productMap.values()].sort((a, b) => b.revenue - a.revenue).slice(0, 50)
+
+  return {
+    totalOrders: allInWindow.length,
+    totalRevenue,
+    prevOrderCount: rows.filter((o) => o.createdAt >= prevStart && o.createdAt < start).length,
+    prevRevenue,
+    salesTimeline: [...dayMap.entries()].map(([date, e]) => ({ date, ...e })),
+    confirmedOrderCount: inWindow.length,
+    topProducts,
+  }
+}
+
 type Row = typeof analyticsEvents.$inferSelect
 
 /**
@@ -134,13 +208,14 @@ export async function buildAnalytics(days: number) {
   const start = new Date(now.getTime() - days * 86400000)
   const prevStart = new Date(start.getTime() - days * 86400000)
 
-  const [rows, prevRows, carts] = await Promise.all([
+  const [rows, prevRows, carts, sales] = await Promise.all([
     db.select().from(analyticsEvents).where(gte(analyticsEvents.createdAt, start)),
     db
       .select()
       .from(analyticsEvents)
       .where(and(gte(analyticsEvents.createdAt, prevStart), lt(analyticsEvents.createdAt, start))),
     db.select().from(abandonedCheckouts).where(gte(abandonedCheckouts.createdAt, prevStart)).orderBy(desc(abandonedCheckouts.createdAt)),
+    buildSalesMetrics(days, start, prevStart, now),
   ])
 
   const views = rows.filter((r) => r.kind === "view")
@@ -287,6 +362,8 @@ export async function buildAnalytics(days: number) {
     }
     e.count += 1
     e.pages.set(r.path, (e.pages.get(r.path) || 0) + 1)
+    const term = (r.searchTerm || "").trim()
+    if (term) e.terms.set(term, (e.terms.get(term) || 0) + 1)
     refMap.set(host, e)
   }
   const referrers = [...refMap.entries()]
@@ -416,10 +493,12 @@ export async function buildAnalytics(days: number) {
     liveByCountry.set(r.country, e)
   }
   const activityByMinute: { minute: string; visitors: number }[] = []
+  const recentHuman = humanViews.filter((r) => r.createdAt >= new Date(now.getTime() - 10 * 60000))
   for (let i = 9; i >= 0; i--) {
-    const mStart = new Date(now.getTime() - i * 60000)
-    const label = mStart.toISOString().slice(11, 16)
-    const inMin = humanViews.filter((r) => r.createdAt >= new Date(mStart.getTime() - 60000) && r.createdAt < mStart)
+    const mEnd = new Date(now.getTime() - i * 60000)
+    const mStart = new Date(mEnd.getTime() - 60000)
+    const label = mEnd.toISOString().slice(11, 16)
+    const inMin = recentHuman.filter((r) => r.createdAt >= mStart && r.createdAt < mEnd)
     activityByMinute.push({ minute: label, visitors: new Set(inMin.map((r) => r.sessionId).filter(Boolean)).size })
   }
   const currentViewingMap = new Map<string, { views: number; visitors: Set<string> }>()
@@ -473,14 +552,26 @@ export async function buildAnalytics(days: number) {
     avgDuration,
     avgScrollDepth,
     bounceRate,
-    totalOrders: 0,
-    totalRevenue: 0,
-    prevOrderCount: 0,
-    prevRevenue: 0,
+    totalOrders: sales.totalOrders,
+    totalRevenue: sales.totalRevenue,
+    prevOrderCount: sales.prevOrderCount,
+    prevRevenue: sales.prevRevenue,
+    confirmedOrderCount: sales.confirmedOrderCount,
+    conversionRate:
+      uniqueSessions > 0
+        ? Math.round((sales.confirmedOrderCount / uniqueSessions) * 1000) / 10
+        : 0,
+    revenueChangePct:
+      sales.prevRevenue > 0
+        ? Math.round(((sales.totalRevenue - sales.prevRevenue) / sales.prevRevenue) * 1000) / 10
+        : sales.totalRevenue > 0
+          ? 100
+          : 0,
     topPages,
     pageRetention,
     viewsByDay,
-    salesTimeline: [],
+    salesTimeline: sales.salesTimeline,
+    topProducts: sales.topProducts,
     devices,
     browsers,
     countries,

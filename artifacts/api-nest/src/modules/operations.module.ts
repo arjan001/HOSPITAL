@@ -63,6 +63,8 @@ import {
   type QuoteInput,
   type SupplierInput,
 } from "../common/supplier-scoring"
+import { buildDemandForecast, buildProductSkuIndex, drugNameToSku } from "../common/demand-forecast"
+import { CatalogModule, CatalogService } from "./catalog.module"
 
 const DEFAULT_MAPPINGS: Array<{
   conditionKey: string
@@ -257,11 +259,17 @@ type SkuAgg = { sku: string; quantity: number; sources: Set<string> }
 
 @Injectable()
 export class DemandAggregationService {
-  constructor(@Inject(CarePackMappingService) private readonly packs: CarePackMappingService) {}
+  constructor(
+    @Inject(CarePackMappingService) private readonly packs: CarePackMappingService,
+    @Inject(CatalogService) private readonly catalog: CatalogService,
+  ) {}
 
   async aggregate(windowDays = 30) {
     const days = Math.min(365, Math.max(7, Number(windowDays) || 30))
     const since = new Date(Date.now() - days * 86400000)
+
+    const products = await this.catalog.list().catch(() => [])
+    const skuIndex = buildProductSkuIndex(products)
 
     const rxRows = await db
       .select({
@@ -326,6 +334,14 @@ export class DemandAggregationService {
         cur.quantity += qty
         cur.rxCount += 1
         byDrug.set(key, cur)
+
+        const sku = drugNameToSku(name, skuIndex)
+        if (sku) {
+          const agg = bySku.get(sku) ?? { sku, quantity: 0, sources: new Set<string>() }
+          agg.quantity += qty
+          agg.sources.add("prescription")
+          bySku.set(sku, agg)
+        }
       }
     }
 
@@ -838,17 +854,28 @@ class CarePackMappingsAdminController {
 @AnyAdmin()
 @Controller("admin/demand")
 class DemandAdminController {
-  constructor(@Inject(DemandAggregationService) private readonly demand: DemandAggregationService) {}
+  constructor(
+    @Inject(DemandAggregationService) private readonly demand: DemandAggregationService,
+    @Inject(CatalogService) private readonly catalog: CatalogService,
+  ) {}
 
   @Get("aggregation")
   @RequirePerm("sourcing.view")
   aggregation(@Query("windowDays") windowDays?: string) {
     return this.demand.aggregate(Number(windowDays) || 30)
   }
+
+  @Get("forecast")
+  @RequirePerm("sourcing.view")
+  async forecast(@Query("windowDays") windowDays?: string) {
+    const days = Number(windowDays) || 30
+    const agg = await this.demand.aggregate(days)
+    return buildDemandForecast(agg, this.catalog, days)
+  }
 }
 
 @Module({
-  imports: [CrmModule, SourcingModule, OperationsFulfillmentModule],
+  imports: [CrmModule, SourcingModule, OperationsFulfillmentModule, CatalogModule],
   controllers: [
     CarePacksPublicController,
     CarePackMappingsAdminController,

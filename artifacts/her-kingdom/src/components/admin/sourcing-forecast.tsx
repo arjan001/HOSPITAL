@@ -1,8 +1,9 @@
 "use client"
 
 import { useState, useMemo, useEffect } from "react"
-import { Plus, Pencil, Trash2, TrendingUp, ArrowRight } from "lucide-react"
+import { Plus, Pencil, Trash2, TrendingUp, ArrowRight, RefreshCw, Sparkles } from "lucide-react"
 import { useCmsDoc, newId, cmsStore } from "@/lib/cms-store"
+import { apiAdminDemand } from "@/lib/api-nest"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -16,30 +17,6 @@ import {
   type InventoryItem,
 } from "./sourcing-shared"
 import type { SourcingRequest } from "./sourcing"
-
-const DEFAULT_FORECAST: ForecastEntry[] = [
-  {
-    id: "fc_para",
-    sku: "PARA-500-1000",
-    productName: "Paracetamol 500mg (1000 tab pack)",
-    windowDays: 30,
-    historicalDemand: 240,
-    projectedDemand: 280,
-    source: "trend",
-    notes: "Seasonal uplift expected.",
-    updatedAt: new Date().toISOString(),
-  },
-  {
-    id: "fc_amox",
-    sku: "AMOX-250",
-    productName: "Amoxicillin 250mg (100 caps)",
-    windowDays: 30,
-    historicalDemand: 90,
-    projectedDemand: 110,
-    source: "prescription_predict",
-    updatedAt: new Date().toISOString(),
-  },
-]
 
 function blank(): ForecastEntry {
   return {
@@ -55,9 +32,13 @@ function blank(): ForecastEntry {
 }
 
 export function SourcingForecastTab() {
-  const [entries, setEntries] = useCmsDoc<ForecastEntry[]>(SOURCING_KEYS.forecast, DEFAULT_FORECAST)
+  const [entries, setEntries] = useCmsDoc<ForecastEntry[]>(SOURCING_KEYS.forecast, [])
   const [inventory] = useCmsDoc<InventoryItem[]>(SOURCING_KEYS.inventory, [])
   const [modal, setModal] = useState<{ open: boolean; editing: ForecastEntry | null }>({ open: false, editing: null })
+  const [windowDays, setWindowDays] = useState("30")
+  const [generating, setGenerating] = useState(false)
+  const [genError, setGenError] = useState<string | null>(null)
+  const [lastGenerated, setLastGenerated] = useState<string | null>(null)
 
   const enriched = useMemo(() => entries.map((f) => {
     const inv = inventory.find((i) => i.sku === f.sku)
@@ -80,6 +61,38 @@ export function SourcingForecastTab() {
   const handleDelete = (id: string) => {
     if (!confirm("Delete this forecast entry?")) return
     setEntries((prev) => prev.filter((x) => x.id !== id))
+  }
+
+  const generateFromLiveData = async () => {
+    setGenerating(true)
+    setGenError(null)
+    try {
+      const result = await apiAdminDemand.forecast(Number(windowDays))
+      const mapped: ForecastEntry[] = result.entries.map((e) => ({
+        id: e.id,
+        sku: e.sku,
+        productName: e.productName,
+        windowDays: e.windowDays,
+        historicalDemand: e.historicalDemand,
+        projectedDemand: e.projectedDemand,
+        source: e.source,
+        notes: e.notes,
+        updatedAt: e.updatedAt,
+      }))
+      setEntries((prev) => {
+        const bySku = new Map(prev.map((p) => [p.sku, p]))
+        for (const row of mapped) {
+          const existing = bySku.get(row.sku)
+          bySku.set(row.sku, existing ? { ...existing, ...row, id: existing.id } : row)
+        }
+        return [...bySku.values()].sort((a, b) => b.projectedDemand - a.projectedDemand)
+      })
+      setLastGenerated(result.generatedAt)
+    } catch (err) {
+      setGenError(err instanceof Error ? err.message : "Could not generate forecast")
+    } finally {
+      setGenerating(false)
+    }
   }
 
   const handleCreateRequest = (f: typeof enriched[number]) => {
@@ -108,12 +121,40 @@ export function SourcingForecastTab() {
     <div className="space-y-4">
       <div className="flex items-center gap-2 flex-wrap">
         <p className="text-xs text-muted-foreground flex-1 max-w-xl">
-          Project demand for the next window per SKU. Suggested reorder = projected demand + safety stock − on-hand. Drives the procurement automation engine.
+          Project demand from confirmed orders, prescriptions, and care-pack assessments. Suggested reorder = projected + safety − on-hand.
         </p>
+        <Select value={windowDays} onValueChange={setWindowDays}>
+          <SelectTrigger className="w-[120px] h-9"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="7">7 days</SelectItem>
+            <SelectItem value="30">30 days</SelectItem>
+            <SelectItem value="90">90 days</SelectItem>
+          </SelectContent>
+        </Select>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          disabled={generating}
+          onClick={() => void generateFromLiveData()}
+          className="gap-1.5"
+        >
+          {generating ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+          Generate from live data
+        </Button>
         <Button size="sm" onClick={() => setModal({ open: true, editing: null })} className="bg-[#3D0814] hover:bg-[#6B0F1A] text-white gap-1.5">
-          <Plus className="h-3.5 w-3.5" /> Add forecast
+          <Plus className="h-3.5 w-3.5" /> Add manual
         </Button>
       </div>
+
+      {genError && (
+        <p className="text-sm text-red-600 rounded-lg border border-red-200 bg-red-50 px-3 py-2">{genError}</p>
+      )}
+      {lastGenerated && (
+        <p className="text-[11px] text-muted-foreground">
+          Last generated {new Date(lastGenerated).toLocaleString()} from orders, Rx, and assessments.
+        </p>
+      )}
 
       <div className="border border-border rounded-sm overflow-x-auto">
         <table className="w-full text-sm">
@@ -121,7 +162,7 @@ export function SourcingForecastTab() {
             <tr>
               <th className="text-left px-4 py-3 font-medium">Product</th>
               <th className="text-left px-4 py-3 font-medium">Window</th>
-              <th className="text-left px-4 py-3 font-medium">Last</th>
+              <th className="text-left px-4 py-3 font-medium">Historical</th>
               <th className="text-left px-4 py-3 font-medium">Projected</th>
               <th className="text-left px-4 py-3 font-medium">Trend</th>
               <th className="text-left px-4 py-3 font-medium">On hand</th>
@@ -147,7 +188,7 @@ export function SourcingForecastTab() {
                 </td>
                 <td className="px-4 py-3 font-mono text-xs">{f.onHand}</td>
                 <td className="px-4 py-3 font-mono text-xs font-semibold text-[#3D0814]">{f.suggested}</td>
-                <td className="px-4 py-3 text-xs text-muted-foreground capitalize hidden md:table-cell">{f.source.replace("_", " ")}</td>
+                <td className="px-4 py-3 text-xs text-muted-foreground capitalize hidden md:table-cell">{f.source.replace(/_/g, " ")}</td>
                 <td className="px-4 py-3 text-right">
                   <div className="flex justify-end gap-1">
                     <Button variant="outline" size="sm" className="h-7 text-[11px] bg-transparent gap-1" disabled={f.suggested <= 0} onClick={() => handleCreateRequest(f)}>
@@ -167,6 +208,7 @@ export function SourcingForecastTab() {
               <tr><td colSpan={9} className="px-4 py-12 text-center">
                 <TrendingUp className="h-8 w-8 mx-auto text-muted-foreground/30 mb-2" />
                 <p className="text-sm text-muted-foreground">No forecast entries yet.</p>
+                <p className="text-xs text-muted-foreground mt-1">Click &quot;Generate from live data&quot; to build projections from orders and prescriptions.</p>
               </td></tr>
             )}
           </tbody>

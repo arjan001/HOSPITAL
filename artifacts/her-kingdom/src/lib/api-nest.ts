@@ -495,6 +495,29 @@ export type DemandAggregationPayload = {
 export const apiAdminDemand = {
   aggregation: (windowDays = 30) =>
     nestFetch<DemandAggregationPayload>(`/admin/demand/aggregation?windowDays=${windowDays}`),
+  forecast: (windowDays = 30) =>
+    nestFetch<DemandForecastPayload>(`/admin/demand/forecast?windowDays=${windowDays}`),
+}
+
+export type DemandForecastPayload = {
+  windowDays: number
+  generatedAt: string
+  summary: { skuCount: number; totalProjected: number; risingSkus: number }
+  entries: Array<{
+    id: string
+    sku: string
+    productName: string
+    windowDays: number
+    historicalDemand: number
+    projectedDemand: number
+    source: "manual" | "trend" | "prescription_predict" | "refill_predict"
+    notes?: string
+    updatedAt: string
+    trendPct?: number
+    orderQty?: number
+    rxQty?: number
+    assessmentQty?: number
+  }>
 }
 
 export type ProcurementDecisionRow = {
@@ -1099,6 +1122,7 @@ export type ConsultationSummary = {
   lastMessage: string
   lastMessageAt: string | null
   prescriptionCount: number
+  doctorId?: string | null
 }
 
 export const apiChat = {

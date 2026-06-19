@@ -21,6 +21,7 @@ Think of it in four words: **fix, record, find, launch.**
 ✅ **Google partner onboarding** — new suppliers, clinics, and logistics companies can register and wait for approval  
 ✅ **Partner org sign-in fixed** — uses real company names from Clerk, not broken slugs  
 ✅ **Search & sharing upgraded** — branded social preview image, dynamic sitemap, crawler-friendly product and blog pages  
+✅ **Demand forecasting & analytics** — live SKU projections from orders, Rx, and assessments; admin analytics with real sales from Postgres  
 ✅ **Stronger KYC** — licenses and insurance captured in one place for admin review  
 ✅ **Smarter publishing** — live site starts faster so Replit stops failing healthy builds  
 ✅ **Replit database** — uses your managed Replit database automatically; no need to copy connection strings from your laptop  
@@ -65,6 +66,47 @@ We audited how Google, Bing, and AI crawlers discover and understand the storefr
 **Still a SPA (honest note):** The storefront is a modern single-page app. Prerender and structured data close most of the gap, but full server-side rendering would be the next level if we want every crawler to see 100% of content on first fetch.
 
 **After you publish:** Submit `https://shaniidrx.co.ke/sitemap.xml` in [Google Search Console](https://search.google.com/search-console) and run Lighthouse on the live homepage.
+
+---
+
+### Demand forecasting & admin analytics
+
+We closed the gap between “traffic charts work” and “sales and procurement numbers are real.”
+
+**Demand forecasting (Sourcing → Forecast)**
+
+| Capability | What it does |
+|------------|--------------|
+| **Live data generation** | One click builds SKU-level forecasts from confirmed orders, verified prescriptions, and care-pack assessments |
+| **Trend projection** | Compares current vs previous window and projects reorder quantities |
+| **Rx → SKU mapping** | Prescription drug names resolve to catalogue SKUs automatically |
+| **Reorder math** | Suggested qty = projected demand + safety stock − on-hand (when inventory is tracked) |
+| **Procurement handoff** | Create sourcing requests directly from forecast rows |
+
+API: `GET /api/v2/admin/demand/forecast?windowDays=30` (requires `sourcing.view` permission).
+
+**Admin Analytics (`/admin/analytics`) — all tabs live**
+
+| Tab | Data source |
+|-----|-------------|
+| **Overview** | Daily views + clicks trend, top pages, cities, referrers, recent visitor sessions |
+| **Live Visitors** | Real-time active count, 10-minute activity chart, city heat map, pages in view |
+| **Website Traffic** | Daily views, page retention, traffic channels, new vs returning, devices, browsers, countries, languages, UTM campaigns |
+| **Searches** | Navbar/shop search queries tracked to Postgres |
+| **Engagement** | Click totals, scroll depth, bounce rate, top clicked elements, clicks by page |
+| **Sales & Orders** | Confirmed revenue timeline, top products, category mix, recent order activity |
+| **Bot Detection** | Human vs bot split, daily bot chart, detection methods reference |
+| **Abandoned Checkouts** | Cart/checkout drop-offs with reasons, steps, and recovery count |
+
+**Production wiring:** Storefront tracking and the admin dashboard now call `/api/v2/track-*` and `/api/v2/admin/analytics` (not legacy `/api/*` paths that only worked in local dev). Admin requests include the signed admin token.
+
+API: `GET /api/v2/admin/analytics?days=30` (requires `analytics.view` permission).
+
+**Where to use it**
+
+- **Marketing / ops:** `/admin/analytics` for store performance and visitor behaviour  
+- **Procurement:** `/admin/sourcing/forecast` or Sourcing → Forecast tab for reorder planning  
+- **Demand roll-up:** `/admin/operations/demand` links through to forecast and procurement  
 
 ---
 
@@ -173,21 +215,6 @@ Your `.env.local` on Cursor stays on your laptop — it does **not** travel to R
 
 ---
 
-## Going live on Replit (simple checklist)
-
-| Item | Action needed? |
-|------|----------------|
-| Replit database | **No manual URL** — link production database in **Publishing → Production database settings** |
-| Session security (`SESSION_SECRET`) | **Yes** — add in Replit Secrets (Deployments) |
-| Sign-in (Clerk / Google) | **Yes** — Clerk keys in Replit Secrets |
-| Payments (Paystack) | **Yes** — if checkout is live |
-| Admin login | **Yes** — admin email/password or token in Secrets |
-| Google Search Console | **Recommended** — submit sitemap after publish |
-
-**Remember:** You code in Cursor and push to Replit. Replit runs its own environment. Only what you set in the Replit UI (secrets + linked database) applies to the live site.
-
----
-
 ## Done vs still to do
 
 ### ✅ Delivered this cycle
@@ -200,6 +227,8 @@ Your `.env.local` on Cursor stays on your laptop — it does **not** travel to R
 - Partner org name / Clerk session fix (no more false “organization required” errors)  
 - Admin link removed from partner portal login screens  
 - **SEO:** branded OG image, dynamic sitemap, prerender for key routes, Product/Blog/FAQ schema, robots.txt cleanup  
+- **Demand forecasting:** live SKU projections from orders, Rx, and assessments; forecast API + Sourcing UI  
+- **Admin analytics:** all 8 dashboard tabs wired to `/api/v2` with live Postgres data, sales top products, refresh control, and production-safe tracking ingest  
 - Replit publish startup fix (fast health response)  
 - Auto database URL from Replit managed Postgres  
 - Auto database sync on deploy when DB is linked  
@@ -217,17 +246,8 @@ Your `.env.local` on Cursor stays on your laptop — it does **not** travel to R
 | Newsletter subscribers screen (admin) | **Fix queued** | Minor admin routing gap |
 | Admin/partner routing mix-up (`partners/admin`) | **Fix queued** | Minor |
 | Full server-side rendering (SSR) | **Phase 2** | Optional next step for maximum crawlability |
-| Demand forecasting & advanced analytics | **Phase 2** | Planned later |
+| ML-based demand forecasting | **Phase 2** | Current engine uses trend + Rx/assessment signals; ML optional later |
 
 ---
 
-## Closing note for founders
 
-Shaniid RX is moving from “it works in dev” to “it holds up in production and shows up properly online.” Partners are managed properly. Activity is recorded properly. New partners get a credible onboarding path. The storefront is easier for Google and social platforms to understand. Publishing is less fragile.
-
-The main handoff for go-live is **operational, not code**: link the production database in Replit Publishing (if not already), set **session and sign-in secrets**, publish again, then submit the sitemap to Google Search Console.
-
----
-
-*Shaniid RX — A Shaniid Group Company*  
-*Questions? Share this document with your technical lead.*

@@ -25,7 +25,7 @@ export function adminAuthHeaders(): Record<string, string> {
 }
 
 export const authedFetcher = async (url: string) => {
-  const res = await apiFetch(url)
+  const res = await apiFetch(url, { headers: adminAuthHeaders() })
   if (!res.ok) {
     const body = await res.text().catch(() => "")
     const err = new Error(`Request failed (${res.status})`) as Error & { status?: number; body?: string }

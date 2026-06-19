@@ -18,6 +18,7 @@ import { Footer } from "./footer"
 import { PaystackPaymentModal } from "./paystack-payment-modal"
 import { fetchActiveLogisticsPartners } from "@/lib/partners-directory-client"
 import { cmsStore } from "@/lib/cms-store"
+import { analyticsUrls } from "@/lib/analytics-track"
 import { apiNest, refreshAccount, type AccountOrder } from "@/lib/api-nest"
 import { useCart } from "@/lib/cart-context"
 import { formatPrice } from "@/lib/format"
@@ -704,7 +705,7 @@ export function CheckoutPage() {
   useEffect(() => {
     if (!orderResult) return
     const sid = typeof window !== "undefined" ? sessionStorage.getItem("kf_sid") : null
-    if (sid) fetch("/api/track-abandoned", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sessionId: sid }) }).catch(() => {})
+    if (sid) fetch(analyticsUrls.trackAbandoned, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sessionId: sid }) }).catch(() => {})
     if (typeof window !== "undefined") {
       try {
         localStorage.removeItem(DRAFT_KEY)
@@ -750,7 +751,7 @@ export function CheckoutPage() {
     if (items.length === 0) return
     const sid = typeof window !== "undefined" ? sessionStorage.getItem("kf_sid") : null
     if (!sid) return
-    fetch("/api/track-abandoned", { method: "POST", headers: { "Content-Type": "application/json" },
+    fetch(analyticsUrls.trackAbandoned, { method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ sessionId: sid, customerName: formData.name, customerPhone: formData.phone, items: items.map(i => ({ name: i.product.name, qty: i.quantity, price: i.product.price })), subtotal: totalPrice, stepReached: step, reason }) }).catch(() => {})
   }
 

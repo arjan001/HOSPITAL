@@ -19,7 +19,7 @@ import {
 import type { Request } from "express"
 import { and, desc, eq } from "drizzle-orm"
 import { db, analyticsEvents } from "@workspace/db"
-import { buildAnalytics, buildRealtime, geoFromHeaders, hostOf, isBotUA, parseUserAgent } from "../common/analytics"
+import { buildAnalytics, buildRealtime, geoFromHeaders, hostOf, isBotUA, parseUserAgent, searchTermFromReferrer } from "../common/analytics"
 import { AdminGuard, AnyAdmin, RequirePerm } from "../common/admin-guard"
 
 function newId(): string {
@@ -33,6 +33,7 @@ export class AnalyticsIngestService {
     const { device, browser, os } = parseUserAgent(ua)
     const geo = geoFromHeaders(req)
     const referrer = String(body.referrer || "")
+    const searchTerm = searchTermFromReferrer(referrer)
     await db.insert(analyticsEvents).values({
       id: newId(),
       kind: "view",
@@ -41,6 +42,7 @@ export class AnalyticsIngestService {
       path: String(body.path || "").slice(0, 512),
       referrer: referrer.slice(0, 512),
       referrerHost: hostOf(referrer),
+      searchTerm,
       isBot: Boolean(body.isBot) || isBotUA(ua),
       isReturning: Boolean(body.isReturning),
       device,
@@ -167,6 +169,9 @@ class TrackViewController {
 
   @Post()
   post(@Req() req: Request, @Body() body: Record<string, unknown>) {
+    if (body?._update || body?.duration != null || body?.scrollDepth != null) {
+      return this.svc.updateView(body ?? {})
+    }
     return this.svc.trackView(req, body ?? {})
   }
 

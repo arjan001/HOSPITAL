@@ -17,6 +17,7 @@ import { CartDrawer } from "./cart-drawer"
 import useSWR from "swr"
 import { safeFetcher, asArray } from "@/lib/fetcher"
 import { useStoreContact } from "@/hooks/use-store-contact"
+import { analyticsUrls } from "@/lib/analytics-track"
 
 function formatPrice(price: number): string {
   return `KSh ${price.toLocaleString()}`
@@ -37,7 +38,7 @@ function trackSearch(query: string, action: "submit" | "suggestion_click", sugge
   const normalised = query.trim().toLowerCase().slice(0, 80)
   if (!normalised) return
   try {
-    fetch("/api/track-event", {
+    fetch(analyticsUrls.trackEvent, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({

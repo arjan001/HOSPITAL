@@ -125,7 +125,7 @@ function ConsultationDetail({ consultation }: { consultation: ConsultationSummar
   const drugs = useMemo(() => rxDrugsFromMessages(msgs), [msgs])
   const apiBase = (import.meta.env.BASE_URL || "/").replace(/\/$/, "")
   const live = isLive(consultation)
-  const { data: doctorList } = useAdminDoctors()
+  const { records: doctorList } = useAdminDoctors()
   const [assignSaving, setAssignSaving] = useState(false)
 
   async function handleAssignDoctor(doctorId: string | null) {

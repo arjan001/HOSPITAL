@@ -297,7 +297,7 @@ export function PartnerPortalPanel({ type }: { type: PartnerType }) {
                   <td className="py-3 px-5 hidden lg:table-cell text-gray-500">{fmt(acc.lastLoginAt)}</td>
                   <td className="py-3 px-5 hidden lg:table-cell text-gray-500">{fmt(acc.createdAt)}</td>
                   <td className="py-3 px-5 text-right">
-                    {acc.status !== "invited" && acc.status !== "pending" && (
+                    {acc.status !== "invited" && (
                       <Button
                         size="sm"
                         variant="outline"

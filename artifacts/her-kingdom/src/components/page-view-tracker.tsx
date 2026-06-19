@@ -1,5 +1,6 @@
 import { useEffect, useRef, useCallback } from "react"
 import { useLocation } from "wouter"
+import { analyticsUrls } from "@/lib/analytics-track"
 
 function getSessionId() {
   if (typeof window === "undefined") return ""
@@ -60,8 +61,8 @@ export function PageViewTracker() {
     const duration = Math.round((Date.now() - pageEnterTime.current) / 1000)
     if (duration < 1) return
     const payload = JSON.stringify({ path: lastTracked.current, sessionId: getSessionId(), duration, scrollDepth: maxScrollDepth.current, _update: true })
-    if (navigator.sendBeacon) navigator.sendBeacon("/api/track-view", new Blob([payload], { type: "application/json" }))
-    else fetch("/api/track-view", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: payload, keepalive: true }).catch(() => {})
+    if (navigator.sendBeacon) navigator.sendBeacon(analyticsUrls.trackView, new Blob([payload], { type: "application/json" }))
+    else fetch(analyticsUrls.trackView, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: payload, keepalive: true }).catch(() => {})
   }, [])
 
   useEffect(() => {
@@ -95,8 +96,8 @@ export function PageViewTracker() {
           sessionId: getSessionId(),
           visitorId: getVisitorId(),
         })
-        if (navigator.sendBeacon) navigator.sendBeacon("/api/track-event", new Blob([payload], { type: "application/json" }))
-        else fetch("/api/track-event", { method: "POST", headers: { "Content-Type": "application/json" }, body: payload, keepalive: true }).catch(() => {})
+        if (navigator.sendBeacon) navigator.sendBeacon(analyticsUrls.trackEvent, new Blob([payload], { type: "application/json" }))
+        else fetch(analyticsUrls.trackEvent, { method: "POST", headers: { "Content-Type": "application/json" }, body: payload, keepalive: true }).catch(() => {})
       } catch { /* never let tracking break a click */ }
     }
     document.addEventListener("click", onClick, { capture: true })
@@ -124,7 +125,7 @@ export function PageViewTracker() {
     const visitorId = getVisitorId()
     const timeout = setTimeout(async () => {
       try {
-        await fetch("/api/track-view", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ path: pathname, referrer: document.referrer || "", sessionId: getSessionId(), visitorId, isBot: isBot.current, isReturning: returning, screenWidth: window.innerWidth, screenHeight: window.innerHeight, language: navigator.language || "", utmSource: utmParams.utm_source || "", utmMedium: utmParams.utm_medium || "", utmCampaign: utmParams.utm_campaign || "" }) })
+        await fetch(analyticsUrls.trackView, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ path: pathname, referrer: document.referrer || "", sessionId: getSessionId(), visitorId, isBot: isBot.current, isReturning: returning, screenWidth: window.innerWidth, screenHeight: window.innerHeight, language: navigator.language || "", utmSource: utmParams.utm_source || "", utmMedium: utmParams.utm_medium || "", utmCampaign: utmParams.utm_campaign || "" }) })
       } catch { /* silently fail */ }
     }, 500)
     return () => clearTimeout(timeout)

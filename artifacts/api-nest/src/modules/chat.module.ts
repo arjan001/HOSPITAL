@@ -121,6 +121,7 @@ export type ConsultationSummary = {
   lastMessage: string
   lastMessageAt: string | null
   prescriptionCount: number
+  doctorId?: string | null
 }
 
 type StreamEvent =
@@ -694,6 +695,7 @@ class ChatService {
         lastMessage: a?.last?.text ?? "",
         lastMessageAt: a?.last ? a.last.createdAt.toISOString() : null,
         prescriptionCount: rxCount.get(r.id) ?? 0,
+        doctorId: r.doctorId ?? null,
       }
     })
   }

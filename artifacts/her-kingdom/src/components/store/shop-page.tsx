@@ -28,6 +28,7 @@ import { QuickViewProvider } from "@/lib/quick-view-context"
 import { QuickViewModal } from "./quick-view-modal"
 import type { Product, Category } from "@/lib/types"
 import { useCategories } from "@/components/admin/categories"
+import { analyticsUrls } from "@/lib/analytics-track"
 import { Slider } from "@/components/ui/slider"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
@@ -386,7 +387,7 @@ export function ShopPage({ seoIntro }: { seoIntro?: ReactNode } = {}) {
     if (sessionStorage.getItem(key)) return
     sessionStorage.setItem(key, "1")
     const sid = sessionStorage.getItem("kf_sid") || ""
-    fetch("/api/track-event", {
+    fetch(analyticsUrls.trackEvent, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
