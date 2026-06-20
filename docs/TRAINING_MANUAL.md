@@ -374,33 +374,43 @@ After signing in at `/portal/logistics`:
 
 ---
 
-## 8. Roles & access (current + planned)
+## 8. Roles & access
 
-### Today (May 2026)
+### Storefront customer
 
-| Role | Access | Auth method |
-| ---- | ------ | ----------- |
-| Customer | Storefront — browse, buy, manage own orders + prescriptions. | Clerk (email / username / Google) |
-| Admin / operator | Full admin access at `/admin`. | Email + password at `/admin/auth/login` → token sent as `x-admin-token` (validated by `AdminGuard` against `ADMIN_API_TOKEN`). In production an unset token closes every admin route; dev allows a fallback token. Single `super_admin` role today; finer roles next. |
-| Supplier partner | Self-service portal at `/portal/supplier`. | Email + `SUP-XXXX-XXXX` portal code |
-| Clinic partner | Self-service portal at `/portal/clinic`. | Email + `CLN-XXXX-XXXX` portal code |
-| Logistics partner | Self-service portal at `/portal/logistics`. | Email + `LOG-XXXX-XXXX` portal code |
+| Role | Access | Auth |
+| ---- | ------ | ---- |
+| Customer | Browse, buy, account area, prescriptions | **Clerk** — email, username, or Google at `/account/login` |
 
-### Phase 2 plan (next release)
+Guest checkout does not require sign-in.
 
-Admin roles enforced by NestJS middleware:
+### Admin / operator
 
-| Role | Scope |
-| ---- | ----- |
-| `admin` | Everything. |
-| `pharmacist` | Orders, prescriptions, inventory. |
-| `doctor` | Own consultations, prescription approvals, sticky notes on assigned patients. |
-| `customer` | Default for new Clerk sign-ups. |
-| `supplier` | JWT from partner auth endpoint — own products and POs. |
-| `clinic` | JWT from partner auth endpoint — own orders and credit. |
-| `logistics` | JWT from partner auth endpoint — own deliveries and fleet. |
+| Role | Access | Auth |
+| ---- | ------ | ---- |
+| Super admin | Full `/admin` (wildcard `*` permission) | `POST /api/v2/admin/auth/login` → `x-admin-token` on every call |
+| Scoped admin | Modules granted in Roles screen (e.g. `analytics.view`, `sourcing.view`) | Same token; `AdminGuard` checks live Postgres permissions |
+| Ops master key | Emergency full access | `ADMIN_API_TOKEN` env (same header) |
 
-Roles will be assigned from `/admin/system/users` and enforced by middleware in `api-nest`.
+Production **fails closed** if admin auth is not configured. See `docs/ARCHITECTURE.md` §4.2.
+
+### B2B partners (supplier, clinic, logistics)
+
+| Portal | Auth paths | Notes |
+| ------ | ---------- | ----- |
+| `/portal/supplier` | **Clerk org + Google** (primary) **or** email + password after admin invite | Self-signup → pending approval → `clerk-session` |
+| `/portal/clinic` | Same | Credit orders scoped to `partnerId` |
+| `/portal/logistics` | Same | Courier roles: `rider`, `dispatcher` |
+
+Partners use **Clerk Organizations** for team sign-in — not the customer Clerk account. After approval, the server issues a **partner token** cookie (`shaniidrx_partner_token`) valid for 30 days.
+
+**Important:** Company name comes from the onboarding form or Clerk org **name**, not the org slug.
+
+### Phase 2 (planned)
+
+- Clerk SSO for admin panel (replace token login)
+- Bind customer `sessionId` to Clerk user id on api-nest
+- Doctor panel JWT (`/doctor/*`) — separate from partner tokens
 
 ---
 
@@ -426,19 +436,61 @@ UI is hidden by default. Set `VITE_ENABLE_CARD_PAYMENTS=true` on the storefront 
 
 ---
 
-## 10. Authentication — Clerk
+## 10. Authentication
 
-The storefront uses **Clerk** for customer auth. ClerkProvider wraps the app in `App.tsx`. Routes:
+Shaniid RX uses **four separate auth systems**. They do not share login state.
 
-- `/sign-in/*?` and `/sign-up/*?` — Clerk-hosted UIs (branded with our palette).
-- `/account/login`, `/account/register` — our branded forms. Legacy `/account/verify-phone` and `/account/email-verified` redirect into Clerk.
+### 10.1 Customers — Clerk (storefront)
+
+ClerkProvider wraps the app in `App.tsx`.
+
+- `/sign-in/*?`, `/sign-up/*?` — Clerk-hosted UIs (branded).
+- `/account/login`, `/account/register` — branded forms; **email OR username** + password.
 - `/account/*` (dashboard, settings) — protected via `<ProtectedAccount>`.
+- Google OAuth → `/account/sso-callback`.
+- **Not protected:** `/checkout` (guest checkout allowed).
 
-**Username support:** `/account/login` accepts username OR email as the identifier (the same form handles both — type whatever the user remembers). Username sign-up must be enabled in your Clerk instance.
+Server: `clerkMiddleware()` on api-server proxies Clerk for the SDK. Customer Nest APIs still use the guest `shaniidrx_sid` cookie for data isolation until Phase 2 wires Clerk user id.
 
-**Google sign-in** is wired and works out of the box once you enable the Google OAuth provider in your Clerk dashboard.
+### 10.2 Admins — token + RBAC
 
-**Partner portals are completely separate from Clerk.** Partners use their email + portal code only. They never interact with the Clerk flow.
+1. Sign in at `/admin/login` → `POST /api/v2/admin/auth/login`.
+2. Store returned token; every admin API sends `x-admin-token`.
+3. Permissions enforced per route (`analytics.view`, `orders.manage`, etc.) from Postgres.
+4. Super-admin and `ADMIN_API_TOKEN` ops key have full access.
+
+See `docs/ARCHITECTURE.md` §4.2.
+
+### 10.3 Partners — Clerk Organizations + partner token
+
+Partner portals (`/portal/supplier`, `/portal/clinic`, `/portal/logistics`) use **their own Clerk flow** — not the customer account.
+
+**Self-service (Google sign-up)**
+
+1. Partner signs in with Google on the portal page (Clerk).
+2. Completes onboarding modal (company name, KYC checklist).
+3. `POST /partners/:type/register-org` — status **pending** until admin approves.
+4. After approval: `POST /partners/:type/clerk-session` → partner token cookie → full portal.
+
+**Invite flow**
+
+1. Admin sends invite from partner admin panel.
+2. Partner sets password via email link (`/partners/accept`).
+3. Signs in with email + password (`/partners/:type/auth`).
+
+**Team members:** owners/admins invite employees via `/partners/:type/members/invite` (Clerk org invitations).
+
+**Rules trainers should know**
+
+- Never use Clerk **org slug** as the legal company name — use org name or onboarding form.
+- Pending partners see “awaiting approval”; they cannot access catalog/orders until active.
+- `CLERK_SECRET_KEY` on the server must match the storefront Clerk app or `clerk-session` fails.
+
+See `docs/ARCHITECTURE.md` §4.3 and `docs/API_DOCUMENTATION.md` §1.3.
+
+### 10.4 Guest session
+
+Anonymous shoppers get a signed `shaniidrx_sid` cookie for wishlist/cart correlation — not proof of identity.
 
 ---
 

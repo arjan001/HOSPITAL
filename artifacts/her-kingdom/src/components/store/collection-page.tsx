@@ -16,6 +16,7 @@ import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
 import { Button } from "@/components/ui/button"
 import useSWR from "swr"
 import { safeFetcher, asArray } from "@/lib/fetcher"
+import { CATALOG_PRODUCTS, CATALOG_CATEGORIES } from "@/lib/catalog-api"
 import { Seo, organizationJsonLd, websiteJsonLd, breadcrumbJsonLd, faqJsonLd, productJsonLd } from "@/components/seo"
 
 function formatPrice(price: number): string {
@@ -85,8 +86,8 @@ function FilterSidebar({
 
 export function CollectionPage({ collection }: { collection: string }) {
   const info = COLLECTION_INFO[collection]
-  const { data: allProductsData } = useSWR<Product[]>("/api/products", safeFetcher)
-  const { data: categoriesData } = useSWR<Category[]>("/api/categories", safeFetcher)
+  const { data: allProductsData } = useSWR<Product[]>(CATALOG_PRODUCTS, safeFetcher)
+  const { data: categoriesData } = useSWR<Category[]>(CATALOG_CATEGORIES, safeFetcher)
   const allProducts = asArray<Product>(allProductsData)
   const categories = asArray<Category>(categoriesData)
 

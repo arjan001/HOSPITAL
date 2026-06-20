@@ -112,10 +112,10 @@ export type SiteData = {
 }
 
 export const apiExpress = {
-  /* Catalog */
-  products: () => api<Product[]>("/products"),
-  product: (slug: string) => api<Product>(`/products/${encodeURIComponent(slug)}`),
-  categories: () => api<Category[]>("/categories"),
+  /* Catalog — api-nest v2 (not legacy api-server /api/products) */
+  products: () => api<Product[]>("/api/v2/products"),
+  product: (slug: string) => api<Product>(`/api/v2/products/${encodeURIComponent(slug)}`),
+  categories: () => api<Category[]>("/api/v2/categories"),
   heroBanners: () => api<HeroBanner[]>("/hero-banners"),
   siteData: () => api<SiteData>("/site-data"),
   deliveryLocations: () => api<DeliveryLocation[]>("/delivery-locations"),

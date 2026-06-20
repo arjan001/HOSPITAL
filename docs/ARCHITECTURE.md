@@ -1,7 +1,7 @@
 # Shaniid RX — System Architecture
 
 > **Source of truth.** This document describes every service, module, data flow,
-> auth strategy, and integration in the platform as of May 2026.  
+> auth strategy, and integration in the platform as of **June 2026**.  
 > Keep it in sync whenever a new module ships or a service boundary changes.
 
 ---
@@ -11,8 +11,8 @@
 1. [High-Level Overview](#1-high-level-overview)
 2. [Service Map](#2-service-map)
 3. [Request Routing](#3-request-routing)
-4. [Authentication Flow](#4-authentication-flow)
-5. [Session Model](#5-session-model)
+4. [Authentication & Authorization](#4-authentication--authorization)
+5. [Session & Token Model](#5-session--token-model)
 6. [Payment Flow — Paystack M-Pesa](#6-payment-flow--paystack-m-pesa)
 7. [CMS Persistence Layer](#7-cms-persistence-layer)
 8. [Module Inventory](#8-module-inventory)
@@ -122,90 +122,266 @@ Clerk responds → cookie set on first-party domain → browser
 
 ---
 
-## 4. Authentication Flow
+## 4. Authentication & Authorization
 
-Shaniid RX uses **Clerk** for customer authentication (shipped May 2026).
-
-### Sign-in paths
-
-```
-Path A — Email / Password
-─────────────────────────
-  1. User visits /account/login
-  2. login.tsx calls signIn.create({ identifier, password })
-     • identifier = email address OR username (Clerk native)
-  3. status === "complete"  →  setActive({ session })  →  /user
-  4. status !== "complete"  →  prompt user to verify email
-
-Path B — Google OAuth
-──────────────────────
-  1. User clicks Google button
-  2. signIn.authenticateWithRedirect({ strategy: "oauth_google",
-       redirectUrl: "/account/sso-callback" })
-  3. Browser → accounts.google.com → consent → Clerk
-  4. Clerk → /account/sso-callback
-  5. SsoCallbackPage renders <AuthenticateWithRedirectCallback>
-  6. Session finalised → /user
-
-Path C — Password Reset
-────────────────────────
-  1. User clicks "Forgot Password"
-  2. signIn.create({ strategy: "reset_password_email_code",
-       identifier: email })
-  3. Clerk emails 6-digit OTP
-  4. User enters code + new password
-  5. signIn.attemptFirstFactor({ strategy: "reset_password_email_code",
-       code, password })
-  6. status === "complete"  →  setActive  →  /user
-```
-
-### Protected routes
+Shaniid RX runs **four separate identity lanes**. They do not share cookies or
+tokens — a route declares which lane it expects via Nest guards and controller
+conventions.
 
 ```
-/account           → ProtectedAccount wrapper (redirect to /account/login if signed out)
-/account/dashboard → ProtectedAccount
-/account/settings  → ProtectedAccount
-/account/prescriptions → ProtectedAccount
-/dashboard         → ProtectedAccount
-/user              → ProtectedAccount
-/checkout          → NOT protected (guest checkout is intentional)
-/admin/*           → Currently no server-side guard (TBD with Phase 2 roles)
+┌─────────────────────────────────────────────────────────────────────────┐
+│                         Identity lanes (June 2026)                     │
+├──────────────┬──────────────────┬─────────────────────────────────────────┤
+│ Lane         │ Who              │ Mechanism                               │
+├──────────────┼──────────────────┼─────────────────────────────────────────┤
+│ Guest/customer│ Storefront shopper│ Signed `shaniidrx_sid` cookie          │
+│ Customer     │ Account area     │ Clerk JWT (browser) + same sid for API  │
+│ Admin        │ `/admin` panel   │ `AdminGuard` — signed admin token       │
+│ Partner      │ `/portal/*`      │ Partner token cookie **or** Clerk org   │
+└──────────────┴──────────────────┴─────────────────────────────────────────┘
 ```
 
-### Clerk session on the backend
-
-- `clerkMiddleware()` is mounted in `api-server/src/app.ts`.
-- Every request to `/api` carries the Clerk JWT cookie.
-- `requireAdmin` in `middlewares/admin-auth.ts` is currently a pass-through
-  (hardcoded super-admin) — real RBAC comes with the NestJS Roles module.
+Implementation lives primarily in **api-nest** (`/api/v2`). The legacy
+**api-server** still proxies Clerk for the storefront SDK (`/api/__clerk/*`).
 
 ---
 
-## 5. Session Model
+### 4.1 Customer auth — Clerk (storefront)
 
-The NestJS backend uses a **cookie-based guest session** today, ready to swap
-to Clerk JWT with a one-line change.
+**Scope:** Branded account area (`/account/*`, `/upload-prescription`, etc.).
+
+**Front-end (`artifacts/her-kingdom`)**
+
+- `<ClerkProvider>` wraps the SPA in `App.tsx`.
+- Sign-in paths:
+  - `/account/login`, `/account/register` — branded forms (email **or** username + password).
+  - `/sign-in`, `/sign-up` — Clerk-hosted fallbacks.
+  - Google OAuth → `/account/sso-callback` → `<AuthenticateWithRedirectCallback>`.
+- `<ProtectedAccount>` redirects unsigned visitors to `/account/login?redirect=…`
+  (open-redirect safe via `src/lib/auth-redirect.ts`).
+- `/checkout` stays **public** — guest checkout is intentional.
+
+**Back-end**
+
+- `clerkMiddleware()` on **api-server** forwards Clerk session cookies for the SDK.
+- Customer-facing Nest modules still scope data with `req.sessionId` from
+  `SessionMiddleware` (§5). Wiring `sessionId = clerkUserId` is Phase 2.
+
+**Sign-in flow (email/password)**
 
 ```
-Request → SessionMiddleware (app.module.ts, applied to all routes)
-  │
-  ├── Cookie "shaniidrx_sid" present? ──YES──→ use as sessionId
-  │
-  └── NO ──→ generate randomUUID()
-              set httpOnly cookie (1 year, sameSite: lax, secure in prod)
-              req.sessionId = uuid
-  │
-  ▼
-Controller reads req.sessionId
-Service reads/writes InMemoryRepository<T> scoped to that sessionId
+/account/login
+  → signIn.create({ identifier, password })
+  → status === "complete" → setActive({ session }) → redirect
+  → else → verify email / complete factors
 ```
 
-**Migration to Clerk (Phase 2):**  
-Replace the cookie read in `session.middleware.ts` with:
-```ts
-req.sessionId = verifyClerkJwt(req.headers.authorization).sub
+**Sign-in flow (Google OAuth)**
+
 ```
-Controllers and services don't change — they only ever read `req.sessionId`.
+Google button → authenticateWithRedirect(oauth_google)
+  → accounts.google.com → Clerk → /account/sso-callback
+  → session finalised → protected route
+```
+
+---
+
+### 4.2 Admin auth — `AdminGuard` + Postgres RBAC
+
+**Scope:** Every `/api/v2/admin/*` route and the admin SPA at `/admin/*`.
+
+**Login**
+
+```
+POST /api/v2/admin/auth/login  { email, password }
+  → validates admin_users (or env ADMIN_EMAIL / ADMIN_PASSWORD bootstrap)
+  → returns { token, role, name, email, permissions }
+  → client stores token in localStorage (shaniidrx.admin.token)
+  → sends x-admin-token on every admin API call
+```
+
+**`AdminGuard`** (`src/common/admin-guard.ts`) accepts, in order:
+
+1. **`ADMIN_API_TOKEN`** (ops master key) in `x-admin-token` or `Authorization: Bearer` — full super-admin.
+2. **Signed per-user token** from login — verified with `verifyAdminToken()`, then the **live** `admin_users` row is loaded from Postgres (deactivated admins lose access immediately).
+3. **HttpOnly cookie** `shaniidrx_admin_token` — **GET/HEAD only** (SSE streams, `<img>` loads); mutating routes still require the header.
+
+**Permission model**
+
+- `@RequirePerm("analytics.view")` — route needs one of the listed permissions.
+- `@AnyAdmin()` — any authenticated active admin (shared CMS, notifications).
+- Unannotated admin routes → **super-admin only** (fail-closed default).
+
+**Production behaviour**
+
+- If `ADMIN_API_TOKEN` is unset and `NODE_ENV=production` → **503** (fail closed).
+- Dev allows a fallback token when no secret is configured (`ADMIN_REQUIRE_TOKEN=1` forces closed locally).
+
+**Phase 2:** Replace token login with Clerk admin SSO; guard shape stays the same.
+
+---
+
+### 4.3 Partner auth — dual path (password **or** Clerk Organizations)
+
+**Scope:** Supplier, clinic, and logistics portals (`/portal/supplier`, `/portal/clinic`, `/portal/logistics`).
+
+Partners never use the customer Clerk session for portal API calls. Instead, the
+backend issues a **scoped partner session** after verifying identity.
+
+#### Path A — Email + password (legacy invite flow)
+
+```
+POST /api/v2/partners/:type/auth  { email, password }
+  → scrypt verify against partner_accounts.password_hash
+  → account.status must be "active"
+  → issue signed partner token + Set-Cookie: shaniidrx_partner_token
+```
+
+Also accepts `{ email, portalCode }` where `portalCode` is the legacy field name for password.
+
+#### Path B — Clerk Organization (Google sign-up — **shipped June 2026**)
+
+This is the primary self-service onboarding path for new B2B partners.
+
+**Front-end** (`partner-portal-auth.tsx`)
+
+1. Partner signs in with Google (or email) via Clerk on the portal screen.
+2. If no Clerk org exists → **Partner onboarding modal** collects company profile + KYC checklist.
+3. Client calls `POST /api/v2/partners/:type/register-org` with:
+   - `Authorization: Bearer <Clerk session JWT>` (must include **org context** when org already exists).
+   - `orgName` / `name` / profile fields (`companyName`, `clinicName`, …).
+4. Server creates `partner_directory` row with `status: pending` → user sees “awaiting approval”.
+5. After admin approves → `POST /api/v2/partners/:type/clerk-session` exchanges Clerk JWT for partner token → full portal access.
+
+**Org name resolution (fixes “Organization name is required”)**
+
+The API resolves the company name in this order — **never uses Clerk org slug as the legal name**:
+
+1. Request body `orgName` or `name`
+2. Profile fields (`companyName`, `clinicName`, `logisticsName`, …)
+3. Clerk Organizations API lookup via `getClerkOrganization(orgId)` when JWT has `org_id` but client omitted the name
+
+**Back-end** (`PartnersModule` + `PartnerOrgService`)
+
+| Step | Code | What happens |
+|------|------|--------------|
+| Verify JWT | `verifyClerkBearer()` in `clerk-auth.ts` | Validates Clerk session; extracts `sub`, email, `org_id`, `org_role`, `publicMetadata` |
+| Register org | `PartnerOrgService.registerOrganization()` | Creates Clerk org if needed; inserts `partner_directory`, `partner_members`, optional `partner_accounts`; sets user `publicMetadata` (`partnerType`, `partnerId`, `clerkOrgId`) |
+| Resolve tenant | `PartnerOrgService.resolveFromClerk()` | Maps `clerkOrgId` → directory row; enforces `status === active`; syncs `partner_members` |
+| Issue session | `PartnerAuthService.clerkSession()` | Same partner token cookie as password login |
+
+**Partner token** (`src/common/partner-token.ts`)
+
+- Format: `base64url(JSON{pid, partnerType, partnerId, exp}).HMAC-SHA256`
+- Signed with `SESSION_SECRET` (survives restarts; works across instances).
+- Cookie: `shaniidrx_partner_token` (httpOnly, sameSite=lax, 30 days).
+- Header fallback: `x-partner-token` or `Authorization: Bearer`.
+- Every portal query scopes to `partnerId` from verified claims (**BOLA protection**).
+
+**`requirePartner()` resolution order**
+
+1. Valid partner token → load `partner_accounts` by `pid`; check `status === active`.
+2. Else valid Clerk bearer with org → `resolveFromClerk()` → provision/sync account.
+3. Else legacy email lookup (non-org accounts).
+
+**Member roles** (`partner_members.role`)
+
+| Role | Capabilities |
+|------|----------------|
+| `owner`, `admin` | Manage team, invite members, full portal data |
+| `member` | Standard portal user |
+| `rider`, `dispatcher` | Logistics courier views |
+
+Clerk org roles map: `org:admin` → `admin`, `org:member` → `member`.
+
+**Admin provisioning (parallel paths)**
+
+| Flow | Endpoint | Result |
+|------|----------|--------|
+| Self-signup application | `POST /partners/apply` | Queues `partner_applications` (no Clerk required) |
+| Admin invite | `POST /partners/admin/invite` | Email accept link → `POST /partners/accept` sets password |
+| Clerk org registration | `POST /partners/:type/register-org` | Pending directory row until admin approves |
+
+---
+
+### 4.4 Guest session (storefront data isolation)
+
+See §5. Not authentication — scopes wishlist, cart-adjacent state, and anonymous
+analytics to a browser session until Clerk identity is wired into Nest.
+
+---
+
+### 4.5 Protected routes (front-end)
+
+| Route pattern | Guard |
+|---------------|-------|
+| `/account/*`, `/upload-prescription`, `/dashboard`, `/user` | `<ProtectedAccount>` (Clerk) |
+| `/admin/*` | Admin login page; API calls need admin token |
+| `/portal/supplier`, `/portal/clinic`, `/portal/logistics` | Partner token or Clerk → `clerk-session` exchange |
+| `/checkout` | Public (guest checkout) |
+| Storefront catalog, blog, FAQ | Public |
+
+---
+
+### 4.6 Key source files
+
+| File | Purpose |
+|------|---------|
+| `api-nest/src/common/admin-guard.ts` | Admin token + RBAC |
+| `api-nest/src/common/admin-token.ts` | Signed admin JWT-like token |
+| `api-nest/src/common/clerk-auth.ts` | Clerk bearer verification for partners |
+| `api-nest/src/common/clerk-partner-org.ts` | Clerk Organizations API helpers |
+| `api-nest/src/common/partner-token.ts` | Signed partner session token |
+| `api-nest/src/modules/partners.module.ts` | Portal auth controllers + `requirePartner` |
+| `api-nest/src/modules/partner-org.service.ts` | Org registration, member sync, tenancy |
+| `her-kingdom/src/components/portal/partner-portal-auth.tsx` | Clerk + Google portal UI |
+| `her-kingdom/src/lib/partners-client.ts` | `partnerRegisterOrg`, `partnerClerkSession` |
+| `her-kingdom/src/lib/api-client.ts` | `adminAuthHeaders()` for admin API |
+
+---
+
+### 4.7 Required environment variables (auth)
+
+| Variable | Service | Purpose |
+|----------|---------|---------|
+| `VITE_CLERK_PUBLISHABLE_KEY` | storefront | Clerk browser SDK |
+| `CLERK_SECRET_KEY` | api-nest (+ api-server proxy) | Verify partner JWTs; Clerk org API |
+| `SESSION_SECRET` | api-nest | Sign `shaniidrx_sid`, partner tokens, admin cookies |
+| `ADMIN_API_TOKEN` | api-nest | Ops master key; production admin gate |
+| `ADMIN_EMAIL` / `ADMIN_PASSWORD` | api-nest | Bootstrap admin login (until full Postgres admin roster) |
+| `CLERK_ORG_CREATOR_USER_ID` | api-nest | Optional — internal org auto-provision bootstrap |
+
+`CLERK_SECRET_KEY` and `VITE_CLERK_PUBLISHABLE_KEY` **must** belong to the **same** Clerk application or partner `clerk-session` returns 401.
+
+---
+
+## 5. Session & Token Model
+
+Three persisted credentials coexist in the browser. They are independent.
+
+### Guest session — `shaniidrx_sid`
+
+```
+Request → SessionMiddleware
+  ├── Signed cookie present? → req.sessionId = verified UUID
+  └── Else → new UUID, Set-Cookie (httpOnly, sameSite=lax, 1 year)
+```
+
+Used by: wishlist, addresses, orders (guest), prescriptions upload, chat thread,
+analytics correlation. **Not proof of human identity.**
+
+**Phase 2:** Replace cookie read with `req.sessionId = clerkUserId` from JWT;
+controllers unchanged.
+
+### Partner session — `shaniidrx_partner_token`
+
+Stateless HMAC token (see §4.3). Issued after password login or Clerk session
+exchange. Cleared on `POST /partners/:type/signout`.
+
+### Admin session — token + optional cookie
+
+- Primary: `x-admin-token` header from `localStorage` after `/admin/auth/login`.
+- Secondary: `shaniidrx_admin_token` HttpOnly cookie for read-only browser loads.
 
 ---
 
@@ -293,12 +469,13 @@ implementation against the `admin_cms` table. No client changes needed.
 
 > Routes verified against `@Controller`/method decorators. Guard legend: **session** = signed `shaniidrx_sid` cookie (`SessionMiddleware`); **admin** = `AdminGuard` (`x-admin-token` / Bearer); **public** = `@Public()`. See `docs/API_DOCUMENTATION.md` §1–§2 for full detail.
 
-#### Authentication
+#### Authentication & partners
 
-| Module | Controller | Routes | Guard | Description |
+| Module | Controller | Key routes | Guard | Description |
 |---|---|---|---|---|
-| `AdminAuthModule` | `AdminAuthController` | `POST /admin/auth/login`, `POST /admin/auth/forgot-password`, `GET /admin/auth/me` | public / public / token | Admin email+password login → issues the admin token |
-| `PartnersModule` | `PartnerWelcome` + `PartnersController` | `POST /partners/welcome`, `POST /partners/:type/auth`, `POST /partners/:type/signout`, `GET/POST /partners/:type/orders` | public / session | Server-side supplier/clinic/logistics portal auth + actions |
+| `AdminAuthModule` | `AdminAuthController` | `POST /admin/auth/login`, `GET /admin/auth/me`, forgot-password | public / token | Admin login → signed token; Postgres RBAC via `AdminGuard` |
+| `PartnersModule` | `PartnerAuthController` | `POST /partners/:type/auth`, `POST /partners/:type/clerk-session`, `POST /partners/:type/register-org`, `POST /partners/apply`, `POST /partners/accept`, `GET /partners/me` | public / partner token / Clerk bearer | Dual partner auth; Clerk org onboarding; invite accept |
+| `PartnersModule` | `PartnerAdminController` | `POST /partners/admin/invite`, applications, accounts | admin | Admin provisions partners; approves pending orgs |
 
 #### Customer-facing (session)
 
@@ -587,6 +764,11 @@ behind the `shaniidrx_sid` session cookie (PII guard).
 |---|---|---|---|
 | `PORT` | No | `8090` | HTTP listen port |
 | `NODE_ENV` | No | `development` | Controls cookie `secure` flag |
+| `SESSION_SECRET` | **Yes** (production) | dev fallback | Signs guest sid, partner tokens, admin cookies |
+| `ADMIN_API_TOKEN` | **Yes** (production) | — | Ops master admin key |
+| `ADMIN_EMAIL` / `ADMIN_PASSWORD` | Bootstrap | — | First admin login when no Postgres admin |
+| `CLERK_SECRET_KEY` | **Yes** (partners + verify) | — | Partner Clerk JWT + Organizations API |
+| `CLERK_ORG_CREATOR_USER_ID` | No | — | Internal org bootstrap user |
 | `PAYSTACK_SECRET_KEY` | **Yes** for payments | — | Paystack API auth |
 | `PAYSTACK_PUBLIC_KEY` | No | — | Surfaced to storefront |
 | `PAYSTACK_CALLBACK_URL` | No | auto | Webhook target URL |
@@ -613,28 +795,30 @@ behind the `shaniidrx_sid` session cookie (PII guard).
 ## 13. Strangler Migration Plan
 
 ```
-Phase 1 (done — May 2026)
+Phase 1 (done — through June 2026)
   ✓ NestJS api-nest scaffold
   ✓ Profile, Addresses, Wishlist, Orders modules
   ✓ Paystack M-Pesa payments
-  ✓ Admin CMS module (replaces localStorage-only path)
-  ✓ Prescriptions, Uploads, Chat, Email, Notifications, Pipeline
+  ✓ Admin CMS module (Postgres-backed cmsStore sync)
+  ✓ Prescriptions, Uploads, Chat, Email, Notifications, Pipeline, Analytics
   ✓ Clerk customer auth (sign-in / sign-up / OAuth / password reset)
+  ✓ AdminGuard + Postgres RBAC (@RequirePerm, @AnyAdmin)
+  ✓ Partner auth: password + signed partner token
+  ✓ Partner Clerk Organizations (Google sign-up, register-org, clerk-session)
+  ✓ Partner org name resolution + pending-approval workflow
 
 Phase 2 (planned)
-  ☐ Roles & permissions module (NestJS)
-  ☐ Admin auth guard (Clerk JWT, replaces pass-through requireAdmin)
+  ☐ Clerk admin SSO (replace admin token login; keep AdminGuard shape)
+  ☐ Wire customer sessionId to Clerk user id on api-nest
   ☐ Doctor onboarding form + panel (NestJS)
   ☐ Prescription pay-before-call flow
-  ☐ Sticky notes per patient
-  ☐ Postgres swap (InMemoryRepository → Drizzle)
+  ☐ Retire api-server legacy routes (catalog, Clerk proxy consolidation)
+  ☐ S3 file storage swap
 
 Phase 3 (future)
-  ☐ Catalog module ports to NestJS → retire api-server /api/products
-  ☐ Orders module ports to NestJS → retire api-server /api/orders
-  ☐ Delete api-server legacy routes one by one
-  ☐ S3 file storage swap
+  ☐ Delete api-server entirely
   ☐ Apple / Facebook OAuth
+  ☐ ML demand forecasting
 ```
 
 ---
@@ -651,5 +835,8 @@ Phase 3 (future)
 | May 2026 | localStorage CMS with NestJS background sync | Zero-latency writes + auditable; swap to Postgres is one-file change |
 | May 2026 | In-memory repos (no Postgres yet) | Fastest path to working features; Postgres swap is designed in from the start |
 | May 2026 | rawBody: true on NestJS | Paystack/Clerk webhook HMAC verification requires the original byte stream |
+| Jun 2026 | Clerk Organizations for partners | B2B tenancy: one org per company, Google onboarding, admin approval gate |
+| Jun 2026 | Signed partner tokens | Stateless HMAC sessions; entity-scoped BOLA; survives restarts |
+| Jun 2026 | AdminGuard RBAC | Postgres permissions + fail-closed default on unannotated routes |
 | May 2026 | No ValidationPipe on NestJS | Avoids class-validator/class-transformer dependency; controllers validate manually; Zod DTOs planned |
 | May 2026 | Supabase removed | Replaced by cmsStore + NestJS CMS module; simpler operational model |

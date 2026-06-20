@@ -9,6 +9,7 @@ import {
   Clock, CheckCircle2, XCircle, Truck, RefreshCw,
 } from "lucide-react"
 import { safeFetcher, asArray } from "@/lib/fetcher"
+import { CATALOG_PRODUCTS, CATALOG_CATEGORIES } from "@/lib/catalog-api"
 import { useAdminOrders } from "@/lib/orders-store"
 import { Button } from "@/components/ui/button"
 import { AdminShell } from "./admin-shell"
@@ -115,11 +116,11 @@ export function AdminDashboard() {
   // Real sources only:
   //   • Orders        → api-nest admin orders (Postgres-durable), same as the
   //                     Orders page — NOT the unregistered /api/admin/dashboard.
-  //   • Products      → /api/products (live catalogue).
-  //   • Categories    → /api/categories (live).
+  //   • Products      → /api/v2/products (live catalogue).
+  //   • Categories    → /api/v2/categories (live).
   const { items: adminOrders } = useAdminOrders()
-  const { data: allProducts } = useSWR<Product[]>("/api/products", safeFetcher)
-  const { data: allCategories } = useSWR<unknown[]>("/api/categories", safeFetcher)
+  const { data: allProducts } = useSWR<Product[]>(CATALOG_PRODUCTS, safeFetcher)
+  const { data: allCategories } = useSWR<unknown[]>(CATALOG_CATEGORIES, safeFetcher)
 
   const products = useMemo(() => asArray<Product>(allProducts), [allProducts])
   const categories = useMemo(() => asArray<unknown>(allCategories), [allCategories])

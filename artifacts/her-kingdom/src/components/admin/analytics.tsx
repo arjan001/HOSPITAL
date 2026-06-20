@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react"
 import { apiFetch, authedFetcher as fetcher, adminAuthHeaders } from "@/lib/api-client"
 import { analyticsUrls } from "@/lib/analytics-track"
+import { CATALOG_PRODUCTS } from "@/lib/catalog-api"
 import { AdminShell } from "./admin-shell"
 import { useAdminOrders } from "@/lib/orders-store"
 import { formatPrice } from "@/lib/format"
@@ -120,7 +121,7 @@ interface AnalyticsData {
 export function AdminAnalytics() {
   const [days, setDays] = useState(30)
   const { items: orders } = useAdminOrders()
-  const { data: products = [] } = useSWR<Product[]>("/api/products", fetcher)
+  const { data: products = [] } = useSWR<Product[]>(CATALOG_PRODUCTS, fetcher)
   const { data: analytics, error: analyticsError, isLoading: analyticsLoading, mutate: refreshAnalytics } = useSWR<AnalyticsData>(
     analyticsUrls.adminSummary(days),
     fetcher,

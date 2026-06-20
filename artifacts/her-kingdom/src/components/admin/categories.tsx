@@ -17,6 +17,7 @@ import { Switch } from "@/components/ui/switch"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { useCmsCollection, newId, slugify, cmsStore, type CmsRecord } from "@/lib/cms-store"
 import { safeFetcher, asArray } from "@/lib/fetcher"
+import { CATALOG_CATEGORIES } from "@/lib/catalog-api"
 import { apiFetch } from "@/lib/api-client"
 import { compressImage } from "@/lib/media-utils"
 import type { Category as StoreCategory } from "@/lib/types"
@@ -84,7 +85,7 @@ export const CATEGORIES_DEFAULTS: CmsCategory[] = [
 
 export function useCategories(): StoreCategory[] {
   const { items } = useCmsCollection<CmsCategory>(CATEGORIES_KEY, CATEGORIES_DEFAULTS)
-  const { data } = useSWR<StoreCategory[]>("/api/categories", safeFetcher)
+  const { data } = useSWR<StoreCategory[]>(CATALOG_CATEGORIES, safeFetcher)
 
   // Only prefer cmsStore when an admin has explicitly persisted edits — the
   // seeded defaults shouldn't shadow real backend data on first load.

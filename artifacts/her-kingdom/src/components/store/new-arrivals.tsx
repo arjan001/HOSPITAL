@@ -7,6 +7,7 @@ import { ProductCard } from "./product-card"
 import type { Product } from "@/lib/types"
 import useSWR from "swr"
 import { safeFetcher, asArray } from "@/lib/fetcher"
+import { CATALOG_PRODUCTS } from "@/lib/catalog-api"
 
 const TEXT_WINE = "#3D0814"
 const TEXT_WINE_SOFT = "#6B0F1A"
@@ -25,7 +26,7 @@ function shuffle<T>(arr: T[]): T[] {
 const TARGET = 8
 
 export function NewArrivals() {
-  const { data } = useSWR<Product[]>("/api/products", safeFetcher)
+  const { data } = useSWR<Product[]>(CATALOG_PRODUCTS, safeFetcher)
   const products = asArray<Product>(data)
 
   const displayed = useMemo(() => {

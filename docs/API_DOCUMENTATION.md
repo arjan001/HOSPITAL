@@ -53,9 +53,10 @@ There are **four** distinct identities in the system. Knowing which one a route 
 | Identity | Used by | Mechanism | Where |
 | -------- | ------- | --------- | ----- |
 | **Guest / customer session** | Storefront shoppers | Signed `shaniidrx_sid` cookie | §1.1 |
-| **Admin / operator** | Admin panel | `ADMIN_API_TOKEN` via header, issued by admin login | §1.2 |
-| **Partner** | Supplier / clinic / logistics portals | Email + portal code → session-scoped server auth | §1.3 |
-| **Customer (Clerk)** | Branded storefront account area | Clerk (front-end), `clerkMiddleware()` on api-server | §1.4 |
+| **Admin / operator** | Admin panel | Signed admin token + `AdminGuard` RBAC | §1.2 |
+| **Partner (password)** | Portal invite flow | Email + password → `shaniidrx_partner_token` | §1.3 |
+| **Partner (Clerk org)** | Portal Google onboarding | Clerk JWT → `register-org` / `clerk-session` | §1.3 |
+| **Customer (Clerk)** | Branded account area | Clerk browser session; api-server proxy | §1.4 |
 
 ### 1.1 Customer / guest session — `SessionMiddleware`
 
@@ -89,21 +90,54 @@ Admin routes are gated by `@UseGuards(AdminGuard)` (`src/common/admin-guard.ts`)
 | `POST` | `/admin/auth/forgot-password` | public | `{ email }` | Always returns `{ ok: true }` (never leaks whether an email is registered). Sends a real recovery email once `RESEND_API_KEY` is configured. |
 | `GET`  | `/admin/auth/me` | token | — | Verifies the bearer/`x-admin-token` and returns `{ role, name, email }`. Used to bootstrap the panel on load. |
 
-> **Today's roles** are coarse: a single `super_admin`. Fine-grained roles (`admin`, `pharmacist`, `doctor`) are the next iteration — they slot in behind the same guard with no route changes.
+> **Today's roles** use Postgres-backed permissions (`admin_users.permissions` + role defaults). `@RequirePerm("analytics.view")` gates sensitive modules. Super-admin and the ops master key hold wildcard `*`. Fine-grained role templates live in the admin Roles screen.
 
-### 1.3 Partner portals — `/api/v2/partners/:type`
+### 1.3 Partner portals — `/api/v2/partners`
 
-Suppliers, clinics, and logistics companies authenticate **server-side** (no Clerk). `:type` is one of `supplier | clinic | logistics`.
+Suppliers, clinics, and logistics companies use a **separate** auth stack from storefront customers. `:type` is `supplier | clinic | logistics`.
 
-| Method | Path | Guard | Body | Description |
-| ------ | ---- | ----- | ---- | ----------- |
-| `POST` | `/partners/welcome` | public | `{ type, name, email, portalCode }` | Email the partner their portal credentials. `503` if no email provider is configured. |
-| `POST` | `/partners/:type/auth` | session | `{ email, portalCode }` | Authenticate a partner against their record. The result is bound to the current `sessionId`. |
-| `POST` | `/partners/:type/signout` | session | — | Clear the partner session binding. |
-| `POST` | `/partners/:type/orders` | session | `{ kind, payload }` | Submit a partner action (e.g. clinic places a bulk order, logistics confirms a delivery). |
-| `GET`  | `/partners/:type/orders` | session | — | List submissions/orders for this partner session. |
+#### Two sign-in paths
 
-Partner business records (the supplier/clinic/logistics objects, including KYC and portal codes) are detailed in **§4**.
+**A — Email + password (admin invite or legacy)**
+
+| Method | Path | Body | Description |
+| ------ | ---- | ---- | ----------- |
+| `POST` | `/partners/:type/auth` | `{ email, password }` or `{ email, portalCode }` | Verifies scrypt hash on `partner_accounts`. Returns `{ token, partner }` and sets HttpOnly `shaniidrx_partner_token`. |
+| `POST` | `/partners/accept` | `{ token, password }` | Accept admin invite email; set password; activate account. |
+| `POST` | `/partners/:type/signout` | — | Clears partner cookie. |
+
+**B — Clerk Organization (Google self-service — June 2026)**
+
+| Method | Path | Headers | Body | Description |
+| ------ | ---- | ------- | ---- | ----------- |
+| `POST` | `/partners/:type/register-org` | `Authorization: Bearer <Clerk JWT>` | `{ orgName?, name?, profile? }` | Creates Clerk org (if needed), `partner_directory` row (`pending`), owner member. Org name from body, profile fields, or Clerk API — **not org slug**. |
+| `POST` | `/partners/:type/clerk-session` | `Authorization: Bearer <Clerk JWT>` | — | After admin approves org (`partner_directory.status = active`), exchanges Clerk session for partner token cookie. JWT should include org context (`org_id`). |
+| `GET` | `/partners/me` | partner token or Clerk bearer | — | Current partner profile. |
+| `POST` | `/partners/:type/members/invite` | partner token | `{ email, role }` | Owner/admin invites employee via Clerk org invitation. |
+
+**Self-signup without Clerk (application queue)**
+
+| Method | Path | Body | Description |
+| ------ | ---- | ---- | ----------- |
+| `POST` | `/partners/apply` | `{ partnerType, orgName, contactName, email, phone?, message? }` | Queues `partner_applications` for admin review. |
+
+#### How the server resolves a partner request
+
+`PartnerAuthService.requirePartner()` checks in order:
+
+1. **Signed partner token** (`x-partner-token`, `Authorization: Bearer`, or `shaniidrx_partner_token` cookie) — HMAC verified; loads `partner_accounts` by `pid`; scopes all reads to `partnerId`.
+2. **Clerk bearer** with `org_id` — `PartnerOrgService.resolveFromClerk()` maps org → `partner_directory`; rejects if pending/suspended/wrong portal type.
+3. **Legacy email** match on `partner_accounts` (non-org accounts).
+
+#### Admin partner management
+
+| Method | Path | Guard | Description |
+| ------ | ---- | ----- | ----------- |
+| `POST` | `/partners/admin/invite` | admin | Provision account + send invite email |
+| `GET/PATCH` | `/partners/admin/applications` | admin | Review pending applications |
+| `GET/PATCH` | `/partners/admin/accounts` | admin | Suspend/activate portal logins |
+
+Partner business records live in Postgres (`partner_directory`, `partner_accounts`, `partner_members`). See `docs/ARCHITECTURE.md` §4.3 for sequence diagrams.
 
 ### 1.4 Customer auth (Clerk)
 
@@ -428,13 +462,32 @@ This section explains how the endpoints above combine into the journeys that act
 
 ### 3.8 Partner portal lifecycle
 
-**Actors:** admin (onboarding), partner. **Identity:** admin → partner session.
+**Actors:** partner (self-service or invite), admin (approval). **Identity:** Clerk org JWT and/or partner token.
 
-1. Admin onboards a partner and generates a portal code (supplier/clinic/logistics record, §4).
-2. Credentials are emailed: `POST /api/v2/partners/welcome`.
-3. Partner signs in at `/portal/<type>`: `POST /api/v2/partners/:type/auth` with `{ email, portalCode }` → bound to their session.
-4. Partner acts: `POST /api/v2/partners/:type/orders` (e.g. clinic places a bulk order against its credit limit; logistics confirms a delivery) and reviews `GET /partners/:type/orders`.
-5. Partner signs out: `POST /api/v2/partners/:type/signout`.
+**Path A — Google / Clerk self-service (primary, June 2026)**
+
+1. Partner opens `/portal/<type>` and signs in with Google (Clerk).
+2. First visit: onboarding modal collects company profile + KYC → `POST /api/v2/partners/:type/register-org` with Clerk bearer + `orgName` / profile fields.
+3. Response: `{ pendingApproval: true }` — directory row created with `status: pending`.
+4. Admin reviews in partner admin panel → approves application / activates directory record.
+5. Partner returns → `POST /api/v2/partners/:type/clerk-session` with org-scoped Clerk JWT → `{ token }` + `shaniidrx_partner_token` cookie.
+6. Portal API calls (catalog, orders, jobs) send partner token; server scopes all data to `partnerId`.
+
+**Path B — Admin invite (email + password)**
+
+1. Admin invites: `POST /api/v2/partners/admin/invite`.
+2. Partner receives email → `POST /api/v2/partners/accept` with invite token + password.
+3. Partner signs in: `POST /api/v2/partners/:type/auth` with `{ email, password }`.
+4. Same partner token cookie as Path A.
+
+**Path C — Public application (no Clerk)**
+
+1. `POST /api/v2/partners/apply` queues application.
+2. Admin approves and provisions account manually.
+
+Sign out: `POST /api/v2/partners/:type/signout`.
+
+See `docs/ARCHITECTURE.md` §4.3 for token format and tenancy rules.
 
 ### 3.9 Customer support (chat + tickets)
 
@@ -452,9 +505,11 @@ This section explains how the endpoints above combine into the journeys that act
 
 ---
 
-## 4. Partner business records (CMS schemas)
+## 4. Partner business records
 
-Partner data (suppliers, clinics, logistics partners) is persisted via the front-end `cmsStore` today and migrates to dedicated NestJS modules behind the same `/api/v2/partners` + `/api/v2/admin/...` surface. The portal auth in §1.3 is already server-backed.
+Partner entities are stored in **Postgres** (`partner_directory`, `partner_accounts`, `partner_members`, plus type-specific tables such as `supplier_products`, `clinic_orders`, `delivery_jobs`). Admin CMS may still mirror display fields during migration, but **portal auth and tenancy are server-backed** (see §1.3).
+
+Legacy `cmsStore("suppliers")` shapes below document the JSON payload schema indexed into `partner_directory.payload`:
 
 ### 4.1 Suppliers — `cmsStore("suppliers")`
 

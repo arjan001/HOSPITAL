@@ -24,6 +24,7 @@ import { useCart } from "@/lib/cart-context"
 import type { Product } from "@/lib/types"
 import useSWR from "swr"
 import { safeFetcher, asArray } from "@/lib/fetcher"
+import { CATALOG_PRODUCTS } from "@/lib/catalog-api"
 
 const WINE = "#3D0814"
 const ACCENT_RED = "#B91C1C"
@@ -323,7 +324,7 @@ export function CarePackDetailPage() {
 
   const selectedTierObj = useMemo(() => tiers.find((t) => t.id === selectedTier) ?? null, [tiers, selectedTier])
 
-  const { data: productsData } = useSWR<Product[]>("/api/products", safeFetcher)
+  const { data: productsData } = useSWR<Product[]>(CATALOG_PRODUCTS, safeFetcher)
   const products = asArray<Product>(productsData)
 
   const matchingProducts = useMemo(() => {

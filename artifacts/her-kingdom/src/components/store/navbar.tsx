@@ -16,6 +16,7 @@ import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
 import { CartDrawer } from "./cart-drawer"
 import useSWR from "swr"
 import { safeFetcher, asArray } from "@/lib/fetcher"
+import { CATALOG_PRODUCTS } from "@/lib/catalog-api"
 import { useStoreContact } from "@/hooks/use-store-contact"
 import { analyticsUrls } from "@/lib/analytics-track"
 
@@ -79,7 +80,7 @@ export function Navbar() {
   const { phoneHref } = useStoreContact()
   const { data: settingsResp } = useSWR<{ settings?: SiteSettings }>("/api/site-data", safeFetcher)
   const settings = settingsResp?.settings || {}
-  const { data: allProductsData } = useSWR<Product[]>("/api/products", safeFetcher)
+  const { data: allProductsData } = useSWR<Product[]>(CATALOG_PRODUCTS, safeFetcher)
   const categories = useCategories()
   const allProducts = asArray<Product>(allProductsData)
 

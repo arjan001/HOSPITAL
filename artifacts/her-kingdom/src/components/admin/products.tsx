@@ -26,9 +26,7 @@ import { useCategoryOptions } from "./products-helpers"
  * cmsStore single-seam (localStorage cache + NestJS `/api/v2/admin/cms/:key`),
  * NOT through the no-op legacy Express `/api/admin/products` routes.
  *
- * The storefront still reads `/api/products` (dev fixtures) until the
- * NestJS catalog endpoints land — but admin writes here are now persisted
- * and visible across reloads.
+ * The storefront reads `/api/v2/products` from the same CMS-backed catalogue.
  */
 export const PRODUCTS_CMS_KEY = "products"
 

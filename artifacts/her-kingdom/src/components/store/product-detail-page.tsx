@@ -34,6 +34,7 @@ import { isVideoUrl } from "@/lib/media-utils"
 import { ProductImage } from "./product-image"
 import { TrustSeal } from "@/components/ui/trust-seal"
 import useSWR from "swr"
+import { catalogProductPath } from "@/lib/catalog-api"
 
 import { rememberProduct, useRecentlyViewed } from "@/lib/recently-viewed"
 import { QuickViewProvider } from "@/lib/quick-view-context"
@@ -231,7 +232,7 @@ export function ProductDetailPage({ slug }: { slug: string }) {
 }
 
 function ProductDetailPageInner({ slug }: { slug: string }) {
-  const { data, error, isLoading } = useSWR<ProductPageData>(`/api/products/${slug}`, fetcher)
+  const { data, error, isLoading } = useSWR<ProductPageData>(catalogProductPath(slug), fetcher)
   const product = data?.product || null
   const related = data?.related || []
   const { addItem } = useCart()

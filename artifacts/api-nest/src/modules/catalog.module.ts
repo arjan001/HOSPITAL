@@ -54,10 +54,23 @@ export class CatalogService {
   }
 
   async getBySlug(slug: string): Promise<StoreProduct> {
+    const { product } = await this.getDetailBySlug(slug)
+    return product
+  }
+
+  async getDetailBySlug(slug: string): Promise<{ product: StoreProduct; related: StoreProduct[] }> {
     const items = await this.rawProducts()
-    const p = items.find((x) => x.slug === slug)
-    if (!p) throw new HttpException("Product not found", HttpStatus.NOT_FOUND)
-    return p
+    const product = items.find((x) => x.slug === slug)
+    if (!product) throw new HttpException("Product not found", HttpStatus.NOT_FOUND)
+    const collection = (product as StoreProduct & { collection?: string }).collection
+    const related = items
+      .filter((p) => {
+        if (p.id === product.id) return false
+        const pCollection = (p as StoreProduct & { collection?: string }).collection
+        return p.categorySlug === product.categorySlug || (collection && pCollection === collection)
+      })
+      .slice(0, 8)
+    return { product, related }
   }
 }
 
@@ -72,7 +85,7 @@ class PublicProductsController {
 
   @Get(":slug")
   get(@Param("slug") slug: string) {
-    return this.catalog.getBySlug(slug)
+    return this.catalog.getDetailBySlug(slug)
   }
 }
 

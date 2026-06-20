@@ -12,6 +12,7 @@ import { ProductCard } from "./product-card"
 import { PaginationControls } from "@/components/pagination-controls"
 import { usePagination } from "@/hooks/use-pagination"
 import { safeFetcher, asArray } from "@/lib/fetcher"
+import { CATALOG_PRODUCTS, CATALOG_CATEGORIES } from "@/lib/catalog-api"
 import type { Product, Category } from "@/lib/types"
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
 import { Seo, organizationJsonLd, websiteJsonLd, breadcrumbJsonLd, faqJsonLd, productJsonLd } from "@/components/seo"
@@ -307,8 +308,8 @@ export function SearchPage() {
 
   useEffect(() => { setInputValue(initialQuery) }, [initialQuery])
 
-  const { data: productsData, isLoading: productsLoading } = useSWR<Product[]>("/api/products", safeFetcher)
-  const { data: categoriesData } = useSWR<Category[]>("/api/categories", safeFetcher)
+  const { data: productsData, isLoading: productsLoading } = useSWR<Product[]>(CATALOG_PRODUCTS, safeFetcher)
+  const { data: categoriesData } = useSWR<Category[]>(CATALOG_CATEGORIES, safeFetcher)
   const products   = asArray<Product>(productsData)
   const categories = asArray<Category>(categoriesData)
 

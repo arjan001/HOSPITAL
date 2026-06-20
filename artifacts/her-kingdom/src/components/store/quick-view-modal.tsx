@@ -8,6 +8,7 @@ import { useQuickView } from "@/lib/quick-view-context"
 import { useCart } from "@/lib/cart-context"
 import { useWishlist } from "@/lib/wishlist-context"
 import { safeFetcher } from "@/lib/fetcher"
+import { catalogProductPath } from "@/lib/catalog-api"
 import { formatPrice } from "@/lib/format"
 import { ProductImage } from "./product-image"
 import type { Product } from "@/lib/types"
@@ -86,7 +87,7 @@ export function QuickViewModal() {
 
 function QuickViewBody({ slug, onClose }: { slug: string; onClose: () => void }) {
   const { data, error, isLoading } = useSWR<{ product: Product; related?: Product[] }>(
-    `/api/products/${slug}`,
+    catalogProductPath(slug),
     safeFetcher,
   )
 

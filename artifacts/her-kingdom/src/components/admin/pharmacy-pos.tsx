@@ -24,6 +24,7 @@ import {
   Wifi,
 } from "lucide-react"
 import { adminAuthHeaders } from "@/lib/api-client"
+import { CATALOG_PRODUCTS } from "@/lib/catalog-api"
 import { AdminShell } from "./admin-shell"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -480,7 +481,7 @@ function saveCartToStorage(cart: CartItem[]) {
 }
 
 export function AdminPharmacyPos() {
-  const { data: productsData } = useSWR<Product[]>("/api/products", authFetcher)
+  const { data: productsData } = useSWR<Product[]>(CATALOG_PRODUCTS, authFetcher)
   const { data: branches = [] } = useSWR<Branch[]>(`${BASE}/pharmacy/branches`, authFetcher)
   const { data: recentTxs = [], mutate: mutTxs } = useSWR<PosTransaction[]>(`${BASE}/pharmacy/pos/transactions`, authFetcher)
 

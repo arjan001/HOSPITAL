@@ -35,6 +35,7 @@ import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
 import { Button } from "@/components/ui/button"
 import useSWR from "swr"
 import { safeFetcher, asArray } from "@/lib/fetcher"
+import { CATALOG_PRODUCTS } from "@/lib/catalog-api"
 
 function formatPrice(price: number): string {
   return `KSh ${price.toLocaleString()}`
@@ -353,7 +354,7 @@ export function ShopPage({ seoIntro }: { seoIntro?: ReactNode } = {}) {
     error: productsError,
     isLoading: productsLoading,
     mutate: refetchProducts,
-  } = useSWR<Product[]>("/api/products", safeFetcher)
+  } = useSWR<Product[]>(CATALOG_PRODUCTS, safeFetcher)
   const products = asArray<Product>(productsData)
   const categories = useCategories()
 

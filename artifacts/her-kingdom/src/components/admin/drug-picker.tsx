@@ -2,7 +2,7 @@
 
 /**
  * <DrugPicker /> — autocomplete picker that fetches from the product
- * catalogue (/api/products) and returns a pre-filled recommended-drug row.
+ * catalogue (/api/v2/products) and returns a pre-filled recommended-drug row.
  *
  * Drop-in replacement for the bare "+ Add" button in the prescription
  * review modal and the consultation side panel.
@@ -11,6 +11,7 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import useSWR from "swr"
 import { Pill, Plus, Search, Sparkles, X } from "lucide-react"
 import { safeFetcher } from "@/lib/fetcher"
+import { CATALOG_PRODUCTS } from "@/lib/catalog-api"
 import type { Product } from "@/lib/types"
 import { searchProducts, suggestDrugs, type SuggestedDrug } from "@/lib/drug-suggester"
 
@@ -19,7 +20,7 @@ const WINE = "#3D0814"
 export type DrugRow = { name: string; dosage: string; instructions: string }
 
 export function useDrugCatalogue() {
-  const { data, isLoading } = useSWR<Product[]>("/api/products", safeFetcher, {
+  const { data, isLoading } = useSWR<Product[]>(CATALOG_PRODUCTS, safeFetcher, {
     revalidateOnFocus: false,
     dedupingInterval: 60_000,
   })

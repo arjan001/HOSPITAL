@@ -10,6 +10,7 @@ import {
   ShoppingCart, Loader2, CheckCircle2, CalendarDays, MessageCircle, User,
 } from "lucide-react"
 import { DailyCall } from "@/components/video/daily-call"
+import { catalogProductPath } from "@/lib/catalog-api"
 import {
   useConsultationSettings,
   standbyDoctorOf,
@@ -286,7 +287,7 @@ export default function SpeakToADoctorPage() {
   /* ── Recommended medicines → cart ──────────────────────────
      The prescription cards on the summary carry a productSlug when the doctor
      linked a real catalogue item. We resolve that slug to the live product
-     (same /api/products/:slug source the PDP uses) and drop it into the cart.
+     (same catalogue PDP source) and drop it into the cart.
      "Continue Shopping" auto-adds every shoppable recommendation first, so the
      patient lands in the shop with their prescription already in the basket. */
   const { addItem, setIsCartOpen } = useCart()
@@ -304,7 +305,7 @@ export default function SpeakToADoctorPage() {
     const cached = productCacheRef.current.get(slug)
     if (cached) return cached
     try {
-      const r = await fetch(`/api/products/${encodeURIComponent(slug)}`)
+      const r = await fetch(catalogProductPath(slug))
       if (!r.ok) return null
       const data = (await r.json()) as { product?: Product }
       if (!data?.product?.id) return null

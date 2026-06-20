@@ -16,6 +16,7 @@ import { QuickViewModal } from "./quick-view-modal"
 import type { Product } from "@/lib/types"
 import useSWR from "swr"
 import { safeFetcher, asArray } from "@/lib/fetcher"
+import { CATALOG_PRODUCTS } from "@/lib/catalog-api"
 
 const WINE = "#3D0814"
 const WINE_SOFT = "#6B0F1A"
@@ -299,7 +300,7 @@ function SidebarAccordion({ title, icon: Icon, children, defaultOpen = false }: 
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
 function CarePacksInner() {
-  const { data: productsData } = useSWR<Product[]>("/api/products", safeFetcher)
+  const { data: productsData } = useSWR<Product[]>(CATALOG_PRODUCTS, safeFetcher)
   const products = asArray<Product>(productsData)
 
   const [selectedPackTypes, setSelectedPackTypes] = useState<string[]>([])
