@@ -61,6 +61,8 @@ const PERMISSION_GROUPS: { group: string; perms: { id: string; label: string; de
       { id: "rx.verify", label: "Verify prescriptions" },
       { id: "rx.recommend", label: "Recommend drugs" },
       { id: "consult.handle", label: "Handle consultations" },
+      { id: "pharmacy.manage", label: "Manage pharmacy branches & POS" },
+      { id: "pharmacy.staff", label: "Manage pharmacy staff" },
     ],
   },
   {

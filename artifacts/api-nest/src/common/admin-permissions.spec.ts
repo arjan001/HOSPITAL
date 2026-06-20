@@ -47,6 +47,8 @@ const FRONTEND_CATALOG = [
   "roles.manage",
   "integrations.manage",
   "analytics.view",
+  "pharmacy.manage",
+  "pharmacy.staff",
 ]
 
 // Mirror of the frontend SEED_ROLES permission arrays (Owner = super_admin

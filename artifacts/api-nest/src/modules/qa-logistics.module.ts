@@ -53,6 +53,9 @@ import {
   PatientNotificationsModule,
   PatientNotificationsService,
 } from "./patient-notifications.module"
+import {
+  syncDeliveryJobsFromLogistics,
+} from "../common/delivery-jobs-sync"
 
 const QA_SETTINGS_ID = "default"
 const LOGISTICS_SETTINGS_ID = "default"
@@ -619,6 +622,9 @@ export class LogisticsOpsService {
       }
     })
     void this.onNewlyDelivered(items, beforeRows, config)
+    const [riders, batches] = await Promise.all([this.listRiders(), this.listBatches()])
+    const batchCold = new Map(batches.map((b) => [b.id, b.coldChain]))
+    void syncDeliveryJobsFromLogistics(items, riders, batchCold)
     return this.listDeliveries()
   }
 
@@ -759,9 +765,6 @@ export class LogisticsOpsService {
     })
 
     if (assigned > 0) await this.replaceDeliveries(updated)
-    else if (skipped === deliveries.length && deliveries.length > 0) {
-      /* no-op */
-    }
 
     return { assigned, skipped, slaAtRisk: atRisk, notes }
   }

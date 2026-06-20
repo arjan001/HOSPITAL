@@ -68,6 +68,7 @@ import {
   type DirectoryKey,
 } from "./partner-directory.module"
 import { AdminGuard } from "../common/admin-guard"
+import { syncLogisticsDeliveryFromJob } from "../common/delivery-jobs-sync"
 import { PartnerOrgService, type PartnerAuthContext } from "./partner-org.service"
 
 /** Generate a human-readable temporary password: e.g. "SHNRX-AB3X7F" */
@@ -1233,6 +1234,7 @@ export class PartnerPortalService {
       .where(and(eq(deliveryJobs.id, id), eq(deliveryJobs.logisticsPartnerId, partnerId)))
       .returning()
     if (!row) throw new HttpException("Delivery job not found", HttpStatus.NOT_FOUND)
+    void syncLogisticsDeliveryFromJob(row)
     return row
   }
 
@@ -1252,6 +1254,7 @@ export class PartnerPortalService {
       .where(and(eq(deliveryJobs.id, id), eq(deliveryJobs.logisticsPartnerId, partnerId)))
       .returning()
     if (!row) throw new HttpException("Delivery job not found", HttpStatus.NOT_FOUND)
+    void syncLogisticsDeliveryFromJob(row)
     return row
   }
 
