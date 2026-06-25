@@ -247,6 +247,25 @@ export const apiAdminSourcing = {
       method: "POST",
       body: JSON.stringify({ windowDays }),
     }),
+  runProcurementPipeline: (body?: {
+    windowDays?: number
+    autoApprove?: boolean
+    shortfallThreshold?: number
+  }) =>
+    nestFetch<{
+      model: string
+      windowDays: number
+      autoApprove: boolean
+      shortfallThreshold: number
+      flagged: unknown[]
+      posCreated: number
+      skipped: number
+      createdPos: Array<{ poNumber: string; supplierId: string; sku: string; qty: number }>
+      details: string[]
+    }>("/admin/sourcing/automation/run-procurement-pipeline", {
+      method: "POST",
+      body: JSON.stringify(body ?? {}),
+    }),
 
   listPerformance: () => nestFetch<SupplierPerformanceDto[]>("/admin/sourcing/performance"),
   upsertScoreOverride: (

@@ -75,7 +75,7 @@ const TRIGGER_TO_SOURCE: Record<AutomationRule["trigger"], RequestSource> = {
 }
 
 export function SourcingAutomationTab() {
-  const { rules, log, saveRules, clearLog, runScan, runForecast, loading } = useSourcingAutomation()
+  const { rules, log, saveRules, clearLog, runScan, runForecast, runProcurementPipeline, loading } = useSourcingAutomation()
   const [modal, setModal] = useState<{ open: boolean; editing: AutomationRule | null }>({ open: false, editing: null })
   const [logOpen, setLogOpen] = useState(true)
   const [running, setRunning] = useState(false)
@@ -123,7 +123,31 @@ export function SourcingAutomationTab() {
         Rules scan inventory and forecast shortfalls via Postgres — run manually or schedule via cron (`/admin/sourcing/automation/run-forecast`).
       </p>
 
-      <div className="flex items-center justify-end gap-2">
+      <div className="flex items-center justify-end gap-2 flex-wrap">
+        <Button
+          size="sm"
+          variant="outline"
+          className="gap-1.5"
+          onClick={async () => {
+            const autoApprove = confirm(
+              "Run full procurement pipeline (ML forecast → supplier scoring → PO)?\n\nOK = send POs immediately\nCancel = draft POs only",
+            )
+            setRunning(true)
+            try {
+              const res = await runProcurementPipeline({ windowDays: 30, autoApprove })
+              alert(
+                `Pipeline complete (${res.model})\n\nFlagged: ${res.flagged.length}\nPOs created: ${res.posCreated}\nSkipped: ${res.skipped}`,
+              )
+            } catch (e) {
+              alert(`Pipeline failed: ${e instanceof Error ? e.message : String(e)}`)
+            } finally {
+              setRunning(false)
+            }
+          }}
+          disabled={running || loading}
+        >
+          <Bot className="h-3.5 w-3.5" /> Run procurement pipeline
+        </Button>
         <Button
           size="sm"
           variant="outline"

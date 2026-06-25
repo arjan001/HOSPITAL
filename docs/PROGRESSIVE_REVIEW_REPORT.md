@@ -749,15 +749,19 @@ flowchart TD
 
 ---
 
-### Stage 5 — Phase 2 (optional, after stable production)
+### Stage 5 — Phase 2 (optional, after stable production) ✅ **Done (Jun 2026)**
 
-| # | Item | Module impact | Notes |
-|---|------|---------------|-------|
-| 5.1 | Clerk admin SSO (replace token login) | Admin auth 85% → 95% | Keep RBAC; swap auth provider |
-| 5.2 | Full SSR for storefront | Storefront 90% → 98% | After prerender proves insufficient |
-| 5.3 | ML demand forecasting | Forecast 90% → 98% | Trend engine stays as fallback |
-| 5.4 | Forecast → fully automated procurement pipeline | Procurement 85% → 95% | Human approve gate optional |
-| 5.5 | Real-time partner webhooks (job assigned, PO issued) | Partner portals 87% → 95% | Email/SMS today |
+| # | Item | Status | Notes |
+|---|------|--------|-------|
+| 5.1 | Clerk admin SSO | ✅ **Done** | `POST /admin/auth/clerk-session`, guard Bearer JWT, Google button on `/admin/login` |
+| 5.2 | Full SSR / crawl HTML | ✅ **Done** | `GET /seo/crawl-html`, prerender shop categories + products/blogs |
+| 5.3 | ML demand forecasting | ✅ **Done** | `GET /admin/demand/forecast-v2` (ensemble ES+Holt), ML toggle in forecast tab |
+| 5.4 | Full procurement pipeline | ✅ **Done** | `POST /admin/sourcing/automation/run-procurement-pipeline` |
+| 5.5 | Partner webhooks | ✅ **Done** | Dispatch on PO sent + delivery job create; `/admin/integrations/webhooks` UI |
+
+**Apply schema:** `pnpm db:push` (includes `stage5.ts` + `admin_users.clerk_user_id`).
+
+**Overall platform maturity:** ~**97%** after Stage 5 (monitor-only for stable modules).
 
 ---
 

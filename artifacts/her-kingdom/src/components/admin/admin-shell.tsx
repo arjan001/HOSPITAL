@@ -70,6 +70,7 @@ import {
   ListChecks,
   PackageCheck,
   Pill,
+  Webhook,
 } from "lucide-react"
 
 const COLLAPSE_KEY = "shaniidrx.admin.sidebarCollapsed"
@@ -285,6 +286,7 @@ const NAV_GROUPS: NavGroup[] = [
           { label: "Channels",          href: "/admin/integrations",              icon: Plug,          perm: "integrations.manage" },
           { label: "Message Templates", href: "/admin/integrations/templates",    icon: Send,          perm: "integrations.manage" },
           { label: "Message Outbox",    href: "/admin/integrations/outbox",       icon: Inbox,         perm: "integrations.manage" },
+          { label: "Partner Webhooks",  href: "/admin/integrations/webhooks",   icon: Webhook,       perm: "integrations.manage" },
           { label: "Email",             href: "/admin/integrations?tab=email",    icon: Mail,          perm: "integrations.manage" },
           { label: "SMS",               href: "/admin/integrations?tab=sms",      icon: MessageSquare, perm: "integrations.manage" },
           { label: "WhatsApp",          href: "/admin/integrations?tab=whatsapp", icon: MessageSquare, perm: "integrations.manage" },

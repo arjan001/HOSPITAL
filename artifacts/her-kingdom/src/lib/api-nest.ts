@@ -497,6 +497,8 @@ export const apiAdminDemand = {
     nestFetch<DemandAggregationPayload>(`/admin/demand/aggregation?windowDays=${windowDays}`),
   forecast: (windowDays = 30) =>
     nestFetch<DemandForecastPayload>(`/admin/demand/forecast?windowDays=${windowDays}`),
+  forecastV2: (windowDays = 30) =>
+    nestFetch<DemandForecastV2Payload>(`/admin/demand/forecast-v2?windowDays=${windowDays}`),
 }
 
 export type DemandForecastPayload = {
@@ -518,6 +520,22 @@ export type DemandForecastPayload = {
     rxQty?: number
     assessmentQty?: number
   }>
+}
+
+export type DemandForecastV2Payload = DemandForecastPayload & {
+  model: string
+  summary: DemandForecastPayload["summary"] & {
+    highConfidence?: number
+    avgLiftPct?: number
+  }
+  entries: Array<
+    DemandForecastPayload["entries"][number] & {
+      baselineProjected?: number
+      mlProjected?: number
+      confidence?: "low" | "medium" | "high"
+      modelNotes?: string
+    }
+  >
 }
 
 export type ProcurementDecisionRow = {

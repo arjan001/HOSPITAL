@@ -3,6 +3,7 @@
  */
 import { and, eq, isNull, or } from "drizzle-orm"
 import { db, deliveryJobs, logisticsDeliveries, partnerDirectory } from "@workspace/db"
+import { dispatchPartnerWebhook } from "./partner-webhooks"
 import { newId } from "./repository"
 import { parseIso } from "../modules/qa-logistics.dto"
 import type { LogisticsDeliveryDto, LogisticsRiderDto } from "../modules/qa-logistics.dto"
@@ -131,12 +132,22 @@ export async function syncDeliveryJobsFromLogistics(
       await db.update(deliveryJobs).set(row).where(eq(deliveryJobs.id, existing.id))
       updated++
     } else {
+      const jobId = newId("djob")
       await db.insert(deliveryJobs).values({
-        id: newId("djob"),
+        id: jobId,
         ...row,
         createdAt: parseIso(d.createdAt) ?? now,
       })
       created++
+      void dispatchPartnerWebhook(partnerId, "delivery.job_assigned", {
+        jobId,
+        orderId: d.orderRef,
+        status: jobStatus,
+        deliveryAddress: row.deliveryAddress,
+        recipientName: row.recipientName,
+        recipientPhone: row.recipientPhone,
+        riderName: row.assignedRiderName,
+      }).catch(() => undefined)
     }
   }
 

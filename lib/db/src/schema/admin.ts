@@ -15,6 +15,8 @@ export const adminUsers = pgTable("admin_users", {
   name: text("name").notNull(),
   role: text("role").notNull().default("pharmacist"),
   // role values: super_admin | pharmacist | doctor | fulfillment | marketing
+  /** Clerk user id when admin signs in via SSO (Stage 5). */
+  clerkUserId: text("clerk_user_id"),
   permissions: jsonb("permissions").$type<string[]>().default([]),
   active: boolean("active").notNull().default(true),
   requiresPasswordReset: boolean("requires_password_reset").notNull().default(false),

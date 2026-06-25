@@ -53,6 +53,10 @@ import { db, adminUsers, adminPasswordResets, type AdminUser } from "@workspace/
 import { AdminGuard, Public, RequirePerm } from "../common/admin-guard"
 import { signAdminToken, verifyAdminToken } from "../common/admin-token"
 import { EmailModule, EmailService } from "./email.module"
+import {
+  adminSessionFromClerkBearer,
+  clerkAdminSsoEnabled,
+} from "../common/admin-clerk-auth"
 
 const DEV_TOKEN = "shaniidrx-admin-dev-token"
 
@@ -513,6 +517,34 @@ class AdminAuthController {
     }
     // Mirror the signed token into an HttpOnly cookie so header-less browser
     // requests (admin SSE EventSource, <img>/<a> file reads) can authenticate.
+    if (result.token) {
+      res.cookie(ADMIN_TOKEN_COOKIE, result.token, {
+        httpOnly: true,
+        sameSite: "lax",
+        secure: process.env.NODE_ENV === "production",
+        path: "/",
+        maxAge: ADMIN_COOKIE_MAX_AGE_MS,
+      })
+    }
+    return result
+  }
+
+  @Public()
+  @Post("clerk-session")
+  async clerkSession(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
+    if (!clerkAdminSsoEnabled()) {
+      throw new HttpException(
+        "Clerk admin SSO is not configured (set CLERK_SECRET_KEY)",
+        HttpStatus.SERVICE_UNAVAILABLE,
+      )
+    }
+    const result = await adminSessionFromClerkBearer(req.header("authorization"))
+    if (!result) {
+      throw new HttpException(
+        "No active admin account matches this Clerk user. Ask a super-admin to provision your email in Admin → Users.",
+        HttpStatus.FORBIDDEN,
+      )
+    }
     if (result.token) {
       res.cookie(ADMIN_TOKEN_COOKIE, result.token, {
         httpOnly: true,

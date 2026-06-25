@@ -252,6 +252,15 @@ export function useSourcingAutomation() {
     [mutateLog, mutateRules],
   )
 
+  const runProcurementPipeline = useCallback(
+    async (opts?: { windowDays?: number; autoApprove?: boolean; shortfallThreshold?: number }) => {
+      const result = await apiAdminSourcing.runProcurementPipeline(opts)
+      void mutateLog()
+      return result
+    },
+    [mutateLog],
+  )
+
   return {
     rules: rules ?? [],
     log: log ?? [],
@@ -259,6 +268,7 @@ export function useSourcingAutomation() {
     clearLog,
     runScan,
     runForecast,
+    runProcurementPipeline,
     loading: rulesLoading || logLoading,
   }
 }

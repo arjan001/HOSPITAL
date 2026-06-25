@@ -1,5 +1,8 @@
 import { useState, useEffect, type FormEvent } from "react"
 import { useLocation } from "wouter"
+import { useAuth } from "@clerk/react"
+import { useSignIn } from "@clerk/react/legacy"
+import { GoogleSignInButton } from "@/components/auth/google-sign-in-button"
 import {
   Eye,
   EyeOff,
@@ -12,6 +15,9 @@ import {
 
 export const ADMIN_TOKEN_KEY = "shaniidrx.admin.token"
 export const ADMIN_USER_KEY = "shaniidrx.admin.user"
+
+const BASE_PATH = import.meta.env.BASE_URL.replace(/\/$/, "")
+const CLERK_SSO_ENABLED = Boolean(import.meta.env.VITE_CLERK_PUBLISHABLE_KEY?.trim())
 
 type View = "login" | "forgot" | "forgot-sent"
 
@@ -30,6 +36,8 @@ const BTN_BG        = WINE
 export function AdminLoginPage() {
   const [, navigate] = useLocation()
   const [view, setView] = useState<View>("login")
+  const { isSignedIn, getToken } = useAuth()
+  const { isLoaded: clerkLoaded, signIn } = useSignIn()
 
   // Login form state
   const [email, setEmail] = useState("")
@@ -37,6 +45,7 @@ export function AdminLoginPage() {
   const [showPassword, setShowPassword] = useState(false)
   const [loginLoading, setLoginLoading] = useState(false)
   const [loginError, setLoginError] = useState("")
+  const [clerkLoading, setClerkLoading] = useState(false)
 
   // Forgot password state
   const [forgotEmail, setForgotEmail] = useState("")
@@ -49,6 +58,65 @@ export function AdminLoginPage() {
       if (token) navigate("/admin")
     }
   }, [navigate])
+
+  async function exchangeClerkAdminSession() {
+    setClerkLoading(true)
+    setLoginError("")
+    try {
+      const token = await getToken()
+      if (!token) {
+        setLoginError("Could not read Clerk session. Try signing in again.")
+        return
+      }
+      const res = await fetch("/api/v2/admin/auth/clerk-session", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setLoginError(data?.message || "No admin account matches this Clerk user.")
+        return
+      }
+      window.localStorage.setItem(ADMIN_TOKEN_KEY, data.token)
+      window.localStorage.setItem(
+        ADMIN_USER_KEY,
+        JSON.stringify({
+          role: data.role,
+          name: data.name,
+          email: data.email,
+          permissions: data.permissions ?? [],
+        }),
+      )
+      window.dispatchEvent(new Event("shaniidrx:admin-session"))
+      navigate("/admin")
+    } catch {
+      setLoginError("Unable to connect to the server. Please try again.")
+    } finally {
+      setClerkLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    if (!CLERK_SSO_ENABLED || !clerkLoaded || !isSignedIn || view !== "login") return
+    void exchangeClerkAdminSession()
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only auto-exchange when Clerk session appears
+  }, [CLERK_SSO_ENABLED, clerkLoaded, isSignedIn, view])
+
+  async function handleClerkGoogle() {
+    if (!signIn) return
+    setLoginError("")
+    setClerkLoading(true)
+    try {
+      await signIn.authenticateWithRedirect({
+        strategy: "oauth_google",
+        redirectUrl: `${window.location.origin}${BASE_PATH}/admin/login`,
+        redirectUrlComplete: `${window.location.origin}${BASE_PATH}/admin/login`,
+      })
+    } catch {
+      setLoginError("Google sign-in failed. Try email/password or contact your administrator.")
+      setClerkLoading(false)
+    }
+  }
 
   async function handleLogin(e: FormEvent) {
     e.preventDefault()
@@ -276,6 +344,28 @@ export function AdminLoginPage() {
                 "Login"
               )}
             </button>
+
+            {CLERK_SSO_ENABLED && (
+              <>
+                <div className="flex items-center gap-3 py-1">
+                  <div className="flex-1 h-px" style={{ background: "rgba(255,255,255,0.35)" }} />
+                  <span className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: WINE_SOFT }}>
+                    or
+                  </span>
+                  <div className="flex-1 h-px" style={{ background: "rgba(255,255,255,0.35)" }} />
+                </div>
+                <GoogleSignInButton
+                  variant="glass"
+                  label="Sign in with Google (Clerk)"
+                  loading={clerkLoading}
+                  disabled={loginLoading}
+                  onClick={() => void handleClerkGoogle()}
+                />
+                <p className="text-[11px] text-center leading-relaxed" style={{ color: WINE_SOFT }}>
+                  Your Clerk email must match an active admin user. RBAC permissions apply after sign-in.
+                </p>
+              </>
+            )}
 
             {/* Development-only credential hint — never rendered in production builds */}
             {import.meta.env.DEV && (

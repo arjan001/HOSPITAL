@@ -104,6 +104,7 @@ import { AdminCustomPages } from "@/components/admin/custom-pages";
 import { AdminFooterCms } from "@/components/admin/footer-cms";
 import { AdminWebsiteSettings } from "@/components/admin/website-settings";
 import { AdminIntegrations } from "@/components/admin/integrations";
+import { AdminPartnerWebhooks } from "@/components/admin/partner-webhooks";
 import { AdminPopupOffer } from "@/components/admin/popup-offer";
 import { AdminProfile } from "@/components/admin/profile";
 import { AdminPrescriptions } from "@/components/admin/prescriptions";
@@ -521,6 +522,7 @@ function Router() {
       <Route path="/admin/logistics/fallback"    component={AdminLogisticsFallback} />
       <Route path="/admin/integrations/templates" component={AdminMessageTemplates} />
       <Route path="/admin/integrations/outbox" component={AdminMessageOutbox} />
+      <Route path="/admin/integrations/webhooks" component={AdminPartnerWebhooks} />
       <Route path="/admin/campaigns"            component={AdminCampaignsOverview} />
       <Route path="/admin/campaigns/email"      component={AdminCampaignsEmail} />
       <Route path="/admin/campaigns/sms"        component={AdminCampaignsSms} />

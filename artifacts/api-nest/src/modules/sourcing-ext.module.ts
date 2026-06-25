@@ -34,6 +34,7 @@ import { newId } from "../common/repository"
 import { listSourcingInventory } from "../common/sourcing-inventory"
 import { scoreSuppliersForSku, type SupplierInput } from "../common/supplier-scoring"
 import { buildDemandForecast } from "../common/demand-forecast"
+import { buildWeeklySkuOrderSeries, enhanceForecastEntries } from "../common/demand-forecast-enhanced"
 import { AdminGuard, RequirePerm } from "../common/admin-guard"
 import { SourcingModule, SourcingRequestsService } from "./sourcing.module"
 import { SupplierPurchaseOrdersModule, SupplierPurchaseOrdersService } from "./supplier-purchase-orders.module"
@@ -466,6 +467,110 @@ export class SourcingAutomationDbService {
     return { rulesEvaluated: rules.length, requestsCreated, posCreated, flagged }
   }
 
+  /** Stage 5.4 — enhanced forecast → supplier scoring → draft/sent POs. */
+  async runProcurementPipeline(opts: {
+    windowDays?: number
+    autoApprove?: boolean
+    shortfallThreshold?: number
+  }) {
+    const windowDays = opts.windowDays ?? 30
+    const threshold = opts.shortfallThreshold ?? 1
+    const agg = await this.demand.aggregate(windowDays)
+    const baseline = await buildDemandForecast(agg, this.catalog, windowDays)
+    const series = await buildWeeklySkuOrderSeries(this.catalog, windowDays)
+    const { entries, model } = enhanceForecastEntries(baseline.entries, series)
+
+    const inventory = await listSourcingInventory()
+    const invBySku = new Map(inventory.map((i) => [i.sku, i]))
+    const suppliers = await this.loadSuppliers()
+    const quoteRows = await db.select().from(partnerQuotes)
+    const quotes = quoteRows.map((q) => ({
+      supplierId: q.supplierId,
+      unitCost: q.unitPrice,
+    }))
+
+    let posCreated = 0
+    let skipped = 0
+    const flagged: Array<{ sku: string; productName: string; reason: string }> = []
+    const details: string[] = []
+    const createdPos: Array<{ poNumber: string; supplierId: string; sku: string; qty: number }> = []
+
+    for (const entry of entries) {
+      const inv = invBySku.get(entry.sku)
+      const onHand = inv?.onHand ?? 0
+      const safety = inv?.safetyStock ?? 0
+      const suggested = Math.max(0, entry.projectedDemand + safety - onHand)
+      if (suggested < threshold) continue
+
+      flagged.push({
+        sku: entry.sku,
+        productName: entry.productName,
+        reason: `Pipeline shortfall ${suggested} (${model}, projected ${entry.projectedDemand})`,
+      })
+
+      if (suppliers.length === 0) {
+        skipped++
+        details.push(`No suppliers for ${entry.sku}`)
+        continue
+      }
+
+      const ranked = scoreSuppliersForSku(entry.sku, suggested, suppliers, quotes, inv)
+      const top = ranked[0]
+      if (!top) {
+        skipped++
+        continue
+      }
+
+      const po = await this.pos.create(
+        {
+          supplierId: top.supplierId,
+          status: opts.autoApprove ? "sent" : "draft",
+          notes: `Procurement pipeline (${model}) — ${entry.productName}`,
+          items: [
+            {
+              name: entry.productName,
+              qty: suggested,
+              unitPrice: top.unitCostEstimate ?? inv?.unitCost ?? 0,
+            },
+          ],
+        },
+        "procurement-pipeline",
+      )
+      posCreated++
+      createdPos.push({
+        poNumber: po.poNumber,
+        supplierId: top.supplierId,
+        sku: entry.sku,
+        qty: suggested,
+      })
+      details.push(
+        `${opts.autoApprove ? "Sent" : "Draft"} PO ${po.poNumber} for ${entry.sku} qty ${suggested} → ${top.supplierName}`,
+      )
+    }
+
+    await db.insert(sourcingAutomationLog).values({
+      id: newId("alog"),
+      ruleId: "procurement_pipeline",
+      ruleName: "Procurement pipeline",
+      ranAt: new Date(),
+      matched: flagged.length,
+      created: posCreated,
+      details: details.length ? details : ["No shortfalls above threshold."],
+    })
+
+    return {
+      model,
+      windowDays,
+      autoApprove: Boolean(opts.autoApprove),
+      shortfallThreshold: threshold,
+      flagged,
+      posCreated,
+      skipped,
+      createdPos,
+      details,
+    }
+  }
+
   private async loadSuppliers(): Promise<SupplierInput[]> {
     const rows = await db
       .select()
@@ -668,6 +773,14 @@ class SourcingExtController {
   @RequirePerm("sourcing.manage")
   runForecast(@Body() body: { windowDays?: number }) {
     return this.automation.runForecastShortfall(body?.windowDays ?? 30)
+  }
+
+  @Post("automation/run-procurement-pipeline")
+  @RequirePerm("sourcing.manage", "procurement.manage")
+  runProcurementPipeline(
+    @Body() body: { windowDays?: number; autoApprove?: boolean; shortfallThreshold?: number },
+  ) {
+    return this.automation.runProcurementPipeline(body ?? {})
   }
 
   @Get("performance")

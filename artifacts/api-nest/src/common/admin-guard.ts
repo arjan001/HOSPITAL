@@ -34,6 +34,8 @@ import { and, eq } from "drizzle-orm"
 import { db, adminUsers } from "@workspace/db"
 import { verifyAdminToken } from "./admin-token"
 import { effectivePermissions, hasPermission } from "./admin-permissions"
+import { resolveAdminFromClerk, clerkAdminSsoEnabled } from "./admin-clerk-auth"
+import { verifyClerkBearer } from "./clerk-auth"
 
 export const ADMIN_PUBLIC_KEY = "admin-public"
 /** Mark a handler/controller as exempt from AdminGuard. */
@@ -153,6 +155,30 @@ export class AdminGuard implements CanActivate {
         )
       }
       return true
+    }
+
+    // 2b. Clerk SSO — Bearer Clerk session JWT for an active admin_users row.
+    if (clerkAdminSsoEnabled()) {
+      const clerk = await verifyClerkBearer(req.header("authorization"))
+      if (clerk) {
+        const identity = await resolveAdminFromClerk(clerk)
+        if (identity) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          ;(req as any).adminUser = identity
+          if (required.length && !hasPermission(identity.permissions, required)) {
+            throw new HttpException(
+              `Requires permission: ${required.join(" or ")}`,
+              HttpStatus.FORBIDDEN,
+            )
+          } else if (!anyAdmin && !identity.permissions.includes("*")) {
+            throw new HttpException(
+              "Insufficient permissions for this admin resource",
+              HttpStatus.FORBIDDEN,
+            )
+          }
+          return true
+        }
+      }
     }
 
     // 3. No valid token. If an ops master key OR signed tokens are the only

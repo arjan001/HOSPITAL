@@ -64,6 +64,7 @@ import {
   type SupplierInput,
 } from "../common/supplier-scoring"
 import { buildDemandForecast, buildProductSkuIndex, drugNameToSku } from "../common/demand-forecast"
+import { buildWeeklySkuOrderSeries, enhanceForecastEntries } from "../common/demand-forecast-enhanced"
 import { CatalogModule, CatalogService } from "./catalog.module"
 
 const DEFAULT_MAPPINGS: Array<{
@@ -871,6 +872,23 @@ class DemandAdminController {
     const days = Number(windowDays) || 30
     const agg = await this.demand.aggregate(days)
     return buildDemandForecast(agg, this.catalog, days)
+  }
+
+  @Get("forecast-v2")
+  @RequirePerm("sourcing.view")
+  async forecastV2(@Query("windowDays") windowDays?: string) {
+    const days = Number(windowDays) || 30
+    const agg = await this.demand.aggregate(days)
+    const baseline = await buildDemandForecast(agg, this.catalog, days)
+    const series = await buildWeeklySkuOrderSeries(this.catalog, days)
+    const enhanced = enhanceForecastEntries(baseline.entries, series)
+    return {
+      windowDays: baseline.windowDays,
+      generatedAt: baseline.generatedAt,
+      model: enhanced.model,
+      summary: { ...baseline.summary, ...enhanced.summary },
+      entries: enhanced.entries,
+    }
   }
 }
 

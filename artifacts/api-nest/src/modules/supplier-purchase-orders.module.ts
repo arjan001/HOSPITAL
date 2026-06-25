@@ -25,6 +25,7 @@ import {
   purchaseOrders,
 } from "@workspace/db"
 import { AdminGuard, RequirePerm } from "../common/admin-guard"
+import { dispatchPartnerWebhook } from "../common/partner-webhooks"
 import { newId } from "../common/repository"
 
 type PoLineInput = { name?: string; qty?: number; unitPrice?: number }
@@ -169,7 +170,21 @@ export class SupplierPurchaseOrdersService {
       .select()
       .from(purchaseOrderLines)
       .where(eq(purchaseOrderLines.purchaseOrderId, id))
-    return this.toDto(row, lines)
+    const dto = this.toDto(row, lines)
+    if (dto.status === "sent") {
+      void this.notifyPoIssued(dto)
+    }
+    return dto
+  }
+
+  private notifyPoIssued(po: PoDto): void {
+    void dispatchPartnerWebhook(po.supplierId, "po.issued", {
+      poId: po.id,
+      poNumber: po.poNumber,
+      status: po.status,
+      total: po.total,
+      items: po.items.map((i) => ({ name: i.name, qty: i.qty, unitPrice: i.unitPrice })),
+    }).catch(() => undefined)
   }
 
   async updateStatus(id: string, status: string): Promise<PoDto> {
@@ -187,7 +202,11 @@ export class SupplierPurchaseOrdersService {
       .select()
       .from(purchaseOrderLines)
       .where(eq(purchaseOrderLines.purchaseOrderId, id))
-    return this.toDto(row, lines)
+    const dto = this.toDto(row, lines)
+    if (status === "sent") {
+      void this.notifyPoIssued(dto)
+    }
+    return dto
   }
 }
 

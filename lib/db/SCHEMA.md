@@ -32,6 +32,17 @@
 | `sourcing_automation_rules` | [`sourcing-ext.ts`](src/schema/sourcing-ext.ts) | Procurement automation rules |
 | `sourcing_automation_log` | [`sourcing-ext.ts`](src/schema/sourcing-ext.ts) | Automation run history |
 | `sourcing_supplier_score_overrides` | [`sourcing-ext.ts`](src/schema/sourcing-ext.ts) | Manual quality/complaint overrides |
+| `admin_users.clerk_user_id` | [`admin.ts`](src/schema/admin.ts) | Clerk SSO link for admin users (Stage 5.1) |
+| `partner_webhook_endpoints` | [`stage5.ts`](src/schema/stage5.ts) | Outbound partner webhook URLs + events |
+| `partner_webhook_deliveries` | [`stage5.ts`](src/schema/stage5.ts) | Webhook delivery attempt log |
+
+## Admin columns (Stage 5)
+
+On `admin_users` ([`admin.ts`](src/schema/admin.ts)):
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `clerk_user_id` | text | Links Clerk user to admin RBAC row |
 
 ## Prescription columns (recent)
 

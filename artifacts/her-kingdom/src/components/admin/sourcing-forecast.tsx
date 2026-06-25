@@ -37,9 +37,11 @@ export function SourcingForecastTab() {
   const [inventory] = useSourcingInventory([])
   const [modal, setModal] = useState<{ open: boolean; editing: ForecastEntry | null }>({ open: false, editing: null })
   const [windowDays, setWindowDays] = useState("30")
+  const [useMlModel, setUseMlModel] = useState(false)
   const [generating, setGenerating] = useState(false)
   const [genError, setGenError] = useState<string | null>(null)
   const [lastGenerated, setLastGenerated] = useState<string | null>(null)
+  const [lastModel, setLastModel] = useState<string | null>(null)
 
   const enriched = useMemo(() => entries.map((f) => {
     const inv = inventory.find((i) => i.sku === f.sku)
@@ -68,7 +70,9 @@ export function SourcingForecastTab() {
     setGenerating(true)
     setGenError(null)
     try {
-      const result = await apiAdminDemand.forecast(Number(windowDays))
+      const result = useMlModel
+        ? await apiAdminDemand.forecastV2(Number(windowDays))
+        : await apiAdminDemand.forecast(Number(windowDays))
       const mapped: ForecastEntry[] = result.entries.map((e) => ({
         id: e.id,
         sku: e.sku,
@@ -77,7 +81,10 @@ export function SourcingForecastTab() {
         historicalDemand: e.historicalDemand,
         projectedDemand: e.projectedDemand,
         source: e.source,
-        notes: e.notes,
+        notes:
+          "modelNotes" in e && typeof e.modelNotes === "string"
+            ? e.modelNotes
+            : e.notes,
         updatedAt: e.updatedAt,
       }))
       setEntries((prev) => {
@@ -89,6 +96,7 @@ export function SourcingForecastTab() {
         return [...bySku.values()].sort((a, b) => b.projectedDemand - a.projectedDemand)
       })
       setLastGenerated(result.generatedAt)
+      setLastModel("model" in result && typeof result.model === "string" ? result.model : "baseline-trend")
     } catch (err) {
       setGenError(err instanceof Error ? err.message : "Could not generate forecast")
     } finally {
@@ -134,6 +142,16 @@ export function SourcingForecastTab() {
         <Button
           type="button"
           size="sm"
+          variant={useMlModel ? "default" : "outline"}
+          onClick={() => setUseMlModel((v) => !v)}
+          className={useMlModel ? "bg-[#3D0814] hover:bg-[#6B0F1A] text-white gap-1.5" : "gap-1.5"}
+        >
+          <Sparkles className="h-3.5 w-3.5" />
+          {useMlModel ? "ML v2" : "Baseline"}
+        </Button>
+        <Button
+          type="button"
+          size="sm"
           variant="outline"
           disabled={generating}
           onClick={() => void generateFromLiveData()}
@@ -152,7 +170,7 @@ export function SourcingForecastTab() {
       )}
       {lastGenerated && (
         <p className="text-[11px] text-muted-foreground">
-          Last generated {new Date(lastGenerated).toLocaleString()} from orders, Rx, and assessments.
+          Last generated {new Date(lastGenerated).toLocaleString()} using {lastModel ?? "baseline-trend"}.
         </p>
       )}
 

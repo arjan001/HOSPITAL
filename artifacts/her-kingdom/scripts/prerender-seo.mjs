@@ -179,8 +179,37 @@ async function main() {
     console.warn(`[prerender] blogs skipped: ${err instanceof Error ? err.message : err}`)
   }
 
+  let categoryCount = 0
+  try {
+    const categories = await fetchJson(`${API}/api/v2/categories`)
+    for (const cat of Array.isArray(categories) ? categories : []) {
+      const slug = cat?.slug || cat?.id
+      const name = cat?.name
+      if (!slug || !name) continue
+      const path = `/shop/category/${encodeURIComponent(String(slug))}`
+      const canonical = `${SITE}/shop?category=${encodeURIComponent(String(slug))}`
+      const desc = (cat.description || `Shop ${name} at Shaniid RX — verified pharmacy Kenya.`).slice(0, 160)
+      const html = injectMeta(baseHtml, {
+        title: `${name} | Shop | Shaniid RX`,
+        description: desc,
+        canonical,
+        jsonLd: {
+          "@context": "https://schema.org",
+          "@type": "CollectionPage",
+          name,
+          description: desc,
+          url: canonical,
+        },
+      })
+      writePrerender(path, html)
+      categoryCount++
+    }
+  } catch (err) {
+    console.warn(`[prerender] categories skipped: ${err instanceof Error ? err.message : err}`)
+  }
+
   console.log(
-    `[prerender] ${STATIC_ROUTES.length} static routes, ${productCount} products, ${blogCount} blog posts`,
+    `[prerender] ${STATIC_ROUTES.length} static routes, ${productCount} products, ${blogCount} blog posts, ${categoryCount} shop categories`,
   )
 }
 

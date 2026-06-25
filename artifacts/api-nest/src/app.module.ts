@@ -84,6 +84,7 @@ import { SupplierPurchaseOrdersModule } from "./modules/supplier-purchase-orders
 import { IntegrationsAdminModule } from "./modules/integrations-admin.module"
 import { TradingModule } from "./modules/trading.module"
 import { PartnerDirectoryModule } from "./modules/partner-directory.module"
+import { PartnerWebhooksModule } from "./modules/partner-webhooks.module"
 
 @Module({
   imports: [
@@ -142,6 +143,7 @@ import { PartnerDirectoryModule } from "./modules/partner-directory.module"
     IntegrationsAdminModule,
     TradingModule,
     PartnerDirectoryModule,
+    PartnerWebhooksModule,
   ],
   providers: [
     RateLimitMiddleware,
