@@ -41,3 +41,8 @@ pnpm --filter @workspace/db run push
 | `20250605_doctors.sql` | `doctors` (extended profile), `doctor_accounts` (portal login) |
 | `20250615_partner_organizations.sql` | `partner_members`, `partner_directory.clerk_org_id`, `delivery_jobs.assigned_member_id` |
 | `20250616_pharmacies.sql` | `pharmacies` table, `pharmacy_branches.pharmacy_id`, staff Clerk fields |
+| `20250606_sourcing_inventory.sql` | `sourcing_inventory_items` (also in `admin.ts` — use `pnpm db:push`) |
+| `20250625_trading.sql` | `trading_deals`, `trading_bids`, `trading_negotiations`, `trading_settlements` |
+| `20250626_sourcing_ext.sql` | Pricing, automation, supplier score overrides (also in `sourcing-ext.ts`) |
+
+**New tables:** define them in `lib/db/src/schema/*.ts` first, then run `pnpm db:push`. Manual SQL files above are only for environments where push is unavailable.

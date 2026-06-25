@@ -95,6 +95,60 @@ export function geoFromHeaders(req: Request): { country: string; countryName: st
   return { country: code, countryName: countryName(code), region, city }
 }
 
+/** Client IP for geo fallback when CDN headers are absent. */
+export function clientIpFromRequest(req: Request): string {
+  const forwarded = header(req, "x-forwarded-for")
+  if (forwarded) return forwarded.split(",")[0]?.trim() || ""
+  return req.socket?.remoteAddress?.replace(/^::ffff:/, "") || ""
+}
+
+function isPrivateOrLocalIp(ip: string): boolean {
+  if (!ip || ip === "::1") return true
+  return /^(127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|fc|fd)/.test(ip)
+}
+
+const geoIpCache = new Map<string, { country: string; countryName: string; region: string; city: string; expires: number }>()
+
+/** IP → country lookup via ip-api.com when proxy headers omit geo (best-effort). */
+export async function geoFromIp(ip: string): Promise<{ country: string; countryName: string; region: string; city: string }> {
+  const blank = { country: "", countryName: "", region: "", city: "" }
+  if (!ip || isPrivateOrLocalIp(ip)) return blank
+  const cached = geoIpCache.get(ip)
+  if (cached && cached.expires > Date.now()) {
+    return { country: cached.country, countryName: cached.countryName, region: cached.region, city: cached.city }
+  }
+  try {
+    const ctrl = new AbortController()
+    const timer = setTimeout(() => ctrl.abort(), 2000)
+    const res = await fetch(
+      `http://ip-api.com/json/${encodeURIComponent(ip)}?fields=status,countryCode,regionName,city`,
+      { signal: ctrl.signal },
+    )
+    clearTimeout(timer)
+    if (!res.ok) return blank
+    const data = (await res.json()) as { status?: string; countryCode?: string; regionName?: string; city?: string }
+    if (data.status !== "success" || !data.countryCode) return blank
+    const code = data.countryCode.toUpperCase()
+    const out = {
+      country: code,
+      countryName: countryName(code),
+      region: data.regionName || "",
+      city: data.city || "",
+    }
+    geoIpCache.set(ip, { ...out, expires: Date.now() + 3600_000 })
+    return out
+  } catch {
+    return blank
+  }
+}
+
+/** Headers first; fall back to IP lookup for analytics ingest. */
+export async function resolveGeo(req: Request): Promise<{ country: string; countryName: string; region: string; city: string }> {
+  const fromHeaders = geoFromHeaders(req)
+  if (fromHeaders.country) return fromHeaders
+  return geoFromIp(clientIpFromRequest(req))
+}
+
 export function hostOf(url: string): string {
   if (!url) return ""
   try {

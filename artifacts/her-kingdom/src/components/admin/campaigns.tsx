@@ -17,6 +17,7 @@ import { notify } from "@/lib/notify"
 import { usePermission } from "@/lib/permissions"
 import { pipelineClient, type CampaignRecipientResult } from "@/lib/pipeline-client"
 import { pushAdminNotification } from "@/lib/notifications-client"
+import { getCampaignNewsletterSubscribers, useCampaignNewsletterAudience } from "@/lib/use-newsletter-store"
 import {
   Megaphone, Send, Mail, MessageSquare, Users, GitBranch, ListChecks, Settings as SettingsIcon,
   Plus, Trash2, Edit3, Copy, Play, Pause, RotateCcw, CheckCircle2, AlertCircle, Clock,
@@ -250,7 +251,7 @@ type Customer = { id?: string; email?: string; phone?: string; full_name?: strin
 
 function resolveRecipients(audience: Audience): string[] {
   if (audience.type === "manual") return audience.manualList.filter(Boolean)
-  const subs = cmsStore.get<Subscriber[]>("newsletter-subscribers", [])
+  const subs = getCampaignNewsletterSubscribers()
   const custs = cmsStore.get<Customer[]>("customers", [])
   const isSms = audience.channel === "sms"
   if (audience.type === "all-subscribers") {
@@ -570,6 +571,7 @@ const TABS: { href: string; label: string; icon: typeof Megaphone }[] = [
 
 function CampaignsTabBar() {
   const [loc] = useLocation()
+  useCampaignNewsletterAudience()
   return (
     <div className="border-b border-stone-200 mb-6 -mt-2 overflow-x-auto">
       <div className="flex gap-1 min-w-max">

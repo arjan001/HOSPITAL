@@ -19,7 +19,7 @@ import {
 import type { Request } from "express"
 import { and, desc, eq } from "drizzle-orm"
 import { db, analyticsEvents } from "@workspace/db"
-import { buildAnalytics, buildRealtime, geoFromHeaders, hostOf, isBotUA, parseUserAgent, searchTermFromReferrer } from "../common/analytics"
+import { buildAnalytics, buildRealtime, resolveGeo, hostOf, isBotUA, parseUserAgent, searchTermFromReferrer } from "../common/analytics"
 import { AdminGuard, AnyAdmin, RequirePerm } from "../common/admin-guard"
 
 function newId(): string {
@@ -31,7 +31,7 @@ export class AnalyticsIngestService {
   async trackView(req: Request, body: Record<string, unknown>) {
     const ua = req.header("user-agent") || ""
     const { device, browser, os } = parseUserAgent(ua)
-    const geo = geoFromHeaders(req)
+    const geo = await resolveGeo(req)
     const referrer = String(body.referrer || "")
     const searchTerm = searchTermFromReferrer(referrer)
     await db.insert(analyticsEvents).values({
@@ -85,7 +85,7 @@ export class AnalyticsIngestService {
     const name = String(body.name || body.eventType || "event")
     const ua = req.header("user-agent") || ""
     const { device, browser, os } = parseUserAgent(ua)
-    const geo = geoFromHeaders(req)
+    const geo = await resolveGeo(req)
     const kind = name === "search" ? "search" : name === "click" ? "click" : "event"
     const eventTarget = String(body.eventTarget || "")
     await db.insert(analyticsEvents).values({

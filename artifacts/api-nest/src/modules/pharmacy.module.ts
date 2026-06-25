@@ -18,6 +18,8 @@ import { eq, desc, inArray } from "drizzle-orm"
 import { db, pharmacies, pharmacyBranches, pharmacyShifts, pharmacyEmployees, posTransactions } from "@workspace/db"
 import { newId } from "../common/repository"
 import { AdminGuard, RequirePerm } from "../common/admin-guard"
+import { AdminCmsModule, AdminCmsService } from "./admin-cms.module"
+import { deductCatalogProductStock } from "../common/catalog-stock"
 import {
   clerkPartnerOrgEnabled,
   createClerkOrganization,
@@ -39,6 +41,7 @@ import {
 
 @Injectable()
 class PharmacyService {
+  constructor(@Inject(AdminCmsService) private readonly cms: AdminCmsService) {}
   // ── Pharmacies (legal entity / internal network) ──
   async listPharmacies(scope: PharmacyScope) {
     const pid = scopedPharmacyId(scope)
@@ -352,6 +355,16 @@ class PharmacyService {
       receiptNo,
       notes: String(body?.notes ?? "").trim() || undefined,
     }).returning()
+
+    const status = String(body?.status ?? "pending")
+    if (status === "paid" && Array.isArray(body?.items)) {
+      const lines = (body.items as Array<{ productId?: string; qty?: number }>)
+        .filter((i) => i?.productId)
+        .map((i) => ({ productId: String(i.productId), qty: Number(i.qty) || 1 }))
+      if (lines.length) {
+        await deductCatalogProductStock(this.cms, lines)
+      }
+    }
     return t
   }
 
@@ -470,6 +483,7 @@ class PharmacyPosController {
 // ─── Module ─────────────────────────────────────────────────────────────────
 
 @Module({
+  imports: [AdminCmsModule],
   controllers: [
     PharmacyNetworkController,
     PharmacyBranchesController,

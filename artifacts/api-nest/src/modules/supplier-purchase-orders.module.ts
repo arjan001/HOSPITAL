@@ -71,7 +71,7 @@ function normalizeLines(items: PoLineInput[]) {
 }
 
 @Injectable()
-class SupplierPurchaseOrdersService {
+export class SupplierPurchaseOrdersService {
   private toDto(
     row: typeof purchaseOrders.$inferSelect,
     lines: Array<typeof purchaseOrderLines.$inferSelect>,

@@ -8,6 +8,7 @@ import { useLocation } from "wouter"
 import { useAdminOrders } from "@/lib/orders-store"
 import { useAdminPrescriptions, useAdminThreads, useAdminConsultations } from "@/lib/api-nest"
 import { useCmsDoc, cmsStore } from "@/lib/cms-store"
+import { useNewsletterSubscribers } from "@/lib/use-newsletter-store"
 import { NotificationBell } from "@/components/admin/notification-bell"
 import { Seo } from "@/components/seo"
 import { useNotificationSound } from "@/lib/notification-sound"
@@ -754,7 +755,7 @@ export function AdminShell({ children, title }: { children: ReactNode; title: st
 
   // Newsletter "new since last viewed" badge (header bell mirrors this via the
   // durable admin notification feed; this drives the sidebar counter).
-  const [newsletterSubs] = useCmsDoc<{ subscribed_at?: string }[]>("newsletter-subscribers", [])
+  const { subscribers: newsletterSubs, refresh: refreshNewsletter } = useNewsletterSubscribers([])
   const readSeenAt = () => {
     if (typeof window === "undefined") return 0
     const v = window.localStorage.getItem(NEWSLETTER_SEEN_KEY)
@@ -772,7 +773,7 @@ export function AdminShell({ children, title }: { children: ReactNode; title: st
     }
   }, [])
   // Keep the sidebar count fresh on mount so new sign-ups appear without a reload.
-  useEffect(() => { cmsStore.refresh("newsletter-subscribers") }, [])
+  useEffect(() => { void refreshNewsletter() }, [refreshNewsletter])
   const newNewsletter = useMemo(
     () =>
       (Array.isArray(newsletterSubs) ? newsletterSubs : []).filter(

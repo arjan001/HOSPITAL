@@ -81,7 +81,7 @@ const FRONTEND_ROLE_PERMS: Record<string, string[]> = {
     "inventory.edit",
     "delivery.manage",
   ],
-  marketing: ["cms.banners", "cms.pages", "cms.footer", "analytics.view"],
+  marketing: ["cms.banners", "cms.pages", "cms.footer", "analytics.view", "marketing.broadcast"],
 }
 
 const sorted = (a: string[]) => [...a].sort()

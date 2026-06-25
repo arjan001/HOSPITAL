@@ -2,8 +2,10 @@
 
 import { useState, useMemo, useEffect } from "react"
 import { Plus, Pencil, Trash2, TrendingUp, ArrowRight, RefreshCw, Sparkles } from "lucide-react"
-import { useCmsDoc, newId, cmsStore } from "@/lib/cms-store"
+import { useCmsDoc, newId } from "@/lib/cms-store"
 import { apiAdminDemand } from "@/lib/api-nest"
+import { apiAdminSourcing } from "@/lib/api-admin-sourcing"
+import { useSourcingInventory } from "@/lib/use-sourcing-store"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -16,7 +18,6 @@ import {
   type ForecastEntry,
   type InventoryItem,
 } from "./sourcing-shared"
-import type { SourcingRequest } from "./sourcing"
 
 function blank(): ForecastEntry {
   return {
@@ -33,7 +34,7 @@ function blank(): ForecastEntry {
 
 export function SourcingForecastTab() {
   const [entries, setEntries] = useCmsDoc<ForecastEntry[]>(SOURCING_KEYS.forecast, [])
-  const [inventory] = useCmsDoc<InventoryItem[]>(SOURCING_KEYS.inventory, [])
+  const [inventory] = useSourcingInventory([])
   const [modal, setModal] = useState<{ open: boolean; editing: ForecastEntry | null }>({ open: false, editing: null })
   const [windowDays, setWindowDays] = useState("30")
   const [generating, setGenerating] = useState(false)
@@ -95,26 +96,25 @@ export function SourcingForecastTab() {
     }
   }
 
-  const handleCreateRequest = (f: typeof enriched[number]) => {
+  const handleCreateRequest = async (f: typeof enriched[number]) => {
     if (f.suggested <= 0) {
       alert("No reorder needed — projected demand is covered by current stock + safety.")
       return
     }
-    const requests = cmsStore.get<SourcingRequest[]>(SOURCING_KEYS.requests, [])
-    const newReq: SourcingRequest = {
-      id: newId("req"),
-      productName: f.productName,
-      sku: f.sku,
-      qty: f.suggested,
-      priority: f.onHand < f.safety ? "urgent" : f.trend > 0.2 ? "high" : "normal",
-      source: f.source === "refill_predict" ? "refill_prediction" : f.source === "prescription_predict" ? "prescription_gap" : "low_stock",
-      status: "open",
-      notes: `Auto-derived from forecast: projected ${f.projectedDemand}/${f.windowDays}d, on-hand ${f.onHand}, safety ${f.safety}.`,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+    try {
+      await apiAdminSourcing.createOpenRequest({
+        sku: f.sku,
+        productName: f.productName,
+        quantityNeeded: f.suggested,
+        priority: f.onHand < f.safety ? "urgent" : f.trend > 0.2 ? "high" : "normal",
+        notes: `Auto-derived from forecast: projected ${f.projectedDemand}/${f.windowDays}d, on-hand ${f.onHand}, safety ${f.safety}.`,
+        currentStock: f.onHand,
+        reorderPoint: f.inv?.reorderPoint,
+      })
+      alert(`Sourcing request created (qty ${f.suggested}).`)
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Could not create sourcing request")
     }
-    cmsStore.set(SOURCING_KEYS.requests, [newReq, ...requests])
-    alert(`Sourcing request created (qty ${f.suggested}).`)
   }
 
   return (

@@ -26,13 +26,15 @@ import {
   CalendarClock,
 } from "lucide-react"
 import { useCmsDoc, newId, cmsStore } from "@/lib/cms-store"
+import { apiAdminSourcing } from "@/lib/api-admin-sourcing"
+import { useSourcingInventory, useSourcingRequests, usePurchaseOrders, useSourcingPerformance } from "@/lib/use-sourcing-store"
 import { AdminShell } from "./admin-shell"
 import { SourcingForecastTab } from "./sourcing-forecast"
 import { SourcingInventoryTab } from "./sourcing-inventory"
 import { SourcingPerformanceTab } from "./sourcing-performance"
 import { SourcingPricingTab } from "./sourcing-pricing"
 import { SourcingAutomationTab } from "./sourcing-automation"
-import type { InventoryItem, PriceHistoryEntry } from "./sourcing-shared"
+import type { InventoryItem } from "./sourcing-shared"
 import { SOURCING_KEYS } from "./sourcing-shared"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -258,10 +260,10 @@ export function AdminSourcing() {
   const [tab, setTab] = useState<Tab>("overview")
 
   const [suppliers, setSuppliers] = useCmsDoc<Supplier[]>(SOURCING_KEYS.suppliers, DEFAULT_SUPPLIERS)
-  const [requests, setRequests] = useCmsDoc<SourcingRequest[]>(SOURCING_KEYS.requests, DEFAULT_REQUESTS)
+  const { requests, createOpen, patchStatus, remove: removeRequest, refresh: refreshRequests } = useSourcingRequests(DEFAULT_REQUESTS)
   const [quotes, setQuotes] = useCmsDoc<Quote[]>(SOURCING_KEYS.quotes, [])
-  const [pos, setPos] = useCmsDoc<PurchaseOrder[]>(SOURCING_KEYS.pos, [])
-  const [inventory, setInventory] = useCmsDoc<InventoryItem[]>(SOURCING_KEYS.inventory, [])
+  const { pos, createFromQuote, updateStatus: updatePoStatus } = usePurchaseOrders([])
+  const [inventory, setInventory] = useSourcingInventory([])
 
   /* ---- modal state ------------------------------------------------------- */
   const [supplierModal, setSupplierModal] = useState<{ open: boolean; editing: Supplier | null }>({ open: false, editing: null })
@@ -309,23 +311,31 @@ export function AdminSourcing() {
   /*  Request handlers                                                      */
   /* ---------------------------------------------------------------------- */
 
-  const handleSaveRequest = (r: SourcingRequest) => {
-    setRequests((prev) => {
-      const idx = prev.findIndex((x) => x.id === r.id)
-      if (idx === -1) return [r, ...prev]
-      const next = prev.slice(); next[idx] = { ...r, updatedAt: new Date().toISOString() }; return next
-    })
+  const handleSaveRequest = async (r: SourcingRequest) => {
+    const existing = requests.find((x) => x.id === r.id)
+    if (!existing) {
+      await createOpen({
+        sku: r.sku ?? "",
+        productName: r.productName,
+        quantityNeeded: r.qty,
+        priority: r.priority,
+        notes: r.notes,
+      })
+    } else {
+      await apiAdminSourcing.patchRequest(r.id, { status: r.status, notes: r.notes })
+      refreshRequests()
+    }
     setRequestModal({ open: false, editing: null })
   }
 
-  const handleDeleteRequest = (id: string) => {
+  const handleDeleteRequest = async (id: string) => {
     if (!confirm("Delete this sourcing request and all its quotes?")) return
-    setRequests((prev) => prev.filter((r) => r.id !== id))
+    await removeRequest(id)
     setQuotes((prev) => prev.filter((q) => q.requestId !== id))
   }
 
-  const handleStatusChange = (id: string, status: RequestStatus) => {
-    setRequests((prev) => prev.map((r) => r.id === id ? { ...r, status, updatedAt: new Date().toISOString() } : r))
+  const handleStatusChange = async (id: string, status: RequestStatus) => {
+    await patchStatus(id, status)
   }
 
   /* ---------------------------------------------------------------------- */
@@ -338,24 +348,21 @@ export function AdminSourcing() {
       if (idx === -1) return [...prev, q]
       const next = prev.slice(); next[idx] = q; return next
     })
-    setRequests((prev) => prev.map((r) => r.id === q.requestId && r.status === "open"
-      ? { ...r, status: "quoting", updatedAt: new Date().toISOString() } : r))
+    if (requests.find((r) => r.id === q.requestId)?.status === "open") {
+      void patchStatus(q.requestId, "quoting")
+    }
 
     // Record price history snapshot for the price-intel tab.
     const req = requests.find((r) => r.id === q.requestId)
     if (req?.sku) {
-      const existing = cmsStore.get<PriceHistoryEntry[]>(SOURCING_KEYS.priceHistory, [])
-      const entry: PriceHistoryEntry = {
-        id: newId("ph"),
+      void apiAdminSourcing.addPriceHistory({
         sku: req.sku,
         productName: req.productName,
         supplierId: q.supplierId,
         unitCost: q.unitCost,
         currency: q.currency,
         source: "quote",
-        capturedAt: new Date().toISOString(),
-      }
-      cmsStore.set(SOURCING_KEYS.priceHistory, [entry, ...existing])
+      })
     }
 
     setQuoteModal({ open: false, requestId: null, editing: null })
@@ -374,41 +381,40 @@ export function AdminSourcing() {
   /*  PO handlers                                                           */
   /* ---------------------------------------------------------------------- */
 
-  const handleConvertToPO = (q: Quote) => {
+  const handleConvertToPO = async (q: Quote) => {
     const req = requests.find((r) => r.id === q.requestId)
     if (!req) return
-    const po: PurchaseOrder = {
-      id: newId("po"),
-      poNumber: `PO-${Date.now().toString().slice(-8)}`,
-      requestId: q.requestId,
-      supplierId: q.supplierId,
-      quoteId: q.id,
-      qty: req.qty,
-      unitCost: q.unitCost,
-      currency: q.currency,
-      status: "draft",
-      createdAt: new Date().toISOString(),
+    try {
+      await createFromQuote({
+        supplierId: q.supplierId,
+        productName: req.productName,
+        qty: req.qty,
+        unitCost: q.unitCost,
+        notes: `From quote ${q.id} / request ${req.id}`,
+      })
+      await patchStatus(req.id, "ordered")
+      setQuotes((prev) => prev.map((x) => x.requestId === q.requestId ? { ...x, isWinner: x.id === q.id } : x))
+      setTab("pos")
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Could not create purchase order")
     }
-    setPos((prev) => [po, ...prev])
-    setRequests((prev) => prev.map((r) => r.id === req.id ? { ...r, status: "ordered", updatedAt: new Date().toISOString() } : r))
-    setQuotes((prev) => prev.map((x) => x.requestId === q.requestId ? { ...x, isWinner: x.id === q.id } : x))
-    setTab("pos")
   }
 
-  const handlePOStatusChange = (id: string, status: POStatus) => {
+  const handlePOStatusChange = async (id: string, status: POStatus) => {
     const prevPo = pos.find((p) => p.id === id)
     const transitionToReceived = status === "received" && prevPo?.status !== "received"
 
-    setPos((prev) => prev.map((p) => p.id === id
-      ? { ...p, status, receivedAt: status === "received" ? (p.receivedAt || new Date().toISOString()) : p.receivedAt }
-      : p))
+    try {
+      await updatePoStatus(id, status)
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Could not update PO status")
+      return
+    }
 
-    // Only fire the side effects on the first transition into "received" so toggling cannot double-count.
     if (transitionToReceived && prevPo) {
-      setRequests((prev) => prev.map((r) => r.id === prevPo.requestId
-        ? { ...r, status: "received", updatedAt: new Date().toISOString() } : r))
-
       const req = requests.find((r) => r.id === prevPo.requestId)
+      if (req?.id) void patchStatus(req.id, "received")
+
       if (req?.sku) {
         setInventory((prev) => {
           const idx = prev.findIndex((i) => i.sku === req.sku)
@@ -421,9 +427,13 @@ export function AdminSourcing() {
     }
   }
 
-  const handleDeletePO = (id: string) => {
-    if (!confirm("Delete this PO?")) return
-    setPos((prev) => prev.filter((p) => p.id !== id))
+  const handleDeletePO = async (id: string) => {
+    if (!confirm("Cancel this purchase order?")) return
+    try {
+      await updatePoStatus(id, "cancelled")
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Could not cancel PO")
+    }
   }
 
   /* ---------------------------------------------------------------------- */
@@ -864,6 +874,7 @@ function SuppliersTab({ suppliers, onNew, onEdit, onDelete }: {
   suppliers: Supplier[]; onNew: () => void;
   onEdit: (s: Supplier) => void; onDelete: (id: string) => void;
 }) {
+  const { scoreBySupplier } = useSourcingPerformance()
   const [tierFilter, setTierFilter] = useState<SupplierTier | "all">("all")
   const filtered = suppliers.filter((s) => tierFilter === "all" || s.tier === tierFilter)
 
@@ -901,6 +912,11 @@ function SuppliersTab({ suppliers, onNew, onEdit, onDelete }: {
                 </p>
               </div>
               <div className="flex flex-col items-end gap-1">
+                {scoreBySupplier(s.id) && (
+                  <span className="text-lg font-bold text-[#3D0814] leading-none" title="Performance score">
+                    {scoreBySupplier(s.id)!.composite}
+                  </span>
+                )}
                 <Badge className={`text-[10px] ${TIER_STYLE[s.tier]} border-0`}>{TIER_LABEL[s.tier]}</Badge>
                 <Badge variant="outline" className={`text-[10px] capitalize ${VERIFICATION_STYLE[s.verification]}`}>
                   {s.verification}

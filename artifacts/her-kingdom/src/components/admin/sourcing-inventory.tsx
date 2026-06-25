@@ -2,7 +2,9 @@
 
 import { useState, useMemo, useEffect } from "react"
 import { Plus, Pencil, Trash2, Boxes, AlertTriangle, CalendarClock, ArrowRight } from "lucide-react"
-import { useCmsDoc, newId, cmsStore } from "@/lib/cms-store"
+import { newId } from "@/lib/cms-store"
+import { apiAdminSourcing } from "@/lib/api-admin-sourcing"
+import { useSourcingInventory } from "@/lib/use-sourcing-store"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -11,7 +13,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { Badge } from "@/components/ui/badge"
 import {
-  SOURCING_KEYS,
   INVENTORY_TYPE_LABEL,
   INVENTORY_TYPE_STYLE,
   inventoryHealth,
@@ -19,7 +20,6 @@ import {
   type InventoryItem,
   type InventoryType,
 } from "./sourcing-shared"
-import type { SourcingRequest } from "./sourcing"
 
 const DEFAULT_INVENTORY: InventoryItem[] = [
   {
@@ -76,7 +76,7 @@ function blankItem(): InventoryItem {
 }
 
 export function SourcingInventoryTab() {
-  const [items, setItems] = useCmsDoc<InventoryItem[]>(SOURCING_KEYS.inventory, DEFAULT_INVENTORY)
+  const [items, setItems] = useSourcingInventory(DEFAULT_INVENTORY)
   const [typeFilter, setTypeFilter] = useState<InventoryType | "all">("all")
   const [healthFilter, setHealthFilter] = useState<"all" | "issues">("all")
   const [search, setSearch] = useState("")
@@ -120,24 +120,22 @@ export function SourcingInventoryTab() {
     setItems((prev) => prev.filter((x) => x.id !== id))
   }
 
-  const handleTriggerRequest = (item: InventoryItem) => {
+  const handleTriggerRequest = async (item: InventoryItem) => {
     const reqQty = Math.max(item.reorderPoint, item.safetyStock * 2) - item.onHand
-    const requests = cmsStore.get<SourcingRequest[]>(SOURCING_KEYS.requests, [])
-    const newReq: SourcingRequest = {
-      id: newId("req"),
-      productName: item.productName,
-      sku: item.sku,
-      qty: Math.max(reqQty, 1),
-      priority: item.onHand <= 0 ? "urgent" : "high",
-      source: "low_stock",
-      status: "open",
-      targetUnitCost: item.unitCost,
-      notes: `Triggered from inventory: on-hand ${item.onHand} vs safety ${item.safetyStock}.`,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+    try {
+      await apiAdminSourcing.createOpenRequest({
+        sku: item.sku,
+        productName: item.productName,
+        quantityNeeded: Math.max(reqQty, 1),
+        priority: item.onHand <= 0 ? "urgent" : "high",
+        notes: `Triggered from inventory: on-hand ${item.onHand} vs safety ${item.safetyStock}.`,
+        currentStock: item.onHand,
+        reorderPoint: item.reorderPoint,
+      })
+      alert(`Sourcing request created for ${item.productName} (qty ${Math.max(reqQty, 1)}).`)
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Could not create sourcing request")
     }
-    cmsStore.set(SOURCING_KEYS.requests, [newReq, ...requests])
-    alert(`Sourcing request created for ${item.productName} (qty ${newReq.qty}).`)
   }
 
   return (

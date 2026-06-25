@@ -115,7 +115,7 @@ export const ROLE_DEFAULT_PERMISSIONS: Record<string, string[]> = {
     "inventory.edit",
     "delivery.manage",
   ],
-  marketing: ["cms.banners", "cms.pages", "cms.footer", "analytics.view"],
+  marketing: ["cms.banners", "cms.pages", "cms.footer", "analytics.view", "marketing.broadcast"],
 }
 
 export function defaultPermsForRole(role: string): string[] {

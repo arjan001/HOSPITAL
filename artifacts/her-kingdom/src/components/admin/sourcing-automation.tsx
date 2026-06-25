@@ -2,7 +2,8 @@
 
 import { useState, useEffect } from "react"
 import { Plus, Pencil, Trash2, Bot, Play, Power, ChevronDown, ChevronRight } from "lucide-react"
-import { useCmsDoc, newId, cmsStore } from "@/lib/cms-store"
+import { newId } from "@/lib/cms-store"
+import { useSourcingAutomation } from "@/lib/use-sourcing-store"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -62,6 +63,7 @@ const TRIGGER_LABEL: Record<AutomationRule["trigger"], string> = {
   expiry_soon: "Expiry soon",
   refill_prediction: "Refill prediction",
   manual_scan: "Manual scan",
+  forecast_shortfall: "Forecast shortfall",
 }
 
 const TRIGGER_TO_SOURCE: Record<AutomationRule["trigger"], RequestSource> = {
@@ -69,172 +71,56 @@ const TRIGGER_TO_SOURCE: Record<AutomationRule["trigger"], RequestSource> = {
   expiry_soon: "expiry_replacement",
   refill_prediction: "refill_prediction",
   manual_scan: "manual",
+  forecast_shortfall: "refill_prediction",
 }
 
 export function SourcingAutomationTab() {
-  const [rules, setRules] = useCmsDoc<AutomationRule[]>(SOURCING_KEYS.automation, DEFAULT_RULES)
-  const [log, setLog] = useCmsDoc<AutomationLogEntry[]>(SOURCING_KEYS.automationLog, [])
+  const { rules, log, saveRules, clearLog, runScan, runForecast, loading } = useSourcingAutomation()
   const [modal, setModal] = useState<{ open: boolean; editing: AutomationRule | null }>({ open: false, editing: null })
   const [logOpen, setLogOpen] = useState(true)
+  const [running, setRunning] = useState(false)
 
   const handleSave = (r: AutomationRule) => {
-    setRules((prev) => {
-      const idx = prev.findIndex((x) => x.id === r.id)
-      return idx === -1 ? [...prev, r] : prev.map((x, i) => i === idx ? r : x)
-    })
+    const idx = rules.findIndex((x) => x.id === r.id)
+    const next = idx === -1 ? [...rules, r] : rules.map((x, i) => (i === idx ? r : x))
+    void saveRules(next)
     setModal({ open: false, editing: null })
   }
 
   const handleDelete = (id: string) => {
     if (!confirm("Delete this automation rule?")) return
-    setRules((prev) => prev.filter((r) => r.id !== id))
+    void saveRules(rules.filter((r) => r.id !== id))
   }
 
   const handleToggle = (id: string) => {
-    setRules((prev) => prev.map((r) => r.id === id ? { ...r, isActive: !r.isActive } : r))
+    void saveRules(rules.map((r) => (r.id === id ? { ...r, isActive: !r.isActive } : r)))
   }
 
-  const handleRunNow = (rule: AutomationRule) => {
-    const inventory = cmsStore.get<InventoryItem[]>(SOURCING_KEYS.inventory, [])
-    const requests = cmsStore.get<SourcingRequest[]>(SOURCING_KEYS.requests, [])
-    const suppliers = cmsStore.get<Supplier[]>(SOURCING_KEYS.suppliers, [])
-    const forecasts = cmsStore.get<ForecastEntry[]>(SOURCING_KEYS.forecast, [])
-
-    // Build candidate set per trigger. Each candidate carries the SKU, name,
-    // suggested qty, optional inventory row (for type filter + unit cost).
-    type Candidate = { sku: string; productName: string; suggestedQty: number; inv?: InventoryItem; reason: string }
-    const invBySku = new Map(inventory.map((i) => [i.sku, i]))
-
-    let candidates: Candidate[] = []
-
-    if (rule.trigger === "low_stock") {
-      candidates = inventory
-        .filter((i) => {
-          const ratio = i.safetyStock > 0 ? i.onHand / i.safetyStock : 0
-          return ratio <= (rule.conditions.onHandRatio ?? 1.0)
-        })
-        .map((i) => ({
-          sku: i.sku, productName: i.productName, inv: i,
-          suggestedQty: Math.max(i.reorderPoint, i.safetyStock * 2) - i.onHand,
-          reason: `on-hand ${i.onHand} / safety ${i.safetyStock}`,
-        }))
-    } else if (rule.trigger === "expiry_soon") {
-      const window = rule.conditions.expiryWindowDays ?? 60
-      candidates = inventory
-        .filter((i) => {
-          const d = daysUntil(i.batchExpiry)
-          return d !== null && d >= 0 && d <= window
-        })
-        .map((i) => ({
-          sku: i.sku, productName: i.productName, inv: i,
-          suggestedQty: Math.max(i.onHand, i.reorderPoint, i.safetyStock * 2),
-          reason: `expires in ${daysUntil(i.batchExpiry)}d`,
-        }))
-    } else if (rule.trigger === "refill_prediction") {
-      // Scan forecasts derived from prescription / refill prediction signals.
-      candidates = forecasts
-        .filter((f) => f.source === "refill_predict" || f.source === "prescription_predict")
-        .map((f) => {
-          const inv = invBySku.get(f.sku)
-          const onHand = inv?.onHand ?? 0
-          const safety = inv?.safetyStock ?? 0
-          const qty = Math.max(0, f.projectedDemand + safety - onHand)
-          return {
-            sku: f.sku, productName: f.productName, inv, suggestedQty: qty,
-            reason: `forecast ${f.projectedDemand}/${f.windowDays}d, on-hand ${onHand}`,
-          }
-        })
-        .filter((c) => c.suggestedQty > 0)
-    } else if (rule.trigger === "manual_scan") {
-      // Sweep both low-stock and expiry-soon as a single comprehensive run.
-      const window = rule.conditions.expiryWindowDays ?? 60
-      const seen = new Set<string>()
-      inventory.forEach((i) => {
-        const ratio = i.safetyStock > 0 ? i.onHand / i.safetyStock : 0
-        const d = daysUntil(i.batchExpiry)
-        const lowStock = ratio <= (rule.conditions.onHandRatio ?? 1.0)
-        const expiring = d !== null && d >= 0 && d <= window
-        if ((lowStock || expiring) && !seen.has(i.sku)) {
-          seen.add(i.sku)
-          candidates.push({
-            sku: i.sku, productName: i.productName, inv: i,
-            suggestedQty: Math.max(i.reorderPoint, i.safetyStock * 2) - i.onHand,
-            reason: lowStock && expiring ? "low stock + expiring" : lowStock ? "low stock" : `expires in ${d}d`,
-          })
-        }
-      })
+  const handleRunNow = async (rule: AutomationRule) => {
+    setRunning(true)
+    try {
+      if (rule.trigger === "forecast_shortfall") {
+        const res = await runForecast(30)
+        alert(
+          `Forecast run complete\n\nMatched: ${res.flagged.length}\nRequests: ${res.requestsCreated}\nDraft POs: ${res.posCreated}`,
+        )
+      } else {
+        const res = await runScan()
+        alert(
+          `Scan complete\n\nRules: ${res.rulesEvaluated}\nRequests created: ${res.requestsCreated}\nFlagged: ${res.flagged.length}`,
+        )
+      }
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Automation run failed")
+    } finally {
+      setRunning(false)
     }
-
-    // Apply type filter.
-    if (rule.conditions.types && rule.conditions.types.length > 0) {
-      candidates = candidates.filter((c) => c.inv && rule.conditions.types!.includes(c.inv.type))
-    }
-
-    const eligibleSupplier = rule.conditions.minTier
-      ? suppliers.some((s) => s.verification === "verified" && (s.tier === rule.conditions.minTier || (rule.conditions.minTier === "trial" && (s.tier === "preferred" || s.tier === "approved")) || (rule.conditions.minTier === "approved" && s.tier === "preferred")))
-      : true
-
-    let created = 0
-    const details: string[] = []
-    const newRequests: SourcingRequest[] = []
-
-    if (!eligibleSupplier && rule.conditions.minTier) {
-      details.push(`Skipped — no verified supplier at tier ${rule.conditions.minTier}+ available.`)
-    } else {
-      candidates.forEach((c) => {
-        const alreadyOpen = requests.some((r) => r.sku === c.sku && (r.status === "open" || r.status === "quoting" || r.status === "ordered"))
-        if (alreadyOpen) {
-          details.push(`Skipped ${c.sku}: open request already exists.`)
-          return
-        }
-        const reqQty = rule.defaultQty || c.suggestedQty
-        if (reqQty <= 0) {
-          details.push(`Skipped ${c.sku}: computed qty ≤ 0.`)
-          return
-        }
-        const req: SourcingRequest = {
-          id: newId("req"),
-          productName: c.productName,
-          sku: c.sku,
-          qty: reqQty,
-          priority: rule.defaultPriority,
-          source: TRIGGER_TO_SOURCE[rule.trigger],
-          status: "open",
-          targetUnitCost: c.inv?.unitCost,
-          notes: `Auto-created by rule "${rule.name}" — ${c.reason}.`,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        }
-        newRequests.push(req)
-        details.push(`Created request for ${c.sku} qty ${reqQty} (${c.reason}).`)
-        created++
-      })
-    }
-    const matchedCount = candidates.length
-
-    if (newRequests.length > 0) {
-      cmsStore.set(SOURCING_KEYS.requests, [...newRequests, ...requests])
-    }
-
-    const entry: AutomationLogEntry = {
-      id: newId("alog"),
-      ruleId: rule.id,
-      ruleName: rule.name,
-      ranAt: new Date().toISOString(),
-      matched: matchedCount,
-      created,
-      details: details.length > 0 ? details : ["No items matched the trigger conditions."],
-    }
-    setLog((prev) => [entry, ...prev].slice(0, 50))
-    setRules((prev) => prev.map((r) => r.id === rule.id
-      ? { ...r, lastRunAt: entry.ranAt, lastRunSummary: `${created} request${created === 1 ? "" : "s"} created from ${matchedCount} match${matchedCount === 1 ? "" : "es"}` }
-      : r))
   }
 
   return (
     <div className="space-y-4">
       <p className="text-xs text-muted-foreground max-w-2xl">
-        Rules scan inventory and create sourcing requests automatically. Run them manually for now — when the backend ports to NestJS, these become scheduled jobs.
+        Rules scan inventory and forecast shortfalls via Postgres — run manually or schedule via cron (`/admin/sourcing/automation/run-forecast`).
       </p>
 
       <div className="flex items-center justify-end gap-2">
@@ -243,14 +129,17 @@ export function SourcingAutomationTab() {
           variant="outline"
           className="gap-1.5"
           onClick={async () => {
+            setRunning(true)
             try {
-              const { pipelineClient } = await import("@/lib/pipeline-client")
-              const res = await pipelineClient.sourcing.scan()
+              const res = await runScan()
               alert(`Server scan complete\n\nRules evaluated: ${res.rulesEvaluated}\nRequests created: ${res.requestsCreated}\nItems flagged: ${res.flagged.length}`)
             } catch (e) {
               alert(`Scan failed: ${e instanceof Error ? e.message : String(e)}`)
+            } finally {
+              setRunning(false)
             }
           }}
+          disabled={running || loading}
         >
           <Bot className="h-3.5 w-3.5" /> Run server scan
         </Button>
@@ -295,7 +184,7 @@ export function SourcingAutomationTab() {
                   )}
                 </div>
                 <div className="flex items-center gap-1 flex-shrink-0">
-                  <Button variant="outline" size="sm" className="h-7 text-[11px] bg-transparent gap-1" onClick={() => handleRunNow(r)}>
+                  <Button variant="outline" size="sm" className="h-7 text-[11px] bg-transparent gap-1" disabled={running} onClick={() => void handleRunNow(r)}>
                     <Play className="h-3 w-3" /> Run now
                   </Button>
                   <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleToggle(r.id)} title={r.isActive ? "Pause" : "Activate"}>
@@ -322,7 +211,7 @@ export function SourcingAutomationTab() {
             <Badge variant="outline" className="text-[10px]">{log.length}</Badge>
           </div>
           {log.length > 0 && (
-            <button type="button" onClick={(e) => { e.stopPropagation(); if (confirm("Clear automation activity log?")) setLog([]) }}
+            <button type="button" onClick={(e) => { e.stopPropagation(); if (confirm("Clear automation activity log?")) void clearLog() }}
               className="text-[11px] text-muted-foreground hover:text-destructive">Clear</button>
           )}
         </button>

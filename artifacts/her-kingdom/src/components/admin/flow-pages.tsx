@@ -2,7 +2,21 @@
 
 import { useState, useMemo } from "react"
 import { AdminShell } from "./admin-shell"
-import { cmsStore, newId } from "@/lib/cms-store"
+import {
+  useTradingBids,
+  useTradingDeals,
+  useTradingNegotiations,
+  useTradingSettlements,
+} from "@/lib/use-trading-store"
+import { usePurchaseOrders } from "@/lib/use-sourcing-store"
+import { apiAdminTrading } from "@/lib/api-admin-trading"
+import type {
+  TradingBidDto,
+  TradingDealDto,
+  TradingNegotiationDto,
+  TradingSettlementDto,
+} from "@/lib/api-admin-trading"
+import { pipelineClient, type MarginRecommendation } from "@/lib/pipeline-client"
 import {
   Handshake, Receipt, TrendingUp, Wallet,
   ShieldCheck, ClipboardList, HeartHandshake, AlertCircle,
@@ -102,7 +116,7 @@ function FlowStage({
         </div>
         <Notice>
           This stage is wired into the sidebar pipeline (<strong>Sourcing → Trading → QA &amp; Assurance → Logistics</strong>).
-          Backend service ships with the next NestJS module — state persists via <code>cmsStore</code> in the meantime.
+          Backend service ships with the next NestJS module — trading data now persists in Postgres via <code>/admin/trading/*</code>.
         </Notice>
       </div>
     </AdminShell>
@@ -113,41 +127,40 @@ function FlowStage({
    TRADING — DEAL PIPELINE
 ════════════════════════════════════════════════════════════════ */
 
-type Deal = {
-  id: string
-  ref: string
-  product: string
-  supplier: string
-  qty: number
-  unit: string
-  targetPrice: number
-  awardedPrice: number
-  currency: string
-  status: "open" | "bidding" | "awarded" | "settled"
-  notes: string
-  createdAt: string
-}
-
-const DEAL_STORE = "trading-deals"
+type Deal = TradingDealDto
+type Bid = TradingBidDto
+type NegRound = TradingNegotiationDto
+type Settlement = TradingSettlementDto
 
 function useDeals() {
-  const [rev, setRev] = useState(0)
-  const refresh = () => setRev(r => r + 1)
-  const deals: Deal[] = useMemo(() => cmsStore.get<Deal[]>(DEAL_STORE, []), [rev])
-  function save(list: Deal[]) { cmsStore.set(DEAL_STORE, list); refresh() }
-  function add(d: Omit<Deal, "id" | "createdAt">) {
-    save([...deals, { ...d, id: newId(), createdAt: new Date().toISOString() }])
-  }
-  function update(id: string, patch: Partial<Deal>) {
-    save(deals.map(d => d.id === id ? { ...d, ...patch } : d))
-  }
-  function remove(id: string) { save(deals.filter(d => d.id !== id)) }
+  const { deals, add, update, remove } = useTradingDeals()
   return { deals, add, update, remove }
 }
 
+function useBids() {
+  const { bids, add, update, remove } = useTradingBids()
+  return { bids, add, update, remove }
+}
+
+function useNeg() {
+  const { rounds, add, update, remove } = useTradingNegotiations()
+  return { rounds, add, update, remove }
+}
+
+function useSettlements() {
+  const { settlements, add, update, remove } = useTradingSettlements()
+  return { settlements, add, update, remove }
+}
+
+/* removed CMS stores — trading data now in Postgres via /admin/trading/* */
+
 export function AdminTrading() {
-  const { deals, add, update, remove } = useDeals()
+  const { deals, add, update, remove, refresh: refreshDeals } = useTradingDeals()
   const [open, setOpen] = useState(false)
+  const [marginLoading, setMarginLoading] = useState(false)
+  const [marginRecs, setMarginRecs] = useState<MarginRecommendation[]>([])
+  const [marginSummary, setMarginSummary] = useState<{ above: number; below: number } | null>(null)
+  const [creatingSku, setCreatingSku] = useState<string | null>(null)
   const [form, setForm] = useState({
     ref: "", product: "", supplier: "", qty: "1", unit: "packs",
     targetPrice: "", currency: "KES", notes: "",
@@ -157,7 +170,7 @@ export function AdminTrading() {
 
   function submit() {
     if (!form.ref || !form.product || !form.supplier) return
-    add({
+    void add({
       ref: form.ref, product: form.product, supplier: form.supplier,
       qty: Number(form.qty) || 1, unit: form.unit,
       targetPrice: parseFloat(form.targetPrice) || 0, awardedPrice: 0,
@@ -169,7 +182,7 @@ export function AdminTrading() {
 
   function nextStatus(d: Deal) {
     const i = STATUS_FLOW.indexOf(d.status)
-    if (i < STATUS_FLOW.length - 1) update(d.id, { status: STATUS_FLOW[i + 1] })
+    if (i < STATUS_FLOW.length - 1) void update(d.id, { status: STATUS_FLOW[i + 1] })
   }
 
   const summary = {
@@ -177,6 +190,32 @@ export function AdminTrading() {
     bidding: deals.filter(d => d.status === "bidding").length,
     awarded: deals.filter(d => d.status === "awarded").length,
     settled: deals.filter(d => d.status === "settled").length,
+  }
+
+  async function runMarginScan() {
+    setMarginLoading(true)
+    try {
+      const result = await pipelineClient.trading.recomputeMargins(25)
+      setMarginRecs(result.recommendations)
+      setMarginSummary({ above: result.aboveMarket, below: result.belowMarket })
+    } finally {
+      setMarginLoading(false)
+    }
+  }
+
+  async function createDealFromRec(rec: MarginRecommendation) {
+    setCreatingSku(rec.sku)
+    try {
+      await apiAdminTrading.createDealFromMargin({
+        sku: rec.sku,
+        recommendedPrice: rec.recommendedPrice,
+        targetMarginPct: rec.targetMarginPct,
+        notes: `Margin scan: ${rec.status}, market avg ${rec.marketAvg}`,
+      })
+      await refreshDeals()
+    } finally {
+      setCreatingSku(null)
+    }
   }
 
   return (
@@ -197,6 +236,70 @@ export function AdminTrading() {
               <p className="text-2xl font-bold mt-1">{summary[s]}</p>
             </div>
           ))}
+        </div>
+
+        {/* Margin scan → create deal */}
+        <div className="rounded-xl border bg-white p-5 space-y-3" style={{ borderColor: BORDER }}>
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-sm font-semibold flex items-center gap-2">
+                <TrendingUp className="h-4 w-4" /> Margin recommendations
+              </p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Recompute vs competitor prices, then promote a SKU into an open trade deal.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => void runMarginScan()}
+              disabled={marginLoading}
+              className="flex items-center gap-2 text-sm font-semibold px-4 py-2 rounded-full border disabled:opacity-50"
+              style={{ borderColor: BORDER }}
+            >
+              <RefreshCw className={`h-4 w-4 ${marginLoading ? "animate-spin" : ""}`} />
+              {marginLoading ? "Scanning…" : "Recompute margins"}
+            </button>
+          </div>
+          {marginSummary && (
+            <p className="text-xs text-muted-foreground">
+              {marginRecs.length} SKU(s) — {marginSummary.above} above market, {marginSummary.below} below market.
+            </p>
+          )}
+          {marginRecs.length > 0 && (
+            <div className="rounded-lg border overflow-hidden" style={{ borderColor: BORDER }}>
+              <table className="w-full text-xs">
+                <thead className="bg-gray-50 border-b" style={{ borderColor: BORDER }}>
+                  <tr>
+                    {["SKU", "Our cost", "Market", "Target", "Status", ""].map(h => (
+                      <th key={h || "act"} className="text-left px-3 py-2 font-semibold text-muted-foreground">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {marginRecs.slice(0, 12).map(rec => (
+                    <tr key={rec.sku} className="border-b last:border-0" style={{ borderColor: BORDER }}>
+                      <td className="px-3 py-2 font-mono">{rec.sku}</td>
+                      <td className="px-3 py-2">KES {fmt(rec.ourCost)}</td>
+                      <td className="px-3 py-2">{rec.marketAvg > 0 ? `KES ${fmt(rec.marketAvg)}` : "—"}</td>
+                      <td className="px-3 py-2 font-semibold">KES {fmt(rec.recommendedPrice)}</td>
+                      <td className="px-3 py-2 capitalize">{rec.status.replace(/_/g, " ")}</td>
+                      <td className="px-3 py-2 text-right">
+                        <button
+                          type="button"
+                          disabled={creatingSku === rec.sku}
+                          onClick={() => void createDealFromRec(rec)}
+                          className="text-[11px] font-semibold px-2.5 py-1 rounded-full text-white disabled:opacity-50"
+                          style={{ background: WINE }}
+                        >
+                          {creatingSku === rec.sku ? "…" : "Create deal"}
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
 
         {/* Toolbar */}
@@ -291,7 +394,7 @@ export function AdminTrading() {
                               → {STATUS_FLOW[STATUS_FLOW.indexOf(d.status) + 1]}
                             </button>
                           )}
-                          <button onClick={() => remove(d.id)} className="text-red-400 hover:text-red-600">
+                          <button onClick={() => void remove(d.id)} className="text-red-400 hover:text-red-600">
                             <Trash2 className="h-4 w-4" />
                           </button>
                         </div>
@@ -312,36 +415,6 @@ export function AdminTrading() {
    TRADING — BIDS & QUOTES
 ════════════════════════════════════════════════════════════════ */
 
-type Bid = {
-  id: string
-  dealRef: string
-  supplier: string
-  unitPrice: number
-  currency: string
-  moq: number
-  leadDays: number
-  note: string
-  status: "pending" | "shortlisted" | "awarded" | "rejected"
-  submittedAt: string
-}
-
-const BID_STORE = "trading-bids"
-
-function useBids() {
-  const [rev, setRev] = useState(0)
-  const refresh = () => setRev(r => r + 1)
-  const bids: Bid[] = useMemo(() => cmsStore.get<Bid[]>(BID_STORE, []), [rev])
-  function save(list: Bid[]) { cmsStore.set(BID_STORE, list); refresh() }
-  function add(b: Omit<Bid, "id" | "submittedAt">) {
-    save([...bids, { ...b, id: newId(), submittedAt: new Date().toISOString() }])
-  }
-  function update(id: string, patch: Partial<Bid>) {
-    save(bids.map(b => b.id === id ? { ...b, ...patch } : b))
-  }
-  function remove(id: string) { save(bids.filter(b => b.id !== id)) }
-  return { bids, add, update, remove }
-}
-
 export function AdminTradingBids() {
   const { deals } = useDeals()
   const { bids, add, update, remove } = useBids()
@@ -356,7 +429,7 @@ export function AdminTradingBids() {
 
   function submit() {
     if (!form.dealRef || !form.supplier || !form.unitPrice) return
-    add({
+    void add({
       dealRef: form.dealRef, supplier: form.supplier,
       unitPrice: parseFloat(form.unitPrice),
       currency: form.currency,
@@ -486,27 +559,27 @@ export function AdminTradingBids() {
                         <div className="flex items-center gap-1">
                           {b.status === "pending" && (
                             <>
-                              <button onClick={() => update(b.id, { status: "shortlisted" })}
+                              <button onClick={() => void update(b.id, { status: "shortlisted" })}
                                 title="Shortlist" className="text-indigo-500 hover:text-indigo-700">
                                 <ChevronDown className="h-4 w-4" />
                               </button>
-                              <button onClick={() => update(b.id, { status: "awarded" })}
+                              <button onClick={() => void update(b.id, { status: "awarded" })}
                                 title="Award" className="text-green-500 hover:text-green-700">
                                 <Check className="h-4 w-4" />
                               </button>
-                              <button onClick={() => update(b.id, { status: "rejected" })}
+                              <button onClick={() => void update(b.id, { status: "rejected" })}
                                 title="Reject" className="text-red-400 hover:text-red-600">
                                 <X className="h-4 w-4" />
                               </button>
                             </>
                           )}
                           {b.status === "shortlisted" && (
-                            <button onClick={() => update(b.id, { status: "awarded" })}
+                            <button onClick={() => void update(b.id, { status: "awarded" })}
                               title="Award" className="text-green-500 hover:text-green-700">
                               <Check className="h-4 w-4" />
                             </button>
                           )}
-                          <button onClick={() => remove(b.id)} className="text-red-300 hover:text-red-500">
+                          <button onClick={() => void remove(b.id)} className="text-red-300 hover:text-red-500">
                             <Trash2 className="h-4 w-4" />
                           </button>
                         </div>
@@ -527,37 +600,6 @@ export function AdminTradingBids() {
    TRADING — PRICE NEGOTIATION
 ════════════════════════════════════════════════════════════════ */
 
-type NegRound = {
-  id: string
-  dealRef: string
-  supplier: string
-  round: 1 | 2
-  ourOffer: number
-  theirCounter: number
-  currency: string
-  floor: number
-  status: "pending" | "accepted" | "rejected" | "expired"
-  notes: string
-  createdAt: string
-}
-
-const NEG_STORE = "trading-negotiations"
-
-function useNeg() {
-  const [rev, setRev] = useState(0)
-  const refresh = () => setRev(r => r + 1)
-  const rounds: NegRound[] = useMemo(() => cmsStore.get<NegRound[]>(NEG_STORE, []), [rev])
-  function save(list: NegRound[]) { cmsStore.set(NEG_STORE, list); refresh() }
-  function add(n: Omit<NegRound, "id" | "createdAt">) {
-    save([...rounds, { ...n, id: newId(), createdAt: new Date().toISOString() }])
-  }
-  function update(id: string, patch: Partial<NegRound>) {
-    save(rounds.map(r => r.id === id ? { ...r, ...patch } : r))
-  }
-  function remove(id: string) { save(rounds.filter(r => r.id !== id)) }
-  return { rounds, add, update, remove }
-}
-
 export function AdminTradingNegotiation() {
   const { deals } = useDeals()
   const { rounds, add, update, remove } = useNeg()
@@ -570,7 +612,7 @@ export function AdminTradingNegotiation() {
 
   function submit() {
     if (!form.dealRef || !form.supplier || !form.ourOffer) return
-    add({
+    void add({
       dealRef: form.dealRef, supplier: form.supplier,
       round: parseInt(form.round) as 1|2,
       ourOffer: parseFloat(form.ourOffer),
@@ -698,27 +740,27 @@ export function AdminTradingNegotiation() {
                     </div>
                     {r.status === "pending" && (
                       <div className="flex gap-2 mt-4 pt-4 border-t" style={{ borderColor: BORDER }}>
-                        <button onClick={() => update(r.id, { status: "accepted" })}
+                        <button onClick={() => void update(r.id, { status: "accepted" })}
                           className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-full bg-green-50 text-green-700 font-semibold border border-green-200">
                           <Check className="h-3 w-3" /> Accept
                         </button>
-                        <button onClick={() => update(r.id, { status: "rejected" })}
+                        <button onClick={() => void update(r.id, { status: "rejected" })}
                           className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-full bg-red-50 text-red-700 font-semibold border border-red-200">
                           <X className="h-3 w-3" /> Reject
                         </button>
-                        <button onClick={() => update(r.id, { status: "expired" })}
+                        <button onClick={() => void update(r.id, { status: "expired" })}
                           className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-full bg-gray-50 text-gray-600 font-semibold border border-gray-200">
                           <RefreshCw className="h-3 w-3" /> Expire
                         </button>
                         <div className="flex-1" />
-                        <button onClick={() => remove(r.id)} className="text-red-300 hover:text-red-500">
+                        <button onClick={() => void remove(r.id)} className="text-red-300 hover:text-red-500">
                           <Trash2 className="h-4 w-4" />
                         </button>
                       </div>
                     )}
                     {r.status !== "pending" && (
                       <div className="flex justify-end mt-3">
-                        <button onClick={() => remove(r.id)} className="text-red-300 hover:text-red-500">
+                        <button onClick={() => void remove(r.id)} className="text-red-300 hover:text-red-500">
                           <Trash2 className="h-4 w-4" />
                         </button>
                       </div>
@@ -738,62 +780,51 @@ export function AdminTradingNegotiation() {
    TRADING — SETTLEMENTS
 ════════════════════════════════════════════════════════════════ */
 
-type Settlement = {
-  id: string
-  dealRef: string
-  supplier: string
-  poNumber: string
-  invoiceNumber: string
-  poValue: number
-  invoiceValue: number
-  currency: string
-  matchStatus: "pending" | "matched" | "disputed"
-  paymentStatus: "unpaid" | "paid" | "overdue"
-  dueDate: string
-  settledAt: string
-  notes: string
-  createdAt: string
-}
-
-const SETTLE_STORE = "trading-settlements"
-
-function useSettlements() {
-  const [rev, setRev] = useState(0)
-  const refresh = () => setRev(r => r + 1)
-  const settlements: Settlement[] = useMemo(() => cmsStore.get<Settlement[]>(SETTLE_STORE, []), [rev])
-  function save(list: Settlement[]) { cmsStore.set(SETTLE_STORE, list); refresh() }
-  function add(s: Omit<Settlement, "id" | "createdAt">) {
-    save([...settlements, { ...s, id: newId(), createdAt: new Date().toISOString() }])
-  }
-  function update(id: string, patch: Partial<Settlement>) {
-    save(settlements.map(s => s.id === id ? { ...s, ...patch } : s))
-  }
-  function remove(id: string) { save(settlements.filter(s => s.id !== id)) }
-  return { settlements, add, update, remove }
-}
-
 export function AdminTradingSettlements() {
   const { deals } = useDeals()
+  const { pos } = usePurchaseOrders([])
   const { settlements, add, update, remove } = useSettlements()
   const [open, setOpen] = useState(false)
   const [form, setForm] = useState({
-    dealRef: "", supplier: "", poNumber: "", invoiceNumber: "",
+    dealRef: "", supplier: "", poNumber: "", linkedPurchaseOrderId: "",
+    invoiceNumber: "",
     poValue: "", invoiceValue: "", currency: "KES",
     dueDate: "", notes: "",
   })
 
+  function linkPo(poId: string) {
+    const po = pos.find(p => p.id === poId)
+    if (!po) {
+      setForm(f => ({ ...f, linkedPurchaseOrderId: poId, poNumber: f.poNumber }))
+      return
+    }
+    setForm(f => ({
+      ...f,
+      linkedPurchaseOrderId: po.id,
+      poNumber: po.poNumber || f.poNumber,
+      poValue: String((po.qty * po.unitCost) || f.poValue),
+      supplier: f.supplier || po.supplierId,
+    }))
+  }
+
   function submit() {
     if (!form.dealRef || !form.poNumber) return
-    add({
+    void add({
       dealRef: form.dealRef, supplier: form.supplier,
-      poNumber: form.poNumber, invoiceNumber: form.invoiceNumber,
+      poNumber: form.poNumber,
+      linkedPurchaseOrderId: form.linkedPurchaseOrderId || undefined,
+      invoiceNumber: form.invoiceNumber,
       poValue: parseFloat(form.poValue) || 0,
       invoiceValue: parseFloat(form.invoiceValue) || 0,
       currency: form.currency,
       matchStatus: "pending", paymentStatus: "unpaid",
       dueDate: form.dueDate, settledAt: "", notes: form.notes,
     })
-    setForm({ dealRef: "", supplier: "", poNumber: "", invoiceNumber: "", poValue: "", invoiceValue: "", currency: "KES", dueDate: "", notes: "" })
+    setForm({
+      dealRef: "", supplier: "", poNumber: "", linkedPurchaseOrderId: "",
+      invoiceNumber: "", poValue: "", invoiceValue: "", currency: "KES",
+      dueDate: "", notes: "",
+    })
     setOpen(false)
   }
 
@@ -859,6 +890,18 @@ export function AdminTradingSettlements() {
                 onChange={e => setForm(f => ({ ...f, poNumber: e.target.value }))}
                 className="border rounded-lg px-3 py-2 text-sm" style={{ borderColor: BORDER }}
               />
+              <select
+                value={form.linkedPurchaseOrderId}
+                onChange={e => linkPo(e.target.value)}
+                className="border rounded-lg px-3 py-2 text-sm" style={{ borderColor: BORDER }}
+              >
+                <option value="">Link supplier PO (optional)…</option>
+                {pos.map(po => (
+                  <option key={po.id} value={po.id}>
+                    {po.poNumber} — KES {fmt(po.qty * po.unitCost)} ({po.status})
+                  </option>
+                ))}
+              </select>
               <input placeholder="Invoice number" value={form.invoiceNumber}
                 onChange={e => setForm(f => ({ ...f, invoiceNumber: e.target.value }))}
                 className="border rounded-lg px-3 py-2 text-sm" style={{ borderColor: BORDER }}
@@ -904,7 +947,7 @@ export function AdminTradingSettlements() {
               <table className="w-full text-sm">
                 <thead className="bg-gray-50 border-b" style={{ borderColor: BORDER }}>
                   <tr>
-                    {["Deal Ref","PO #","Invoice #","PO Value","Invoice Value","Match","Payment","Actions"].map(h => (
+                    {["Deal Ref","PO #","Linked PO","Invoice #","PO Value","Invoice Value","Match","Payment","Actions"].map(h => (
                       <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground">{h}</th>
                     ))}
                   </tr>
@@ -916,6 +959,33 @@ export function AdminTradingSettlements() {
                       <tr key={s.id} className="border-b last:border-0 hover:bg-gray-50 transition-colors" style={{ borderColor: BORDER }}>
                         <td className="px-4 py-3 font-mono text-xs">{s.dealRef}</td>
                         <td className="px-4 py-3 font-mono text-xs">{s.poNumber}</td>
+                        <td className="px-4 py-3 text-xs">
+                          {s.linkedPurchaseOrderId ? (
+                            <span className="font-mono text-[10px] bg-gray-100 px-1.5 py-0.5 rounded">
+                              {pos.find(p => p.id === s.linkedPurchaseOrderId)?.poNumber ?? s.linkedPurchaseOrderId.slice(0, 8)}
+                            </span>
+                          ) : (
+                            <select
+                              value=""
+                              onChange={e => {
+                                const po = pos.find(p => p.id === e.target.value)
+                                if (!po) return
+                                void update(s.id, {
+                                  linkedPurchaseOrderId: po.id,
+                                  poNumber: s.poNumber || po.poNumber,
+                                  poValue: s.poValue || po.qty * po.unitCost,
+                                })
+                              }}
+                              className="text-[10px] border rounded px-1 py-0.5 max-w-[120px]"
+                              style={{ borderColor: BORDER }}
+                            >
+                              <option value="">Link PO…</option>
+                              {pos.map(po => (
+                                <option key={po.id} value={po.id}>{po.poNumber}</option>
+                              ))}
+                            </select>
+                          )}
+                        </td>
                         <td className="px-4 py-3 font-mono text-xs">{s.invoiceNumber || "—"}</td>
                         <td className="px-4 py-3 font-mono">{s.currency} {fmt(s.poValue)}</td>
                         <td className={`px-4 py-3 font-mono ${mismatch ? "text-red-600 font-semibold" : ""}`}>
@@ -925,7 +995,7 @@ export function AdminTradingSettlements() {
                         <td className="px-4 py-3">
                           <select
                             value={s.matchStatus}
-                            onChange={e => update(s.id, { matchStatus: e.target.value as Settlement["matchStatus"] })}
+                            onChange={e => void update(s.id, { matchStatus: e.target.value as Settlement["matchStatus"] })}
                             className="text-xs border rounded px-1.5 py-1" style={{ borderColor: BORDER }}
                           >
                             <option value="pending">pending</option>
@@ -936,7 +1006,7 @@ export function AdminTradingSettlements() {
                         <td className="px-4 py-3">
                           <select
                             value={s.paymentStatus}
-                            onChange={e => update(s.id, {
+                            onChange={e => void update(s.id, {
                               paymentStatus: e.target.value as Settlement["paymentStatus"],
                               settledAt: e.target.value === "paid" ? new Date().toISOString() : s.settledAt,
                             })}
@@ -948,7 +1018,7 @@ export function AdminTradingSettlements() {
                           </select>
                         </td>
                         <td className="px-4 py-3">
-                          <button onClick={() => remove(s.id)} className="text-red-300 hover:text-red-500">
+                          <button onClick={() => void remove(s.id)} className="text-red-300 hover:text-red-500">
                             <Trash2 className="h-4 w-4" />
                           </button>
                         </td>

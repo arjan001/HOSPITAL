@@ -26,15 +26,21 @@
 import {
   Body,
   Controller,
+  Delete,
+  Get,
   HttpException,
   HttpStatus,
   Inject,
   Module,
+  Param,
+  Patch,
   Post,
+  UseGuards,
 } from "@nestjs/common"
 import { newId } from "../common/repository"
 import { AdminCmsModule, AdminCmsService } from "./admin-cms.module"
 import { NotificationsModule, NotificationsService } from "./notifications.module"
+import { AdminGuard, RequirePerm, AnyAdmin } from "../common/admin-guard"
 
 const CMS_KEY = "newsletter-subscribers"
 
@@ -120,8 +126,54 @@ export class NewsletterController {
   }
 }
 
+@UseGuards(AdminGuard)
+@AnyAdmin()
+@Controller("admin/newsletter")
+class NewsletterAdminController {
+  constructor(@Inject(AdminCmsService) private readonly cms: AdminCmsService) {}
+
+  @Get("subscribers")
+  @RequirePerm("analytics.view", "marketing.broadcast")
+  async listSubscribers(): Promise<Subscriber[]> {
+    const entry = await this.cms.get(CMS_KEY)
+    return Array.isArray(entry?.value) ? (entry.value as Subscriber[]) : []
+  }
+
+  @Patch("subscribers/:id")
+  @RequirePerm("marketing.broadcast", "cms.settings")
+  async patchSubscriber(
+    @Param("id") id: string,
+    @Body() body: { is_active?: boolean },
+  ): Promise<Subscriber> {
+    const entry = await this.cms.get(CMS_KEY)
+    const existing = Array.isArray(entry?.value) ? (entry.value as Subscriber[]) : []
+    const idx = existing.findIndex((s) => s.id === id)
+    if (idx === -1) {
+      throw new HttpException("Subscriber not found", HttpStatus.NOT_FOUND)
+    }
+    const next = existing.map((s, i) =>
+      i === idx ? { ...s, ...(body.is_active !== undefined ? { is_active: body.is_active } : {}) } : s,
+    )
+    await this.cms.put(CMS_KEY, next)
+    return next[idx]!
+  }
+
+  @Delete("subscribers/:id")
+  @RequirePerm("marketing.broadcast", "cms.settings")
+  async deleteSubscriber(@Param("id") id: string): Promise<{ ok: true }> {
+    const entry = await this.cms.get(CMS_KEY)
+    const existing = Array.isArray(entry?.value) ? (entry.value as Subscriber[]) : []
+    const next = existing.filter((s) => s.id !== id)
+    if (next.length === existing.length) {
+      throw new HttpException("Subscriber not found", HttpStatus.NOT_FOUND)
+    }
+    await this.cms.put(CMS_KEY, next)
+    return { ok: true }
+  }
+}
+
 @Module({
   imports: [AdminCmsModule, NotificationsModule],
-  controllers: [NewsletterController],
+  controllers: [NewsletterController, NewsletterAdminController],
 })
 export class NewsletterModule {}

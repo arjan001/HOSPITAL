@@ -165,7 +165,7 @@ const SEED_ROLES: Role[] = [
     name: "Marketing",
     description: "Edits banners, custom pages, footer, and announcements.",
     color: "#6B21A8",
-    permissions: ["cms.banners", "cms.pages", "cms.footer", "analytics.view"],
+    permissions: ["cms.banners", "cms.pages", "cms.footer", "analytics.view", "marketing.broadcast"],
   },
 ]
 

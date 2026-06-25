@@ -66,6 +66,7 @@ import { CrmModule } from "./modules/crm.module"
 import { PrescriptionSubscriptionsModule } from "./modules/prescription-subscriptions.module"
 import { OperationsModule } from "./modules/operations.module"
 import { SourcingModule } from "./modules/sourcing.module"
+import { SourcingExtModule } from "./modules/sourcing-ext.module"
 import { OperationsFulfillmentModule } from "./modules/operations-fulfillment"
 import { QaLogisticsModule } from "./modules/qa-logistics.module"
 import { DoctorsModule } from "./modules/doctors.module"
@@ -80,6 +81,8 @@ import { SeoModule } from "./modules/seo.module"
 import { VideoModule } from "./modules/video.module"
 import { CampaignsAdminModule } from "./modules/campaigns-admin.module"
 import { SupplierPurchaseOrdersModule } from "./modules/supplier-purchase-orders.module"
+import { IntegrationsAdminModule } from "./modules/integrations-admin.module"
+import { TradingModule } from "./modules/trading.module"
 import { PartnerDirectoryModule } from "./modules/partner-directory.module"
 
 @Module({
@@ -121,6 +124,7 @@ import { PartnerDirectoryModule } from "./modules/partner-directory.module"
     PrescriptionSubscriptionsModule,
     OperationsModule,
     SourcingModule,
+    SourcingExtModule,
     OperationsFulfillmentModule,
     QaLogisticsModule,
     DoctorsModule,
@@ -135,6 +139,8 @@ import { PartnerDirectoryModule } from "./modules/partner-directory.module"
     VideoModule,
     CampaignsAdminModule,
     SupplierPurchaseOrdersModule,
+    IntegrationsAdminModule,
+    TradingModule,
     PartnerDirectoryModule,
   ],
   providers: [

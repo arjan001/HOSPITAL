@@ -2,7 +2,8 @@
 
 import { useMemo, useState, useEffect } from "react"
 import { Plus, Trash2, LineChart as LineChartIcon, AlertTriangle, ExternalLink } from "lucide-react"
-import { useCmsDoc, newId } from "@/lib/cms-store"
+import { useSourcingCompetitorPrices, useSourcingPriceHistory } from "@/lib/use-sourcing-store"
+import { useCmsDoc } from "@/lib/cms-store"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -15,10 +16,11 @@ import {
   type CompetitorPrice,
 } from "./sourcing-shared"
 import type { Supplier } from "./sourcing"
+import { newId } from "@/lib/cms-store"
 
 export function SourcingPricingTab() {
-  const [history, setHistory] = useCmsDoc<PriceHistoryEntry[]>(SOURCING_KEYS.priceHistory, [])
-  const [competitors, setCompetitors] = useCmsDoc<CompetitorPrice[]>(SOURCING_KEYS.competitorPrices, [])
+  const { history, remove: removeHistory } = useSourcingPriceHistory()
+  const { competitors, add: addCompetitor, remove: removeCompetitor } = useSourcingCompetitorPrices()
   const [suppliers] = useCmsDoc<Supplier[]>(SOURCING_KEYS.suppliers, [])
   const [tab, setTab] = useState<"history" | "competitors">("history")
   const [compModal, setCompModal] = useState(false)
@@ -57,7 +59,7 @@ export function SourcingPricingTab() {
 
   const handleDelete = (id: string) => {
     if (!confirm("Delete this price record?")) return
-    setHistory((prev) => prev.filter((h) => h.id !== id))
+    void removeHistory(id)
   }
 
   return (
@@ -192,7 +194,7 @@ export function SourcingPricingTab() {
                       <td className="px-4 py-3 text-right">
                         <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => {
                           if (!confirm("Delete this competitor price?")) return
-                          setCompetitors((prev) => prev.filter((x) => x.id !== c.id))
+                          void removeCompetitor(c.id)
                         }}>
                           <Trash2 className="h-3.5 w-3.5" />
                         </Button>
@@ -206,7 +208,21 @@ export function SourcingPricingTab() {
         </div>
       )}
 
-      <CompetitorModal open={compModal} onClose={() => setCompModal(false)} onSave={(c) => { setCompetitors((prev) => [c, ...prev]); setCompModal(false) }} />
+      <CompetitorModal
+        open={compModal}
+        onClose={() => setCompModal(false)}
+        onSave={(c) => {
+          void addCompetitor({
+            sku: c.sku,
+            productName: c.productName,
+            competitor: c.competitor,
+            unitPrice: c.unitPrice,
+            currency: c.currency,
+            url: c.url,
+          })
+          setCompModal(false)
+        }}
+      />
     </div>
   )
 }

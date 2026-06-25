@@ -22,6 +22,16 @@
 | `qa_dispatch_checks` | [`qa-logistics.ts`](src/schema/qa-logistics.ts) | 7-step dispatch QA gates |
 | `qa_settings` | [`qa-logistics.ts`](src/schema/qa-logistics.ts) | QA thresholds (singleton) |
 | `logistics_*` | [`qa-logistics.ts`](src/schema/qa-logistics.ts) | Zones, riders, batches, deliveries, exceptions |
+| `sourcing_inventory_items` | [`admin.ts`](src/schema/admin.ts) | Branch/sourcing on-hand stock (replaces CMS key) |
+| `trading_deals` | [`trading.ts`](src/schema/trading.ts) | B2B deal pipeline |
+| `trading_bids` | [`trading.ts`](src/schema/trading.ts) | Supplier bids per deal ref |
+| `trading_negotiations` | [`trading.ts`](src/schema/trading.ts) | Counter-offer rounds |
+| `trading_settlements` | [`trading.ts`](src/schema/trading.ts) | PO/invoice match + optional `linked_purchase_order_id` |
+| `sourcing_price_history` | [`sourcing-ext.ts`](src/schema/sourcing-ext.ts) | Supplier cost captures per SKU |
+| `sourcing_competitor_prices` | [`sourcing-ext.ts`](src/schema/sourcing-ext.ts) | Competitor retail prices |
+| `sourcing_automation_rules` | [`sourcing-ext.ts`](src/schema/sourcing-ext.ts) | Procurement automation rules |
+| `sourcing_automation_log` | [`sourcing-ext.ts`](src/schema/sourcing-ext.ts) | Automation run history |
+| `sourcing_supplier_score_overrides` | [`sourcing-ext.ts`](src/schema/sourcing-ext.ts) | Manual quality/complaint overrides |
 
 ## Prescription columns (recent)
 
@@ -42,5 +52,14 @@ Join graph for `db.query.*`: [`relations.ts`](src/schema/relations.ts).
 
 ## Applying to Postgres
 
-- Preferred: `pnpm --filter @workspace/db run push`
-- Manual SQL: [`migrations/manual/README.md`](migrations/manual/README.md)
+**Preferred (creates/updates all tables from schema):**
+
+```bash
+pnpm db:push
+```
+
+Equivalent: `pnpm --filter @workspace/db run push`
+
+Drizzle Kit reads every file in `lib/db/src/schema/*.ts` and syncs the database. No manual SQL required when Postgres is reachable.
+
+- Manual SQL fallback: [`migrations/manual/README.md`](migrations/manual/README.md)

@@ -71,7 +71,7 @@ export interface CompetitorPrice {
   capturedAt: string
 }
 
-export type AutomationTrigger = "low_stock" | "expiry_soon" | "refill_prediction" | "manual_scan"
+export type AutomationTrigger = "low_stock" | "expiry_soon" | "refill_prediction" | "manual_scan" | "forecast_shortfall"
 export type AutomationAction = "create_request" | "create_rfq"
 
 export interface AutomationRule {
@@ -88,6 +88,8 @@ export interface AutomationRule {
   action: AutomationAction
   defaultPriority: "low" | "normal" | "high" | "urgent"
   defaultQty?: number
+  shortfallThreshold?: number
+  autoDraftPo?: boolean
   createdAt: string
   lastRunAt?: string
   lastRunSummary?: string

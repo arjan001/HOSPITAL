@@ -2,8 +2,8 @@
 
 import { useState, useEffect } from "react"
 import { Trash2, Download, Mail } from "lucide-react"
-import { useCmsDoc, cmsStore } from "@/lib/cms-store"
 import { NEWSLETTER_SEEN_KEY } from "./admin-shell"
+import { useNewsletterSubscribers } from "@/lib/use-newsletter-store"
 import { usePagination } from "@/hooks/use-pagination"
 import { PaginationControls } from "@/components/pagination-controls"
 import { AdminShell } from "./admin-shell"
@@ -18,7 +18,7 @@ interface Subscriber {
 }
 
 export function NewsletterComponent() {
-  const [subscribers, setSubscribers] = useCmsDoc<Subscriber[]>("newsletter-subscribers", [])
+  const { subscribers, toggleActive, remove, refresh } = useNewsletterSubscribers([])
   const [search, setSearch] = useState("")
 
   const filtered = subscribers.filter((s) =>
@@ -38,10 +38,11 @@ export function NewsletterComponent() {
   // clock skew.
   useEffect(() => {
     let cancelled = false
-    Promise.resolve(cmsStore.refresh("newsletter-subscribers")).then(() => {
+    void (async () => {
+      await refresh()
       if (cancelled) return
       try {
-        const list = cmsStore.get<Subscriber[]>("newsletter-subscribers", [])
+        const list = subscribers
         const watermark = list.reduce((max, s) => {
           const t = s?.subscribed_at ? new Date(s.subscribed_at).getTime() : 0
           return t > max ? t : max
@@ -49,17 +50,18 @@ export function NewsletterComponent() {
         window.localStorage.setItem(NEWSLETTER_SEEN_KEY, new Date(watermark).toISOString())
         window.dispatchEvent(new Event("shaniidrx:newsletter-seen"))
       } catch { /* ignore */ }
-    })
+    })()
     return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- mark seen once on mount after first load
   }, [])
 
   const handleDelete = (id: string) => {
     if (!confirm("Remove this subscriber?")) return
-    setSubscribers((prev) => prev.filter((s) => s.id !== id))
+    remove(id)
   }
 
   const handleToggleActive = (sub: Subscriber) => {
-    setSubscribers((prev) => prev.map((s) => s.id === sub.id ? { ...s, is_active: !s.is_active } : s))
+    toggleActive(sub)
   }
 
   const handleExport = () => {

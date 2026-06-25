@@ -30,6 +30,7 @@ import {
 } from "@workspace/db"
 import { newId } from "../common/repository"
 import { AdminGuard, RequirePerm, AnyAdmin } from "../common/admin-guard"
+import { deductSourcingInventory } from "../common/sourcing-inventory"
 import {
   canReserveSku,
   computeAvailability,
@@ -465,6 +466,9 @@ export class CarePackAssemblyService {
       })
       for (const a of allocs) {
         await this.alloc.patchStatus(a.id, "committed", patch.assembledBy)
+      }
+      for (const line of lines) {
+        void deductSourcingInventory(line.sku, line.quantityRequired)
       }
     }
 

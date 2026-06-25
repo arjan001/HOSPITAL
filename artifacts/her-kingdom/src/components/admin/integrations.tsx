@@ -1,8 +1,10 @@
 "use client"
 
 import { useMemo, useState } from "react"
+import useSWR from "swr"
 import { AdminShell } from "./admin-shell"
 import { useCmsDoc } from "@/lib/cms-store"
+import { apiAdminIntegrations } from "@/lib/api-admin-integrations"
 import { notify } from "@/lib/notify"
 import { usePermission } from "@/lib/permissions"
 import {
@@ -242,6 +244,15 @@ export function AdminIntegrations() {
   const [showEmailKey, setShowEmailKey] = useState(false)
   const [showSmsKey, setShowSmsKey] = useState(false)
   const [showSmsSecret, setShowSmsSecret] = useState(false)
+  const [testEmailTo, setTestEmailTo] = useState("")
+  const [testPhone, setTestPhone] = useState("")
+  const [testing, setTesting] = useState<string | null>(null)
+
+  const { data: envChecklist, mutate: refreshChecklist } = useSWR(
+    "/admin/integrations/checklist",
+    apiAdminIntegrations.checklist,
+    { revalidateOnFocus: true },
+  )
 
   const dirty = useMemo(
     () => JSON.stringify(draft) !== JSON.stringify(config),
@@ -314,6 +325,24 @@ export function AdminIntegrations() {
   const videoReady = !!draft.video.apiKey
   const deliveryReady = draft.delivery.vendors.some((v) => v.enabled)
 
+  async function runChannelTest(
+    channel: "email" | "sms" | "whatsapp",
+    fn: () => Promise<{ ok: boolean; skipped?: boolean; reason?: string }>,
+  ) {
+    setTesting(channel)
+    try {
+      const r = await fn()
+      if (r.ok) notify.success(`${channel} test sent`)
+      else if (r.skipped) notify.warning(r.reason ?? `${channel} not configured on server`)
+      else notify.error(r.reason ?? `${channel} test failed`)
+      void refreshChecklist()
+    } catch (e) {
+      notify.error(e instanceof Error ? e.message : "Test failed")
+    } finally {
+      setTesting(null)
+    }
+  }
+
   if (!canManage) {
     return (
       <AdminShell title="Integrations">
@@ -333,6 +362,49 @@ export function AdminIntegrations() {
   return (
     <AdminShell title="Integrations">
       <div className="space-y-5">
+        {envChecklist && (
+          <div className="rounded-xl border border-border bg-white p-4">
+            <div className="flex items-center justify-between gap-2 mb-3">
+              <p className="text-sm font-semibold">Server environment checklist</p>
+              <button
+                type="button"
+                onClick={() => void refreshChecklist()}
+                className="text-xs px-2 py-1 rounded border border-border hover:bg-secondary"
+              >
+                Refresh
+              </button>
+            </div>
+            <p className="text-xs text-muted-foreground mb-3">
+              Ops reference — shows which API env vars are set on the server (not CMS panel keys).
+            </p>
+            <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
+              {(["email", "sms", "whatsapp", "video"] as const).map((ch) => {
+                const row = envChecklist[ch]
+                if (!row) return null
+                return (
+                  <div key={ch} className="rounded-lg border border-border p-3 text-xs">
+                    <div className="flex items-center gap-2 mb-2">
+                      {row.configured ? (
+                        <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
+                      ) : (
+                        <AlertTriangle className="h-3.5 w-3.5 text-amber-600" />
+                      )}
+                      <span className="font-semibold capitalize">{ch}</span>
+                    </div>
+                    <ul className="space-y-1 text-muted-foreground">
+                      {row.vars.map((v) => (
+                        <li key={v.key} className={v.configured ? "text-emerald-700" : ""}>
+                          {v.configured ? "✓" : "○"} <code className="text-[10px]">{v.key}</code>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )}
+
         {/* Header */}
         <div className="rounded-xl border border-border bg-gradient-to-br from-white to-[#FFFBF5] p-5 flex items-center justify-between flex-wrap gap-4">
           <div className="flex items-start gap-3">
@@ -533,13 +605,21 @@ export function AdminIntegrations() {
                   >
                     Open Resend dashboard <ExternalLink className="h-3 w-3" />
                   </a>
+                  <Input
+                    label="Test recipient"
+                    type="email"
+                    value={testEmailTo}
+                    onChange={setTestEmailTo}
+                    placeholder="you@example.com"
+                    className="max-w-xs"
+                  />
                   <button
                     type="button"
-                    disabled
-                    title="Available once the backend integration is wired up"
-                    className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md border border-border text-muted-foreground cursor-not-allowed"
+                    disabled={!testEmailTo || testing === "email"}
+                    onClick={() => void runChannelTest("email", () => apiAdminIntegrations.testEmail(testEmailTo))}
+                    className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md border border-border hover:bg-secondary disabled:opacity-50"
                   >
-                    Send test email (coming soon)
+                    {testing === "email" ? "Sending…" : "Send test email"}
                   </button>
                 </div>
               </Section>
@@ -628,13 +708,20 @@ export function AdminIntegrations() {
                 />
 
                 <div className="flex flex-wrap items-center gap-2 pt-1">
+                  <Input
+                    label="Test phone (E.164)"
+                    value={testPhone}
+                    onChange={setTestPhone}
+                    placeholder="+254700000000"
+                    className="max-w-xs"
+                  />
                   <button
                     type="button"
-                    disabled
-                    title="Available once the backend integration is wired up"
-                    className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md border border-border text-muted-foreground cursor-not-allowed"
+                    disabled={!testPhone || testing === "sms"}
+                    onClick={() => void runChannelTest("sms", () => apiAdminIntegrations.testSms(testPhone))}
+                    className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md border border-border hover:bg-secondary disabled:opacity-50"
                   >
-                    Send test SMS (coming soon)
+                    {testing === "sms" ? "Sending…" : "Send test SMS"}
                   </button>
                 </div>
               </Section>
@@ -798,6 +885,24 @@ export function AdminIntegrations() {
                       })
                     }
                   />
+                </div>
+
+                <div className="flex flex-wrap items-end gap-2 pt-1">
+                  <Input
+                    label="Test WhatsApp number"
+                    value={testPhone}
+                    onChange={setTestPhone}
+                    placeholder="+254700000000"
+                    className="max-w-xs"
+                  />
+                  <button
+                    type="button"
+                    disabled={!testPhone || testing === "whatsapp"}
+                    onClick={() => void runChannelTest("whatsapp", () => apiAdminIntegrations.testWhatsApp(testPhone))}
+                    className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md border border-border hover:bg-secondary disabled:opacity-50 mb-1"
+                  >
+                    {testing === "whatsapp" ? "Sending…" : "Send test WhatsApp"}
+                  </button>
                 </div>
 
                 <Textarea

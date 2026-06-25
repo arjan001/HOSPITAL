@@ -481,7 +481,7 @@ function saveCartToStorage(cart: CartItem[]) {
 }
 
 export function AdminPharmacyPos() {
-  const { data: productsData } = useSWR<Product[]>(CATALOG_PRODUCTS, authFetcher)
+  const { data: productsData, mutate: mutProducts } = useSWR<Product[]>(CATALOG_PRODUCTS, authFetcher)
   const { data: branches = [] } = useSWR<Branch[]>(`${BASE}/pharmacy/branches`, authFetcher)
   const { data: recentTxs = [], mutate: mutTxs } = useSWR<PosTransaction[]>(`${BASE}/pharmacy/pos/transactions`, authFetcher)
 
@@ -527,12 +527,25 @@ export function AdminPharmacyPos() {
   const subtotal = useMemo(() => cart.reduce((s, i) => s + i.total, 0), [cart])
   const total = Math.max(0, subtotal - discount)
 
+  function stockFor(productId: string): number {
+    const p = products.find((x) => x.id === productId)
+    if (!p) return 0
+    if (typeof p.stockCount === "number") return Math.max(0, p.stockCount)
+    return p.inStock ? 999 : 0
+  }
+
   function addToCart(p: Product) {
+    const available = stockFor(p.id)
+    if (available <= 0) {
+      setErr(`${p.name} is out of stock.`)
+      return
+    }
     setCart((prev) => {
       const existing = prev.find((i) => i.productId === p.id)
       if (existing) {
+        const nextQty = Math.min(available, existing.qty + 1)
         return prev.map((i) => i.productId === p.id
-          ? { ...i, qty: i.qty + 1, total: (i.qty + 1) * i.unitPrice }
+          ? { ...i, qty: nextQty, total: nextQty * i.unitPrice }
           : i)
       }
       return [...prev, {
@@ -548,10 +561,11 @@ export function AdminPharmacyPos() {
   }
 
   function changeQty(productId: string, delta: number) {
+    const max = stockFor(productId)
     setCart((prev) =>
       prev.map((i) => {
         if (i.productId !== productId) return i
-        const qty = Math.max(0, i.qty + delta)
+        const qty = Math.min(max, Math.max(0, i.qty + delta))
         return { ...i, qty, total: qty * i.unitPrice }
       }).filter((i) => i.qty > 0),
     )
@@ -585,6 +599,7 @@ export function AdminPharmacyPos() {
       setReceipt(tx)
       clearCart()
       void mutTxs()
+      void mutProducts()
     } catch (e: unknown) {
       setErr(e instanceof Error ? e.message : "Failed to process sale")
     } finally {
@@ -612,6 +627,7 @@ export function AdminPharmacyPos() {
       setReceipt(tx)
       clearCart()
       void mutTxs()
+      void mutProducts()
     } catch (e: unknown) {
       setErr(e instanceof Error ? e.message : "Failed to record Mesa payment")
     } finally {
@@ -633,6 +649,9 @@ export function AdminPharmacyPos() {
 
   return (
     <AdminShell title="Point of Sale (POS)">
+      <p className="text-xs text-muted-foreground mb-3 max-w-2xl">
+        Branch sales deduct from the shared catalog stock (<code className="text-[11px]">products</code> in admin) — same ledger as the online shop.
+      </p>
       {receipt && (
         <ReceiptView
           tx={receipt}

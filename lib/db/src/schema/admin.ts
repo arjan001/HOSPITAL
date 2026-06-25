@@ -1,4 +1,4 @@
-import { boolean, integer, jsonb, pgTable, text, timestamp, index, uniqueIndex } from "drizzle-orm/pg-core"
+import { boolean, integer, jsonb, pgTable, real, text, timestamp, index, uniqueIndex } from "drizzle-orm/pg-core"
 import { createInsertSchema, createSelectSchema } from "drizzle-zod"
 import { z } from "zod/v4"
 
@@ -119,6 +119,31 @@ export const sourcingRequests = pgTable("sourcing_requests", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 })
+
+/**
+ * sourcing_inventory_items — on-hand stock for procurement, forecast, and fulfillment.
+ * Replaces cms_docs key `sourcing-inventory`.
+ */
+export const sourcingInventoryItems = pgTable(
+  "sourcing_inventory_items",
+  {
+    id: text("id").primaryKey(),
+    sku: text("sku").notNull(),
+    productName: text("product_name").notNull(),
+    type: text("type").notNull().default("medication"),
+    onHand: integer("on_hand").notNull().default(0),
+    safetyStock: integer("safety_stock").notNull().default(0),
+    reorderPoint: integer("reorder_point").notNull().default(0),
+    unitCost: real("unit_cost"),
+    batchExpiry: text("batch_expiry"),
+    location: text("location"),
+    notes: text("notes"),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (t) => ({
+    skuIdx: index("sourcing_inventory_items_sku_idx").on(t.sku),
+  }),
+)
 
 /**
  * partner_quotes — quote submissions from supplier partners against sourcing requests.

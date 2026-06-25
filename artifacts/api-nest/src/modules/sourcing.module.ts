@@ -1,13 +1,16 @@
 /**
- * Postgres-backed sourcing requests (replaces CMS-only writes for procurement flow).
+ * Postgres-backed sourcing inventory + requests.
  *
- *   GET  /api/v2/admin/sourcing/requests
- *   POST /api/v2/admin/sourcing/requests
- *   GET  /api/v2/admin/sourcing/requests/:id
+ *   GET/PUT  /api/v2/admin/sourcing/inventory
+ *   GET      /api/v2/admin/sourcing/requests
+ *   POST     /api/v2/admin/sourcing/requests/open
+ *   POST     /api/v2/admin/sourcing/requests
+ *   GET      /api/v2/admin/sourcing/requests/:id
  */
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpException,
   HttpStatus,
@@ -15,12 +18,19 @@ import {
   Injectable,
   Module,
   Param,
+  Patch,
   Post,
+  Put,
   UseGuards,
 } from "@nestjs/common"
 import { desc, eq } from "drizzle-orm"
 import { db, partnerQuotes, sourcingRequests } from "@workspace/db"
 import { newId } from "../common/repository"
+import {
+  listSourcingInventory,
+  replaceSourcingInventory,
+  type SourcingInventoryDto,
+} from "../common/sourcing-inventory"
 import { AdminGuard, RequirePerm, AnyAdmin } from "../common/admin-guard"
 
 export function priorityToUrgency(priority: string): string {
@@ -116,13 +126,99 @@ export class SourcingRequestsService {
 
     return { sourcingRequest: sr!, partnerQuote: quote }
   }
+
+  /** Open replenishment request (forecast, low stock, manual — no supplier yet). */
+  async createOpenRequest(input: {
+    sku: string
+    productName: string
+    quantityNeeded: number
+    urgency: string
+    notes?: string
+    currentStock?: number
+    reorderPoint?: number
+  }) {
+    const sku = input.sku.trim()
+    const productName = input.productName.trim()
+    if (!sku || !productName) {
+      throw new HttpException("sku and productName required", HttpStatus.BAD_REQUEST)
+    }
+    const now = new Date()
+    const [sr] = await db
+      .insert(sourcingRequests)
+      .values({
+        id: newId("sr"),
+        sku,
+        productName,
+        currentStock: input.currentStock ?? 0,
+        reorderPoint: input.reorderPoint ?? 0,
+        quantityNeeded: Math.max(1, Math.round(input.quantityNeeded)),
+        urgency: priorityToUrgency(input.urgency),
+        status: "open",
+        notes: input.notes ?? null,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .returning()
+    return sr!
+  }
+
+  async patch(id: string, patch: { status?: string; notes?: string }) {
+    const row = await this.get(id)
+    const status = patch.status?.trim()
+    const allowed = new Set(["open", "quoting", "ordered", "received", "cancelled", "draft"])
+    if (status && !allowed.has(status)) {
+      throw new HttpException("Invalid status", HttpStatus.BAD_REQUEST)
+    }
+    const [updated] = await db
+      .update(sourcingRequests)
+      .set({
+        ...(status ? { status } : {}),
+        ...(patch.notes !== undefined ? { notes: patch.notes } : {}),
+        updatedAt: new Date(),
+      })
+      .where(eq(sourcingRequests.id, id))
+      .returning()
+    return updated!
+  }
+
+  async remove(id: string) {
+    await this.get(id)
+    await db.delete(sourcingRequests).where(eq(sourcingRequests.id, id))
+    return { ok: true as const }
+  }
+}
+
+@Injectable()
+export class SourcingInventoryService {
+  list() {
+    return listSourcingInventory()
+  }
+
+  replace(items: SourcingInventoryDto[]) {
+    return replaceSourcingInventory(Array.isArray(items) ? items : [])
+  }
 }
 
 @UseGuards(AdminGuard)
 @AnyAdmin()
 @Controller("admin/sourcing")
 class SourcingAdminController {
-  constructor(@Inject(SourcingRequestsService) private readonly sourcing: SourcingRequestsService) {}
+  constructor(
+    @Inject(SourcingRequestsService) private readonly sourcing: SourcingRequestsService,
+    @Inject(SourcingInventoryService) private readonly inventory: SourcingInventoryService,
+  ) {}
+
+  @Get("inventory")
+  @RequirePerm("sourcing.view", "inventory.view")
+  listInventory() {
+    return this.inventory.list()
+  }
+
+  @Put("inventory")
+  @RequirePerm("sourcing.manage", "inventory.edit")
+  replaceInventory(@Body() body: SourcingInventoryDto[]) {
+    return this.inventory.replace(Array.isArray(body) ? body : [])
+  }
 
   @Get("requests")
   @RequirePerm("sourcing.view")
@@ -134,6 +230,32 @@ class SourcingAdminController {
   @RequirePerm("sourcing.view")
   get(@Param("id") id: string) {
     return this.sourcing.get(id)
+  }
+
+  @Post("requests/open")
+  @RequirePerm("sourcing.manage")
+  createOpen(@Body() body: Record<string, unknown>) {
+    return this.sourcing.createOpenRequest({
+      sku: String(body.sku ?? ""),
+      productName: String(body.productName ?? ""),
+      quantityNeeded: Number(body.quantityNeeded ?? body.qty) || 1,
+      urgency: String(body.urgency ?? body.priority ?? "normal"),
+      notes: typeof body.notes === "string" ? body.notes : undefined,
+      currentStock: body.currentStock != null ? Number(body.currentStock) : undefined,
+      reorderPoint: body.reorderPoint != null ? Number(body.reorderPoint) : undefined,
+    })
+  }
+
+  @Patch("requests/:id")
+  @RequirePerm("sourcing.manage")
+  patch(@Param("id") id: string, @Body() body: { status?: string; notes?: string }) {
+    return this.sourcing.patch(id, body ?? {})
+  }
+
+  @Delete("requests/:id")
+  @RequirePerm("sourcing.manage")
+  remove(@Param("id") id: string) {
+    return this.sourcing.remove(id)
   }
 
   @Post("requests")
@@ -166,7 +288,7 @@ class SourcingAdminController {
 
 @Module({
   controllers: [SourcingAdminController],
-  providers: [SourcingRequestsService],
-  exports: [SourcingRequestsService],
+  providers: [SourcingRequestsService, SourcingInventoryService],
+  exports: [SourcingRequestsService, SourcingInventoryService],
 })
 export class SourcingModule {}
