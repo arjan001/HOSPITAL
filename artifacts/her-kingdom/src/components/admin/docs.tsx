@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
-import { BookOpen, Code2, Download, RefreshCw } from "lucide-react"
+import { BookOpen, Code2, Download, RefreshCw, Layers } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
@@ -9,6 +9,7 @@ import { AdminShell } from "./admin-shell"
 
 const DOCS = [
   { id: "training", label: "Training Manual", file: "TRAINING_MANUAL.md", icon: BookOpen },
+  { id: "architecture", label: "Architecture", file: "ARCHITECTURE.md", icon: Layers },
   { id: "api",      label: "API Reference",   file: "API_DOCUMENTATION.md", icon: Code2 },
 ] as const
 

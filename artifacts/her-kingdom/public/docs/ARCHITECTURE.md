@@ -1,8 +1,47 @@
 # Shaniid RX — System Architecture
 
 > **Source of truth.** This document describes every service, module, data flow,
-> auth strategy, and integration in the platform as of **June 2026**.  
+> auth strategy, and integration in the platform as of **June 2026** (Stages 0–5 complete).  
 > Keep it in sync whenever a new module ships or a service boundary changes.
+
+---
+
+## Monorepo layout (pnpm workspaces)
+
+Shaniid RX is a **pnpm workspace monorepo** — not Turborepo. There is no `turbo.json`;
+orchestration uses **pnpm filters**, root scripts, and **TypeScript project references**
+(`tsc --build` over `lib/*`).
+
+```
+/
+├── artifacts/                 # Deployable applications
+│   ├── her-kingdom/           @workspace/shaniid   — Vite + React storefront & admin
+│   ├── api-nest/              @workspace/api-nest — NestJS API (/api/v2)
+│   ├── api-server/            @workspace/api-server — Express legacy (/api)
+│   └── mockup-sandbox/        @workspace/mockup-sandbox — UI prototypes (dev only)
+├── lib/                       # Shared packages (@workspace/*)
+│   ├── db/                    Drizzle schema + `db` client
+│   ├── api-spec/              OpenAPI + Orval codegen
+│   ├── api-client-react/      Generated SWR hooks
+│   └── api-zod/               Generated Zod schemas
+├── scripts/                   DB helpers, dev scripts
+├── docs/                      Architecture, training, API reference (source)
+├── pnpm-workspace.yaml        Workspace globs + version catalog
+└── package.json               Root: typecheck, build, db:push
+```
+
+| Root command | What it does |
+|---|---|
+| `pnpm install` | Install all workspace packages (pnpm only — enforced in `preinstall`) |
+| `pnpm run typecheck` | `tsc --build` on `lib/*`, then each `artifacts/*` package |
+| `pnpm run build` | Typecheck + recursive `build` where defined |
+| `pnpm db:push` | `drizzle-kit push` from `@workspace/db` — **creates/updates all Postgres tables from `lib/db/src/schema/*.ts`** |
+
+Shared dependency versions are pinned in the **pnpm catalog** (`pnpm-workspace.yaml`). Apps
+import shared code as `@workspace/db`, `@workspace/api-zod`, etc.
+
+Human-facing copies of this doc and the training manual also ship under
+`artifacts/her-kingdom/public/docs/` for the in-admin docs viewer (`/admin/docs`).
 
 ---
 
@@ -69,10 +108,10 @@ routes alive. No big-bang rewrite, no downtime.
 
 | Package | Path | Purpose |
 |---|---|---|
-| `@workspace/db` | `packages/db` | Drizzle ORM schemas + migrations |
-| `@workspace/api-spec` | `packages/api-spec` | OpenAPI YAML + Orval config |
-| `@workspace/api-client-react` | `packages/api-client-react` | Generated SWR hooks |
-| `@workspace/api-zod` | `packages/api-zod` | Generated Zod schemas |
+| `@workspace/db` | `lib/db` | Drizzle ORM schemas + typed `db` client |
+| `@workspace/api-spec` | `lib/api-spec` | OpenAPI YAML + Orval config |
+| `@workspace/api-client-react` | `lib/api-client-react` | Generated SWR hooks |
+| `@workspace/api-zod` | `lib/api-zod` | Generated Zod schemas |
 
 ---
 
@@ -89,8 +128,8 @@ Replit proxy → her-kingdom Vite SPA (index.html)
     ▼ (client-side router — wouter)
 ProductDetailPage renders
     │
-    ├── GET /api/products/:slug  → api-server (catalog data)
-    └── GET /api/v2/me/wishlist  → api-nest   (wishlist state)
+    ├── GET /api/v2/products/:slug  → api-nest CatalogModule (primary)
+    └── GET /api/v2/me/wishlist     → api-nest   (wishlist state)
 ```
 
 ### Admin request
@@ -104,8 +143,8 @@ Replit proxy → her-kingdom Vite SPA (index.html)
     ▼ (client-side router)
 AdminOrders component
     │
-    ├── GET /api/admin/orders    → api-server (legacy orders list)
-    └── GET /api/v2/admin/orders → api-nest   (new orders module)
+    ├── GET /api/v2/admin/orders     → api-nest (Postgres-backed)
+    └── GET /api/v2/admin/sourcing/* → api-nest SourcingExtModule (inventory, automation, POs)
 ```
 
 ### Clerk authentication proxy
@@ -190,7 +229,7 @@ Google button → authenticateWithRedirect(oauth_google)
 
 **Scope:** Every `/api/v2/admin/*` route and the admin SPA at `/admin/*`.
 
-**Login**
+**Login (email/password)**
 
 ```
 POST /api/v2/admin/auth/login  { email, password }
@@ -200,11 +239,27 @@ POST /api/v2/admin/auth/login  { email, password }
   → sends x-admin-token on every admin API call
 ```
 
+**Login (Clerk SSO — shipped Stage 5)**
+
+When `CLERK_SECRET_KEY` is set, admins with a matching `admin_users` row can sign in via
+Google on `/admin/login`:
+
+```
+Clerk Google OAuth → /admin/login (signed in)
+  → POST /api/v2/admin/auth/clerk-session
+       Authorization: Bearer <Clerk session JWT>
+  → resolveAdminFromClerk() — match clerk_user_id or email on active admin_users
+  → same signed admin token + HttpOnly cookie as password login
+```
+
+Email/password login remains available. RBAC shape is unchanged.
+
 **`AdminGuard`** (`src/common/admin-guard.ts`) accepts, in order:
 
 1. **`ADMIN_API_TOKEN`** (ops master key) in `x-admin-token` or `Authorization: Bearer` — full super-admin.
 2. **Signed per-user token** from login — verified with `verifyAdminToken()`, then the **live** `admin_users` row is loaded from Postgres (deactivated admins lose access immediately).
-3. **HttpOnly cookie** `shaniidrx_admin_token` — **GET/HEAD only** (SSE streams, `<img>` loads); mutating routes still require the header.
+3. **Clerk Bearer JWT** — verified via `verifyClerkBearer()`, resolved to active `admin_users` (links `clerk_user_id` on first match by email).
+4. **HttpOnly cookie** `shaniidrx_admin_token` — **GET/HEAD only** (SSE streams, `<img>` loads); mutating routes still require the header.
 
 **Permission model**
 
@@ -216,8 +271,6 @@ POST /api/v2/admin/auth/login  { email, password }
 
 - If `ADMIN_API_TOKEN` is unset and `NODE_ENV=production` → **503** (fail closed).
 - Dev allows a fallback token when no secret is configured (`ADMIN_REQUIRE_TOKEN=1` forces closed locally).
-
-**Phase 2:** Replace token login with Clerk admin SSO; guard shape stays the same.
 
 ---
 
@@ -327,7 +380,8 @@ analytics to a browser session until Clerk identity is wired into Nest.
 
 | File | Purpose |
 |------|---------|
-| `api-nest/src/common/admin-guard.ts` | Admin token + RBAC |
+| `api-nest/src/common/admin-guard.ts` | Admin token + RBAC + Clerk bearer |
+| `api-nest/src/common/admin-clerk-auth.ts` | Clerk → admin_users resolution |
 | `api-nest/src/common/admin-token.ts` | Signed admin JWT-like token |
 | `api-nest/src/common/clerk-auth.ts` | Clerk bearer verification for partners |
 | `api-nest/src/common/clerk-partner-org.ts` | Clerk Organizations API helpers |
@@ -473,7 +527,7 @@ implementation against the `admin_cms` table. No client changes needed.
 
 | Module | Controller | Key routes | Guard | Description |
 |---|---|---|---|---|
-| `AdminAuthModule` | `AdminAuthController` | `POST /admin/auth/login`, `GET /admin/auth/me`, forgot-password | public / token | Admin login → signed token; Postgres RBAC via `AdminGuard` |
+| `AdminAuthModule` | `AdminAuthController` | `POST /admin/auth/login`, `POST /admin/auth/clerk-session`, `GET /admin/auth/me`, forgot-password | public / token | Admin login (password or Clerk SSO) → signed token; Postgres RBAC via `AdminGuard` |
 | `PartnersModule` | `PartnerAuthController` | `POST /partners/:type/auth`, `POST /partners/:type/clerk-session`, `POST /partners/:type/register-org`, `POST /partners/apply`, `POST /partners/accept`, `GET /partners/me` | public / partner token / Clerk bearer | Dual partner auth; Clerk org onboarding; invite accept |
 | `PartnersModule` | `PartnerAdminController` | `POST /partners/admin/invite`, applications, accounts | admin | Admin provisions partners; approves pending orgs |
 
@@ -501,6 +555,21 @@ implementation against the `admin_cms` table. No client changes needed.
 | `CatalogImportModule` | `CatalogImportController` | `POST /admin/catalog/{categories/import, products/import, google-sheet}` | CSV/JSON/Sheet bulk ingestion |
 | `PatientNotesModule` | `PatientNotesController` | `GET/POST /admin/patients/:patientId/notes`, `PUT/DELETE /admin/patients/:patientId/notes/:noteId` | Clinical sticky notes |
 | `PipelineModule` | 6 controllers | `GET /admin/pipeline/status`, `POST /admin/pipeline/{sourcing/scan, trading/recompute-margins, qa/scan-expiry, logistics/auto-assign, communications/send, communications/preview}` | Operations automation |
+
+#### Operations, sourcing & procurement (Postgres — Stages 2–5)
+
+| Module | Controller | Key routes | Description |
+|---|---|---|---|
+| `SourcingModule` | sourcing requests | `/admin/sourcing/requests` | Open sourcing requests, supplier assignment |
+| `SourcingExtModule` | `SourcingExtController` | `/admin/sourcing/price-history`, `competitor-prices`, `automation/*`, `performance`, `run-procurement-pipeline` | Pricing, automation rules, supplier scores, ML procurement pipeline |
+| `SupplierPurchaseOrdersModule` | PO CRUD | `/admin/supplier-purchase-orders` | Draft/sent POs; fires `po.issued` partner webhooks |
+| `OperationsModule` | demand + care packs | `/admin/demand/aggregation`, `/admin/demand/forecast`, `/admin/demand/forecast-v2`, care-pack mappings | Demand aggregation + baseline/ensemble forecast |
+| `OperationsFulfillmentModule` | assembly | `/admin/fulfillment/*` | Care-pack assembly jobs, allocations |
+| `TradingModule` | trading admin | `/admin/trading/deals`, bids, negotiations, settlements | B2B deal pipeline + margin scan |
+| `PartnerWebhooksModule` | webhooks admin | `/admin/partner-webhooks`, `deliveries`, `test` | Register outbound webhooks; delivery log |
+| `QaLogisticsModule` | QA + logistics | `/admin/qa/*`, `/admin/logistics/*` | QA gates, riders, deliveries; syncs `delivery_jobs` |
+| `SeoModule` | crawl HTML | `GET /seo/crawl-html?path=…` | SSR-lite HTML for crawlers (shop, PDP, blogs) |
+| `CatalogModule` | public catalog | `GET /products`, `GET /products/:slug`, `GET /categories` | CMS-backed storefront catalogue (Nest primary path) |
 
 #### Notifications transport & infrastructure
 
@@ -630,6 +699,8 @@ implementation against the `admin_cms` table. No client changes needed.
 | `/admin/campaigns` + sub-routes | `AdminCampaigns*` — email, SMS, audiences, pipelines, queue |
 | `/admin/integrations` | `AdminIntegrations` |
 | `/admin/integrations/templates` | `AdminMessageTemplates` |
+| `/admin/integrations/outbox` | `AdminMessageOutbox` |
+| `/admin/integrations/webhooks` | `AdminPartnerWebhooks` — partner outbound webhooks |
 | `/admin/banners` | `AdminBanners` |
 | `/admin/website-settings` | `AdminWebsiteSettings` |
 | `/admin/settings` | `AdminSettings` |
@@ -656,38 +727,48 @@ implementation against the `admin_cms` table. No client changes needed.
 
 ## 9. Shared Libraries
 
-### `packages/db` — Drizzle ORM
+### `lib/db` — Drizzle ORM (`@workspace/db`)
 
-Defines the PostgreSQL schema and exposes a typed `db` client.
+Defines the PostgreSQL schema in TypeScript and exposes a typed `db` client. **Source of truth:**
+`lib/db/src/schema/*.ts`. Apply with `pnpm db:push` (see `lib/db/SCHEMA.md`).
 
 ```
-packages/db/
+lib/db/
   src/
     schema/
-      catalog.ts   — products, categories, product_images, product_variations
-      orders.ts    — orders, order_lines
-      users.ts     — customer_profiles, addresses
-    index.ts       — drizzle(pool) export
-    migrate.ts     — runs pending migrations
-  drizzle/         — SQL migration files
+      admin.ts          — admin_users (+ clerk_user_id), cms, sourcing_inventory, delivery_jobs
+      trading.ts        — trading_deals, bids, negotiations, settlements
+      sourcing-ext.ts   — price history, automation rules, supplier score overrides
+      stage5.ts         — partner_webhook_endpoints, partner_webhook_deliveries
+      operations.ts     — care packs, procurement_decisions, assembly jobs
+      qa-logistics.ts   — QA inventory, logistics deliveries, riders
+      prescriptions.ts  — Rx workflow, subscriptions, refills
+      crm.ts            — crm_contacts
+      …                 — orders, partners, pharmacies, etc.
+    index.ts            — drizzle(pool) export
+  drizzle.config.ts     — drizzle-kit push target
+  migrations/manual/    — SQL fallback when push unavailable
 ```
 
-**Key tables:**
-- `products` — slug, name, price, stock_qty, prescription_required
-- `product_images` — FK to products (deleted on full replace!)
-- `product_variations` — FK to products (deleted on full replace!)
-- `categories` — parent_id for tree structure
-- `orders`, `order_lines` — customer purchases
-- `admin_cms` — KV store for all CMS documents
+**Representative Postgres-backed domains (June 2026):**
 
-### `packages/api-spec` — OpenAPI
+- **Catalog CMS** — `admin_cms` key-value (products/categories still synced from admin UI)
+- **Sourcing** — `sourcing_inventory_items`, `sourcing_*` automation/pricing tables
+- **Trading** — `trading_deals`, `trading_bids`, `trading_negotiations`, `trading_settlements`
+- **Procurement** — `purchase_orders`, `purchase_order_lines`, `procurement_decisions`
+- **Partners** — `partner_directory`, `partner_accounts`, `partner_members`, `partner_quotes`
+- **Webhooks** — `partner_webhook_endpoints`, `partner_webhook_deliveries`
+- **Logistics** — `logistics_deliveries`, `delivery_jobs` (partner portal sync)
+- **Admin RBAC** — `admin_users`, roles/permissions JSON
+
+### `lib/api-spec` — OpenAPI
 
 Single YAML spec at `openapi.yaml`. `pnpm --filter @workspace/api-spec run codegen`
 regenerates:
-- `packages/api-client-react` — SWR hooks
-- `packages/api-zod` — Zod schemas
+- `lib/api-client-react` — SWR hooks
+- `lib/api-zod` — Zod schemas
 
-### `packages/api-zod` — Validation schemas
+### `lib/api-zod` — Validation schemas
 
 Auto-generated from OpenAPI. Import these in both the Express routes and
 the React forms to keep validation in sync.
@@ -697,41 +778,39 @@ the React forms to keep validation in sync.
 ## 10. Data / Database Strategy
 
 ```
-Today (in-memory + localStorage)
-──────────────────────────────────
-  api-nest services     → InMemoryRepository<T>  (per-session Map)
-  Admin CMS             → localStorage + /api/v2/admin/cms/:key
-  Paystack payments      → Postgres-backed payment records (Nest `/api/v2/payments/paystack`)
-  Storefront catalog    → Nest `/api/v2/products` (CMS-backed)
-
-Tomorrow (Postgres)
-───────────────────
-  1. Set DATABASE_URL pointing to a Postgres instance.
-  2. Run `pnpm --filter @workspace/db run push` to create tables.
-  3. Replace InMemoryRepository<T> in each NestJS service with a
-     Drizzle-backed implementation (same listFor/add/update/remove surface).
-  4. Replace in-memory payment Map with `paystack_payments` table.
-  5. Replace localStorage CMS with `admin_cms` table via NestJS endpoint
-     (already wired: /api/v2/admin/cms/:key PUT / GET).
+Hybrid persistence (June 2026)
+──────────────────────────────
+  Postgres (Drizzle)    → Sourcing, trading, POs, partners, QA/logistics,
+                          admin RBAC, prescriptions workflow, CRM, webhooks,
+                          demand/procurement tables (see lib/db/SCHEMA.md)
+  CMS key-value         → Products, categories, banners (admin_cms + /api/v2/admin/cms)
+  cmsStore (browser)    → Instant admin UI for CMS keys; background sync to Nest
+  Guest session repos   → Some customer modules still InMemoryRepository until Clerk bind
+  Paystack              → Postgres-backed payment records
 ```
 
-### Repository pattern
+### Applying schema changes
 
-Every NestJS service that stores data uses `InMemoryRepository<T>`:
+1. Edit `lib/db/src/schema/*.ts` (canonical definition).
+2. Run `pnpm db:push` with `DATABASE_URL` set.
+3. Manual SQL fallback: `lib/db/migrations/manual/*.sql` (documented in `migrations/manual/README.md`).
+
+### Repository pattern (legacy customer modules)
+
+Some NestJS customer services still use `InMemoryRepository<T>` for guest-scoped data.
+Postgres-backed services use Drizzle directly (`db.select()`, `db.insert()`, etc.).
+New modules (sourcing, trading, partners) are **Drizzle-first**.
 
 ```ts
-class MyService {
-  private repo = new InMemoryRepository<MyEntity>()
-
-  list(sid: string) { return this.repo.listFor(sid) }
-  create(sid: string, data: Omit<MyEntity, "id">) {
-    return this.repo.add(sid, { id: newId("ent"), ...data })
-  }
-}
+// Drizzle-first (current standard for new modules)
+const rows = await db.select().from(purchaseOrders).where(eq(purchaseOrders.supplierId, id))
 ```
 
-The Postgres swap replaces `InMemoryRepository<T>` with
-`DrizzleRepository<T>` — controllers don't change.
+### Partner webhooks (Stage 5)
+
+On `po.issued` (PO status `sent`) and `delivery.job_assigned` (new `delivery_jobs` row),
+`dispatchPartnerWebhook()` POSTs to registered `partner_webhook_endpoints` with optional
+HMAC signature (`X-Shaniid-Signature`). Delivery attempts logged in `partner_webhook_deliveries`.
 
 ---
 
@@ -795,30 +874,37 @@ behind the `shaniidrx_sid` session cookie (PII guard).
 ## 13. Strangler Migration Plan
 
 ```
-Phase 1 (done — through June 2026)
-  ✓ NestJS api-nest scaffold
-  ✓ Profile, Addresses, Wishlist, Orders modules
-  ✓ Paystack M-Pesa payments
-  ✓ Admin CMS module (Postgres-backed cmsStore sync)
-  ✓ Prescriptions, Uploads, Chat, Email, Notifications, Pipeline, Analytics
-  ✓ Clerk customer auth (sign-in / sign-up / OAuth / password reset)
-  ✓ AdminGuard + Postgres RBAC (@RequirePerm, @AnyAdmin)
-  ✓ Partner auth: password + signed partner token
-  ✓ Partner Clerk Organizations (Google sign-up, register-org, clerk-session)
-  ✓ Partner org name resolution + pending-approval workflow
+Stage 0–1 (done — catalog v2, logistics portal, RBAC)
+  ✓ Nest `/api/v2/products` + categories (CatalogModule)
+  ✓ Logistics partner portal + delivery_jobs sync
+  ✓ AdminGuard + Postgres RBAC
 
-Phase 2 (planned)
-  ☐ Clerk admin SSO (replace admin token login; keep AdminGuard shape)
+Stage 2 (done — sourcing & marketing Postgres)
+  ✓ sourcing_inventory_items, sourcing requests, supplier POs
+  ✓ Fulfillment / assembly, newsletter, campaigns audiences
+
+Stage 3 (done — trading)
+  ✓ trading_deals, bids, negotiations, settlements
+  ✓ Margin scan → deal creation API + admin UI
+
+Stage 4 (done — automation & polish)
+  ✓ Sourcing pricing, competitor prices, automation rules
+  ✓ Forecast shortfall → draft PO; supplier performance scores
+  ✓ Analytics geo IP fallback; API deprecations doc
+
+Stage 5 (done — Phase 2 optional items)
+  ✓ Clerk admin SSO (`/admin/auth/clerk-session`)
+  ✓ SEO crawl-html + prerender shop categories
+  ✓ Demand forecast v2 (ensemble ES+Holt)
+  ✓ Procurement pipeline automation
+  ✓ Partner outbound webhooks (PO issued, delivery job assigned)
+
+Remaining (Phase 2+)
   ☐ Wire customer sessionId to Clerk user id on api-nest
-  ☐ Doctor onboarding form + panel (NestJS)
-  ☐ Prescription pay-before-call flow
-  ☐ Retire api-server legacy routes (catalog, Clerk proxy consolidation)
+  ☐ Retire api-server legacy catalog routes (strangler completion)
   ☐ S3 file storage swap
-
-Phase 3 (future)
-  ☐ Delete api-server entirely
+  ☐ Full SSR (if prerender + crawl-html insufficient)
   ☐ Apple / Facebook OAuth
-  ☐ ML demand forecasting
 ```
 
 ---
@@ -838,5 +924,11 @@ Phase 3 (future)
 | Jun 2026 | Clerk Organizations for partners | B2B tenancy: one org per company, Google onboarding, admin approval gate |
 | Jun 2026 | Signed partner tokens | Stateless HMAC sessions; entity-scoped BOLA; survives restarts |
 | Jun 2026 | AdminGuard RBAC | Postgres permissions + fail-closed default on unannotated routes |
+| Jun 2026 | Drizzle schema-as-source-of-truth | `lib/db/src/schema/*.ts` + `pnpm db:push`; manual SQL as fallback |
+| Jun 2026 | pnpm workspace monorepo | `artifacts/*` apps + `lib/*` shared packages; TS project references for typecheck |
+| Jun 2026 | Sourcing/trading Postgres modules | Admin UI migrated off browser-only CMS for inventory, POs, trading |
+| Jun 2026 | Clerk admin SSO (optional) | Google sign-in for admins with matching `admin_users` row; password login retained |
+| Jun 2026 | Partner outbound webhooks | HMAC-signed POST on PO issued + delivery job assigned |
+| Jun 2026 | Ensemble demand forecast v2 | ES+Holt on weekly order series; baseline trend remains fallback |
 | May 2026 | No ValidationPipe on NestJS | Avoids class-validator/class-transformer dependency; controllers validate manually; Zod DTOs planned |
 | May 2026 | Supabase removed | Replaced by cmsStore + NestJS CMS module; simpler operational model |

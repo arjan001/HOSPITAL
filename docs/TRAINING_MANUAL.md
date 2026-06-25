@@ -3,7 +3,7 @@
 A practical, end-to-end walkthrough for setting up, running, and operating Shaniid RX. Written for the team that will install the software, configure suppliers and pharmacies, manage day-to-day storefront/admin work, onboard partners, and hand off to support.
 
 > **Audience:** non-technical operators, store managers, pharmacists, procurement teams, and the on-call developer who configures the environment for the first time.
-> **Last updated:** May 2026.
+> **Last updated:** June 2026 (Stages 0–5).
 
 ---
 
@@ -14,7 +14,11 @@ Shaniid RX is the trust layer for medicine distribution in East Africa. It is co
 - **Storefront** — the public catalogue, prescription upload, doctor consultation booking, and customer accounts.
 - **Admin** — the back-office for products, banners, categories, orders, payments, prescriptions, marketing, sourcing, and CMS.
 - **Partner Portals** — three self-service portals for verified Suppliers, Healthcare Facilities (Clinics), and Logistics Partners.
-- **APIs** — the two backend services that power everything: the legacy `api-server` (Express) and the strangler-fig `api-nest` (NestJS) that is gradually taking over.
+- **APIs** — NestJS `api-nest` (`/api/v2`) is the primary backend; legacy Express `api-server` (`/api`) remains for a shrinking set of routes during the strangler migration.
+
+The codebase is a **pnpm workspace monorepo** (see `docs/ARCHITECTURE.md` — not Turborepo):
+`artifacts/` holds deployable apps, `lib/` holds shared packages (`@workspace/db`, etc.).
+Root commands: `pnpm install`, `pnpm run typecheck`, `pnpm db:push`.
 
 The product promise is non-negotiable: **"If it comes through Shaniid RX, it is genuine, fairly priced, and delivered with integrity."**
 
@@ -26,6 +30,7 @@ The product promise is non-negotiable: **"If it comes through Shaniid RX, it is 
                        ┌──────────────────────────────────────┐
                        │       Storefront / Admin             │
                        │   artifacts/her-kingdom              │
+                       │   (@workspace/shaniid)               │
                        │                                      │
                        │  /              Storefront           │
                        │  /admin/*       Back-office          │
@@ -37,27 +42,29 @@ The product promise is non-negotiable: **"If it comes through Shaniid RX, it is 
                                       ▼
         ┌──────────────────────┐            ┌──────────────────────┐
         │  api-server (Express)│            │  api-nest (NestJS)   │
-        │  /api/*              │            │  /api/v2/*           │
-        │  legacy + payments   │            │  user account, KYC,  │
-        │  + admin reads       │            │  payments, prescr.,  │
-        │  port 8080           │            │  uploads, chat       │
-        └──────────────────────┘            └──────────────────────┘
-                                      │
-                                      ▼
-                               ┌──────────────┐
-                               │ cmsStore /   │  (browser localStorage today)
-                               │ Postgres     │  (Drizzle — Phase 2)
-                               └──────────────┘
+        │  /api/*  (legacy)    │            │  /api/v2/* (primary) │
+        │  Clerk proxy, stubs  │            │  catalog, payments,  │
+        │  port 8080           │            │  sourcing, trading,  │
+        └──────────────────────┘            │  partners, webhooks  │
+                                            │  port 8090           │
+                                            └──────────┬───────────┘
+                                                       │
+                                                       ▼
+                                            ┌──────────────────────┐
+                                            │  PostgreSQL          │
+                                            │  lib/db (Drizzle)    │
+                                            │  pnpm db:push        │
+                                            └──────────────────────┘
 ```
 
-Two backends run side-by-side so the storefront keeps working while modules port over. Partner data (suppliers, clinics, logistics partners) lives in `cmsStore` today and migrates to NestJS in Phase 2. Eventually `api-nest` owns everything and `api-server` is removed.
+NestJS owns most operational data in **Postgres** (sourcing, trading, POs, partners, QA/logistics, admin users). Marketing CMS content (banners, product JSON) still syncs via `cmsStore` → `/api/v2/admin/cms`. The legacy Express server is being retired route-by-route.
 
 ---
 
 ## 3. Prerequisites
 
-- **Node.js 24+** and **pnpm 9+** on the host.
-- **PostgreSQL 15+** reachable via `DATABASE_URL` for production. For development, in-memory stores are fine.
+- **Node.js 24+** and **pnpm 9+** on the host (npm/yarn are blocked — use pnpm only).
+- **PostgreSQL 15+** via `DATABASE_URL` — **required** for sourcing, trading, POs, partners, admin RBAC, and webhooks. Catalog CMS can run without DB in a limited dev mode.
 - **A Clerk tenant** (for customer authentication). Replit-managed Clerk is the default — no dashboard configuration is required to start.
 - **A Paystack account** (for M-PESA STK Push payments). Test keys are fine to start.
 - **(Optional) A Resend account** for transactional email (verification, prescription approvals, receipts). Phase 3.
@@ -91,13 +98,15 @@ Create `.env.local` at the repo root (or set the secrets through your hosting pr
 
 > **Never** commit `.env*` files. On Replit, use the Secrets pane.
 
-### 4.3 Push the database schema (production / staging only)
+### 4.3 Push the database schema
 
 ```bash
-pnpm --filter @workspace/db run push
+pnpm db:push
+# equivalent: pnpm --filter @workspace/db run push
 ```
 
-This applies all Drizzle migrations to `DATABASE_URL`. Skip for local dev — the apps work in-memory.
+This reads all table definitions from `lib/db/src/schema/*.ts` and syncs Postgres.
+Run after every schema change and on every new environment. See `lib/db/SCHEMA.md`.
 
 ### 4.4 Run everything in dev
 
@@ -106,7 +115,7 @@ Open three terminals (or three Replit workflows — already configured):
 ```bash
 pnpm --filter @workspace/api-server  run dev    # http://localhost:8080
 pnpm --filter @workspace/api-nest    run dev    # http://localhost:8090
-pnpm --filter @workspace/her-kingdom run dev    # http://localhost:5173 (Vite)
+pnpm --filter @workspace/shaniid     run dev    # Vite (port from env, often 21470 on Replit)
 ```
 
 The storefront proxies `/api/*` to api-server and `/api/v2/*` to api-nest. You should see:
@@ -122,7 +131,7 @@ Open the printed Vite URL and you should land on the homepage.
 1. **Browse a product** — click any card on the homepage, confirm the PDP loads.
 2. **Add to cart** → checkout → choose **M-PESA** → enter your test phone (`07XX…`) → confirm the Paystack STK modal appears and reports an error if `PAYSTACK_SECRET_KEY` is unset (this is intentional, friendly behaviour).
 3. **Sign up** at `/sign-up` with email + password → confirm you land at `/account`.
-4. **Open the admin** at `/admin` → log in as the local super-admin (hardcoded for now) → confirm the dashboard renders KPIs.
+4. **Open the admin** at `/admin` → log in with email/password **or** Google (Clerk) if your email is in **Admin → Users** → confirm the dashboard renders KPIs.
 5. **Verify a partner portal** — go to `/portal/supplier` → confirm the branded login page loads.
 
 If all five pass, your installation is healthy.
@@ -167,19 +176,48 @@ Phase 2 wires this into the doctor panel and a per-patient "Buy this prescriptio
 `/admin/cms/pages` — author about pages, policies, etc. Each page gets `/pages/{slug}`.
 `/admin/cms/footer` — re-order columns, edit links.
 
-All of the above persist via `cmsStore` (browser-local today, NestJS later).
+All of the above persist via `cmsStore` with background sync to `/api/v2/admin/cms` (Postgres `admin_cms` when `DATABASE_URL` is set).
 
-### 5.6 Website settings
+### 5.7 Sourcing & procurement (Postgres)
+
+`/admin/sourcing` — tabbed workspace:
+
+| Tab | Purpose |
+| --- | ------- |
+| **Inventory** | On-hand stock, reorder points, safety stock (`sourcing_inventory_items`) |
+| **Requests** | Open sourcing needs; assign suppliers |
+| **Purchase orders** | Draft/sent POs per supplier |
+| **Forecast** | Demand projections — **Baseline** or **ML v2** (ensemble model) |
+| **Pricing** | Supplier cost history + competitor retail prices |
+| **Automation** | Rules (low stock, expiry, forecast shortfall); **Run procurement pipeline** for ML → scored supplier → PO |
+| **Performance** | Supplier composite scores from PO fill rate, cost, quality overrides |
+
+**Typical workflow:** Generate forecast → review suggested reorders → create sourcing request **or** run automation / procurement pipeline → issue PO → supplier receives `po.issued` webhook if configured.
+
+### 5.8 Trading (B2B deals)
+
+`/admin/trading` — deals, bids, negotiations, settlements. Margin scan can seed deals from sourcing pricing data. Settlements can link to supplier POs.
+
+### 5.9 Partner webhooks
+
+`/admin/integrations/webhooks` — register HTTPS endpoints per partner ID for events:
+
+- `po.issued` — when a purchase order is sent to a supplier
+- `delivery.job_assigned` — when a logistics delivery job is created for the partner portal
+
+Optional signing secret → `X-Shaniid-Signature` HMAC on outbound POSTs. Use **Test** to send a sample payload.
+
+### 5.10 Website settings
 
 `/admin/settings` — brand colors, contact info, social handles, SEO defaults, commerce flags (free-shipping threshold, COD enabled, etc.), business hours.
 
 Anything edited here goes live immediately on the storefront.
 
-### 5.7 Marketing — message templates
+### 5.11 Marketing — message templates
 
 `/admin/integrations/templates` — SMS / WhatsApp / Email templates with `{{token}}` interpolation. Variables include `customer_name`, `order_number`, `total`, `tracking_url`, `prescription_number`, `appointment_time`. Sample preview rendered inline.
 
-### 5.8 Audit log
+### 5.12 Audit log
 
 Every `cmsStore` write is auto-captured. View at `/admin/system/audit`. Filter by user, module, date.
 
@@ -388,9 +426,11 @@ Guest checkout does not require sign-in.
 
 | Role | Access | Auth |
 | ---- | ------ | ---- |
-| Super admin | Full `/admin` (wildcard `*` permission) | `POST /api/v2/admin/auth/login` → `x-admin-token` on every call |
-| Scoped admin | Modules granted in Roles screen (e.g. `analytics.view`, `sourcing.view`) | Same token; `AdminGuard` checks live Postgres permissions |
+| Super admin | Full `/admin` (wildcard `*` permission) | Email/password **or** Google (Clerk) at `/admin/login` |
+| Scoped admin | Modules granted in Roles screen (e.g. `analytics.view`, `sourcing.view`) | Same; `AdminGuard` checks live Postgres permissions |
 | Ops master key | Emergency full access | `ADMIN_API_TOKEN` env (same header) |
+
+**Clerk admin sign-in:** requires `VITE_CLERK_PUBLISHABLE_KEY` + `CLERK_SECRET_KEY` and an active row in **Admin → Users** with a matching email. First Google login links `clerk_user_id` automatically.
 
 Production **fails closed** if admin auth is not configured. See `docs/ARCHITECTURE.md` §4.2.
 
@@ -406,11 +446,12 @@ Partners use **Clerk Organizations** for team sign-in — not the customer Clerk
 
 **Important:** Company name comes from the onboarding form or Clerk org **name**, not the org slug.
 
-### Phase 2 (planned)
+### Remaining roadmap (not yet shipped)
 
-- Clerk SSO for admin panel (replace token login)
-- Bind customer `sessionId` to Clerk user id on api-nest
-- Doctor panel JWT (`/doctor/*`) — separate from partner tokens
+- Bind customer `sessionId` to Clerk user id on api-nest (guest cookie today)
+- Retire remaining api-server catalog routes
+- Doctor panel JWT hardening (`/doctor/*`)
+- Full SSR beyond prerender + `/seo/crawl-html`
 
 ---
 
@@ -452,12 +493,12 @@ ClerkProvider wraps the app in `App.tsx`.
 
 Server: `clerkMiddleware()` on api-server proxies Clerk for the SDK. Customer Nest APIs still use the guest `shaniidrx_sid` cookie for data isolation until Phase 2 wires Clerk user id.
 
-### 10.2 Admins — token + RBAC
+### 10.2 Admins — token + RBAC (+ optional Clerk SSO)
 
-1. Sign in at `/admin/login` → `POST /api/v2/admin/auth/login`.
-2. Store returned token; every admin API sends `x-admin-token`.
-3. Permissions enforced per route (`analytics.view`, `orders.manage`, etc.) from Postgres.
-4. Super-admin and `ADMIN_API_TOKEN` ops key have full access.
+1. Sign in at `/admin/login` — **email/password** or **Sign in with Google (Clerk)** when configured.
+2. `POST /api/v2/admin/auth/login` or `POST /api/v2/admin/auth/clerk-session` returns a signed token.
+3. Store token in browser; every admin API sends `x-admin-token`.
+4. Permissions enforced per route from Postgres (`analytics.view`, `sourcing.manage`, etc.).
 
 See `docs/ARCHITECTURE.md` §4.2.
 
@@ -504,6 +545,10 @@ Every user-facing page renders the `<Seo>` component from `@/components/seo` wit
 
 JSON-LD helpers (`organizationJsonLd`, `websiteJsonLd`, `breadcrumbJsonLd`, `faqJsonLd`, `productJsonLd`) are exported from the same module and used on PDPs, FAQ, and landing pages.
 
+**Build-time prerender** (`artifacts/her-kingdom/scripts/prerender-seo.mjs`) runs after production build and writes static `index.html` copies for `/`, `/shop`, products, blogs, and shop categories — for crawlers that do not execute JavaScript.
+
+**Runtime crawl HTML:** `GET /api/v2/seo/crawl-html?path=/product/:slug` returns a minimal HTML shell for bots.
+
 Admin pages and partner portals are intentionally `noindex`. Page-level overrides are passed via the `noindex` boolean.
 
 ---
@@ -541,14 +586,17 @@ See `docs/API_DOCUMENTATION.md` §2.9, §2.15 and the workflows in §3.9 for the
 | Clinic cannot submit order | Status is not "approved" or order exceeds credit | Approve their KYC first, or increase their credit limit in the admin drawer. |
 | Logistics partner fleet shows no vehicles | No vehicles were added during onboarding | Open their admin drawer → Fleet tab → Add vehicle. |
 | Partner's portal code not known | Code was not saved at onboarding time | Open the admin drawer for that partner — the portal code is always visible and copyable there. |
-| `cmsStore` data lost after browser clear | Expected — localStorage is ephemeral in development | Phase 2 moves all partner data to the NestJS database. For now, re-onboard in dev as needed. |
+| `cmsStore` data lost after browser clear | Expected for unsynced CMS keys | Re-sync from server or re-enter; operational data is in Postgres when `DATABASE_URL` is set |
+| Sourcing / trading tabs empty | `DATABASE_URL` unset or schema not pushed | Run `pnpm db:push` and restart api-nest |
+| Admin Google sign-in says no matching account | Email not in `admin_users` | Super-admin adds user in **Admin → Users** with same email |
 
 ---
 
 ## 14. Going to production
 
 1. Set `DATABASE_URL`, `PAYSTACK_SECRET_KEY`, `PAYSTACK_PUBLIC_KEY`, `CLERK_*` keys.
-2. Run `pnpm run build` — this typechecks and bundles all apps.
+2. Run `pnpm db:push` — apply all Drizzle schema tables.
+3. Run `pnpm run build` — typechecks (`tsc --build` + artifacts) and bundles all apps.
 3. Deploy via Replit's deployment skill (recommended) — handles TLS, custom domains, autoscaling.
 4. Add your Paystack webhook URL: `https://<your-domain>/api/v2/payments/paystack/callback`.
 5. Smoke test the customer flow again (browse → buy → STK → success).

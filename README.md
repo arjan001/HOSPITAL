@@ -490,7 +490,7 @@ previous behaviour of auto-passing any non-production request even when
 a token was configured has been closed off.
 
 Admin identity in the SPA is still hardcoded in `admin-shell.tsx` (the
-local super-admin chip). Full RBAC and Clerk-admin SSO are in Phase 2.
+local super-admin chip). Postgres RBAC and optional Clerk admin SSO are live (see `docs/ARCHITECTURE.md` §4.2).
 
 ### NestJS Session
 Cookie name: `shaniidrx_sid`
@@ -777,18 +777,17 @@ with `optimize: false` because `@clerk/themes/shadcn.css` is not a standard Tail
 ## 19. Strangler-Fig Migration Plan
 
 ```
-Phase 1 (complete):
-  api-nest: Profile, Addresses, Wishlist, Orders, Paystack
-  api-server: still serving Catalog + Admin (no-op store)
+Stages 0–5 (complete — June 2026):
+  api-nest: catalog v2, sourcing, trading, POs, partners (Clerk orgs),
+            QA/logistics, demand forecast v2, procurement pipeline, webhooks,
+            Clerk admin SSO, Postgres RBAC
+  api-server: shrinking legacy surface (Clerk proxy, some /api stubs)
 
-Phase 2 (planned):
-  api-nest: Roles & Permissions, Catalog (products, categories, banners),
-            Admin Auth, Doctor onboarding, Prescriptions, Cart, Consultations
-  api-server: routes deleted as modules port over
-
-Phase 3 (future):
-  api-server: fully decommissioned
-  api-nest: all routes, Drizzle-backed repositories
+Remaining:
+  Wire customer sessionId → Clerk user id
+  Decommission api-server catalog routes
+  Drizzle swap for remaining InMemoryRepository customer modules
+  S3 uploads, full SSR if needed
 ```
 
 **Repository swap (any module):**
@@ -867,25 +866,15 @@ emojis in UI copy, aggressive pricing language.
 
 ---
 
-## 22. Phase 2 Roadmap
+## 22. Phase 2 Roadmap (remaining)
 
-- **Roles & Permissions module** in `api-nest` — replace the hardcoded super-admin with a real
-  RBAC system. `AdminRolesPermissions` UI already exists at `/admin/roles`.
-- **Doctor onboarding form + panel** — `DoctorPanelPage` and `AdminDoctors` UI exist;
-  backend module pending.
-- **Prescription buy flow + pay-before-call** — allow patients to pre-pay for telemedicine
-  consultations; triggers prescription dispensing pipeline.
-- **Sticky notes per patient** — pharmacist / doctor notes attached to patient profiles.
-- **Cart module in api-nest** — move cart from React Context to a server-backed session cart
-  to support cross-device persistence.
-- **Drizzle repository swap** — replace all `InMemoryRepository<T>` instances with Drizzle-backed
-  implementations one module at a time (no controller changes).
-- **Admin auth** — replace the shared `ADMIN_API_TOKEN` (interim) with Clerk-issued admin
-  JWT claims validated in `api-nest`. The Phase-1 `AdminGuard` already wraps every admin
-  controller, so only the token check inside it needs to swap.
-- **Partner-portal Clerk migration** — the new server-side `PartnersModule` validates email
-  + portal-code today and stamps the session cookie. Phase 2 swaps the body of
-  `authenticate()` for a Clerk JWT verifier with `partnerType` custom claim; UI calls
-  (`loginPartner`, `submitPartnerOrder`) stay identical.
-- **Decommission `api-server`** — once Catalog and Admin modules port to `api-nest`, delete
-  the legacy Express server entirely.
+Shipped in Stages 0–5 (see `docs/PROGRESSIVE_REVIEW_REPORT.md`): Postgres RBAC, catalog v2,
+sourcing/trading/POs, partner Clerk orgs, automation, Clerk admin SSO, webhooks, ML forecast.
+
+Still open:
+
+- **Doctor onboarding form + panel** — `DoctorPanelPage` and `AdminDoctors` UI exist; backend hardening pending.
+- **Prescription buy flow + pay-before-call** — pre-pay telemedicine consultations.
+- **Cart module in api-nest** — server-backed session cart for cross-device persistence.
+- **Customer Clerk bind** — `sessionId = clerkUserId` on api-nest (guest cookie today).
+- **Decommission `api-server`** — once remaining catalog/proxy routes consolidate into api-nest.
